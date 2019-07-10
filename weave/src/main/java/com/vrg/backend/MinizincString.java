@@ -1,0 +1,103 @@
+/*
+ *
+ *  * Copyright © 2017 - 2018 VMware, Inc. All Rights Reserved.
+ *  *
+ *  * Licensed under the Apache License, Version 2.0 (the “License”); you may not use this file
+ *  * except in compliance with the License. You may obtain a copy of the License at
+ *  * http://www.apache.org/licenses/LICENSE-2.0
+ *  *
+ *  * Unless required by applicable law or agreed to in writing, software distributed under the
+ *  * License is distributed on an “AS IS” BASIS, without warranties or conditions of any kind,
+ *  * EITHER EXPRESS OR IMPLIED. See the License for the specific language governing
+ *  * permissions and limitations under the License.
+ *
+ */
+
+package com.vrg.backend;
+
+import com.vrg.IRColumn;
+import com.vrg.IRTable;
+import com.vrg.compiler.monoid.ColumnIdentifier;
+import com.vrg.compiler.monoid.Expr;
+import com.vrg.compiler.monoid.MonoidLiteral;
+
+import java.util.Locale;
+
+/**
+ * Utility class that converts SQL types (table names, iterator names, literals, column names etc.)
+ * into the corresponding strings used in Minizinc
+ */
+class MinizincString {
+    static final String MNZ_AND = " /\\ ";
+    static final char MNZ_OUTPUT_CSV_DELIMITER = ',';
+    static final String MNZ_OUTPUT_TABLENAME_TAG = "\n!!";
+    private static final String NUM_ROWS_NAME = "NUM_ROWS";
+
+    static String tableNumRowsName(final IRTable table) {
+        return tableNumRowsName(table.getName());
+    }
+
+    static String tableNumRowsName(final String tableName) {
+        return String.format("%s__%s", tableName, NUM_ROWS_NAME);
+    }
+
+    /**
+     * @return Returns this table qualified name
+     */
+    static String qualifiedName(final IRTable table) {
+        return table.getName();
+    }
+
+    /**
+     * @return Returns this table qualified name
+     */
+    static String qualifiedName(final IRColumn field) {
+        return String.format("%s__%s", field.getIRTable().getName(), field.getName());
+    }
+
+    static String headItemVariableName(final Expr expr) {
+        if (expr.getAlias().isPresent()) {
+            return expr.getAlias().get().toUpperCase(Locale.US);
+        }
+        else if (expr instanceof ColumnIdentifier) {
+            final IRColumn field = ((ColumnIdentifier) expr).getField();
+            return String.format("%s__%s", field.getIRTable().getAliasedName(), field.getName());
+        } else {
+            throw new RuntimeException("Expr of type: " + expr + " does not have an alias");
+        }
+    }
+
+    static String columnNameWithIteration(final ColumnIdentifier node, final String iteratorVariable) {
+        return String.format("%s[%s]", MinizincString.qualifiedName(node.getField()), iteratorVariable);
+    }
+
+    static String columnNameWithIteration(final ColumnIdentifier node) {
+        return columnNameWithIteration(node, node.getTableName().toUpperCase(Locale.US) +  "__ITER");
+    }
+
+    static String columnLiteralName(final ColumnIdentifier node) {
+        return MinizincString.qualifiedName(node.getField());
+    }
+
+    static String literal(final Expr literal) {
+        if (literal instanceof ColumnIdentifier) {
+            return MinizincString.columnNameWithIteration((ColumnIdentifier) literal);
+        } else if (literal instanceof MonoidLiteral) {
+            return ((MonoidLiteral) literal).getValue().toString();
+        }
+        throw new RuntimeException("Unknown literal type " + literal);
+    }
+
+
+    /**
+     * Used in the mnz_data.ftl and mnz_model.ftl template files
+     *
+     * @return Returns the MiniZinc name for the type. Strings type for MiniZinc is always an int
+     */
+    static String typeName(final IRColumn.FieldType type) {
+        if (type.equals(IRColumn.FieldType.STRING)) {
+            return "STRING_LITERALS";
+        }
+        return type.name().toLowerCase(Locale.US);
+    }
+}
