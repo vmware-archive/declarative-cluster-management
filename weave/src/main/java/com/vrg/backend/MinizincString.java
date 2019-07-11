@@ -44,13 +44,6 @@ class MinizincString {
     /**
      * @return Returns this table qualified name
      */
-    static String qualifiedName(final IRTable table) {
-        return table.getName();
-    }
-
-    /**
-     * @return Returns this table qualified name
-     */
     static String qualifiedName(final IRColumn field) {
         return String.format("%s__%s", field.getIRTable().getName(), field.getName());
     }
@@ -75,8 +68,10 @@ class MinizincString {
         return columnNameWithIteration(node, node.getTableName().toUpperCase(Locale.US) +  "__ITER");
     }
 
-    static String columnLiteralName(final ColumnIdentifier node) {
-        return MinizincString.qualifiedName(node.getField());
+    static String groupColumnNameWithIteration(final String viewName, final ColumnIdentifier node) {
+        return String.format("GROUP_TABLE__%s__%s%s[%s]", viewName.toUpperCase(Locale.getDefault()),
+                                   node.fromGroupByWithDereference() ? node.getTableName() + "_" : "",
+                                   node.getField().getName(), "GROUP__KEY");
     }
 
     static String literal(final Expr literal) {

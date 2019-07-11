@@ -54,7 +54,6 @@ import java.util.stream.Collectors;
  */
 public class MinizincCodeGenerator extends MonoidVisitor {
     private static final String GROUP_KEY = "GROUP__KEY";
-    private static final String GROUP_INDEX_SET = "uniqueTupleIndices";
     private static final EnumMap<VarType, String> VAR_TYPE_STRING = new EnumMap<>(VarType.class);
 
     private final List<Expr> headItems;
@@ -66,8 +65,13 @@ public class MinizincCodeGenerator extends MonoidVisitor {
     private final List<String> rangeQualifiers;
     private final List<Expr> literals;
     private final List<Expr> completeExpression;
+    private final String viewName;
 
     MinizincCodeGenerator() {
+        this("");
+    }
+
+    MinizincCodeGenerator(final String viewName) {
         this.headItems = new ArrayList<>();
         this.whereQualifiers = new ArrayList<>();
         this.joinQualifiers = new ArrayList<>();
@@ -75,6 +79,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         this.rangeQualifiers = new ArrayList<>();
         this.literals = new ArrayList<>();
         this.completeExpression = new ArrayList<>();
+        this.viewName = viewName;
     }
 
     @Override
@@ -136,8 +141,8 @@ public class MinizincCodeGenerator extends MonoidVisitor {
     }
 
     private String evaluateWhereExpression(final BinaryOperatorPredicate node) {
-        final MinizincCodeGenerator leftVisitor = new MinizincCodeGenerator();
-        final MinizincCodeGenerator rightVisitor = new MinizincCodeGenerator();
+        final MinizincCodeGenerator leftVisitor = new MinizincCodeGenerator(viewName);
+        final MinizincCodeGenerator rightVisitor = new MinizincCodeGenerator(viewName);
         leftVisitor.visit(node.getLeft());
         rightVisitor.visit(node.getRight());
         final List<String> leftExpression = leftVisitor.evaluateExpression();
@@ -334,16 +339,9 @@ public class MinizincCodeGenerator extends MonoidVisitor {
                     } else {
                         // For expressions with a group by, we output a constraint that ensures that
                         // the having clause is satisfied for every group.
-                        final int numColumnsInGroupBy = groupByQualifier.getColumnIdentifiers().size();
-                        final List<String> groupByColumns = new ArrayList<>(numColumnsInGroupBy);
-                        for (final ColumnIdentifier id: groupByQualifier.getColumnIdentifiers()) {
-                            groupByColumns.add(MinizincString.columnLiteralName(id));
-                        }
-                        final String groupByColumnsString = String.join(", ", groupByColumns);
-                        final String groupIndexSet = String.format("%s%s(%s)", GROUP_INDEX_SET, numColumnsInGroupBy,
-                                groupByColumnsString);
                         final String groupByExpression =
-                                String.format("%s(%s in %s)", outerPredicate, GROUP_KEY, groupIndexSet);
+                                String.format("%s(%s in 1..GROUP_TABLE__%s__NUM_ROWS)",
+                                              outerPredicate, GROUP_KEY, viewName.toUpperCase(Locale.getDefault()));
                         ret.add(String.format("%s%n(%s)", groupByExpression, havingClause));
                     }
                 }
@@ -379,7 +377,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
                 : String.join(" /\\ ", evaluateWhereExpressions(allQualifiers));
         final String rangeExpression = String.join(",", rangeQualifiers);
         if (groupByQualifier != null) {
-            return handleGroupBy(headItem, innerOnly, rangeExpression, whereExpression);
+            return handleGroupBy(headItem, innerOnly, rangeExpression, whereExpression, viewName);
         } else {
             final String body = String.format("%s %s %s", rangeExpression,
                                               whereExpression.isEmpty() ? "" : "where",
@@ -421,16 +419,15 @@ public class MinizincCodeGenerator extends MonoidVisitor {
      * for every column in the group by, whether the current row matches with that of the group_index.
      */
     private String handleGroupBy(final Expr headItem, final boolean innerOnly, final String rangeExpression,
-                                 final String whereExpression) {
+                                 final String whereExpression, final String viewName) {
         assert groupByQualifier != null;
         final int numColumnsInGroupBy = groupByQualifier.getColumnIdentifiers().size();
         final List<String> groupByPredicates = new ArrayList<>(numColumnsInGroupBy);
-        final List<String> groupByColumns = new ArrayList<>(numColumnsInGroupBy);
         for (final ColumnIdentifier id : groupByQualifier.getColumnIdentifiers()) {
-            groupByColumns.add(MinizincString.columnLiteralName(id));
-            final String groupByColumnWithIteration = MinizincString.columnNameWithIteration(id);
-            final String groupByPredicate = String.format("%s == %s[%s]", groupByColumnWithIteration,
-                    MinizincString.columnLiteralName(id), GROUP_KEY);
+            final String columnWithIteration = MinizincString.columnNameWithIteration(id);
+            final String groupColumnNameWithIteration = MinizincString.groupColumnNameWithIteration(viewName, id);
+            final String groupByPredicate = String.format("%s == %s", columnWithIteration,
+                                                                      groupColumnNameWithIteration);
             groupByPredicates.add(groupByPredicate);
         }
         final String groupByPredicatesString = String.join(" /\\ ", groupByPredicates);
@@ -454,9 +451,8 @@ public class MinizincCodeGenerator extends MonoidVisitor {
          * with iterating over all groups. We use a helper function that returns the set of groups by the
          * number
          */
-        final String groupByColumnsString = String.join(", ", groupByColumns);
-        final String groupIndexSet = String.format("%s%s(%s)", GROUP_INDEX_SET, numColumnsInGroupBy,
-                groupByColumnsString);
+        final String groupIndexSet = String.format("1..GROUP_TABLE__%s__NUM_ROWS",
+                                                   viewName.toUpperCase(Locale.getDefault()));
         /*
          * We go over all having clauses, and produce the having string. This becomes the where clause
          * for the outer comprehension.
@@ -569,7 +565,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
             if (literals.size() == 1) {
                 // This might be a predicate function
                 if (literals.get(0) instanceof MonoidFunction) {
-                    final MinizincCodeGenerator cg = new MinizincCodeGenerator();
+                    final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
                     final MonoidFunction function = (MonoidFunction) literals.get(0);
                     cg.visit(function.getArgument());
                     return Collections.singletonList(String.format("%s(%s)", function.getFunctionName(),
@@ -577,7 +573,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
                 }
                 else if (literals.get(0) instanceof ExistsPredicate) {
                     final ExistsPredicate predicate = (ExistsPredicate) literals.get(0);
-                    final MinizincCodeGenerator cg = new MinizincCodeGenerator();
+                    final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
                     cg.visit(predicate.getArgument());
                     return cg.generateConstraintViewCodeInner("exists");
                 }
@@ -651,7 +647,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         if (operand instanceof MonoidFunction) {
             return generatorExpressionFromSelectWhere(operand, true);
         } else {
-            final MinizincCodeGenerator visitor = new MinizincCodeGenerator();
+            final MinizincCodeGenerator visitor = new MinizincCodeGenerator(viewName);
             visitor.visit(operand);
             return visitor.evaluateExpression().get(0);
         }

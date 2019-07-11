@@ -20,11 +20,12 @@ import com.vrg.IRColumn;
 public class ColumnIdentifier extends MonoidComprehension {
     private final String tableName;
     private final IRColumn field;
+    private final boolean fromGroupByWithDereference;
 
-
-    public ColumnIdentifier(final String table, final IRColumn field) {
+    public ColumnIdentifier(final String table, final IRColumn field, final boolean fromGroupByWithDereference) {
         this.tableName = table;
         this.field = field;
+        this.fromGroupByWithDereference = fromGroupByWithDereference;
     }
 
     @Override
@@ -43,5 +44,12 @@ public class ColumnIdentifier extends MonoidComprehension {
 
     public String getTableName() {
         return field.getIRTable().getAliasedName();
+    }
+
+    /**
+     * @return true if this column was referenced in a group by using a dereference. False otherwise.
+     */
+    public boolean fromGroupByWithDereference() {
+        return fromGroupByWithDereference;
     }
 }

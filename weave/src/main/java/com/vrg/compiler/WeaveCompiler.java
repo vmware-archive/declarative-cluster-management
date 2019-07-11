@@ -15,9 +15,6 @@
 
 package com.vrg.compiler;
 
-import com.facebook.presto.sql.parser.ParsingException;
-import com.facebook.presto.sql.parser.ParsingOptions;
-import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
@@ -104,8 +101,6 @@ public class WeaveCompiler {
         LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.OR, "\\/");
     }
 
-    private static final SqlParser PARSER = new SqlParser();
-    private final ParsingOptions options = new ParsingOptions();
     private final IRContext irContext;
 
     public WeaveCompiler(final IRContext irContext) {
@@ -117,7 +112,7 @@ public class WeaveCompiler {
      * @param views a list of strings, each of which is a view statement
      */
     @CanIgnoreReturnValue
-    public List<String> compile(final List<String> views, final ISolverBackend backend) {
+    public List<String> compile(final List<CreateView> views, final ISolverBackend backend) {
         // First, we extract all the necessary views from the input code
         final ReferencedSymbols symbols = new ReferencedSymbols();
 
@@ -140,16 +135,10 @@ public class WeaveCompiler {
     }
 
 
-    private void extractSymbols(final String createViewStatement, final ReferencedSymbols symbols) {
-        try {
-            final CreateView view = (CreateView) PARSER.createStatement(createViewStatement, options);
+    private void extractSymbols(final CreateView view, final ReferencedSymbols symbols) {
             final SymbolExtractingVisitor visitor = new SymbolExtractingVisitor();
             // updates class field with all the existing views symbols
             visitor.process(view, symbols);
-        } catch (final ParsingException e) {
-            LOG.error("The following create view statement threw a parsing exception:\n{}", createViewStatement, e);
-            throw e;
-        }
     }
 
     /**
@@ -259,7 +248,7 @@ public class WeaveCompiler {
                         if (createIrTableForView) {
                             viewTable.addField(irColumn);
                         }
-                        exprs.add(new ColumnIdentifier(table.getName(), irColumn));
+                        exprs.add(new ColumnIdentifier(table.getName(), irColumn, false));
                     })
                 );
             }
@@ -363,7 +352,7 @@ public class WeaveCompiler {
                     // We therefore replace the argument for count with the first column of one of the tables.
                     final IRTable table = tablesReferencedInView.iterator().next();
                     final IRColumn field = table.getIRColumns().entrySet().iterator().next().getValue();
-                    final ColumnIdentifier column = new ColumnIdentifier(table.getName(), field);
+                    final ColumnIdentifier column = new ColumnIdentifier(table.getName(), field, false);
                     function = new MonoidFunction(mnzFunctionName, column);
                 } else {
                     throw new RuntimeException("I don't know what to do with this function call type: " + functionCall);
@@ -377,8 +366,8 @@ public class WeaveCompiler {
                 operands.push(identifier);
             } else if (isLiteral(node)) {
                 final MonoidLiteral literal = node instanceof StringLiteral
-                                           ? new MonoidLiteral("\'" + ((StringLiteral) node).getValue() + "\'")
-                                           : new MonoidLiteral(node.toString());
+                                           ? new MonoidLiteral<>("\'" + ((StringLiteral) node).getValue() + "\'")
+                                           : new MonoidLiteral<>(node.toString());
                 operands.push(literal);
             } else if (node instanceof ArithmeticBinaryExpression) {
                 assert operands.size() >= 2;
@@ -436,13 +425,13 @@ public class WeaveCompiler {
     private ColumnIdentifier getColumnIdentifierFromField(final Node node, final Set<IRTable> tablesReferencedInView) {
           if (node instanceof DereferenceExpression) {
             final IRColumn irColumn = getIRColumnFromDereferencedExpression((DereferenceExpression) node);
-            return new ColumnIdentifier(irColumn.getIRTable().getName(), irColumn);
+            return new ColumnIdentifier(irColumn.getIRTable().getName(), irColumn, true);
         } else if (node instanceof Identifier) {
             final IRColumn IRColumn = irContext.getColumnIfUnique(node.toString(), tablesReferencedInView);
             assert tablesReferencedInView.stream().map(IRTable::getName)
                                                   .collect(Collectors.toSet())
                                                   .contains(IRColumn.getIRTable().getName());
-            return new ColumnIdentifier(IRColumn.getIRTable().getName(), IRColumn);
+            return new ColumnIdentifier(IRColumn.getIRTable().getName(), IRColumn, false);
         } else {
             throw new IllegalArgumentException("Unknown field type");
         }

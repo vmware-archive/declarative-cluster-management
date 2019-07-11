@@ -1009,8 +1009,9 @@ public class ModelTest {
 
         final List<String> views = toListOfViews(
                 "create view least_requested_sums as\n" +
-                "select sum(node_info.cpu_allocatable) as cpu_load\n" +
-                "       from node_info group by node_info.name;"
+                "select sum(pod_info.cpu_request) as cpu_load\n" +
+                "       from pod_info join node_info on pod_info.controllable__node_name = node_info.name " +
+                " group by node_info.name;"
         );
 
         conn.execute("insert into node_info values ('n1', 1, 1)");
@@ -1163,7 +1164,8 @@ public class ModelTest {
                         "    having increasing(controllable__node_name) = true;"
         );
 
-        buildWeaveModel(conn, views, modelName);
+        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+        weaveModel.updateData();
     }
 
     @Test

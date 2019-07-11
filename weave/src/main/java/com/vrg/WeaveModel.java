@@ -15,6 +15,10 @@
 
 package com.vrg;
 
+import com.facebook.presto.sql.SqlFormatter;
+import com.facebook.presto.sql.parser.ParsingOptions;
+import com.facebook.presto.sql.parser.SqlParser;
+import com.facebook.presto.sql.tree.CreateView;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.vrg.backend.ISolverBackend;
@@ -37,8 +41,11 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.jooq.impl.DSL.row;
 import static org.jooq.impl.DSL.values;
@@ -56,6 +63,8 @@ import static org.jooq.impl.DSL.values;
 public class WeaveModel {
     private static final Logger LOG = LoggerFactory.getLogger(WeaveModel.class);
     private static final String CURRENT_SCHEMA = "CURR";
+    private static final SqlParser PARSER = new SqlParser();
+    private final ParsingOptions options = new ParsingOptions();
     private final DSLContext dbCtx;
     private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
@@ -71,12 +80,42 @@ public class WeaveModel {
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
         this.backend = new MinizincSolver(modelFile, dataFile, conf);
+        final List<CreateView> viewsInPolicy = views.stream().map(
+                view -> (CreateView) PARSER.createStatement(view, options)
+        ).collect(Collectors.toList());
+
+        /*
+         * Identify additional views to create in the database for group bys. These views will be added to
+         * the DB, and we augment the list of tables to pass to the compiler with these views.
+         */
+        final List<CreateView> groupByViewsToCreate = viewsInPolicy.stream().map(view -> {
+            final ExtractGroupTable groupTable = new ExtractGroupTable();
+            return groupTable.process(view);
+        }).filter(Optional::isPresent)
+          .map(Optional::get)
+          .collect(Collectors.toList());
+        groupByViewsToCreate.forEach(view -> {
+            final String s = SqlFormatter.formatSql(view, Optional.empty());
+            dbCtx.execute(s);
+        });
+        final Set<String> createdViewNames = groupByViewsToCreate.stream().map(view -> view.getName()
+                                                                                           .toString()
+                                                                                     .toUpperCase(Locale.getDefault()))
+                                                                          .collect(Collectors.toSet());
+        final List<Table<?>> augmentedTableList = new ArrayList<>(tables);
+        // dbCtx.meta().getTables(<name>) is buggy https://github.com/jOOQ/jOOQ/issues/7686,
+        // so we're going to scan all tables and pick the ones whose names match that of the views we created.
+        for (final Table<?> table: dbCtx.meta().getTables()) {
+            if (createdViewNames.contains(table.getName().toUpperCase(Locale.getDefault()))) {
+                augmentedTableList.add(table);
+            }
+        }
 
         // parse model from SQL tables
-        jooqTableToIRTable = new HashMap<>(tables.size());
+        jooqTableToIRTable = new HashMap<>(augmentedTableList.size());
         jooqTableConstraintMap = HashMultimap.create();
-        irTables = new HashMap<>(tables.size());
-        parseModel(tables);
+        irTables = new HashMap<>(augmentedTableList.size());
+        parseModel(augmentedTableList);
         for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
             // TODO: uncomment if removal of pk constraints is needed
             // final UniqueKey pk = table.getPrimaryKey();
@@ -90,9 +129,8 @@ public class WeaveModel {
             }
         }
         IRContext = new IRContext(irTables);
-
         compiler = new WeaveCompiler(IRContext);
-        compiler.compile(views, backend);
+        compiler.compile(viewsInPolicy, backend);
     }
 
 
@@ -357,20 +395,20 @@ public class WeaveModel {
 
         // parses foreign keys after initiating the tables
         // because for fks we need to setup relationships between different table fields
-//        for (final IRTable childTable : jooqTableToIRTable.values()) {
-//            // read table foreign keys, and init our map with the same size
-//            final List<? extends ForeignKey<? extends Record, ?>> foreignKeys = childTable.getTable().getReferences();
-//            for (final ForeignKey<? extends Record, ?> fk : foreignKeys) {
-//                // table referenced by the foreign key
-//                final IRTable parentTable = jooqTableToIRTable.get(fk.getKey().getTable());
-//
-//                // build foreign key based on the fk fields
-//                final IRForeignKey IRForeignKey = new IRForeignKey(childTable, parentTable, fk);
-//
-//                // adds new foreign key to the table
-//                childTable.addForeignKey(IRForeignKey);
-//            }
-//        }
+        for (final IRTable childTable : jooqTableToIRTable.values()) {
+            // read table foreign keys, and init our map with the same size
+            final List<? extends ForeignKey<? extends Record, ?>> foreignKeys = childTable.getTable().getReferences();
+            for (final ForeignKey<? extends Record, ?> fk : foreignKeys) {
+                // table referenced by the foreign key
+                final IRTable parentTable = jooqTableToIRTable.get(fk.getKey().getTable());
+
+                // build foreign key based on the fk fields
+                final IRForeignKey IRForeignKey = new IRForeignKey(childTable, parentTable, fk);
+
+                // adds new foreign key to the table
+                childTable.addForeignKey(IRForeignKey);
+            }
+        }
     }
 
     /**

@@ -42,17 +42,17 @@
         <dependency>
             <groupId>org.jooq</groupId>
             <artifactId>jooq</artifactId>
-            <version>3.11.1</version>
+            <version>3.11.11</version>
         </dependency>
         <dependency>
             <groupId>org.jooq</groupId>
             <artifactId>jooq-meta</artifactId>
-            <version>3.11.1</version>
+            <version>3.11.11</version>
         </dependency>
         <dependency>
             <groupId>org.jooq</groupId>
             <artifactId>jooq-meta-extensions</artifactId>
-            <version>3.11.1</version>
+            <version>3.11.11</version>
         </dependency>
         <dependency>
             <groupId>org.freemarker</groupId>
