@@ -144,21 +144,21 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("arrayDeclarations", arrayDeclarations);
 
         final List<String> nonConstraintViewCode = nonConstraintViews.entrySet().stream().flatMap(entry -> {
-            final MinizincCodeGenerator cg = new MinizincCodeGenerator();
+            final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
             cg.visit(entry.getValue());
             return cg.generateNonConstraintViewCode(entry.getKey()).stream();
         }).collect(Collectors.toList());
         templateVars.put("nonConstraintViewCode", nonConstraintViewCode);
 
         final List<String> constraintViewCode = constraintViews.entrySet().stream().flatMap(entry -> {
-            final MinizincCodeGenerator cg = new MinizincCodeGenerator();
+            final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
             cg.visit(entry.getValue());
             return cg.generateConstraintViewCode(entry.getKey()).stream();
         }).collect(Collectors.toList());
         templateVars.put("constraintViewCode", constraintViewCode);
 
         final List<String> objectiveFunctionsCode = objectiveFunctions.entrySet().stream().flatMap(entry -> {
-            final MinizincCodeGenerator cg = new MinizincCodeGenerator();
+            final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
             cg.visit(entry.getValue());
             return cg.generateObjectiveFunctionCode(entry.getKey()).stream();
         }).collect(Collectors.toList());
