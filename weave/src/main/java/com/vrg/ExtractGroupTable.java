@@ -1,11 +1,15 @@
 package com.vrg;
 
 import com.facebook.presto.sql.QueryUtil;
+import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.CreateView;
+import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
+import com.facebook.presto.sql.tree.DereferenceExpression;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.GroupBy;
 import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.Identifier;
+import com.facebook.presto.sql.tree.LogicalBinaryExpression;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
@@ -56,5 +60,17 @@ class ExtractGroupTable {
                                                   Optional.empty(),
                                                   Optional.empty());
         return Optional.of(new CreateView(QualifiedName.of(GROUP_TABLE_PREFIX + viewName), query, false));
+    }
+
+    static class RemoveControllablePredicates extends DefaultTraversalVisitor<Expression, Void> {
+
+        @Override
+        protected Expression visitLogicalBinaryExpression(final LogicalBinaryExpression node, final Void context) {
+            if (node.getOperator().equals(LogicalBinaryExpression.Operator.AND)) {
+                final Expression left = this.process(node.getLeft());
+                final Expression right = this.process(node.getRight());
+            }
+            return new LogicalBinaryExpression();
+        }
     }
 }
