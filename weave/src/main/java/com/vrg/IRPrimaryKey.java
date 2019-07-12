@@ -11,15 +11,15 @@ import java.util.List;
 
 public class IRPrimaryKey {
     private final List<IRColumn> primaryKeyFields;
-    private final IRTable IRTable;
+    private final IRTable irTable;
 
-    public IRPrimaryKey(final IRTable IRTable, @Nullable final UniqueKey<? extends Record> pk) {
-        this.IRTable = IRTable;
+    public IRPrimaryKey(final IRTable irTable, @Nullable final UniqueKey<? extends Record> pk) {
+        this.irTable = irTable;
         this.primaryKeyFields = new ArrayList<>();
         // if no pk just skips - this can happen on views e.g.
         if (pk != null) {
             for (final Field pkField : pk.getFields()) {
-                this.primaryKeyFields.add(IRTable.getField(pkField));
+                this.primaryKeyFields.add(irTable.getField(pkField));
             }
         }
     }
@@ -39,6 +39,6 @@ public class IRPrimaryKey {
     }
 
     public IRTable getIRTable() {
-        return IRTable;
+        return irTable;
     }
 }

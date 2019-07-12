@@ -145,11 +145,11 @@ public class IRTable {
     /**
      * Adds a IRColumn to the table
      */
-    public void addField(final IRColumn IRColumn) {
+    public void addField(final IRColumn irColumn) {
         //add to map with all the irColumns so we update values more easily later
-        this.irColumns.put(IRColumn.getName(), IRColumn);
+        this.irColumns.put(irColumn.getName(), irColumn);
         if (jooqTable != null) {
-            this.fieldToIRColumn.put(IRColumn.getJooqField(), IRColumn);
+            this.fieldToIRColumn.put(irColumn.getJooqField(), irColumn);
         }
     }
 
@@ -231,7 +231,7 @@ public class IRTable {
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
+        if (!(o instanceof IRTable)) {
             return false;
         }
         final IRTable table = (IRTable) o;

@@ -44,16 +44,16 @@ import java.util.Set;
 class FromExtractor extends DefaultTraversalVisitor<Void, Void> {
     private final Set<IRTable> tables = new HashSet<>();
     private final List<Expression> joinConditions = new ArrayList<>();
-    private final IRContext IRContext;
+    private final IRContext irContext;
 
-    FromExtractor(final IRContext IRContext) {
-        this.IRContext = IRContext;
+    FromExtractor(final IRContext irContext) {
+        this.irContext = irContext;
     }
 
     @Override
     protected Void visitAliasedRelation(final AliasedRelation node, final Void context) {
         assert node.getRelation() instanceof Table : "Only table relations may have aliases";
-        final IRTable irTable = IRContext.getTable(((Table) node.getRelation()).getName().toString());
+        final IRTable irTable = irContext.getTable(((Table) node.getRelation()).getName().toString());
 
         // TODO: This duplicates code from WeaveModel in creating IRTable and IRColumn instances.
         final org.jooq.Table<? extends Record> table = irTable.isViewTable() ? null : irTable.getTable();
@@ -75,14 +75,14 @@ class FromExtractor extends DefaultTraversalVisitor<Void, Void> {
             tableAlias.setPrimaryKey(pk);
         }
         tables.add(tableAlias);
-        IRContext.addAliasedOrViewTable(tableAlias);
+        irContext.addAliasedOrViewTable(tableAlias);
         return null;
     }
 
     @Override
     protected Void visitTable(final Table node, final Void context) {
-        final IRTable IRTable = IRContext.getTable(node.getName().toString());
-        tables.add(IRTable);
+        final IRTable irTable = irContext.getTable(node.getName().toString());
+        tables.add(irTable);
         return null;
     }
 

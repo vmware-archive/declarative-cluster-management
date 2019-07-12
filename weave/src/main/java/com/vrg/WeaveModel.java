@@ -70,7 +70,7 @@ public class WeaveModel {
     private final Map<String, IRTable> irTables;
     private final Multimap<Table, Constraint> jooqTableConstraintMap;
     private final WeaveCompiler compiler;
-    private IRContext IRContext;
+    private IRContext irContext;
     private final ISolverBackend backend;
 
 
@@ -128,8 +128,8 @@ public class WeaveModel {
                 jooqTableConstraintMap.put(table, fk.constraint());
             }
         }
-        IRContext = new IRContext(irTables);
-        compiler = new WeaveCompiler(IRContext);
+        irContext = new IRContext(irTables);
+        compiler = new WeaveCompiler(irContext);
         compiler.compile(viewsInPolicy, backend);
     }
 
@@ -371,22 +371,22 @@ public class WeaveModel {
     private void parseModel(final List<Table<?>> tables) {
         // parse the model for all the tables and fields
         for (final Table<?> table : tables) {
-            final IRTable IRTable = new IRTable(table);
+            final IRTable irTable = new IRTable(table);
 
             // parse all fields
             for (final Field<?> field : table.fields()) {
-                final IRColumn IRColumn = new IRColumn(IRTable, field);
-                IRTable.addField(IRColumn);
+                final IRColumn irColumn = new IRColumn(irTable, field);
+                irTable.addField(irColumn);
             }
 
             // After adding all the MnzFields to the table, we parse the table UniqueKey
             // and link the correspondent MnzFields as fields that compose the IRTable primary key
-            final IRPrimaryKey pk = new IRPrimaryKey(IRTable, table.getPrimaryKey());
-            IRTable.setPrimaryKey(pk);
+            final IRPrimaryKey pk = new IRPrimaryKey(irTable, table.getPrimaryKey());
+            irTable.setPrimaryKey(pk);
 
             // add table reference to maps
-            jooqTableToIRTable.put(table, IRTable);
-            irTables.put(IRTable.getName(), IRTable);
+            jooqTableToIRTable.put(table, irTable);
+            irTables.put(irTable.getName(), irTable);
         }
 
         // TODO: Assumes tables do not have foreign key relationships for now and that the user
@@ -403,10 +403,10 @@ public class WeaveModel {
                 final IRTable parentTable = jooqTableToIRTable.get(fk.getKey().getTable());
 
                 // build foreign key based on the fk fields
-                final IRForeignKey IRForeignKey = new IRForeignKey(childTable, parentTable, fk);
+                final IRForeignKey irForeignKey = new IRForeignKey(childTable, parentTable, fk);
 
                 // adds new foreign key to the table
-                childTable.addForeignKey(IRForeignKey);
+                childTable.addForeignKey(irForeignKey);
             }
         }
     }
@@ -417,17 +417,17 @@ public class WeaveModel {
     private void updateDataFields() {
         for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
             final Table<? extends Record> table = entry.getKey();
-            final IRTable IRTable = entry.getValue();
+            final IRTable irTable = entry.getValue();
             final long start = System.nanoTime();
             final Result<? extends Record> recentData = dbCtx.selectFrom(table).fetch();
             final long select = System.nanoTime();
-            IRTable.updateValues(recentData);
+            irTable.updateValues(recentData);
             final long updateValues = System.nanoTime();
             LOG.info("updateDataFields for table {} took {}ns to fetch from DB, and {}ns to reflect in IRTables",
                      table.getName(), (select - start), (updateValues - System.nanoTime()));
         }
         final long updateData = System.nanoTime();
-        compiler.updateData(IRContext, backend);
+        compiler.updateData(irContext, backend);
         LOG.info("compiler.updateData() took {}ns to complete", (updateData - System.nanoTime()));
     }
 

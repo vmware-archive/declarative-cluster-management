@@ -385,7 +385,7 @@ public class MinizincSolver implements ISolverBackend {
                 try {
                     Files.copy(path, dest, StandardCopyOption.REPLACE_EXISTING);
                 } catch (final IOException e) {
-                    e.printStackTrace();
+                    LOG.error("Debug-mode: could not copy file", e);
                 }
             }
         }
