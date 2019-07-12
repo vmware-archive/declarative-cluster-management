@@ -317,7 +317,7 @@ public class IRColumn {
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
+        if (!(o instanceof IRColumn)) {
             return false;
         }
         final IRColumn irColumn = (IRColumn) o;

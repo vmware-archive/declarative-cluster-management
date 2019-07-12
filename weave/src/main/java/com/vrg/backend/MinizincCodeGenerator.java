@@ -42,7 +42,6 @@ import org.apache.commons.text.StringEscapeUtils;
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
@@ -127,6 +126,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         literals.add(node);
     }
 
+    @Override
     protected void visitExistsPredicate(final ExistsPredicate existsPredicate) {
         literals.add(existsPredicate);
     }
@@ -568,25 +568,25 @@ public class MinizincCodeGenerator extends MonoidVisitor {
                     final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
                     final MonoidFunction function = (MonoidFunction) literals.get(0);
                     cg.visit(function.getArgument());
-                    return Collections.singletonList(String.format("%s(%s)", function.getFunctionName(),
+                    return ImmutableList.of(String.format("%s(%s)", function.getFunctionName(),
                                                                              cg.evaluateExpression().get(0)));
                 }
                 else if (literals.get(0) instanceof ExistsPredicate) {
                     final ExistsPredicate predicate = (ExistsPredicate) literals.get(0);
                     final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
                     cg.visit(predicate.getArgument());
-                    return cg.generateConstraintViewCodeInner("exists");
+                    return ImmutableList.copyOf(cg.generateConstraintViewCodeInner("exists"));
                 }
                 // This is a literal
                 else {
                     final String body = MinizincString.literal(literals.get(0));
-                    return Collections.singletonList(body);
+                    return ImmutableList.of(body);
                 }
             } else if (whereQualifiers.size() == 1) {
                 final String whereExpressionString = evaluateWhereExpression(whereQualifiers.get(0));
-                return Collections.singletonList(whereExpressionString);
+                return ImmutableList.of(whereExpressionString);
             } else if (aggregateQualifiers.size() == 1) {
-                return Collections.singletonList(evaluateHavingClause(aggregateQualifiers.get(0)));
+                return ImmutableList.of(evaluateHavingClause(aggregateQualifiers.get(0)));
             } else {
                 assert false;
             }
@@ -600,7 +600,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
                 ret.add(expressionString);
             }
         }
-        return ret;
+        return ImmutableList.copyOf(ret);
     }
 
 

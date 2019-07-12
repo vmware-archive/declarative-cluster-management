@@ -40,6 +40,7 @@ import com.facebook.presto.sql.tree.SingleColumn;
 import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.SubqueryExpression;
 import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableList;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.vrg.IRColumn;
 import com.vrg.IRContext;
@@ -64,7 +65,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -113,6 +113,7 @@ public class WeaveCompiler {
      */
     @CanIgnoreReturnValue
     public List<String> compile(final List<CreateView> views, final ISolverBackend backend) {
+        LOG.debug("Compiling the following views\n{}", views);
         // First, we extract all the necessary views from the input code
         final ReferencedSymbols symbols = new ReferencedSymbols();
 
@@ -282,14 +283,14 @@ public class WeaveCompiler {
     /**
      * Converts a WHERE expression stack obtained by a WhereExpressionParser to a Minizinc expression
      */
-    private List<Qualifier> processWhereExpression(final Expression expression,
-                                                   final Set<IRTable> tablesReferencedInView,
-                                                   final boolean isAggregate) {
+    private ImmutableList<Qualifier> processWhereExpression(final Expression expression,
+                                                            final Set<IRTable> tablesReferencedInView,
+                                                            final boolean isAggregate) {
         final ExpressionTraverser traverser = new ExpressionTraverser();
         traverser.process(expression);
         final ArrayDeque<Node> stack = traverser.getExpressionStack();
         if (stack.size() == 0) {
-            return Collections.emptyList();
+            return ImmutableList.of();
         }
         final ArrayDeque<Expr> operands = convertToExpr(expression, tablesReferencedInView, isAggregate);
         final List<Qualifier> predicates = new ArrayList<>();
@@ -298,7 +299,7 @@ public class WeaveCompiler {
             predicates.add((BinaryOperatorPredicate) expr);
         }
         assert predicates.size() > 0;
-        return predicates;
+        return ImmutableList.copyOf(predicates);
     }
 
     /**
@@ -311,10 +312,10 @@ public class WeaveCompiler {
         traverser.process(expression);
         final ArrayDeque<Node> stack = traverser.getExpressionStack();
         if (stack.size() == 0) {
-            return Collections.emptyList();
+            return ImmutableList.of();
         }
         final ArrayDeque<Expr> operands = convertToExpr(expression, tablesReferencedInView, isAggregate);
-        return new ArrayList<>(operands);
+        return ImmutableList.copyOf(operands);
     }
 
     private ArrayDeque<Expr> convertToExpr(final Expression expression, final Set<IRTable> tablesReferencedInView,
@@ -427,11 +428,11 @@ public class WeaveCompiler {
             final IRColumn irColumn = getIRColumnFromDereferencedExpression((DereferenceExpression) node);
             return new ColumnIdentifier(irColumn.getIRTable().getName(), irColumn, true);
         } else if (node instanceof Identifier) {
-            final IRColumn IRColumn = irContext.getColumnIfUnique(node.toString(), tablesReferencedInView);
+            final IRColumn irColumn = irContext.getColumnIfUnique(node.toString(), tablesReferencedInView);
             assert tablesReferencedInView.stream().map(IRTable::getName)
                                                   .collect(Collectors.toSet())
-                                                  .contains(IRColumn.getIRTable().getName());
-            return new ColumnIdentifier(IRColumn.getIRTable().getName(), IRColumn, false);
+                                                  .contains(irColumn.getIRTable().getName());
+            return new ColumnIdentifier(irColumn.getIRTable().getName(), irColumn, false);
         } else {
             throw new IllegalArgumentException("Unknown field type");
         }

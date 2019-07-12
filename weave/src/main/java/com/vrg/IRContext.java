@@ -39,22 +39,22 @@ public class IRContext {
      * @return Returns the IRColumn corresponding to `tableName`.`fieldName`
      */
     public IRColumn getColumn(final String tableName, final String fieldName) {
-        final IRTable IRTable = getTable(tableName);
-        return getColumn(IRTable, fieldName);
+        final IRTable irTable = getTable(tableName);
+        return getColumn(irTable, fieldName);
     }
 
     /**
-     * @param IRTable an IRTable instance
+     * @param irTable an IRTable instance
      * @param fieldName a fieldName within the IRTable instance
      * @return Returns the IRColumn based on IRTable.`fieldName`
      */
-    private IRColumn getColumn(final IRTable IRTable, final String fieldName) {
+    private IRColumn getColumn(final IRTable irTable, final String fieldName) {
         final String fieldNameCaps = fieldName.toUpperCase(Locale.US);
-        if (!IRTable.getIRColumns().containsKey(fieldNameCaps)) {
+        if (!irTable.getIRColumns().containsKey(fieldNameCaps)) {
             throw new WeaveModel.WeaveModelException(
-                    String.format("Field '%s' not found at table '%s'!", fieldName, IRTable.getName()));
+                    String.format("Field '%s' not found at table '%s'!", fieldName, irTable.getName()));
         }
-        return IRTable.getIRColumns().get(fieldNameCaps);
+        return irTable.getIRColumns().get(fieldNameCaps);
     }
 
     /**
