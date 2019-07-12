@@ -78,7 +78,8 @@
                     <target>8</target>
                     <compilerArgs>
                         <arg>-XDcompilePolicy=simple</arg>
-                        <arg>-Xplugin:ErrorProne</arg>
+                        <arg>-Xplugin:ErrorProne
+                            -Xep:Finally:OFF</arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
@@ -93,7 +94,7 @@
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
-                <version>3.1.6</version>
+                <version>3.1.12</version>
                 <dependencies>
                     <!-- overwrite dependency on spotbugs if you want to specify the version of spotbugs -->
                     <dependency>
@@ -104,7 +105,7 @@
                     <dependency>
                         <groupId>com.github.spotbugs</groupId>
                         <artifactId>spotbugs</artifactId>
-                        <version>3.1.7</version>
+                        <version>3.1.12</version>
                     </dependency>
                 </dependencies>
                 <configuration>
