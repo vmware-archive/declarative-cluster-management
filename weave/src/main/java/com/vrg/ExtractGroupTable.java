@@ -1,18 +1,18 @@
 package com.vrg;
 
 import com.facebook.presto.sql.QueryUtil;
-import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.CreateView;
-import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
-import com.facebook.presto.sql.tree.DereferenceExpression;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.GroupBy;
 import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.Identifier;
-import com.facebook.presto.sql.tree.LogicalBinaryExpression;
+import com.facebook.presto.sql.tree.Join;
+import com.facebook.presto.sql.tree.JoinCriteria;
+import com.facebook.presto.sql.tree.JoinOn;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
+import com.facebook.presto.sql.tree.Relation;
 import com.facebook.presto.sql.tree.SelectItem;
 import com.facebook.presto.sql.tree.SimpleGroupBy;
 import com.facebook.presto.sql.tree.SingleColumn;
@@ -52,8 +52,10 @@ class ExtractGroupTable {
             return Optional.empty();
         }
         assert queryBody.getFrom().isPresent();
+        // Next, we make sure that join criteria does not have controllables in them
+        final Relation relation = relelationWithControllablesRemoved(queryBody.getFrom().get());
         final Query query = QueryUtil.simpleQuery(QueryUtil.selectList(selectList.toArray(new SelectItem[0])),
-                                                  queryBody.getFrom().get(),
+                                                  relation,
                                                   queryBody.getWhere(),
                                                   queryBody.getGroupBy(),
                                                   Optional.empty(),
@@ -62,15 +64,22 @@ class ExtractGroupTable {
         return Optional.of(new CreateView(QualifiedName.of(GROUP_TABLE_PREFIX + viewName), query, false));
     }
 
-    static class RemoveControllablePredicates extends DefaultTraversalVisitor<Expression, Void> {
-
-        @Override
-        protected Expression visitLogicalBinaryExpression(final LogicalBinaryExpression node, final Void context) {
-            if (node.getOperator().equals(LogicalBinaryExpression.Operator.AND)) {
-                final Expression left = this.process(node.getLeft());
-                final Expression right = this.process(node.getRight());
+    private Relation relelationWithControllablesRemoved(final Relation relation) {
+        if (relation instanceof Join) {
+            final Join join = (Join) relation;
+            if (join.getCriteria().isPresent()) {
+                final RemoveControllablePredicates removeControllablePredicates = new RemoveControllablePredicates();
+                final Expression joinOnExpression = ((JoinOn) join.getCriteria().get()).getExpression();
+                final Optional<JoinCriteria> newJoinCriteria = removeControllablePredicates.process(joinOnExpression)
+                                                                                           .map(JoinOn::new);
+                // If we end up with no join condition at all, then it is equivalent to using an implicit join
+                // (e.g., "from T1, T2")
+                final Join.Type joinType = newJoinCriteria.isPresent() ?
+                                              join.getType() :
+                                              Join.Type.IMPLICIT;
+                return new Join(joinType, join.getLeft(), join.getRight(), newJoinCriteria);
             }
-            return new LogicalBinaryExpression();
         }
+        return relation;
     }
 }
