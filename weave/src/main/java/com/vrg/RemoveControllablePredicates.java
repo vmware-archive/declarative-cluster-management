@@ -15,7 +15,8 @@ import java.util.Optional;
 class RemoveControllablePredicates extends DefaultTraversalVisitor<Optional<Expression>, Void> {
 
     @Override
-    protected Optional<Expression> visitLogicalBinaryExpression(final LogicalBinaryExpression node, final Void context) {
+    protected Optional<Expression> visitLogicalBinaryExpression(final LogicalBinaryExpression node,
+                                                                final Void context) {
         final Optional<Expression> left = this.process(node.getLeft());
         final Optional<Expression> right = this.process(node.getRight());
         switch (node.getOperator()) {

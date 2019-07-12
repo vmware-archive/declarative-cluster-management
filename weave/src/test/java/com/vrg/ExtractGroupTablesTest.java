@@ -1,11 +1,9 @@
 package com.vrg;
 
-import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.CreateView;
-import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.JoinCriteria;
 import com.facebook.presto.sql.tree.JoinOn;
