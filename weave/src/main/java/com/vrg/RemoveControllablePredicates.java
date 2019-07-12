@@ -31,10 +31,12 @@ class RemoveControllablePredicates extends DefaultTraversalVisitor<Optional<Expr
                     return left;
                 }
                 else {
-                    return Optional.of(node);
+                    return Optional.of(new LogicalBinaryExpression(node.getOperator(), left.get(), right.get()));
                 }
             case OR:
-                return (!left.isPresent() || !right.isPresent()) ? Optional.empty() : Optional.of(node);
+                return (!left.isPresent() || !right.isPresent())
+                               ? Optional.empty()
+                               : Optional.of(new LogicalBinaryExpression(node.getOperator(), left.get(), right.get()));
             default:
                 throw new RuntimeException("Should not happen");
         }
@@ -44,7 +46,9 @@ class RemoveControllablePredicates extends DefaultTraversalVisitor<Optional<Expr
     protected Optional<Expression> visitComparisonExpression(final ComparisonExpression node, final Void context) {
         final Optional<Expression> left = this.process(node.getLeft());
         final Optional<Expression> right = this.process(node.getRight());
-        return (!left.isPresent() || !right.isPresent()) ? Optional.empty() : Optional.of(node);
+        return (!left.isPresent() || !right.isPresent())
+                ? Optional.empty()
+                : Optional.of(new ComparisonExpression(node.getOperator(), left.get(), right.get()));
     }
 
     @Override
