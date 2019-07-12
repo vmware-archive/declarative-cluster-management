@@ -6,9 +6,13 @@ import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.GroupBy;
 import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.Identifier;
+import com.facebook.presto.sql.tree.Join;
+import com.facebook.presto.sql.tree.JoinCriteria;
+import com.facebook.presto.sql.tree.JoinOn;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
+import com.facebook.presto.sql.tree.Relation;
 import com.facebook.presto.sql.tree.SelectItem;
 import com.facebook.presto.sql.tree.SimpleGroupBy;
 import com.facebook.presto.sql.tree.SingleColumn;
@@ -48,13 +52,34 @@ class ExtractGroupTable {
             return Optional.empty();
         }
         assert queryBody.getFrom().isPresent();
+        // Next, we make sure that join criteria does not have controllables in them
+        final Relation relation = relelationWithControllablesRemoved(queryBody.getFrom().get());
         final Query query = QueryUtil.simpleQuery(QueryUtil.selectList(selectList.toArray(new SelectItem[0])),
-                                                  queryBody.getFrom().get(),
+                                                  relation,
                                                   queryBody.getWhere(),
                                                   queryBody.getGroupBy(),
                                                   Optional.empty(),
                                                   Optional.empty(),
                                                   Optional.empty());
         return Optional.of(new CreateView(QualifiedName.of(GROUP_TABLE_PREFIX + viewName), query, false));
+    }
+
+    private Relation relelationWithControllablesRemoved(final Relation relation) {
+        if (relation instanceof Join) {
+            final Join join = (Join) relation;
+            if (join.getCriteria().isPresent()) {
+                final RemoveControllablePredicates removeControllablePredicates = new RemoveControllablePredicates();
+                final Expression joinOnExpression = ((JoinOn) join.getCriteria().get()).getExpression();
+                final Optional<JoinCriteria> newJoinCriteria = removeControllablePredicates.process(joinOnExpression)
+                                                                                           .map(JoinOn::new);
+                // If we end up with no join condition at all, then it is equivalent to using an implicit join
+                // (e.g., "from T1, T2")
+                final Join.Type joinType = newJoinCriteria.isPresent() ?
+                                              join.getType() :
+                                              Join.Type.IMPLICIT;
+                return new Join(joinType, join.getLeft(), join.getRight(), newJoinCriteria);
+            }
+        }
+        return relation;
     }
 }
