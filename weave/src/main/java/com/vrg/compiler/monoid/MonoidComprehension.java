@@ -30,6 +30,15 @@ public class MonoidComprehension extends Expr {
         this.head = head;
     }
 
+    public MonoidComprehension(final List<Qualifier> qualifiers) {
+        this.qualifiers = qualifiers;
+    }
+
+    public MonoidComprehension(final Head head, final List<Qualifier> qualifiers) {
+        this.head = head;
+        this.qualifiers = qualifiers;
+    }
+
     public void addQualifiers(final List<Qualifier> newQualifiers) {
         qualifiers.addAll(newQualifiers);
     }
