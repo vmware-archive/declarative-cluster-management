@@ -25,24 +25,26 @@ class RewriteArity {
         return getVarQualifiers.result == null ? comprehension : getVarQualifiers.result;
     }
 
-    private static class GetVarQualifiers extends MonoidVisitor {
+    private static class GetVarQualifiers extends MonoidVisitor<Void, Void> {
         private final List<Qualifier> varQualifiers = new ArrayList<>();
         private final List<Qualifier> nonVarQualifiers = new ArrayList<>();
         @Nullable private MonoidComprehension result;
 
         @Override
-        protected void visitGroupByComprehension(final GroupByComprehension node) {
+        protected Void visitGroupByComprehension(final GroupByComprehension node, final Void context) {
             final MonoidComprehension newInner = rewriteComprehension(node.getComprehension());
             result = new GroupByComprehension(newInner, node.getGroupByQualifier());
+            return null;
         }
 
         @Override
-        protected void visitMonoidComprehension(final MonoidComprehension node) {
+        protected Void visitMonoidComprehension(final MonoidComprehension node, final Void context) {
             result = rewriteComprehension(node);
+            return null;
         }
 
         @Override
-        protected void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node) {
+        protected Void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final Void context) {
             switch (node.getOperator()) {
                 case "==":
                 case "<":
@@ -55,31 +57,33 @@ class RewriteArity {
                     } else {
                         nonVarQualifiers.add(node);
                     }
-                    super.visitBinaryOperatorPredicate(node);
+                    super.visitBinaryOperatorPredicate(node, context);
                     break;
                 }
                 case "/\\": {
                     if (!isControllableField(node.getLeft()) && !isControllableField(node.getRight())) {
                         nonVarQualifiers.add(node);
                     }
-                    super.visitBinaryOperatorPredicate(node);
+                    super.visitBinaryOperatorPredicate(node, context);
                     break;
                 }
                 case "\\/": {
                     if (isControllableField(node.getLeft()) || isControllableField(node.getRight())) {
                         varQualifiers.add(node);
                     }
-                    super.visitBinaryOperatorPredicate(node);
+                    super.visitBinaryOperatorPredicate(node, context);
                     break;
                 }
                 default:
                     throw new RuntimeException("Missing case");
             }
+            return null;
         }
 
         @Override
-        protected void visitTableRowGenerator(final TableRowGenerator node) {
+        protected Void visitTableRowGenerator(final TableRowGenerator node, final Void context) {
             nonVarQualifiers.add(node);
+            return null;
         }
 
         /**

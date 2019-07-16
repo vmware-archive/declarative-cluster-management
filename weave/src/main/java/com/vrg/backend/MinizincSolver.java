@@ -144,13 +144,12 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("arrayDeclarations", arrayDeclarations);
 
         final List<String> nonConstraintViewCode = nonConstraintViews.entrySet().stream().flatMap(entry -> {
-            final List<MonoidComprehension> comprehensions = SplitIntoSingleHeadComprehensions.apply(entry.getValue());
+            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue());
             final List<String> result = new ArrayList<>();
             boolean generateArrayDeclaration = true;
             for (final MonoidComprehension c: comprehensions) {
-                final MonoidComprehension maybeBewrittenComprehension = RewriteArity.apply(c);
                 final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
-                cg.visit(maybeBewrittenComprehension);
+                cg.visit(c);
                 result.addAll(cg.generateNonConstraintViewCode(entry.getKey(), generateArrayDeclaration));
                 generateArrayDeclaration = false;
             }
@@ -159,9 +158,14 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("nonConstraintViewCode", nonConstraintViewCode);
 
         final List<String> constraintViewCode = constraintViews.entrySet().stream().flatMap(entry -> {
-            final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
-            cg.visit(entry.getValue());
-            return cg.generateConstraintViewCode(entry.getKey()).stream();
+            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue());
+            final List<String> result = new ArrayList<>();
+            for (final MonoidComprehension c: comprehensions) {
+                final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
+                cg.visit(c);
+                result.addAll(cg.generateConstraintViewCode(entry.getKey()));
+            }
+            return result.stream();
         }).collect(Collectors.toList());
         templateVars.put("constraintViewCode", constraintViewCode);
 
@@ -231,6 +235,17 @@ public class MinizincSolver implements ISolverBackend {
         writeTemplateToFile(dataTemplate, dataFile, templateVars);
         return ret;
     }
+
+    private List<MonoidComprehension> comprehensionRewritePipeline(final MonoidComprehension comprehension) {
+        // (1) Split into multiple comprehensions, one per head
+        // (2) Rewrite to use fixed arity constraints
+        return SplitIntoSingleHeadComprehensions.apply(comprehension) // (1)
+                    .stream()
+                    .map(RewriteArity::apply) // (2)
+                    .collect(Collectors.toList());
+
+    }
+
 
     private enum SolverBackend {
         // different solvers use different timeout flags

@@ -15,6 +15,7 @@
 
 package com.vrg.compiler.monoid;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
 public final class GroupByQualifier extends Qualifier {
@@ -32,8 +33,9 @@ public final class GroupByQualifier extends Qualifier {
     }
 
     @Override
-    void acceptVisitor(final MonoidVisitor visitor) {
-        visitor.visitGroupByQualifier(this);
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+        visitor.visitGroupByQualifier(this, context);
+        return null;
     }
 
     public List<ColumnIdentifier> getColumnIdentifiers() {

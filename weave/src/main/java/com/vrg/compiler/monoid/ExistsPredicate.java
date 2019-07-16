@@ -15,6 +15,8 @@
 
 package com.vrg.compiler.monoid;
 
+import javax.annotation.Nullable;
+
 public class ExistsPredicate extends Expr {
     private final Expr argument;
 
@@ -34,7 +36,8 @@ public class ExistsPredicate extends Expr {
     }
 
     @Override
-    void acceptVisitor(final MonoidVisitor visitor) {
-        visitor.visitExistsPredicate(this);
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+        visitor.visitExistsPredicate(this, context);
+        return null;
     }
 }

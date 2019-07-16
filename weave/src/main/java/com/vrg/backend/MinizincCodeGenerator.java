@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
 /**
  * Outputs code in the Minizinc language (http://minizinc.org/).
  */
-public class MinizincCodeGenerator extends MonoidVisitor {
+public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
     private static final String GROUP_KEY = "GROUP__KEY";
     private static final EnumMap<VarType, String> VAR_TYPE_STRING = new EnumMap<>(VarType.class);
 
@@ -83,20 +83,21 @@ public class MinizincCodeGenerator extends MonoidVisitor {
     }
 
     @Override
-    public void visit(final Expr expr) {
+    public Void visit(final Expr expr) {
         completeExpression.add(expr);
-        super.visit(expr);
+        return super.visit(expr);
     }
 
     @Override
-    protected void visitTableRowGenerator(final TableRowGenerator node) {
+    protected Void visitTableRowGenerator(final TableRowGenerator node, final Void context) {
         final String format = String.format("%s__ITER in 1..%s", node.getTable().getAliasedName(),
                                                                  MinizincString.tableNumRowsName(node.getTable()));
         rangeQualifiers.add(format);
+        return null;
     }
 
     @Override
-    protected void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node) {
+    protected Void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final Void context) {
         if (node instanceof BinaryOperatorPredicateWithAggregate) {
             aggregateQualifiers.add((BinaryOperatorPredicateWithAggregate) node);
         } else if (node instanceof JoinPredicate) {
@@ -104,37 +105,44 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         } else {
             whereQualifiers.add(node);
         }
+        return null;
     }
 
     @Override
-    protected void visitColumnIdentifier(final ColumnIdentifier node) {
+    protected Void visitColumnIdentifier(final ColumnIdentifier node, final Void context) {
         literals.add(node);
+        return null;
     }
 
     @Override
-    protected void visitMonoidLiteral(final MonoidLiteral node) {
+    protected Void visitMonoidLiteral(final MonoidLiteral node, final Void context) {
         literals.add(node);
+        return null;
     }
 
     @Override
-    protected void visitGroupByComprehension(final GroupByComprehension node) {
+    protected Void visitGroupByComprehension(final GroupByComprehension node, final Void context) {
         groupByQualifier = node.getGroupByQualifier();
         visit(node.getComprehension());
+        return null;
     }
 
     @Override
-    protected void visitMonoidFunction(final MonoidFunction node) {
+    protected Void visitMonoidFunction(final MonoidFunction node, final Void context) {
         literals.add(node);
+        return null;
     }
 
     @Override
-    protected void visitExistsPredicate(final ExistsPredicate existsPredicate) {
+    protected Void visitExistsPredicate(final ExistsPredicate existsPredicate, final Void context) {
         literals.add(existsPredicate);
+        return null;
     }
 
     @Override
-    protected void visitHead(final Head node) {
+    protected Void visitHead(final Head node, final Void context) {
         headItems.addAll(node.getSelectExprs());
+        return null;
     }
 
     private List<String> evaluateWhereExpressions(final List<? extends BinaryOperatorPredicate> nodes) {
@@ -711,33 +719,37 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         return "";
     }
 
-    private static class ExpressionToStack extends MonoidVisitor {
+    private static class ExpressionToStack extends MonoidVisitor<Void, Void> {
         private final ArrayDeque<Expr> stack = new ArrayDeque<>();
 
         @Override
-        protected void visitMonoidFunction(final MonoidFunction node) {
+        protected Void visitMonoidFunction(final MonoidFunction node, final Void context) {
             stack.push(node);
+            return null;
         }
 
         @Override
-        protected void visitColumnIdentifier(final ColumnIdentifier node) {
+        protected Void visitColumnIdentifier(final ColumnIdentifier node, final Void context) {
             stack.push(node);
+            return null;
         }
 
         @Override
-        protected void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node) {
+        protected Void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final Void context) {
             stack.push(node);
-            super.visitBinaryOperatorPredicate(node);
+            return super.visitBinaryOperatorPredicate(node, context);
         }
 
         @Override
-        protected void visitMonoidLiteral(final MonoidLiteral node) {
+        protected Void visitMonoidLiteral(final MonoidLiteral node, final Void context) {
             stack.push(node);
+            return null;
         }
 
         @Override
-        protected void visitMonoidComprehension(final MonoidComprehension node) {
+        protected Void visitMonoidComprehension(final MonoidComprehension node, final Void context) {
             stack.push(node);
+            return null;
         }
     }
 

@@ -15,12 +15,14 @@
 
 package com.vrg.compiler.monoid;
 
+import javax.annotation.Nullable;
 import java.util.Optional;
 
 public abstract class Expr {
     private Optional<String> alias = Optional.empty();
 
-    abstract void acceptVisitor(final MonoidVisitor visitor);
+    @Nullable
+    abstract <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context);
 
     public void setAlias(final String alias) {
         this.alias = Optional.of(alias);

@@ -17,6 +17,8 @@ package com.vrg.compiler.monoid;
 
 import com.vrg.IRTable;
 
+import javax.annotation.Nullable;
+
 public final class TableRowGenerator extends Qualifier {
     private final IRTable table;
 
@@ -36,7 +38,8 @@ public final class TableRowGenerator extends Qualifier {
     }
 
     @Override
-    void acceptVisitor(final MonoidVisitor visitor) {
-        visitor.visitTableRowGenerator(this);
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+        visitor.visitTableRowGenerator(this, context);
+        return null;
     }
 }

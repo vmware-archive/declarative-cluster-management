@@ -15,6 +15,8 @@
 
 package com.vrg.compiler.monoid;
 
+import javax.annotation.Nullable;
+
 public class MonoidFunction extends Expr {
     private final String functionName;
     private final Expr argument;
@@ -41,7 +43,8 @@ public class MonoidFunction extends Expr {
     }
 
     @Override
-    void acceptVisitor(final MonoidVisitor visitor) {
-        visitor.visitMonoidFunction(this);
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+        visitor.visitMonoidFunction(this, context);
+        return null;
     }
 }
