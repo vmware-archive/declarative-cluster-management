@@ -144,9 +144,17 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("arrayDeclarations", arrayDeclarations);
 
         final List<String> nonConstraintViewCode = nonConstraintViews.entrySet().stream().flatMap(entry -> {
-            final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
-            cg.visit(entry.getValue());
-            return cg.generateNonConstraintViewCode(entry.getKey()).stream();
+            final List<MonoidComprehension> comprehensions = SplitIntoSingleHeadComprehensions.apply(entry.getValue());
+            final List<String> result = new ArrayList<>();
+            boolean generateArrayDeclaration = true;
+            for (final MonoidComprehension c: comprehensions) {
+                final MonoidComprehension maybeBewrittenComprehension = RewriteArity.apply(c);
+                final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
+                cg.visit(maybeBewrittenComprehension);
+                result.addAll(cg.generateNonConstraintViewCode(entry.getKey(), generateArrayDeclaration));
+                generateArrayDeclaration = false;
+            }
+            return result.stream();
         }).collect(Collectors.toList());
         templateVars.put("nonConstraintViewCode", nonConstraintViewCode);
 

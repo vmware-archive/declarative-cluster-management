@@ -122,7 +122,9 @@ public class WeaveCompiler {
                 parseNonConstraintViews(symbols.getNonConstraintViews());
         final Map<String, MonoidComprehension> constraintForAlls = parseViews(symbols.getConstraintViews());
         final Map<String, MonoidComprehension> objFunctionForAlls = parseViews(symbols.getObjectiveFunctionViews());
-
+        System.out.println(nonConstraintForAlls);
+        System.out.println(constraintForAlls);
+        System.out.println(objFunctionForAlls);
         //
         // Code generation begins here.
         //

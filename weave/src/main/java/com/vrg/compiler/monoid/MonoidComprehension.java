@@ -46,6 +46,7 @@ public class MonoidComprehension extends Expr {
         return newComprehension;
     }
 
+    @Nullable
     public Head getHead() {
         return head;
     }

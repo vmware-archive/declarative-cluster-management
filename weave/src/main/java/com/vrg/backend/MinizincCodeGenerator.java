@@ -22,6 +22,7 @@ import com.vrg.IRContext;
 import com.vrg.IRForeignKey;
 import com.vrg.IRPrimaryKey;
 import com.vrg.IRTable;
+import com.vrg.compiler.UsesControllableFields;
 import com.vrg.compiler.monoid.BinaryOperatorPredicate;
 import com.vrg.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import com.vrg.compiler.monoid.ColumnIdentifier;
@@ -252,7 +253,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
      * array[int] of var int: view1_table2_col1 = [ table1_col1[j] | i in 1..6, j in 1..5,
      * where table1_col1[i] == table2_col1[j]];
      */
-    List<String> generateNonConstraintViewCode(final String viewName) {
+    List<String> generateNonConstraintViewCode(final String viewName, final boolean generateArrayDeclaration) {
         final List<String> ret = new ArrayList<>();
         assert !headItems.isEmpty();
         /*
@@ -261,6 +262,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
          */
         final VarType qualifiersType = usesControllableVariables(completeExpression.get(0));
         for (final Expr expr : headItems) {
+            System.out.println(expr);
             final String finalExpression = generatorExpressionFromSelectWhere(expr, false);
             assert !finalExpression.isEmpty();
             final VarType headType = usesControllableVariables(expr);
@@ -271,10 +273,12 @@ public class MinizincCodeGenerator extends MonoidVisitor {
                     finalExpression);
             ret.add(declaration);
         }
-        final String headItemVariableName = MinizincString.headItemVariableName(headItems.get(0));
-        final String viewNameUpper = viewName.toUpperCase(Locale.US);
-        ret.add(String.format("int: %s = length(%s__%s);", MinizincString.tableNumRowsName(viewNameUpper),
-                                                           viewNameUpper, headItemVariableName));
+        if (generateArrayDeclaration) {
+            final String headItemVariableName = MinizincString.headItemVariableName(headItems.get(0));
+            final String viewNameUpper = viewName.toUpperCase(Locale.US);
+            ret.add(String.format("int: %s = length(%s__%s);", MinizincString.tableNumRowsName(viewNameUpper),
+                    viewNameUpper, headItemVariableName));
+        }
         return ret;
     }
 
@@ -517,6 +521,13 @@ public class MinizincCodeGenerator extends MonoidVisitor {
                             argumentModifiedIfCount,
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
+                } else if (function.getArgument() instanceof BinaryOperatorPredicate) {
+                    final BinaryOperatorPredicate argument = (BinaryOperatorPredicate) function.getArgument();
+                    final String argumentAsString = evaluateHeadItem(argument, null);
+                    final String op = String.format("%s([%s | %s])", functionNameModifiedIfCount,
+                            argumentAsString,
+                            groupByInnerComprehensionQualifier);
+                    operands.push(op);
                 } else {
                     // We're usually here because of unary operators like -(count(col1)) in select expressions.
                     final Expr argument = function.getArgument();
@@ -743,7 +754,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
             for (final Qualifier qualifer: inner.getQualifiers()) {
                 final UsesControllableFields visitor = new UsesControllableFields();
                 visitor.visit(qualifer);
-                if (visitor.usesControllable && qualifer instanceof BinaryOperatorPredicate) {
+                if (visitor.usesControllableFields() && qualifer instanceof BinaryOperatorPredicate) {
                     return VarType.IS_VAR;
                 }
             }
@@ -751,7 +762,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         else if (expr instanceof ColumnIdentifier) {
             final UsesControllableFields visitor = new UsesControllableFields();
             visitor.visit(expr);
-            if (visitor.usesControllable) {
+            if (visitor.usesControllableFields()) {
                 return VarType.IS_VAR;
             }
         }
@@ -760,7 +771,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
             for (final Qualifier qualifer: comprehension.getQualifiers()) {
                 final UsesControllableFields visitor = new UsesControllableFields();
                 visitor.visit(qualifer);
-                if (visitor.usesControllable && qualifer instanceof BinaryOperatorPredicate) {
+                if (visitor.usesControllableFields() && qualifer instanceof BinaryOperatorPredicate) {
                     return VarType.IS_OPT;
                 }
             }
@@ -775,26 +786,13 @@ public class MinizincCodeGenerator extends MonoidVisitor {
             return getMax(usesControllableVariables(predicate.getLeft()),
                           usesControllableVariables(predicate.getRight()));
         }
+        else if (expr instanceof MonoidLiteral) {
+            return VarType.IS_INT;
+        }
         else {
             throw new RuntimeException("Unhandled case " + expr);
         }
         return VarType.IS_INT;
-    }
-
-    /**
-     * If a query does not have any variables in it (say, in a predicate or a join key), then they return arrays
-     * of type int. If they do access variables, then they're of type "var opt" int.
-     */
-    private static class UsesControllableFields extends MonoidVisitor {
-        private boolean usesControllable = false;
-
-        @Override
-        protected void visitColumnIdentifier(final ColumnIdentifier node) {
-            if (node.getField().isControllable()) {
-                usesControllable = true;
-            }
-            super.visitColumnIdentifier(node);
-        }
     }
 
     private enum VarType {

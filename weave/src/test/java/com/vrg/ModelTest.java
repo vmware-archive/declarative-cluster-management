@@ -295,7 +295,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW join_view AS " +
-                "SELECT * FROM hosts where hosts.epoch_id = (select max(epochs.epoch_id) from epochs)");
+                "SELECT hosts.epoch_id FROM hosts where hosts.epoch_id = (select max(epochs.epoch_id) from epochs)");
 
         // insert data
         conn.execute("insert into epochs values (1)");
@@ -1103,16 +1103,12 @@ public class ModelTest {
 
         final List<String> views = toListOfViews(
                 "create view least_requested as\n" +
-                        "select (sum(node_info.cpu_allocatable) - sum(pod_info.cpu_request)) as cpu_utilization\n" +
-                        "       from node_info\n" +
-                        "       join pod_info\n" +
-                        "            on pod_info.controllable__node_name = node_info.name\n" +
-                        "       group by node_info.name; \n" +
-                    "create view objective_least_requested as\n" +
-                        "select min(cpu_utilization) from least_requested;\n" +
-                "create view objective_least_requested_max as\n" +
-                        "select max(cpu_utilization) from least_requested;"
-        );
+                    "select (sum(node_info.cpu_allocatable) - sum(pod_info.cpu_request)) as cpu_utilization," +
+                    "       (sum(node_info.memory_allocatable) - sum(pod_info.memory_request)) as mem_utilization\n" +
+                    "       from node_info\n" +
+                    "       join pod_info\n" +
+                    "            on pod_info.controllable__node_name = node_info.name\n" +
+                    "       group by node_info.name;");
 
         buildWeaveModel(conn, views, modelName);
     }
