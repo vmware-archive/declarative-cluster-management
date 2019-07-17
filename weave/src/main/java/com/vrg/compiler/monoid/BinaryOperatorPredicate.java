@@ -35,8 +35,7 @@ public class BinaryOperatorPredicate extends Qualifier {
 
     @Override
     <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
-        visitor.visitBinaryOperatorPredicate(this, context);
-        return null;
+        return visitor.visitBinaryOperatorPredicate(this, context);
     }
 
     public Expr getLeft() {

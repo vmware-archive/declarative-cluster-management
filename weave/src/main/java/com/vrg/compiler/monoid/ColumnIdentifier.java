@@ -37,8 +37,7 @@ public class ColumnIdentifier extends MonoidComprehension {
 
     @Override
     <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
-        visitor.visitColumnIdentifier(this, context);
-        return null;
+        return visitor.visitColumnIdentifier(this, context);
     }
 
     public IRColumn getField() {

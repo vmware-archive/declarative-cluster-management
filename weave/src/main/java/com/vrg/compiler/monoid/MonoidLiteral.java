@@ -37,7 +37,6 @@ public class MonoidLiteral<T> extends Expr {
 
     @Override
     <T1, C> T1 acceptVisitor(final MonoidVisitor<T1, C> visitor, @Nullable final C context) {
-        visitor.visitMonoidLiteral(this, context);
-        return null;
+        return visitor.visitMonoidLiteral(this, context);
     }
 }

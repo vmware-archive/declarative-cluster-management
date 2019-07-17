@@ -192,6 +192,60 @@ public class ModelTest {
         assertTrue(results.contains("h3"));
     }
 
+
+    @Test
+    public void innerCountTest() {
+        // model and data files will use this as its name
+        final String modelName = "innerCountTest";
+
+        // create database
+        final DSLContext conn = setup();
+        conn.execute("create table HOSTS(" +
+                "HOST_ID varchar(36)," +
+                "CONTROLLABLE__IN_SEGMENT boolean," +
+                "PRIMARY KEY (HOST_ID)" +
+                ")");
+        conn.execute("create table STRIPES(" +
+                "STRIPE_ID integer, " +
+                "CONTROLLABLE__HOST_ID varchar(36)," +
+                "PRIMARY KEY (STRIPE_ID, CONTROLLABLE__HOST_ID)," +
+                "FOREIGN KEY(CONTROLLABLE__HOST_ID) REFERENCES HOSTS(HOST_ID)" +
+                ")");
+
+        // wrong sql with ambiguous field
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW constraint_exclude_non_data_nodes2 AS " +
+                "SELECT count(*) FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
+                "group by hosts.host_id " +
+                "having count(hosts.host_id) <= 2;\n"
+        );
+        // build model
+        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+
+        // insert hosts
+        conn.execute("insert into HOSTS values ('h1', true)");
+        conn.execute("insert into HOSTS values ('h2', true)");
+        conn.execute("insert into HOSTS values ('h3', true)");
+        // insert stripes which do not use all the hosts (in this case h3)
+        conn.execute("insert into STRIPES values (1,'h1')");
+        conn.execute("insert into STRIPES values (1,'h2')");
+        conn.execute("insert into STRIPES values (2,'h1')");
+        conn.execute("insert into STRIPES values (2,'h2')");
+        conn.execute("insert into STRIPES values (3,'h1')");
+        conn.execute("insert into STRIPES values (3,'h2')");
+
+        // update and solve
+        weaveModel.updateData();
+        weaveModel.solveModel();
+
+        final List<?> results = conn.selectFrom("STRIPES")
+                .fetch("CONTROLLABLE__HOST_ID");
+
+        // check the size of the stripes
+        assertTrue(results.contains("h3"));
+    }
+
+
     @Test(expected = WeaveModel.WeaveModelException.class)
     public void ambiguousFieldsInViewTest() {
         // model and data files will use this as its name

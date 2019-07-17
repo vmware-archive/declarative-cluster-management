@@ -34,8 +34,7 @@ public final class Head extends Expr {
 
     @Override
     <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
-        visitor.visitHead(this, context);
-        return null;
+        return visitor.visitHead(this, context);
     }
 
     public List<Expr> getSelectExprs() {

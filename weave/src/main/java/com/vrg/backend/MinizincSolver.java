@@ -170,9 +170,14 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("constraintViewCode", constraintViewCode);
 
         final List<String> objectiveFunctionsCode = objectiveFunctions.entrySet().stream().flatMap(entry -> {
-            final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
-            cg.visit(entry.getValue());
-            return cg.generateObjectiveFunctionCode(entry.getKey()).stream();
+            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue());
+            final List<String> result = new ArrayList<>();
+            for (final MonoidComprehension c: comprehensions) {
+                final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
+                cg.visit(c);
+                result.addAll(cg.generateObjectiveFunctionCode(entry.getKey()));
+            }
+            return result.stream();
         }).collect(Collectors.toList());
 
         // Objective functions are summed into one
@@ -238,10 +243,12 @@ public class MinizincSolver implements ISolverBackend {
 
     private List<MonoidComprehension> comprehensionRewritePipeline(final MonoidComprehension comprehension) {
         // (1) Split into multiple comprehensions, one per head
-        // (2) Rewrite to use fixed arity constraints
+        // (2) Rewrite count functions to use sums instead
+        // (3) Rewrite to use fixed arity constraints
         return SplitIntoSingleHeadComprehensions.apply(comprehension) // (1)
                     .stream()
-                    .map(RewriteArity::apply) // (2)
+                    .map(RewriteCountFunction::apply) // (2)
+                    .map(RewriteArity::apply) // (3)
                     .collect(Collectors.toList());
 
     }

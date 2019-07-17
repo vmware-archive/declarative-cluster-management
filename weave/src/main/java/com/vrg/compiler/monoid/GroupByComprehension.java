@@ -42,7 +42,6 @@ public final class GroupByComprehension extends MonoidComprehension {
 
     @Override
     <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
-        visitor.visitGroupByComprehension(this, context);
-        return null;
+        return visitor.visitGroupByComprehension(this, context);
     }
 }

@@ -39,7 +39,6 @@ public final class TableRowGenerator extends Qualifier {
 
     @Override
     <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
-        visitor.visitTableRowGenerator(this, context);
-        return null;
+        return visitor.visitTableRowGenerator(this, context);
     }
 }

@@ -15,11 +15,8 @@ class SplitIntoSingleHeadComprehensions {
             return input.getHead()
                     .getSelectExprs()
                     .stream()
-                    .map(e -> {
-                        final MonoidComprehension mc = new MonoidComprehension(new Head(Collections.singletonList(e)));
-                        mc.addQualifiers(input.getQualifiers());
-                        return mc;
-                    })
+                    .map(e -> new MonoidComprehension(new Head(Collections.singletonList(e)),
+                                                      input.getQualifiers()))
                     .collect(Collectors.toList());
         }
         else if (input instanceof GroupByComprehension) {
@@ -29,8 +26,9 @@ class SplitIntoSingleHeadComprehensions {
                     .getSelectExprs()
                     .stream()
                     .map(e -> {
-                        final MonoidComprehension mc = new MonoidComprehension(new Head(Collections.singletonList(e)));
-                        mc.addQualifiers(innerComprehension.getQualifiers());
+                        final MonoidComprehension mc =
+                                new MonoidComprehension(new Head(Collections.singletonList(e)),
+                                                        innerComprehension.getQualifiers());
                         return new GroupByComprehension(mc, groupByComprehension.getGroupByQualifier());
                     })
                     .collect(Collectors.toList());

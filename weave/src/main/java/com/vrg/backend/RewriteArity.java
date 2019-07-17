@@ -110,9 +110,7 @@ class RewriteArity {
                     final MonoidFunction newFunction = new MonoidFunction(oldFunction.getFunctionName(), newHeadItem);
                     oldFunction.getAlias().ifPresent(newFunction::setAlias);
                     final Head newHead = new Head(Collections.singletonList(newFunction));
-                    final MonoidComprehension newInner = new MonoidComprehension(newHead);
-                    newInner.addQualifiers(visitor.nonVarQualifiers);
-                    return newInner;
+                    return new MonoidComprehension(newHead, visitor.nonVarQualifiers);
                 }
             }
             System.err.println("Did not rewrite comprehension: " + input);

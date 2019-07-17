@@ -44,7 +44,6 @@ public class MonoidFunction extends Expr {
 
     @Override
     <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
-        visitor.visitMonoidFunction(this, context);
-        return null;
+        return visitor.visitMonoidFunction(this, context);
     }
 }

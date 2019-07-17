@@ -37,7 +37,6 @@ public class ExistsPredicate extends Expr {
 
     @Override
     <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
-        visitor.visitExistsPredicate(this, context);
-        return null;
+        return visitor.visitExistsPredicate(this, context);
     }
 }
