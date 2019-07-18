@@ -19,7 +19,7 @@ import com.vrg.IRColumn;
 
 import javax.annotation.Nullable;
 
-public class ColumnIdentifier extends MonoidComprehension {
+public class ColumnIdentifier extends Expr {
     private final String tableName;
     private final IRColumn field;
     private final boolean fromGroupByWithDereference;

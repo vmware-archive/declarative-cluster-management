@@ -8,6 +8,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Splits a comprehension with multiple select items into multiple comprehensions, each with a single select item.
+ */
 class SplitIntoSingleHeadComprehensions {
 
     static List<MonoidComprehension> apply(final MonoidComprehension input) {

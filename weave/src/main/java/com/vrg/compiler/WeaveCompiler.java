@@ -188,7 +188,6 @@ public class WeaveCompiler {
         final List<Expr> selectItemExpr = processSelectItems(selectItems, tables, createIrTableForView, viewName);
         final Head head = new Head(selectItemExpr);
 
-//        final MonoidComprehension comprehension = new MonoidComprehension(head);
         final List<Qualifier> qualifiers = new ArrayList<>();
         tables.forEach(t -> qualifiers.add(new TableRowGenerator(t)));
         where.ifPresent(e -> qualifiers.addAll(processWhereExpression(e, tables, false)));
