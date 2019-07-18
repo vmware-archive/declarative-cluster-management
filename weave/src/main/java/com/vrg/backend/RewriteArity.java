@@ -1,5 +1,6 @@
 package com.vrg.backend;
 
+import com.vrg.WeaveModel;
 import com.vrg.compiler.UsesControllableFields;
 import com.vrg.compiler.monoid.BinaryOperatorPredicate;
 import com.vrg.compiler.monoid.BinaryOperatorPredicateWithAggregate;
@@ -13,6 +14,8 @@ import com.vrg.compiler.monoid.MonoidLiteral;
 import com.vrg.compiler.monoid.MonoidVisitor;
 import com.vrg.compiler.monoid.Qualifier;
 import com.vrg.compiler.monoid.TableRowGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -20,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 
 class RewriteArity {
+    private static final Logger LOG = LoggerFactory.getLogger(RewriteArity.class);
 
     static MonoidComprehension apply(final MonoidComprehension comprehension) {
         final ArityRewriter rewriter = new ArityRewriter();
@@ -47,9 +51,9 @@ class RewriteArity {
                 return input;
             }
             if (varQualifiers.size() != 1) {
-                System.err.println("Found multiple var qualifiers. Skipping arity rewrite.");
+                LOG.debug("Found multiple var qualifiers. Skipping arity rewrite.");
                 for (final Qualifier qualifier: varQualifiers) {
-                    System.err.println("--- " + qualifier);
+                    LOG.debug("--- " + qualifier);
                 }
                 return input;
             }
@@ -59,7 +63,13 @@ class RewriteArity {
             final MonoidComprehension result =
                     (MonoidComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers,
                                                                  varQualifiers.get(0));
-            return functionRewriter.didRewrite ? Objects.requireNonNull(result) : input;
+            if (functionRewriter.didRewrite) {
+                LOG.info("Did not rewrite: {}", input);
+                return Objects.requireNonNull(result);
+            }
+            else {
+                return input;
+            }
         }
     }
 
@@ -69,13 +79,13 @@ class RewriteArity {
 
         @Nullable
         @Override
-        protected Void visitGroupByComprehension(final GroupByComprehension node, @Nullable Void context) {
+        protected Void visitGroupByComprehension(final GroupByComprehension node, @Nullable final Void context) {
             return null;
         }
 
         @Nullable
         @Override
-        protected Void visitMonoidComprehension(final MonoidComprehension node, @Nullable Void context) {
+        protected Void visitMonoidComprehension(final MonoidComprehension node, @Nullable final Void context) {
             return null;
         }
 
