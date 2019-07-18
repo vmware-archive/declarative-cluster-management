@@ -26,6 +26,12 @@ public class MonoidFunction extends Expr {
         this.argument = argument;
     }
 
+    public MonoidFunction(final String functionName, final Expr argument, final String alias) {
+        this.functionName = functionName;
+        this.argument = argument;
+        setAlias(alias);
+    }
+
     public Expr getArgument() {
         return argument;
     }

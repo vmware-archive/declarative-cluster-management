@@ -3,4 +3,8 @@
         <Class name="com.vrg.compiler.monoid.ComprehensionRewriter" />
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
     </Match>
+    <Match>
+        <Class name="com.vrg.backend.RewriteArity$QualifiersList" />
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
+    </Match>
 </FindBugsFilter>

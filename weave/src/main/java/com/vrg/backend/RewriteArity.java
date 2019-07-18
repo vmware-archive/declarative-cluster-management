@@ -4,13 +4,13 @@ import com.vrg.WeaveModel;
 import com.vrg.compiler.UsesControllableFields;
 import com.vrg.compiler.monoid.BinaryOperatorPredicate;
 import com.vrg.compiler.monoid.BinaryOperatorPredicateWithAggregate;
-import com.vrg.compiler.monoid.ColumnIdentifier;
 import com.vrg.compiler.monoid.ComprehensionRewriter;
 import com.vrg.compiler.monoid.Expr;
 import com.vrg.compiler.monoid.GroupByComprehension;
+import com.vrg.compiler.monoid.GroupByQualifier;
+import com.vrg.compiler.monoid.Head;
 import com.vrg.compiler.monoid.MonoidComprehension;
 import com.vrg.compiler.monoid.MonoidFunction;
-import com.vrg.compiler.monoid.MonoidLiteral;
 import com.vrg.compiler.monoid.MonoidVisitor;
 import com.vrg.compiler.monoid.Qualifier;
 import com.vrg.compiler.monoid.TableRowGenerator;
@@ -21,6 +21,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 class RewriteArity {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteArity.class);
@@ -42,11 +43,18 @@ class RewriteArity {
          * If input is not a sum() comprehension, ignore.
          */
         private MonoidComprehension rewriteComprehension(final MonoidComprehension input) {
+            LOG.info("Attempting to rewrite: " + input);
             // Extract var and non-var qualifiers
-            final GetVarQualifiers visitor = new GetVarQualifiers();
-            input.getQualifiers().forEach(visitor::visit);
-            final List<Qualifier> varQualifiers = visitor.varQualifiers;
-            final List<Qualifier> nonVarQualifiers = visitor.nonVarQualifiers;
+            List<QualifiersList> collect = input.getQualifiers().stream()
+                                                .map(q -> {
+                                                    final GetVarQualifiers visitor = new GetVarQualifiers();
+                                                    return visitor.visit(q, new QualifiersList());
+                                                })
+                                                .collect(Collectors.toList());
+            final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.varQualifiers.stream())
+                                                                  .collect(Collectors.toList());
+            final List<Qualifier> nonVarQualifiers = collect.stream().flatMap(ql -> ql.nonVarQualifiers.stream())
+                                                                  .collect(Collectors.toList());
             if (varQualifiers.isEmpty()) {
                 return input;
             }
@@ -57,80 +65,127 @@ class RewriteArity {
                 }
                 return input;
             }
+            final FunctionRewriter functionRewriter = new FunctionRewriter();
             final MonoidComprehension comprehensionWithoutVarQualifiers =
                     new MonoidComprehension(input.getHead(), nonVarQualifiers);
-            final FunctionRewriter functionRewriter = new FunctionRewriter();
             final MonoidComprehension result =
                     (MonoidComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers,
                                                                  varQualifiers.get(0));
             if (functionRewriter.didRewrite) {
-                LOG.info("Did not rewrite: {}", input);
-                return Objects.requireNonNull(result);
+                LOG.info("Rewrote: {} into {}", input, Objects.requireNonNull(result));
+                return result;
             }
             else {
+                LOG.info("Did not rewrite: {}", input);
                 return input;
             }
         }
     }
 
-    private static class GetVarQualifiers extends MonoidVisitor<Void, Void> {
-        private final List<Qualifier> varQualifiers = new ArrayList<>();
-        private final List<Qualifier> nonVarQualifiers = new ArrayList<>();
+    private static class QualifiersList {
+        private final List<Qualifier> varQualifiers;
+        private final List<Qualifier> nonVarQualifiers;
 
-        @Nullable
-        @Override
-        protected Void visitGroupByComprehension(final GroupByComprehension node, @Nullable final Void context) {
-            return null;
+        private QualifiersList() {
+            this.varQualifiers = new ArrayList<>();
+            this.nonVarQualifiers = new ArrayList<>();
         }
 
-        @Nullable
-        @Override
-        protected Void visitMonoidComprehension(final MonoidComprehension node, @Nullable final Void context) {
-            return null;
+        private QualifiersList(final List<Qualifier> varQualifiers, final List<Qualifier> nonVarQualifiers) {
+            this.varQualifiers = new ArrayList<>(varQualifiers);
+            this.nonVarQualifiers = new ArrayList<>(nonVarQualifiers);
+        }
+
+        private QualifiersList withNonVarQualifier(final Qualifier qualifier) {
+            final List<Qualifier> newNonVarQualifiers = new ArrayList<>(nonVarQualifiers);
+            newNonVarQualifiers.add(qualifier);
+            return new QualifiersList(varQualifiers, newNonVarQualifiers);
+        }
+
+
+        private QualifiersList withVarQualifier(final Qualifier qualifier) {
+            final List<Qualifier> newVarQualifiers = new ArrayList<>(varQualifiers);
+            newVarQualifiers.add(qualifier);
+            return new QualifiersList(newVarQualifiers, nonVarQualifiers);
+        }
+
+        private QualifiersList withQualifiersList(final QualifiersList in) {
+            final List<Qualifier> newNonVarQualifiers = new ArrayList<>(this.nonVarQualifiers);
+            newNonVarQualifiers.addAll(in.nonVarQualifiers);
+            final List<Qualifier> newVarQualifiers = new ArrayList<>(this.varQualifiers);
+            newVarQualifiers.addAll(in.varQualifiers);
+            return new QualifiersList(newVarQualifiers, newNonVarQualifiers);
         }
 
         @Override
-        protected Void visitTableRowGenerator(final TableRowGenerator node, final Void context) {
-            nonVarQualifiers.add(node);
-            return null;
+        public String toString() {
+            return String.format("(Var: %s, NonVar: %s)", varQualifiers, nonVarQualifiers);
+        }
+    }
+
+    private static class GetVarQualifiers extends MonoidVisitor<QualifiersList, QualifiersList> {
+
+        @Override
+        protected QualifiersList visitGroupByQualifier(final GroupByQualifier node,
+                                                       @Nullable final QualifiersList context) {
+            assert context != null;
+            return context.withNonVarQualifier(node);
         }
 
         @Override
-        protected Void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final Void context) {
+        protected QualifiersList visitGroupByComprehension(final GroupByComprehension node,
+                                                           @Nullable final QualifiersList context) {
+            return context;
+        }
+
+        @Override
+        protected QualifiersList visitMonoidComprehension(final MonoidComprehension node,
+                                                          @Nullable final QualifiersList context) {
+            return context;
+        }
+
+        @Override
+        protected QualifiersList visitTableRowGenerator(final TableRowGenerator node,
+                                                        @Nullable final QualifiersList context) {
+            assert context != null;
+            return context.withNonVarQualifier(node);
+        }
+
+        @Override
+        protected QualifiersList visitMonoidFunction(final MonoidFunction node,
+                                                     @Nullable final QualifiersList context) {
+            return context;
+        }
+
+        @Override
+        protected QualifiersList visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
+                                                              final QualifiersList context) {
             switch (node.getOperator()) {
                 case "==":
                 case "<":
                 case ">":
                 case "<=":
                 case ">=":
-                case "!=": {
-                    if (isControllableField(node.getLeft()) || isControllableField(node.getRight())) {
-                        varQualifiers.add(node);
-                    } else {
-                        nonVarQualifiers.add(node);
-                    }
-                    super.visitBinaryOperatorPredicate(node, context);
-                    break;
-                }
-                case "/\\": {
-                    if (!isControllableField(node.getLeft()) && !isControllableField(node.getRight())) {
-                        nonVarQualifiers.add(node);
-                    }
-                    super.visitBinaryOperatorPredicate(node, context);
-                    break;
-                }
+                case "!=":
                 case "in":
                 case "\\/": {
-                    if (isControllableField(node.getLeft()) || isControllableField(node.getRight())) {
-                        varQualifiers.add(node);
+                    // function expressions do not necessarily affect the arity of an outer expression.
+                    // We err on the conservative side for now.
+                    if ((isControllableField(node.getLeft()) || isControllableField(node.getRight()))
+                         && (!(node.getLeft() instanceof MonoidFunction)
+                             && !(node.getRight() instanceof MonoidFunction))) {
+                        return context.withVarQualifier(node);
                     }
-                    super.visitBinaryOperatorPredicate(node, context);
-                    break;
+                    return context.withNonVarQualifier(node);
+                }
+                case "/\\": {
+                    final QualifiersList left = Objects.requireNonNull(visit(node.getLeft(), context));
+                    final QualifiersList right = Objects.requireNonNull(visit(node.getRight(), context));
+                    return left.withQualifiersList(right);
                 }
                 default:
                     throw new RuntimeException("Missing case " + node.getOperator());
             }
-            return null;
         }
 
         private boolean isControllableField(final Expr expr) {
@@ -142,21 +197,25 @@ class RewriteArity {
 
     private static class FunctionRewriter extends ComprehensionRewriter<Qualifier> {
         private boolean didRewrite = false;
-
-        @Override
-        protected Expr visitGroupByComprehension(final GroupByComprehension node, @Nullable final Qualifier context) {
-            return node;
-        }
+        private boolean isDepthPastOne = false;
 
         @Override
         protected Expr visitMonoidComprehension(final MonoidComprehension node, @Nullable final Qualifier context) {
+            if (!isDepthPastOne) {
+                isDepthPastOne = true;
+                final List<Qualifier> qualifiers = node.getQualifiers()
+                        .stream()
+                        .map(q -> (Qualifier) super.visit(q, context))
+                        .collect(Collectors.toList());
+                final Head newHead = (Head) super.visit(Objects.requireNonNull(node.getHead()), context);
+                return new MonoidComprehension(Objects.requireNonNull(newHead), qualifiers);
+            }
             return node;
         }
 
         @Override
         protected Expr visitMonoidFunction(final MonoidFunction node, @Nullable final Qualifier qualifier) {
             assert qualifier != null;
-            assert node.getArgument() instanceof ColumnIdentifier || node.getArgument() instanceof MonoidLiteral;
             // Replace sum([col | var-q, non-var-q]) with sum([col * (var-q) | non-var-q])
             if (node.getFunctionName().equalsIgnoreCase("sum") ||
                 node.getFunctionName().equalsIgnoreCase("count")) {
@@ -164,7 +223,15 @@ class RewriteArity {
                 final BinaryOperatorPredicateWithAggregate newArgument
                         = new BinaryOperatorPredicateWithAggregate("*", oldSumArg, qualifier);
                 didRewrite = true;
-                return new MonoidFunction(node.getFunctionName(), newArgument);
+                if (node.getAlias().isPresent()) {
+                    return new MonoidFunction(node.getFunctionName(), newArgument, node.getAlias().get());
+                } else {
+                    return new MonoidFunction(node.getFunctionName(), newArgument);
+                }
+            }
+            if (node.getFunctionName().equalsIgnoreCase("-")) {
+                final Expr ret = this.visit(node.getArgument(), qualifier);
+                return new MonoidFunction("-", Objects.requireNonNull(ret));
             }
             return node;
         }
