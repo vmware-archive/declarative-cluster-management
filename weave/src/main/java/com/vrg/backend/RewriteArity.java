@@ -50,7 +50,7 @@ class RewriteArity {
          * sum/count expressions.
          */
         private MonoidComprehension rewriteComprehension(final MonoidComprehension input) {
-            LOG.info("Attempting to rewrite: " + input);
+            LOG.info("Attempting to rewrite: {}", input);
             // Extract var and non-var qualifiers
             List<QualifiersList> collect = input.getQualifiers().stream()
                                                 .map(q -> {
