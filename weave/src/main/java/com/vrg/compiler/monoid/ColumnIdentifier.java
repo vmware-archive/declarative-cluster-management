@@ -17,7 +17,9 @@ package com.vrg.compiler.monoid;
 
 import com.vrg.IRColumn;
 
-public class ColumnIdentifier extends MonoidComprehension {
+import javax.annotation.Nullable;
+
+public class ColumnIdentifier extends Expr {
     private final String tableName;
     private final IRColumn field;
     private final boolean fromGroupByWithDereference;
@@ -34,8 +36,8 @@ public class ColumnIdentifier extends MonoidComprehension {
     }
 
     @Override
-    void acceptVisitor(final MonoidVisitor visitor) {
-        visitor.visitColumnIdentifier(this);
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+        return visitor.visitColumnIdentifier(this, context);
     }
 
     public IRColumn getField() {

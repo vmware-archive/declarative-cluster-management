@@ -15,52 +15,82 @@
 
 package com.vrg.compiler.monoid;
 
-public class MonoidVisitor {
+import javax.annotation.Nullable;
 
-    public void visit(final Expr expr) {
-        expr.acceptVisitor(this);
+public class MonoidVisitor<T, C> {
+
+    @Nullable
+    public T visit(final Expr expr, @Nullable final C context) {
+        return expr.acceptVisitor(this, context);
     }
 
-    protected void visitHead(final Head node) {
+    @Nullable
+    public T visit(final Expr expr) {
+        return visit(expr, null);
     }
 
-    protected void visitTableRowGenerator(final TableRowGenerator node) {
+    @Nullable
+    protected T visitHead(final Head node, @Nullable final C context) {
+        return null;
     }
 
-    protected void visitMonoidComprehension(final MonoidComprehension node) {
-        node.getHead().acceptVisitor(this);
+    @Nullable
+    protected T visitTableRowGenerator(final TableRowGenerator node, @Nullable final C context) {
+        return null;
+    }
+
+    @Nullable
+    protected T visitMonoidComprehension(final MonoidComprehension node, @Nullable final C context) {
+        node.getHead().acceptVisitor(this, context);
         for (final Qualifier qualifier: node.getQualifiers()) {
-            qualifier.acceptVisitor(this);
+            qualifier.acceptVisitor(this, context);
         }
+        return null;
     }
 
-    protected void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node) {
-        node.getLeft().acceptVisitor(this);
-        node.getRight().acceptVisitor(this);
+    @Nullable
+    protected T visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, @Nullable final C context) {
+        node.getLeft().acceptVisitor(this, context);
+        node.getRight().acceptVisitor(this, context);
+        return null;
     }
 
-    protected void visitGroupByComprehension(final GroupByComprehension node) {
-        node.getComprehension().acceptVisitor(this);
-        node.getGroupByQualifier().acceptVisitor(this);
+    @Nullable
+    protected T visitGroupByComprehension(final GroupByComprehension node, @Nullable final C context) {
+        node.getComprehension().acceptVisitor(this, context);
+        node.getGroupByQualifier().acceptVisitor(this, context);
+        return null;
     }
 
-    protected void visitGroupByQualifier(final GroupByQualifier node) {
+    @Nullable
+    protected T visitGroupByQualifier(final GroupByQualifier node, @Nullable final C context) {
+        return null;
     }
 
-    protected void visitMonoidLiteral(final MonoidLiteral node) {
+    @Nullable
+    protected T visitMonoidLiteral(final MonoidLiteral node, @Nullable final C context) {
+        return null;
     }
 
-    protected void visitMonoidFunction(final MonoidFunction node) {
-        node.getArgument().acceptVisitor(this);
+    @Nullable
+    protected T visitMonoidFunction(final MonoidFunction node, @Nullable final C context) {
+        node.getArgument().acceptVisitor(this, context);
+        return null;
     }
 
-    protected void visitQualifier(final Qualifier node) {
+    @Nullable
+    protected T visitQualifier(final Qualifier node, @Nullable final C context) {
+        return null;
     }
 
-    protected void visitColumnIdentifier(final ColumnIdentifier node) {
+    @Nullable
+    protected T visitColumnIdentifier(final ColumnIdentifier node, @Nullable final C context) {
+        return null;
     }
 
-    protected void visitExistsPredicate(final ExistsPredicate node) {
-        node.getArgument().acceptVisitor(this);
+    @Nullable
+    protected T visitExistsPredicate(final ExistsPredicate node, @Nullable final C context) {
+        node.getArgument().acceptVisitor(this, context);
+        return null;
     }
 }

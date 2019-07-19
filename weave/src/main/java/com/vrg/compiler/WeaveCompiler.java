@@ -122,7 +122,9 @@ public class WeaveCompiler {
                 parseNonConstraintViews(symbols.getNonConstraintViews());
         final Map<String, MonoidComprehension> constraintForAlls = parseViews(symbols.getConstraintViews());
         final Map<String, MonoidComprehension> objFunctionForAlls = parseViews(symbols.getObjectiveFunctionViews());
-
+        System.out.println(nonConstraintForAlls);
+        System.out.println(constraintForAlls);
+        System.out.println(objFunctionForAlls);
         //
         // Code generation begins here.
         //
@@ -186,16 +188,16 @@ public class WeaveCompiler {
         final List<Expr> selectItemExpr = processSelectItems(selectItems, tables, createIrTableForView, viewName);
         final Head head = new Head(selectItemExpr);
 
-        final MonoidComprehension comprehension = new MonoidComprehension(head);
-        tables.forEach(t -> comprehension.addQualifier(new TableRowGenerator(t)));
-        where.ifPresent(e -> comprehension.addQualifiers(processWhereExpression(e, tables, false)));
-        having.ifPresent(e -> comprehension.addQualifiers(processWhereExpression(e, tables, true)));
+        final List<Qualifier> qualifiers = new ArrayList<>();
+        tables.forEach(t -> qualifiers.add(new TableRowGenerator(t)));
+        where.ifPresent(e -> qualifiers.addAll(processWhereExpression(e, tables, false)));
+        having.ifPresent(e -> qualifiers.addAll(processWhereExpression(e, tables, true)));
 
         joinConditions.forEach(e -> {
-            final List<Qualifier> qualifiers = processWhereExpression(e, tables, false);
-            for (final Qualifier qualifier: qualifiers) {
+            final List<Qualifier> joinQualifiers = processWhereExpression(e, tables, false);
+            for (final Qualifier qualifier: joinQualifiers) {
                 assert qualifier instanceof BinaryOperatorPredicate;
-                comprehension.addQualifier(new JoinPredicate((BinaryOperatorPredicate) qualifier));
+                qualifiers.add(new JoinPredicate((BinaryOperatorPredicate) qualifier));
             }
         });
 
@@ -203,9 +205,10 @@ public class WeaveCompiler {
             final List<GroupingElement> groupingElement = groupBy.get().getGroupingElements();
             final List<ColumnIdentifier> columnIdentifiers = processSimpleGroupBy(groupingElement, tables);
             final GroupByQualifier groupByQualifier = new GroupByQualifier(columnIdentifiers);
+            final MonoidComprehension comprehension = new MonoidComprehension(head, qualifiers);
             return new GroupByComprehension(comprehension, groupByQualifier);
         }
-        return comprehension;
+        return new MonoidComprehension(head, qualifiers);
     }
 
     private List<Expr> processSelectItems(final List<SelectItem> selectItems, final Set<IRTable> tables,

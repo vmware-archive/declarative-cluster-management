@@ -192,6 +192,112 @@ public class ModelTest {
         assertTrue(results.contains("h3"));
     }
 
+
+    @Test
+    public void innerCountTest() {
+        // model and data files will use this as its name
+        final String modelName = "innerCountTest";
+
+        // create database
+        final DSLContext conn = setup();
+        conn.execute("create table HOSTS(" +
+                "HOST_ID varchar(36)," +
+                "CONTROLLABLE__IN_SEGMENT boolean," +
+                "PRIMARY KEY (HOST_ID)" +
+                ")");
+        conn.execute("create table STRIPES(" +
+                "STRIPE_ID integer, " +
+                "CONTROLLABLE__HOST_ID varchar(36)," +
+                "PRIMARY KEY (STRIPE_ID, CONTROLLABLE__HOST_ID)," +
+                "FOREIGN KEY(CONTROLLABLE__HOST_ID) REFERENCES HOSTS(HOST_ID)" +
+                ")");
+
+        // wrong sql with ambiguous field
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW constraint_exclude_non_data_nodes2 AS " +
+                "SELECT count(*) FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
+                "group by hosts.host_id " +
+                "having count(hosts.host_id) <= 2;\n"
+        );
+        // build model
+        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+
+        // insert hosts
+        conn.execute("insert into HOSTS values ('h1', true)");
+        conn.execute("insert into HOSTS values ('h2', true)");
+        conn.execute("insert into HOSTS values ('h3', true)");
+        // insert stripes which do not use all the hosts (in this case h3)
+        conn.execute("insert into STRIPES values (1,'h1')");
+        conn.execute("insert into STRIPES values (1,'h2')");
+        conn.execute("insert into STRIPES values (2,'h1')");
+        conn.execute("insert into STRIPES values (2,'h2')");
+        conn.execute("insert into STRIPES values (3,'h1')");
+        conn.execute("insert into STRIPES values (3,'h2')");
+
+        // update and solve
+        weaveModel.updateData();
+        weaveModel.solveModel();
+
+        final List<?> results = conn.selectFrom("STRIPES")
+                .fetch("CONTROLLABLE__HOST_ID");
+
+        // check the size of the stripes
+        assertTrue(results.contains("h3"));
+    }
+
+
+    @Test
+    public void innerSubqueryCountTest() {
+        // model and data files will use this as its name
+        final String modelName = "innerSubqueryCountTest";
+
+        // create database
+        final DSLContext conn = setup();
+        conn.execute("create table HOSTS(" +
+                "HOST_ID varchar(36)," +
+                "CONTROLLABLE__IN_SEGMENT boolean," +
+                "PRIMARY KEY (HOST_ID)" +
+                ")");
+        conn.execute("create table STRIPES(" +
+                "STRIPE_ID integer, " +
+                "CONTROLLABLE__HOST_ID varchar(36)," +
+                "PRIMARY KEY (STRIPE_ID, CONTROLLABLE__HOST_ID)," +
+                "FOREIGN KEY(CONTROLLABLE__HOST_ID) REFERENCES HOSTS(HOST_ID)" +
+                ")");
+
+        // wrong sql with ambiguous field
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW constraint_x AS " +
+                "SELECT * FROM hosts " +
+                "where (select count(hosts.host_id) from stripes) >= 2;\n"
+        );
+        // build model
+        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+
+        // insert hosts
+        conn.execute("insert into HOSTS values ('h1', true)");
+        conn.execute("insert into HOSTS values ('h2', true)");
+        conn.execute("insert into HOSTS values ('h3', true)");
+        // insert stripes which do not use all the hosts (in this case h3)
+        conn.execute("insert into STRIPES values (1,'h1')");
+        conn.execute("insert into STRIPES values (1,'h2')");
+        conn.execute("insert into STRIPES values (2,'h1')");
+        conn.execute("insert into STRIPES values (2,'h2')");
+        conn.execute("insert into STRIPES values (3,'h1')");
+        conn.execute("insert into STRIPES values (3,'h2')");
+
+        // update and solve
+        weaveModel.updateData();
+        weaveModel.solveModel();
+
+        final List<?> results = conn.selectFrom("STRIPES")
+                .fetch("CONTROLLABLE__HOST_ID");
+
+        // check the size of the stripes
+        assertTrue(results.contains("h3"));
+    }
+
+
     @Test(expected = WeaveModel.WeaveModelException.class)
     public void ambiguousFieldsInViewTest() {
         // model and data files will use this as its name
@@ -295,7 +401,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW join_view AS " +
-                "SELECT * FROM hosts where hosts.epoch_id = (select max(epochs.epoch_id) from epochs)");
+                "SELECT hosts.epoch_id FROM hosts where hosts.epoch_id = (select max(epochs.epoch_id) from epochs)");
 
         // insert data
         conn.execute("insert into epochs values (1)");
@@ -1103,16 +1209,12 @@ public class ModelTest {
 
         final List<String> views = toListOfViews(
                 "create view least_requested as\n" +
-                        "select (sum(node_info.cpu_allocatable) - sum(pod_info.cpu_request)) as cpu_utilization\n" +
-                        "       from node_info\n" +
-                        "       join pod_info\n" +
-                        "            on pod_info.controllable__node_name = node_info.name\n" +
-                        "       group by node_info.name; \n" +
-                    "create view objective_least_requested as\n" +
-                        "select min(cpu_utilization) from least_requested;\n" +
-                "create view objective_least_requested_max as\n" +
-                        "select max(cpu_utilization) from least_requested;"
-        );
+                    "select (sum(node_info.cpu_allocatable) - sum(pod_info.cpu_request)) as cpu_utilization," +
+                    "       (sum(node_info.memory_allocatable) - sum(pod_info.memory_request)) as mem_utilization\n" +
+                    "       from node_info\n" +
+                    "       join pod_info\n" +
+                    "            on pod_info.controllable__node_name = node_info.name\n" +
+                    "       group by node_info.name;");
 
         buildWeaveModel(conn, views, modelName);
     }

@@ -30,22 +30,22 @@ public class MonoidComprehension extends Expr {
         this.head = head;
     }
 
-    public void addQualifiers(final List<Qualifier> newQualifiers) {
-        qualifiers.addAll(newQualifiers);
+    public MonoidComprehension(final List<Qualifier> qualifiers) {
+        this.qualifiers = qualifiers;
     }
 
-    public void addQualifier(final Qualifier qualifier) {
-        qualifiers.add(qualifier);
+    public MonoidComprehension(final Head head, final List<Qualifier> qualifiers) {
+        this.head = head;
+        this.qualifiers = qualifiers;
     }
 
     public MonoidComprehension withQualifier(final Qualifier qualifier) {
         final List<Qualifier> newQualifiers = new ArrayList<>(qualifiers);
         newQualifiers.add(qualifier);
-        final MonoidComprehension newComprehension = new MonoidComprehension(head);
-        newComprehension.addQualifiers(newQualifiers);
-        return newComprehension;
+        return new MonoidComprehension(head, newQualifiers);
     }
 
+    @Nullable
     public Head getHead() {
         return head;
     }
@@ -60,7 +60,7 @@ public class MonoidComprehension extends Expr {
     }
 
     @Override
-    void acceptVisitor(final MonoidVisitor visitor) {
-        visitor.visitMonoidComprehension(this);
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+        return visitor.visitMonoidComprehension(this, context);
     }
 }

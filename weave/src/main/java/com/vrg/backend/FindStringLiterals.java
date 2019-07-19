@@ -21,18 +21,18 @@ import com.vrg.compiler.monoid.MonoidVisitor;
 import java.util.HashSet;
 import java.util.Set;
 
-public class FindStringLiterals extends MonoidVisitor {
+public class FindStringLiterals extends MonoidVisitor<Void, Void> {
     private final Set<String> stringLiterals = new HashSet<>();
 
     @Override
-    protected void visitMonoidLiteral(final MonoidLiteral node) {
+    protected Void visitMonoidLiteral(final MonoidLiteral node, final Void context) {
         if (node.getValue() instanceof String) {
             final String s = node.getValue().toString();
             if (s.startsWith("'") && s.endsWith("'")) {
                 stringLiterals.add(node.getValue().toString());
             }
         }
-        super.visitMonoidLiteral(node);
+        return super.visitMonoidLiteral(node, context);
     }
 
     Set<String> getStringLiterals() {

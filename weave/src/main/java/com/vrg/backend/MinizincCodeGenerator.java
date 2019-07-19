@@ -22,6 +22,7 @@ import com.vrg.IRContext;
 import com.vrg.IRForeignKey;
 import com.vrg.IRPrimaryKey;
 import com.vrg.IRTable;
+import com.vrg.compiler.UsesControllableFields;
 import com.vrg.compiler.monoid.BinaryOperatorPredicate;
 import com.vrg.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import com.vrg.compiler.monoid.ColumnIdentifier;
@@ -51,7 +52,7 @@ import java.util.stream.Collectors;
 /**
  * Outputs code in the Minizinc language (http://minizinc.org/).
  */
-public class MinizincCodeGenerator extends MonoidVisitor {
+public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
     private static final String GROUP_KEY = "GROUP__KEY";
     private static final EnumMap<VarType, String> VAR_TYPE_STRING = new EnumMap<>(VarType.class);
 
@@ -82,20 +83,21 @@ public class MinizincCodeGenerator extends MonoidVisitor {
     }
 
     @Override
-    public void visit(final Expr expr) {
+    public Void visit(final Expr expr) {
         completeExpression.add(expr);
-        super.visit(expr);
+        return super.visit(expr);
     }
 
     @Override
-    protected void visitTableRowGenerator(final TableRowGenerator node) {
+    protected Void visitTableRowGenerator(final TableRowGenerator node, final Void context) {
         final String format = String.format("%s__ITER in 1..%s", node.getTable().getAliasedName(),
                                                                  MinizincString.tableNumRowsName(node.getTable()));
         rangeQualifiers.add(format);
+        return null;
     }
 
     @Override
-    protected void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node) {
+    protected Void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final Void context) {
         if (node instanceof BinaryOperatorPredicateWithAggregate) {
             aggregateQualifiers.add((BinaryOperatorPredicateWithAggregate) node);
         } else if (node instanceof JoinPredicate) {
@@ -103,37 +105,44 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         } else {
             whereQualifiers.add(node);
         }
+        return null;
     }
 
     @Override
-    protected void visitColumnIdentifier(final ColumnIdentifier node) {
+    protected Void visitColumnIdentifier(final ColumnIdentifier node, final Void context) {
         literals.add(node);
+        return null;
     }
 
     @Override
-    protected void visitMonoidLiteral(final MonoidLiteral node) {
+    protected Void visitMonoidLiteral(final MonoidLiteral node, final Void context) {
         literals.add(node);
+        return null;
     }
 
     @Override
-    protected void visitGroupByComprehension(final GroupByComprehension node) {
+    protected Void visitGroupByComprehension(final GroupByComprehension node, final Void context) {
         groupByQualifier = node.getGroupByQualifier();
         visit(node.getComprehension());
+        return null;
     }
 
     @Override
-    protected void visitMonoidFunction(final MonoidFunction node) {
+    protected Void visitMonoidFunction(final MonoidFunction node, final Void context) {
         literals.add(node);
+        return null;
     }
 
     @Override
-    protected void visitExistsPredicate(final ExistsPredicate existsPredicate) {
+    protected Void visitExistsPredicate(final ExistsPredicate existsPredicate, final Void context) {
         literals.add(existsPredicate);
+        return null;
     }
 
     @Override
-    protected void visitHead(final Head node) {
+    protected Void visitHead(final Head node, final Void context) {
         headItems.addAll(node.getSelectExprs());
+        return null;
     }
 
     private List<String> evaluateWhereExpressions(final List<? extends BinaryOperatorPredicate> nodes) {
@@ -252,7 +261,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
      * array[int] of var int: view1_table2_col1 = [ table1_col1[j] | i in 1..6, j in 1..5,
      * where table1_col1[i] == table2_col1[j]];
      */
-    List<String> generateNonConstraintViewCode(final String viewName) {
+    List<String> generateNonConstraintViewCode(final String viewName, final boolean generateArrayDeclaration) {
         final List<String> ret = new ArrayList<>();
         assert !headItems.isEmpty();
         /*
@@ -271,10 +280,12 @@ public class MinizincCodeGenerator extends MonoidVisitor {
                     finalExpression);
             ret.add(declaration);
         }
-        final String headItemVariableName = MinizincString.headItemVariableName(headItems.get(0));
-        final String viewNameUpper = viewName.toUpperCase(Locale.US);
-        ret.add(String.format("int: %s = length(%s__%s);", MinizincString.tableNumRowsName(viewNameUpper),
-                                                           viewNameUpper, headItemVariableName));
+        if (generateArrayDeclaration) {
+            final String headItemVariableName = MinizincString.headItemVariableName(headItems.get(0));
+            final String viewNameUpper = viewName.toUpperCase(Locale.US);
+            ret.add(String.format("int: %s = length(%s__%s);", MinizincString.tableNumRowsName(viewNameUpper),
+                    viewNameUpper, headItemVariableName));
+        }
         return ret;
     }
 
@@ -506,22 +517,33 @@ public class MinizincCodeGenerator extends MonoidVisitor {
             if (expr instanceof MonoidFunction) {
                 final MonoidFunction function = (MonoidFunction) expr;
                 final String functionName = function.getFunctionName();
-                final String functionNameModifiedIfCount = replacedFunctionCallIfCountFunction(functionName);
                 if (function.getArgument() instanceof ColumnIdentifier) {
                     final ColumnIdentifier argument = (ColumnIdentifier) function.getArgument();
                     // Minizinc does not have a 'count' function. It therefore requires us to replace
                     // 'count' with 'sum', and the argument with '1'.
-                    final String argumentModifiedIfCount = functionName.equalsIgnoreCase("count") ?
-                            "1" : MinizincString.columnNameWithIteration(argument);
-                    final String op = String.format("%s([%s | %s])", functionNameModifiedIfCount,
-                            argumentModifiedIfCount,
+                    final String arg = MinizincString.columnNameWithIteration(argument);
+                    final String op = String.format("%s([%s | %s])", functionName,
+                            arg,
                             groupByInnerComprehensionQualifier);
+                    operands.push(op);
+                } else if (function.getArgument() instanceof BinaryOperatorPredicate) {
+                    final BinaryOperatorPredicate argument = (BinaryOperatorPredicate) function.getArgument();
+                    final String arg = evaluateHeadItem(argument, null);
+                    final String op = String.format("%s([%s | %s])", functionName,
+                            arg,
+                            groupByInnerComprehensionQualifier);
+                    operands.push(op);
+                }
+                else if (function.getArgument() instanceof MonoidLiteral) {
+                    final String op = String.format("%s([%s | %s])", functionName,
+                                                                    ((MonoidLiteral) function.getArgument()).getValue(),
+                                                                    groupByInnerComprehensionQualifier);
                     operands.push(op);
                 } else {
                     // We're usually here because of unary operators like -(count(col1)) in select expressions.
                     final Expr argument = function.getArgument();
                     final String argumentAsString = evaluateHeadItem(argument, groupByInnerComprehensionQualifier);
-                    final String op = String.format("%s(%s)", functionNameModifiedIfCount, argumentAsString);
+                    final String op = String.format("%s(%s)", functionName, argumentAsString);
                     operands.push(op);
                 }
             } else if (expr instanceof ColumnIdentifier) {
@@ -545,10 +567,6 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         }
         assert operands.size() == 1;
         return operands.getFirst();
-    }
-
-    private String replacedFunctionCallIfCountFunction(final String function) {
-        return "count".equalsIgnoreCase(function) ? "sum" : function;
     }
 
     /**
@@ -700,33 +718,37 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         return "";
     }
 
-    private static class ExpressionToStack extends MonoidVisitor {
+    private static class ExpressionToStack extends MonoidVisitor<Void, Void> {
         private final ArrayDeque<Expr> stack = new ArrayDeque<>();
 
         @Override
-        protected void visitMonoidFunction(final MonoidFunction node) {
+        protected Void visitMonoidFunction(final MonoidFunction node, final Void context) {
             stack.push(node);
+            return null;
         }
 
         @Override
-        protected void visitColumnIdentifier(final ColumnIdentifier node) {
+        protected Void visitColumnIdentifier(final ColumnIdentifier node, final Void context) {
             stack.push(node);
+            return null;
         }
 
         @Override
-        protected void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node) {
+        protected Void visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final Void context) {
             stack.push(node);
-            super.visitBinaryOperatorPredicate(node);
+            return super.visitBinaryOperatorPredicate(node, context);
         }
 
         @Override
-        protected void visitMonoidLiteral(final MonoidLiteral node) {
+        protected Void visitMonoidLiteral(final MonoidLiteral node, final Void context) {
             stack.push(node);
+            return null;
         }
 
         @Override
-        protected void visitMonoidComprehension(final MonoidComprehension node) {
+        protected Void visitMonoidComprehension(final MonoidComprehension node, final Void context) {
             stack.push(node);
+            return null;
         }
     }
 
@@ -743,7 +765,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
             for (final Qualifier qualifer: inner.getQualifiers()) {
                 final UsesControllableFields visitor = new UsesControllableFields();
                 visitor.visit(qualifer);
-                if (visitor.usesControllable && qualifer instanceof BinaryOperatorPredicate) {
+                if (visitor.usesControllableFields() && qualifer instanceof BinaryOperatorPredicate) {
                     return VarType.IS_VAR;
                 }
             }
@@ -751,7 +773,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
         else if (expr instanceof ColumnIdentifier) {
             final UsesControllableFields visitor = new UsesControllableFields();
             visitor.visit(expr);
-            if (visitor.usesControllable) {
+            if (visitor.usesControllableFields()) {
                 return VarType.IS_VAR;
             }
         }
@@ -760,7 +782,7 @@ public class MinizincCodeGenerator extends MonoidVisitor {
             for (final Qualifier qualifer: comprehension.getQualifiers()) {
                 final UsesControllableFields visitor = new UsesControllableFields();
                 visitor.visit(qualifer);
-                if (visitor.usesControllable && qualifer instanceof BinaryOperatorPredicate) {
+                if (visitor.usesControllableFields() && qualifer instanceof BinaryOperatorPredicate) {
                     return VarType.IS_OPT;
                 }
             }
@@ -775,26 +797,13 @@ public class MinizincCodeGenerator extends MonoidVisitor {
             return getMax(usesControllableVariables(predicate.getLeft()),
                           usesControllableVariables(predicate.getRight()));
         }
+        else if (expr instanceof MonoidLiteral) {
+            return VarType.IS_INT;
+        }
         else {
             throw new RuntimeException("Unhandled case " + expr);
         }
         return VarType.IS_INT;
-    }
-
-    /**
-     * If a query does not have any variables in it (say, in a predicate or a join key), then they return arrays
-     * of type int. If they do access variables, then they're of type "var opt" int.
-     */
-    private static class UsesControllableFields extends MonoidVisitor {
-        private boolean usesControllable = false;
-
-        @Override
-        protected void visitColumnIdentifier(final ColumnIdentifier node) {
-            if (node.getField().isControllable()) {
-                usesControllable = true;
-            }
-            super.visitColumnIdentifier(node);
-        }
     }
 
     private enum VarType {

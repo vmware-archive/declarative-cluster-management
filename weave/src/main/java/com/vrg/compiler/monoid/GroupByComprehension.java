@@ -15,6 +15,8 @@
 
 package com.vrg.compiler.monoid;
 
+import javax.annotation.Nullable;
+
 public final class GroupByComprehension extends MonoidComprehension {
     private final MonoidComprehension comprehension;
     private final GroupByQualifier groupByQualifier;
@@ -39,7 +41,7 @@ public final class GroupByComprehension extends MonoidComprehension {
     }
 
     @Override
-    void acceptVisitor(final MonoidVisitor visitor) {
-        visitor.visitGroupByComprehension(this);
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+        return visitor.visitGroupByComprehension(this, context);
     }
 }
