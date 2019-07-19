@@ -270,7 +270,6 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
          */
         final VarType qualifiersType = usesControllableVariables(completeExpression.get(0));
         for (final Expr expr : headItems) {
-            System.out.println(expr);
             final String finalExpression = generatorExpressionFromSelectWhere(expr, false);
             assert !finalExpression.isEmpty();
             final VarType headType = usesControllableVariables(expr);

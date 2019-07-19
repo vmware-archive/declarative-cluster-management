@@ -1,6 +1,5 @@
 package com.vrg.backend;
 
-import com.vrg.WeaveModel;
 import com.vrg.compiler.UsesControllableFields;
 import com.vrg.compiler.monoid.BinaryOperatorPredicate;
 import com.vrg.compiler.monoid.BinaryOperatorPredicateWithAggregate;
@@ -76,7 +75,7 @@ class RewriteArity {
                 return result;
             }
             else {
-                LOG.info("Did not rewrite: {}", input);
+                LOG.debug("Did not rewrite: {}", input);
                 return input;
             }
         }
