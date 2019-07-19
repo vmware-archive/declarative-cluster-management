@@ -45,6 +45,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -53,6 +54,7 @@ import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -144,7 +146,7 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("arrayDeclarations", arrayDeclarations);
 
         final List<String> nonConstraintViewCode = nonConstraintViews.entrySet().stream().flatMap(entry -> {
-            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue());
+            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), false);
             final List<String> result = new ArrayList<>();
             boolean generateArrayDeclaration = true;
             for (final MonoidComprehension c: comprehensions) {
@@ -158,7 +160,7 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("nonConstraintViewCode", nonConstraintViewCode);
 
         final List<String> constraintViewCode = constraintViews.entrySet().stream().flatMap(entry -> {
-            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue());
+            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), true);
             final List<String> result = new ArrayList<>();
             for (final MonoidComprehension c: comprehensions) {
                 final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
@@ -170,7 +172,7 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("constraintViewCode", constraintViewCode);
 
         final List<String> objectiveFunctionsCode = objectiveFunctions.entrySet().stream().flatMap(entry -> {
-            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue());
+            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), false);
             final List<String> result = new ArrayList<>();
             for (final MonoidComprehension c: comprehensions) {
                 final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
@@ -241,16 +243,19 @@ public class MinizincSolver implements ISolverBackend {
         return ret;
     }
 
-    private List<MonoidComprehension> comprehensionRewritePipeline(final MonoidComprehension comprehension) {
+    private List<MonoidComprehension> comprehensionRewritePipeline(final MonoidComprehension comprehension,
+                                                                   final boolean isConstraint) {
         // (1) Split into multiple comprehensions, one per head
         // (2) Rewrite count functions to use sums instead
         // (3) Rewrite to use fixed arity constraints
-        return SplitIntoSingleHeadComprehensions.apply(comprehension) // (1)
-                    .stream()
-                    .map(RewriteCountFunction::apply) // (2)
-                    .map(RewriteArity::apply) // (3)
-                    .collect(Collectors.toList());
-
+        final List<MonoidComprehension> comprehensions = SplitIntoSingleHeadComprehensions.apply(comprehension); // (1)
+        return (isConstraint
+                 ? Collections.singletonList(comprehensions.get(0)) // We only need one head item for constraints
+                 : comprehensions)
+                .stream()
+                .map(RewriteCountFunction::apply) // (2)
+                .map(RewriteArity::apply) // (3)
+                .collect(Collectors.toList());
     }
 
 
