@@ -1,3 +1,9 @@
+/*
+ * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ *
+ * SPDX-License-Identifier: BSD-2
+ */
+
 package com.vrg;
 
 import com.google.common.base.Splitter;
