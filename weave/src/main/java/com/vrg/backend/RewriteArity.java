@@ -22,6 +22,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+/**
+ * Rewrites expressions that have uncertain arity (due to the use of option types) to
+ * fixed arity expressions. This is done for sums by converting expressions of the form
+ * sum([col | predicate-based-on-var...]) into expressions of the form
+ * sum([col * (predicate-based-on-var) | non-var-q]).
+ */
 class RewriteArity {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteArity.class);
 
@@ -39,7 +45,9 @@ class RewriteArity {
         }
 
         /**
-         * If input is not a sum() comprehension, ignore.
+         * First, extract the var and non-var qualifiers in the comprehension. If we only have a single
+         * var qualifier, then check if we can rewrite the comprehension. Rewrites only happen for
+         * sum/count expressions.
          */
         private MonoidComprehension rewriteComprehension(final MonoidComprehension input) {
             LOG.info("Attempting to rewrite: " + input);
@@ -81,6 +89,9 @@ class RewriteArity {
         }
     }
 
+    /**
+     * Container to propagate var and non-var qualifiers
+     */
     private static class QualifiersList {
         private final List<Qualifier> varQualifiers;
         private final List<Qualifier> nonVarQualifiers;
@@ -122,6 +133,9 @@ class RewriteArity {
         }
     }
 
+    /**
+     * Separates qualifiers in an expression into vars and non-vars.
+     */
     private static class GetVarQualifiers extends MonoidVisitor<QualifiersList, QualifiersList> {
 
         @Override
@@ -194,6 +208,11 @@ class RewriteArity {
         }
     }
 
+
+    /**
+     * Rewrites sum/count functions such that the argument of the function is multiplied by a qualifier,
+     * which is expected to be a predicate on a controllable column.
+     */
     private static class FunctionRewriter extends ComprehensionRewriter<Qualifier> {
         private boolean didRewrite = false;
         private boolean isDepthPastOne = false;
@@ -215,7 +234,6 @@ class RewriteArity {
         @Override
         protected Expr visitMonoidFunction(final MonoidFunction node, @Nullable final Qualifier qualifier) {
             assert qualifier != null;
-            // Replace sum([col | var-q, non-var-q]) with sum([col * (var-q) | non-var-q])
             if (node.getFunctionName().equalsIgnoreCase("sum") ||
                 node.getFunctionName().equalsIgnoreCase("count")) {
                 final Expr oldSumArg = node.getArgument();
