@@ -14,8 +14,8 @@ import com.facebook.presto.sql.tree.CreateView;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import org.dcm.backend.ISolverBackend;
-import org.dcm.backend.MinizincSolver;
 import org.dcm.compiler.ModelCompiler;
+import org.dcm.backend.OrToolsSolver;
 import org.jooq.Constraint;
 import org.jooq.DSLContext;
 import org.jooq.Field;
@@ -71,7 +71,8 @@ public class Model {
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
-        this.backend = new MinizincSolver(modelFile, dataFile, conf);
+//        this.backend = new MinizincSolver(modelFile, dataFile, conf);
+        this.backend = new OrToolsSolver();
         final List<CreateView> viewsInPolicy = views.stream().map(
                 view -> {
                     try {
