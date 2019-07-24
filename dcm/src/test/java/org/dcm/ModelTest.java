@@ -38,6 +38,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * access them with classLoader.getResource().
  */
 public class ModelTest {
+    static {
+        System.getProperties().setProperty("org.jooq.no-logo", "true");
+    }
 
     @Test
     public void noopTest() {
@@ -59,6 +62,26 @@ public class ModelTest {
         final Result<Record> fetch = conn.selectFrom("curr.placement").fetch();
         assertEquals(4, fetch.size());
     }
+
+
+    @Test
+    public void controllableTest() {
+        final String modelName = "controllableTest";
+
+        final DSLContext conn = setup();
+        conn.execute("create table placement(groupId integer, controllable__hostId varchar(36))");
+
+        final WeaveModel weaveModel = buildWeaveModel(conn, Collections.emptyList(), modelName);
+
+        conn.execute("insert into placement values (1, 'h1')");
+        conn.execute("insert into placement values (2, 'h2')");
+        conn.execute("insert into placement values (3, 'h3')");
+        conn.execute("insert into placement values (4, 'h4')");
+
+        weaveModel.updateData();
+        weaveModel.solveModel();
+    }
+
 
     @Test
     public void solveModelWithUpdateTest() {
