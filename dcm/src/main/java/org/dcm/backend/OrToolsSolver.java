@@ -57,6 +57,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -188,6 +189,9 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Pop nested for loops
         tableRowGenerators.forEach(tr -> builder.endControlFlow());
+
+        // Print debugging info
+        // builder.addStatement("$T.out.println($N)", System.class, viewRecords);
 
         // Add numRows for view
         builder.addStatement("final int $L = $L.size()", tableNumRowsStr(viewName), nonConstraintViewName(viewName));
@@ -339,7 +343,17 @@ public class OrToolsSolver implements ISolverBackend {
                         .addMethod(getter);
         }
 
+        final String toPrint = IntStream.range(0, numFields)
+                                        .mapToObj(i -> "t" + i)
+                                        .collect(Collectors.joining(", "));
+        final MethodSpec toStringMethod = MethodSpec.methodBuilder("toString")
+                                                    .addAnnotation(Override.class)
+                                                    .addModifiers(Modifier.PUBLIC)
+                                                    .returns(String.class)
+                                                    .addStatement("return String.format($S, $L)", "(%s)", toPrint)
+                                                    .build();
         return classBuilder.addMethod(constructor.build())
+                           .addMethod(toStringMethod)
                            .build();
     }
 
