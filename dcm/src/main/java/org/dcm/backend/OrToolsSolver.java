@@ -15,10 +15,15 @@ import com.google.ortools.sat.IntVar;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.TypeSpec;
+import com.squareup.javapoet.TypeVariableName;
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
+import org.dcm.compiler.monoid.BinaryOperatorPredicate;
+import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
+import org.dcm.compiler.monoid.JoinPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
+import org.dcm.compiler.monoid.TableRowGenerator;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -39,13 +44,28 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * This class generates Java code that invokes the or-tools CP-SAT solver. The generated
+ * class is compiled, and loaded via ReflectASM to return an IGeneratedBackend instance,
+ * which can be invoked to run the solver.
+ */
 public class OrToolsSolver implements ISolverBackend {
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
+    private static final String generatedBackendName = "GeneratedBackend";
+    private static final MethodSpec intVarNoBounds = MethodSpec.methodBuilder("intVarNoBounds")
+                                                .addModifiers(Modifier.PRIVATE)
+                                                .addParameter(CpModel.class, "model", Modifier.FINAL)
+                                                .addParameter(String.class, "name",  Modifier.FINAL)
+                                                .returns(IntVar.class)
+                                                .addStatement("return model.newIntVar(0, Integer.MAX_VALUE - 1, name)")
+                                                .build();
+    private static final Map<Integer, TypeSpec> tupleGen = new ConcurrentHashMap<>();
     @Nullable private IGeneratedBackend generatedBackend = null;
     @Nullable private IRContext context = null;
 
@@ -62,44 +82,92 @@ public class OrToolsSolver implements ISolverBackend {
         return null;
     }
 
+    /**
+     * This method is where the code generation happens.
+     *
+     * It generates an instance of IGeneratedBackend with a solve() method. The solve method
+     * creates all the IntVar instances required for variable columns, and translates comprehensions
+     * into nested for loops. It re-uses JOOQ tables wherever possible for constants.
+     */
     @Override
     public List<String> generateModelCode(final IRContext context,
                                           final Map<String, MonoidComprehension> nonConstraintViews,
                                           final Map<String, MonoidComprehension> constraintViews,
                                           final Map<String, MonoidComprehension> objectiveFunctions) {
-        final MethodSpec intVarNoBounds = MethodSpec.methodBuilder("intVarNoBounds")
-                .addModifiers(Modifier.PRIVATE)
-                .addParameter(CpModel.class, "model")
-                .addParameter(String.class, "name")
-                .returns(IntVar.class)
-                .addStatement("return model.newIntVar(0, Integer.MAX_VALUE - 1, name)")
-                .build();
-
-        MethodSpec.Builder builder = MethodSpec.methodBuilder("solve");
+        final MethodSpec.Builder builder = MethodSpec.methodBuilder("solve");
         addInitializer(builder);
         addArrayDeclarations(builder, context, intVarNoBounds);
+        nonConstraintViews.forEach((name, comprehension) ->
+                addNonConstraintView(builder, name, comprehension, context));
         final MethodSpec solveMethod = builder.addStatement("return null").build();
 
-        final TypeSpec spec = TypeSpec.classBuilder("GeneratedBackend")
+        final TypeSpec.Builder backendClassBuilder = TypeSpec.classBuilder(generatedBackendName)
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .addSuperinterface(IGeneratedBackend.class)
                 .addMethod(solveMethod)
-                .addMethod(intVarNoBounds)
-                .build();
+                .addMethod(intVarNoBounds);
+        tupleGen.values().forEach(backendClassBuilder::addType); // Add tuple types
+        final TypeSpec spec = backendClassBuilder.build();
         return compile(spec);
     }
 
-    private MethodSpec.Builder addArrayDeclarations(final MethodSpec.Builder builder,
-                                                    final IRContext context,
-                                                    final MethodSpec intVarNoBounds) {
 
-        final Map<IRTable, Map<String, IntVar[]>> tableToField = new HashMap<>();
+    private void addNonConstraintView(final MethodSpec.Builder builder, final String viewName,
+                                      final MonoidComprehension comprehension, final IRContext context) {
+        Preconditions.checkNotNull(comprehension.getHead());
+        builder.addCode("\n").addComment("Non-constraint view $L", viewName);
+
+        final List<BinaryOperatorPredicate> wherePredicates = new ArrayList<>();
+        final List<JoinPredicate> joinPredicates = new ArrayList<>();
+        final List<BinaryOperatorPredicateWithAggregate> aggregatePredicates = new ArrayList<>();
+        final List<TableRowGenerator> tableRowGenerators = new ArrayList<>();
+        comprehension.getQualifiers().forEach(
+            q -> {
+                if (q instanceof BinaryOperatorPredicateWithAggregate) {
+                    aggregatePredicates.add((BinaryOperatorPredicateWithAggregate) q);
+                } else if (q instanceof JoinPredicate) {
+                    joinPredicates.add((JoinPredicate) q);
+                } else if (q instanceof BinaryOperatorPredicate) {
+                    wherePredicates.add((BinaryOperatorPredicate) q);
+                } else if (q instanceof TableRowGenerator) {
+                    tableRowGenerators.add((TableRowGenerator) q);
+                } else {
+                    throw new IllegalArgumentException();
+                }
+            }
+        );
+
+        // Create nested for loops
+        final int tupleSize = comprehension.getHead().getSelectExprs().size();
+        final TypeSpec tupleSpec = tupleGen.computeIfAbsent(tupleSize, OrToolsSolver::tupleGen);
+        builder.addStatement("final $T<$N> $L = new $T<>()", List.class,
+                                                             tupleSpec,
+                                                             nonConstraintViewName(viewName),
+                                                             ArrayList.class);
+        tableRowGenerators.forEach(tr -> {
+            final String tableName = tr.getTable().getName();
+            final String tableNumRowsStr = tableNumRowsStr(tableName);
+            final String iterStr = iterStr(tr.getTable().getAliasedName());
+            builder.beginControlFlow("for (int $1L = 0; $1L < $2L; $1L++)",
+                                     iterStr, tableNumRowsStr);
+        });
+        // Add filter predicate
+        builder.beginControlFlow("if (predicate)")
+               .addComment("nothing")
+               .endControlFlow();
+
+        // Pop nested for loops
+        tableRowGenerators.forEach(tr -> builder.endControlFlow());
+    }
+
+    private void addArrayDeclarations(final MethodSpec.Builder builder, final IRContext context,
+                                      final MethodSpec intVarNoBounds) {
         // Tables
         for (final IRTable table: context.getTables()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
             }
-
+            builder.addCode("\n");
             builder.addComment("Table $S", table.getName());
             builder.addStatement("final int $L = context.getTable($S).getNumRows()",
                                  tableNumRowsStr(table.getName()), table.getName());
@@ -117,17 +185,15 @@ public class OrToolsSolver implements ISolverBackend {
                 }
             }
         }
-        return builder;
     }
 
-    private MethodSpec.Builder addInitializer(final MethodSpec.Builder builder) {
-        return builder
-                .addModifiers(Modifier.PUBLIC)
-                .returns(Map.class)
-                .addParameter(IRContext.class, "context")
-                .addComment("Create the model.")
-                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
-                .addCode("\n");
+    private void addInitializer(final MethodSpec.Builder builder) {
+        builder.addModifiers(Modifier.PUBLIC)
+               .returns(Map.class)
+               .addParameter(IRContext.class, "context")
+               .addComment("Create the model.")
+               .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
+               .addCode("\n");
     }
 
     private String variableNameStr(final String tableName, final String fieldName) {
@@ -140,20 +206,26 @@ public class OrToolsSolver implements ISolverBackend {
         return String.format("%sNumRows", CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName));
     }
 
+    private String iterStr(final String tableName) {
+        return String.format("%sIter", CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName));
+    }
+
+    private String nonConstraintViewName(final String tableName) {
+        return String.format("%s", CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName));
+    }
 
     private List<String> compile(final TypeSpec spec) {
-        final JavaFile javaFile = JavaFile.builder("com.vrg.backend", spec)
-                                          .build();
+        final JavaFile javaFile = JavaFile.builder("org.dcm.backend", spec).build();
         LOG.info("Generating Java or-tools code: {}\n", javaFile.toString());
 
         // Compile Java code. This steps requires an SDK, and a JRE will not suffice
         final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         final StandardJavaFileManager fileManager =
                 compiler.getStandardFileManager(null, null, null);
-        Iterable<? extends JavaFileObject> compilationUnit =
-                Collections.singleton(javaFile.toJavaFileObject());
+        final Iterable<? extends JavaFileObject> compilationUnit = Collections.singleton(javaFile.toJavaFileObject());
 
         try {
+            // Invoke SDK compiler
             final Path path = Path.of("/tmp/compilerOutput");
             final BufferedWriter fileWriter = Files.newBufferedWriter(path);
             final Boolean call = compiler.getTask(fileWriter, fileManager, null,
@@ -180,7 +252,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Loading the class
             classLoader = URLClassLoader.newInstance(new URL[]{classesDir.toURI().toURL()});
             Class<?> cls;
-            cls = Class.forName("com.vrg.backend.GeneratedBackend", true, classLoader);
+            cls = Class.forName(String.format("org.dcm.backend.%s", generatedBackendName), true, classLoader);
             ConstructorAccess<?> access = ConstructorAccess.get(cls);
             generatedBackend = (IGeneratedBackend) access.newInstance();
             final StringWriter writer = new StringWriter();
@@ -195,5 +267,36 @@ public class OrToolsSolver implements ISolverBackend {
     public List<String> generateDataCode(final IRContext context) {
         this.context = context;
         return null;
+    }
+
+    /**
+     * Create a tuple type with 'numFields' entries. Results in a generic "plain old java object"
+     * with a getter per field.
+     */
+    private static TypeSpec tupleGen(final int numFields) {
+        final TypeSpec.Builder classBuilder = TypeSpec.classBuilder("Tuple" + numFields)
+                                                     .addModifiers(Modifier.FINAL, Modifier.PRIVATE);
+        final MethodSpec.Builder constructor = MethodSpec.constructorBuilder()
+                                                         .addModifiers(Modifier.PRIVATE);
+        for (int i = 0; i < numFields; i++) {
+            final TypeVariableName type = TypeVariableName.get("T" + i);
+            // Add parameter to constructor
+            constructor.addParameter(type, "t" + i, Modifier.FINAL)
+                       .addStatement("this.$1L = $1L", "t" + i); // assign parameters to fields
+
+            // Create getter
+            final MethodSpec getter = MethodSpec.methodBuilder("value" + i)
+                    .returns(type)
+                    .addStatement("return t" + i)
+                    .build();
+
+            // Add field and getter to class
+            classBuilder.addTypeVariable(type)
+                        .addField(type, "t" + i, Modifier.PRIVATE, Modifier.FINAL)
+                        .addMethod(getter);
+        }
+
+        return classBuilder.addMethod(constructor.build())
+                           .build();
     }
 }

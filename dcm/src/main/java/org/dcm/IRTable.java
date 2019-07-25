@@ -36,6 +36,7 @@ public class IRTable {
     private final String name;
     private final String alias;
     @Nullable private final Table<? extends Record> jooqTable;
+    @Nullable private Result<? extends Record> recentData = null;
     private final Map<String, IRColumn> irColumns;
     private final Map<Field, IRColumn> fieldToIRColumn;
     private final List<IRForeignKey> foreignKeys;
@@ -189,6 +190,14 @@ public class IRTable {
         for (final Field<?> field : jooqTable.fields()) {
             fieldToIRColumn.get(field).setValues(recentData.getValues(field));
         }
+    }
+
+    /**
+     * Get the most recently invoked result set for this table.
+     */
+    public Result<? extends Record> getCurrentData() {
+        Preconditions.checkNotNull(recentData);
+        return recentData;
     }
 
     @Override

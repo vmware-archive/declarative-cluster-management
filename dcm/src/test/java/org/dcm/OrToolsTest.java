@@ -13,12 +13,7 @@ import com.google.ortools.sat.DecisionStrategyProto;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
-import com.google.ortools.util.Domain;
 import org.junit.Test;
-
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 
 public class OrToolsTest {
     static {
@@ -54,7 +49,7 @@ public class OrToolsTest {
         solver.getParameters().setLogSearchProgress(true);
         final CpSolverStatus status = solver.solve(model);
         if (status == CpSolverStatus.FEASIBLE ||
-            status == CpSolverStatus.OPTIMAL) {
+                status == CpSolverStatus.OPTIMAL) {
             for (int i = 0; i < numVals; i++) {
                 System.out.println(String.format("blah[%s] = %s", i, solver.value(vars[i])));
             }
@@ -88,7 +83,6 @@ public class OrToolsTest {
 
         // 2. Capacity constraint
         final IntVar[] loads = new IntVar[numNodes];
-        final Map<Integer, IntVar[]> nodeToBools = new HashMap<>();
         for (int node = 0; node < numNodes; node++) {
             final IntVar[] bools = new IntVar[numPods];
             for (int i = 0; i < numPods; i++) {
@@ -101,7 +95,6 @@ public class OrToolsTest {
             model.addEquality(load, LinearExpr.scalProd(bools, podsDemands));
             loads[node] = load;
             model.addLessOrEqual(load, 100000);
-            nodeToBools.put(node, bools);
         }
 
         final IntVar max = model.newIntVar(0, 1000000000, "");
@@ -112,16 +105,15 @@ public class OrToolsTest {
         // Create a solver and solve the model.
         final CpSolver solver = new CpSolver();
         solver.getParameters().setNumSearchWorkers(4);
-//        solver.getParameters().setLogSearchProgress(true);
+        solver.getParameters().setLogSearchProgress(true);
         solver.getParameters().setCpModelPresolve(false);
         solver.getParameters().setCpModelProbingLevel(0);
         final CpSolverStatus status = solver.solve(model);
         if (status == CpSolverStatus.FEASIBLE ||
                 status == CpSolverStatus.OPTIMAL) {
-//            System.out.println(solver.value(max));
+            System.out.println(solver.value(max));
         }
         System.out.println("Done: " + (System.currentTimeMillis() - now));
-//        System.out.println(solver.responseStats());
     }
 
     @Test
