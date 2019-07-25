@@ -21,8 +21,13 @@ import org.dcm.IRContext;
 import org.dcm.IRTable;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
+import org.dcm.compiler.monoid.ColumnIdentifier;
+import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.JoinPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
+import org.dcm.compiler.monoid.MonoidFunction;
+import org.dcm.compiler.monoid.MonoidLiteral;
+import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.TableRowGenerator;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -48,7 +53,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * This class generates Java code that invokes the or-tools CP-SAT solver. The generated
@@ -136,28 +145,52 @@ public class OrToolsSolver implements ISolverBackend {
                 }
             }
         );
+        Preconditions.checkArgument(aggregatePredicates.size() == 0); // Temporary
 
         // Create nested for loops
         final int tupleSize = comprehension.getHead().getSelectExprs().size();
         final TypeSpec tupleSpec = tupleGen.computeIfAbsent(tupleSize, OrToolsSolver::tupleGen);
-        builder.addStatement("final $T<$N> $L = new $T<>()", List.class,
-                                                             tupleSpec,
-                                                             nonConstraintViewName(viewName),
-                                                             ArrayList.class);
+
+        // Initialize an arraylist to collect results
+        final String viewRecords = nonConstraintViewName(viewName);
+        builder.addStatement("final $T<$N> $L = new $T<>()", List.class, tupleSpec, viewRecords, ArrayList.class);
         tableRowGenerators.forEach(tr -> {
             final String tableName = tr.getTable().getName();
             final String tableNumRowsStr = tableNumRowsStr(tableName);
             final String iterStr = iterStr(tr.getTable().getAliasedName());
-            builder.beginControlFlow("for (int $1L = 0; $1L < $2L; $1L++)",
-                                     iterStr, tableNumRowsStr);
+            builder.beginControlFlow("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr);
         });
+
+        final String joinPredicateStr = joinPredicates.stream()
+                                                    .map(OrToolsSolver::exprToStr)
+                                                    .collect(Collectors.joining(" \n    && "));
+        final String wherePredicateStr = wherePredicates.stream()
+                                                .map(OrToolsSolver::exprToStr)
+                                                .collect(Collectors.joining(" \n    && "));
+        final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
+                                       .filter(s -> !s.equals(""))
+                                       .collect(Collectors.joining(" \n    && "));
         // Add filter predicate
-        builder.beginControlFlow("if (predicate)")
-               .addComment("nothing")
-               .endControlFlow();
+        builder.beginControlFlow("if ($L)", predicateStr);
+
+        // If predicate is true, then add select expressions to result set
+        final String headItemsStr = comprehension.getHead().getSelectExprs().stream()
+                                              .map(expr -> {
+                                                    if (expr instanceof MonoidFunction) {
+                                                        throw new UnsupportedOperationException();
+                                                    }
+                                                    return exprToStr(expr);
+                                                })
+                                              .collect(Collectors.joining(",\n    "));
+        // Add tuples to result set
+        builder.addStatement("$L.add(new Tuple$L(\n    $L\n    ))", viewRecords, tupleSize, headItemsStr);
+        builder.endControlFlow(); // end filter predicate if statement
 
         // Pop nested for loops
         tableRowGenerators.forEach(tr -> builder.endControlFlow());
+
+        // Add numRows for view
+        builder.addStatement("final int $L = $L.size()", tableNumRowsStr(viewName), nonConstraintViewName(viewName));
     }
 
     private void addArrayDeclarations(final MethodSpec.Builder builder, final IRContext context,
@@ -171,12 +204,15 @@ public class OrToolsSolver implements ISolverBackend {
             builder.addComment("Table $S", table.getName());
             builder.addStatement("final int $L = context.getTable($S).getNumRows()",
                                  tableNumRowsStr(table.getName()), table.getName());
+
+            builder.addStatement("final $T<? extends $T> $L = context.getTable($S).getCurrentData()",
+                                 List.class, Record.class, tableNameStr(table.getName()), table.getName());
             // Fields
             for (final Map.Entry<String, IRColumn> fieldEntrySet : table.getIRColumns().entrySet()) {
                 final String fieldName = fieldEntrySet.getKey();
                 final IRColumn field = fieldEntrySet.getValue();
                 if (field.isControllable()) {
-                    final String variableName = variableNameStr(table.getName(), fieldName);
+                    final String variableName = fieldNameStr(table.getName(), fieldName);
                     builder.addStatement("final $T[] $L = new $T[$L]", IntVar.class, variableName, IntVar.class,
                                                                        table.getNumRows())
                             .beginControlFlow("for (int i = 0; i < $L; i++)", table.getNumRows())
@@ -196,21 +232,28 @@ public class OrToolsSolver implements ISolverBackend {
                .addCode("\n");
     }
 
-    private String variableNameStr(final String tableName, final String fieldName) {
+    private static String tableNameStr(final String tableName) {
+        return CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName);
+    }
+
+    private static String fieldNameStr(final String tableName, final String fieldName) {
         return String.format("%s%s", CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName),
                                      CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, fieldName));
     }
 
+    private static String fieldNameStrWithIter(final String tableName, final String fieldName) {
+        return String.format("%s.get(%s).get(\"%s\")", tableNameStr(tableName), iterStr(tableName), fieldName);
+    }
 
-    private String tableNumRowsStr(final String tableName) {
+    private static String tableNumRowsStr(final String tableName) {
         return String.format("%sNumRows", CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName));
     }
 
-    private String iterStr(final String tableName) {
+    private static String iterStr(final String tableName) {
         return String.format("%sIter", CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName));
     }
 
-    private String nonConstraintViewName(final String tableName) {
+    private static String nonConstraintViewName(final String tableName) {
         return String.format("%s", CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName));
     }
 
@@ -298,5 +341,60 @@ public class OrToolsSolver implements ISolverBackend {
 
         return classBuilder.addMethod(constructor.build())
                            .build();
+    }
+
+    private static String exprToStr(final Expr expr) {
+        final ExprToStrVisitor visitor = new ExprToStrVisitor();
+        return Objects.requireNonNull(visitor.visit(expr));
+    }
+
+    private static class ExprToStrVisitor extends MonoidVisitor<String, Void> {
+        @Nullable
+        @Override
+        protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
+                                                      @Nullable final Void context) {
+            final String left = visit(node.getLeft());
+            final String right = visit(node.getRight());
+            final String op = node.getOperator();
+            switch (op) {
+                case "==":
+                    return String.format("(%s.equals(%s))", left, right);
+                case "!=":
+                    return String.format("(!%s.equals(%s))", left, right);
+                case "/\\":
+                    return String.format("(%s \n    && %s))", left, right);
+                case "\\/":
+                    return String.format("(%s \n    || %s))", left, right);
+                case "<=":
+                case "<":
+                case ">=":
+                case ">":
+                case "+":
+                case "-":
+                case "*":
+                case "/":
+                    return String.format("(%s \n    %s %s))", left, op, right);
+                default:
+                    throw new UnsupportedOperationException();
+            }
+        }
+
+        @Nullable
+        @Override
+        protected String visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Void context) {
+            final String tableName = node.getTableName();
+            final String fieldName = node.getField().getName();
+            return fieldNameStrWithIter(tableName, fieldName);
+        }
+
+        @Nullable
+        @Override
+        protected String visitMonoidLiteral(final MonoidLiteral node, @Nullable final Void context) {
+            if (node.getValue() instanceof String) {
+                return node.getValue().toString().replace("'", "\"");
+            } else {
+                return node.getValue().toString();
+            }
+        }
     }
 }
