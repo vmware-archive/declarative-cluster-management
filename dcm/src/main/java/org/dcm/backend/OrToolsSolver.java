@@ -11,11 +11,17 @@ import com.google.common.base.CaseFormat;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.ortools.sat.CpModel;
+import com.google.ortools.sat.CpSolver;
+import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
+import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
+import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeVariableName;
+import com.squareup.javapoet.WildcardTypeName;
+
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
@@ -29,6 +35,7 @@ import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.TableRowGenerator;
+
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -55,7 +62,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -76,6 +82,11 @@ public class OrToolsSolver implements ISolverBackend {
                                                 .addStatement("return model.newIntVar(0, Integer.MAX_VALUE - 1, name)")
                                                 .build();
     private static final Map<Integer, TypeSpec> tupleGen = new ConcurrentHashMap<>();
+
+    static {
+        System.loadLibrary("jniortools");
+    }
+
     @Nullable private IGeneratedBackend generatedBackend = null;
     @Nullable private IRContext context = null;
 
@@ -84,12 +95,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                             final Map<String, IRTable> irTables) {
         Preconditions.checkNotNull(generatedBackend);
         Preconditions.checkNotNull(context);
-        final long now = System.currentTimeMillis();
-        for (int i = 0; i < 50; i++) {
-            generatedBackend.solve(context);
-        }
-        LOG.info("Completed in {}", (System.currentTimeMillis() - now));
-        return null;
+        return generatedBackend.solve(context);
     }
 
     /**
@@ -109,6 +115,7 @@ public class OrToolsSolver implements ISolverBackend {
         addArrayDeclarations(builder, context, intVarNoBounds);
         nonConstraintViews.forEach((name, comprehension) ->
                 addNonConstraintView(builder, name, comprehension, context));
+        addSolvePhase(builder);
         final MethodSpec solveMethod = builder.addStatement("return null").build();
 
         final TypeSpec.Builder backendClassBuilder = TypeSpec.classBuilder(generatedBackendName)
@@ -117,6 +124,7 @@ public class OrToolsSolver implements ISolverBackend {
                 .addMethod(solveMethod)
                 .addMethod(intVarNoBounds);
         tupleGen.values().forEach(backendClassBuilder::addType); // Add tuple types
+
         final TypeSpec spec = backendClassBuilder.build();
         return compile(spec);
     }
@@ -228,12 +236,43 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private void addInitializer(final MethodSpec.Builder builder) {
+        // ? extends Record
+        final WildcardTypeName recordT = WildcardTypeName.subtypeOf(Record.class);
+        // Result<? extends Record>
+        final ParameterizedTypeName resultT = ParameterizedTypeName.get(ClassName.get(Result.class), recordT);
+        final ClassName irTableT = ClassName.get(IRTable.class);
+        final ClassName map = ClassName.get(Map.class);
+        // Map<IRTable, Result<? extends Record>>
+        final ParameterizedTypeName returnT = ParameterizedTypeName.get(map, irTableT, resultT);
         builder.addModifiers(Modifier.PUBLIC)
-               .returns(Map.class)
+               .returns(returnT)
                .addParameter(IRContext.class, "context")
                .addComment("Create the model.")
                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
                .addCode("\n");
+    }
+
+    private void addSolvePhase(final MethodSpec.Builder builder) {
+        builder.addCode("\n")
+               .addComment("Start solving")
+               .addStatement("final $1T solver = new $1T()", CpSolver.class)
+               .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
+               .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
+               .addStatement("$T.out.println()", System.class)
+               .endControlFlow();
+
+            // Create a solver and solve the model.
+//            final CpSolver solver = new CpSolver();
+//            solver.getParameters().setNumSearchWorkers(4);
+//            solver.getParameters().setLogSearchProgress(true);
+//            solver.getParameters().setCpModelPresolve(false);
+//            solver.getParameters().setCpModelProbingLevel(0);
+//            final CpSolverStatus status = solver.solve(model);
+//            if (status == CpSolverStatus.FEASIBLE ||
+//                    status == CpSolverStatus.OPTIMAL) {
+//                System.out.println(solver.value(max));
+//            }
+//        );
     }
 
     private static String tableNameStr(final String tableName) {
