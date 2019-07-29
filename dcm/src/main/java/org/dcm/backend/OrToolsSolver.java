@@ -250,8 +250,7 @@ public class OrToolsSolver implements ISolverBackend {
         // builder.addStatement("$T.out.println($N)", System.class, viewRecords);
     }
 
-    private String updateFieldIndex(final String viewName, final Expr argument,
-                                  final AtomicInteger counter) {
+    private String updateFieldIndex(final String viewName, final Expr argument, final AtomicInteger counter) {
         final String fieldName = argument.getAlias().orElseGet(() ->
                 generatedFieldNamePrefix + generatedFieldNameCounter.getAndIncrement())
                 .toUpperCase(Locale.US);
