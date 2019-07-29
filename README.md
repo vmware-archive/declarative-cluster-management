@@ -1,8 +1,14 @@
+# Declarative Cluster Management
+
+## Overview
+
 A tool that enables programmers to specify cluster management policies in a
 high-level declarative language, and compute policy-compliant configurations
 automatically and efficiently. Weave allows constraints and policies, the
 essence of a cluster manager, to be easily added, removed and modified
 over time, using a language familiar to developers (SQL).
+
+## Try it out
 
 ### Pre-requisites
 
@@ -14,7 +20,6 @@ Make sure you are able to invoke the `minizinc` binary from your commandline.
 ### Building
 
  $: mvn package
-
 
 ### References
 
