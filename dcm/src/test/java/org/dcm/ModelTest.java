@@ -13,7 +13,6 @@ import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.SQLDialect;
-import org.jooq.SelectWhereStep;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -611,13 +610,6 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 2)");
         conn.execute("insert into HOSTS values ('h3', 3)");
 
-        final Result<Record> hosts = conn.selectFrom("HOSTS").fetch();
-
-        for (final Record r: hosts) {
-            System.out.println(hosts.get(0).get("HOST_ID"));
-        }
-        assert false;
-
         // Should not be opt
         final Model model = buildModel(conn, views, modelName);
         model.updateData();
@@ -1146,6 +1138,48 @@ public class ModelTest {
         assertEquals(1, fetch.size());
         assertEquals(-10, fetch.get(0).intValue());
     }
+
+    @Test
+    public void testGroupByGeneration() {
+        // model and data files will use this as its name
+        final String modelName = "testGroupByGeneration";
+
+        // create database
+        final DSLContext conn = setup();
+        conn.execute("create table node_info\n" +
+                "(\n" +
+                "  name varchar(36) not null primary key,\n" +
+                "  cpu_allocatable bigint not null,\n" +
+                "  memory_allocatable bigint not null\n" +
+                ")"
+        );
+        conn.execute("create table pod_info\n" +
+                "(\n" +
+                "  pod_name varchar(36) not null primary key,\n" +
+                "  controllable__node_name varchar(36) not null,\n" +
+                "  cpu_request bigint not null,\n" +
+                "  memory_request bigint not null,\n" +
+                "  foreign key(controllable__node_name) references node_info(name)\n" +
+                ")"
+        );
+
+        final List<String> views = toListOfViews(
+                "create view least_requested_sums as\n" +
+                        "select sum(pod_info.cpu_request) as cpu_load\n" +
+                        "       from pod_info join node_info on pod_info.cpu_request = node_info.cpu_allocatable " +
+                        " group by node_info.name;"
+        );
+
+        conn.execute("insert into node_info values ('n1', 1, 1)");
+        conn.execute("insert into node_info values ('n2', 10, 10)");
+        conn.execute("insert into pod_info values ('p1', 'n1', 2, 2)");
+
+        // build model
+        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+        weaveModel.updateData();
+        weaveModel.solveModel();
+    }
+
 
 
     @Test
