@@ -191,13 +191,14 @@ public class OrToolsSolver implements ISolverBackend {
         );
         Preconditions.checkArgument(aggregatePredicates.size() == 0); // Temporary
 
-        // Create nested for loops
+        // Initialize an arraylist to collect results and generate the required tuple sizes
         final int tupleSize = comprehension.getHead().getSelectExprs().size();
         final TypeSpec tupleSpec = tupleGen.computeIfAbsent(tupleSize, OrToolsSolver::tupleGen);
 
-        // Initialize an arraylist to collect results
         final String viewRecords = nonConstraintViewName(viewName);
         builder.addStatement("final $T<$N> $L = new $T<>()", List.class, tupleSpec, viewRecords, ArrayList.class);
+
+        // Create nested for loops
         tableRowGenerators.forEach(tr -> {
             final String tableName = tr.getTable().getName();
             final String tableNumRowsStr = tableNumRowsStr(tableName);
@@ -230,12 +231,14 @@ public class OrToolsSolver implements ISolverBackend {
                         // it should not happen that a view is able to refer to it directly.
                         final Expr argument = ((MonoidFunction) expr).getArgument();
                         final String fieldName = updateFieldIndex(viewName, argument, fieldIndex);
+                        assert !(argument instanceof MonoidFunction);
                         return exprToStr(argument, true) + " // " + fieldName;
                     }
                     final String fieldName = updateFieldIndex(viewName, expr, fieldIndex);
                     return exprToStr(expr, true)  + " /* " + fieldName + " */";
                 })
                 .collect(Collectors.joining(",\n    "));
+
         // Add tuples to result set
         builder.addStatement("$L.add(new Tuple$L(\n    $L\n    ))", viewRecords, tupleSize, headItemsStr);
         builder.endControlFlow(); // end filter predicate if statement
