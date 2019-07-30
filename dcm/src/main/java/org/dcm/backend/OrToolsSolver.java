@@ -122,8 +122,13 @@ public class OrToolsSolver implements ISolverBackend {
         final MethodSpec.Builder builder = MethodSpec.methodBuilder("solve");
         addInitializer(builder);
         addArrayDeclarations(builder, context);
-        nonConstraintViews.forEach((name, comprehension) ->
-                addNonConstraintView(builder, name, comprehension, context));
+        nonConstraintViews
+                .forEach((name, comprehension) -> {
+                    System.out.println("HERE " + comprehension);
+                    final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
+                    System.out.println("THERE " + comprehension);
+                    addNonConstraintView(builder, name, rewrittenComprehension, context);
+                });
         addSolvePhase(builder, context);
         final MethodSpec solveMethod = builder.addStatement("return null").build();
 
@@ -144,27 +149,26 @@ public class OrToolsSolver implements ISolverBackend {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
             final MonoidComprehension inner = groupByComprehension.getComprehension();
-            final GroupByQualifier qualifier = groupByComprehension.getGroupByQualifier();
+            final GroupByQualifier groupByQualifier = groupByComprehension.getGroupByQualifier();
 
             // Rewrite inner comprehension using the following rule:
             // [ [blah - sum(X) | <....>] | G]
             //                     rows
             //
             System.out.println(inner);
-            System.out.println(qualifier);
-//            builder.beginControlFlow("for (int i = 0; )")
-            buildInnerComprehension(builder, "tmp", inner);
+            System.out.println(groupByQualifier);
+            buildInnerComprehension(builder, "tmp", inner, groupByQualifier);
             System.out.println(builder.build());
-//            builder.beginControlFlow();
 //            throw new UnsupportedOperationException("Does not support group bys yet");
         } else {
-            buildInnerComprehension(builder, viewName, comprehension);
+            buildInnerComprehension(builder, viewName, comprehension, null);
         }
 
     }
 
     private void buildInnerComprehension(final MethodSpec.Builder builder, final String viewName,
-                                         final MonoidComprehension comprehension) {
+                                         final MonoidComprehension comprehension,
+                                         @Nullable final GroupByQualifier groupByQualifier) {
         Preconditions.checkNotNull(comprehension.getHead());
         builder.addCode("\n").addComment("Non-constraint view $L", viewName);
 
@@ -196,7 +200,16 @@ public class OrToolsSolver implements ISolverBackend {
         final TypeSpec tupleSpec = tupleGen.computeIfAbsent(tupleSize, OrToolsSolver::tupleGen);
 
         final String viewRecords = nonConstraintViewName(viewName);
-        builder.addStatement("final $T<$N> $L = new $T<>()", List.class, tupleSpec, viewRecords, ArrayList.class);
+
+        if (groupByQualifier != null) {
+            // Create group by tuple
+            final int numberOfGroupColumns = groupByQualifier.getColumnIdentifiers().size();
+            final TypeSpec groupTupleSpec = tupleGen.computeIfAbsent(numberOfGroupColumns, OrToolsSolver::tupleGen);
+            builder.addStatement("final Map<$N, $T<$N>> $L = new $T<>()",
+                                 groupTupleSpec, List.class, tupleSpec, viewRecords, HashMap.class);
+        } else {
+            builder.addStatement("final $T<$N> $L = new $T<>()", List.class, tupleSpec, viewRecords, ArrayList.class);
+        }
 
         // Create nested for loops
         tableRowGenerators.forEach(tr -> {
@@ -218,29 +231,33 @@ public class OrToolsSolver implements ISolverBackend {
         // Add filter predicate
         builder.beginControlFlow("if ($L)", predicateStr);
 
-        // If predicate is true, then add select expressions to result set
+        // If predicate is true, then retreive expressions to collect into result set. Note, this does not
+        // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
         final AtomicInteger fieldIndex = new AtomicInteger();
         final String headItemsStr = comprehension.getHead().getSelectExprs().stream()
-                .map(expr -> {
-                    // Implies that this is an aggregate query. We assume that the 'aggregate' is computed
-                    // outside the function.
-                    if (expr instanceof MonoidFunction) {
-                        // Intermediate views need to have field names mapped to field indexes. The only way
-                        // for a user to refer to a specific field is if they have set an alias for it. If not,
-                        // we generate a name. Generated names are only used to advance the field name index, and
-                        // it should not happen that a view is able to refer to it directly.
-                        final Expr argument = ((MonoidFunction) expr).getArgument();
-                        final String fieldName = updateFieldIndex(viewName, argument, fieldIndex);
-                        assert !(argument instanceof MonoidFunction);
-                        return exprToStr(argument, true) + " // " + fieldName;
-                    }
-                    final String fieldName = updateFieldIndex(viewName, expr, fieldIndex);
-                    return exprToStr(expr, true)  + " /* " + fieldName + " */";
-                })
+                .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex))
                 .collect(Collectors.joining(",\n    "));
 
-        // Add tuples to result set
-        builder.addStatement("$L.add(new Tuple$L(\n    $L\n    ))", viewRecords, tupleSize, headItemsStr);
+        // Create a tuple for the result set
+        builder.addStatement("final Tuple$1L tuple = new Tuple$1L(\n    $2L\n    )", tupleSize, headItemsStr);
+
+        // Update result set
+        if (groupByQualifier != null) {
+            final int numberOfGroupByColumns = groupByQualifier.getColumnIdentifiers().size();
+
+            // Comma separated list of field accesses to construct a group string
+            final String groupString = groupByQualifier.getColumnIdentifiers().stream()
+                    .map(e -> fieldNameStrWithIter(e.getTableName(), e.getField().getName()))
+                    .collect(Collectors.joining(",     \n"));
+
+            // Organize the collected tuples from the nested for loops by groupByTuple
+            builder.addStatement("final Tuple$1L groupByTuple = new Tuple$1L(\n    $2L\n    )",
+                                 numberOfGroupByColumns, groupString);
+            builder.addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(tuple)",
+                                 viewRecords, ArrayList.class);
+        } else {
+            builder.addStatement("$L.add(tuple)", viewRecords);
+        }
         builder.endControlFlow(); // end filter predicate if statement
 
         // Pop nested for loops
@@ -248,6 +265,23 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Print debugging info
         // builder.addStatement("$T.out.println($N)", System.class, viewRecords);
+    }
+
+    private String convertToFieldAccess(final Expr expr, final String viewName, final AtomicInteger fieldIndex) {
+        // Implies that this is an aggregate query. We assume that the 'aggregate' is computed
+        // outside the function.
+        if (expr instanceof MonoidFunction) {
+            // Intermediate views need to have field names mapped to field indexes. The only way
+            // for a user to refer to a specific field is if they have set an alias for it. If not,
+            // we generate a name. Generated names are only used to advance the field name index, and
+            // it should not happen that a view is able to refer to it directly.
+            final Expr argument = ((MonoidFunction) expr).getArgument();
+            final String fieldName = updateFieldIndex(viewName, argument, fieldIndex);
+            assert !(argument instanceof MonoidFunction);
+            return exprToStr(argument, true) + " // " + fieldName;
+        }
+        final String fieldName = updateFieldIndex(viewName, expr, fieldIndex);
+        return exprToStr(expr, true)  + " /* " + fieldName + " */";
     }
 
     private String updateFieldIndex(final String viewName, final Expr argument, final AtomicInteger counter) {
@@ -468,14 +502,46 @@ public class OrToolsSolver implements ISolverBackend {
                                                     .returns(String.class)
                                                     .addStatement("return String.format($S, $L)", "(%s)", toPrint)
                                                     .build();
+        final MethodSpec hashCodeMethod = MethodSpec.methodBuilder("hashCode")
+                                                    .addAnnotation(Override.class)
+                                                    .addModifiers(Modifier.PUBLIC)
+                                                    .returns(int.class)
+                                                    .addStatement("return this.toString().hashCode()")
+                                                    .build();
+        final MethodSpec.Builder equals = MethodSpec.methodBuilder("equals")
+                .addAnnotation(Override.class)
+                .addModifiers(Modifier.PUBLIC)
+                .returns(boolean.class)
+                .addParameter(Object.class, "other", Modifier.FINAL)
+                .beginControlFlow("if (other == this)")
+                .addStatement("return true")
+                .endControlFlow()
+                .beginControlFlow("if (!(other instanceof Tuple$L))", numFields)
+                .addStatement("return false")
+                .endControlFlow()
+                .addStatement("final Tuple$1L that = (Tuple$1L) other", numFields)
+                .addCode("return ");
+
+        for (int i = 0; i < numFields; i++) {
+                equals
+                .addCode("this.value$1L().equals(that.value$1L())", i);
+        }
+        equals.addCode(";\n");
+        final MethodSpec equalsMethod = equals.build();
         return classBuilder.addMethod(constructor.build())
                            .addMethod(toStringMethod)
+                           .addMethod(hashCodeMethod)
+                           .addMethod(equalsMethod)
                            .build();
     }
 
     private String exprToStr(final Expr expr, final boolean allowControllable) {
         final ExprToStrVisitor visitor = new ExprToStrVisitor();
         return Objects.requireNonNull(visitor.visit(expr, allowControllable));
+    }
+
+    private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
+        return RewriteArity.apply(RewriteCountFunction.apply(comprehension));
     }
 
     private class ExprToStrVisitor extends MonoidVisitor<String, Boolean> {
