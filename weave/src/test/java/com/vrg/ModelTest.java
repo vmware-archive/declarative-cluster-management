@@ -31,6 +31,7 @@ import static org.jooq.impl.DSL.using;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Tests Weave's use of a constraint solver. Place the mzn files in src/text/java/.../resources folder to
@@ -777,7 +778,7 @@ public class ModelTest {
                 "join pod_info\n" +
                 "     on pod_info.controllable__node_name = node_info.name\n" +
                 "where status = 'Pending'\n" +
-                "group by node_info.name;");
+                "group by node_info.name, node_info.cpu_allocatable;");
 
         conn.execute("insert into node_info values ('n1', 10)");
         conn.execute("insert into pod_info values ('p1', 'Pending', 'n1', 5)");
@@ -847,7 +848,7 @@ public class ModelTest {
                 "join pod_info\n" +
                 "     on pod_info.controllable__node_name = node_info.name\n" +
                 "where status = 'Pending'\n" +
-                "group by node_info.name;");
+                "group by node_info.name, node_info.cpu_allocatable;");
 
         for (int i = 0; i < 50; i++) {
             conn.execute(String.format("insert into node_info values ('n%s', 10)", i));
@@ -1363,6 +1364,266 @@ public class ModelTest {
                 "  sum(pod_info.pods_request) < node_info.pods_allocatable;");
 
         buildWeaveModel(conn, views, modelName);
+    }
+
+    @Test
+    public void testAllQueries() {
+        final String modelName = "testAllQueries";
+        final DSLContext conn = setup();
+        conn.execute("create table pod_info\n" +
+                "(\n" +
+                "  pod_name varchar(100) not null primary key,\n" +
+                "  status varchar(36) not null,\n" +
+                "  controllable__node_name varchar(36) not null, \n" +
+                "  namespace varchar(100) not null,\n" +
+                "  cpu_request bigint not null,\n" +
+                "  memory_request bigint not null,\n" +
+                "  ephemeral_storage_request bigint not null,\n" +
+                "  pods_request bigint not null,\n" +
+                "  owner_name varchar(100) not null,\n" +
+                "  creation_timestamp varchar(100) not null,\n" +
+                "  priority integer not null,\n" +
+                "  has_node_affinity boolean not null\n" +
+                ")\n");
+
+        conn.execute("create table node_info\n" +
+                "(\n" +
+                "  name varchar(36) not null primary key,\n" +
+                "  isMaster boolean not null,\n" +
+                "  unschedulable boolean not null,\n" +
+                "  out_of_disk boolean not null,\n" +
+                "  memory_pressure boolean not null,\n" +
+                "  disk_pressure boolean not null,\n" +
+                "  pid_pressure boolean not null,\n" +
+                "  ready boolean not null,\n" +
+                "  network_unavailable boolean not null,\n" +
+                "  cpu_capacity bigint not null,\n" +
+                "  memory_capacity bigint not null,\n" +
+                "  ephemeral_storage_capacity bigint not null,\n" +
+                "  pods_capacity bigint not null,\n" +
+                "  cpu_allocatable bigint not null,\n" +
+                "  memory_allocatable bigint not null,\n" +
+                "  ephemeral_storage_allocatable bigint not null,\n" +
+                "  pods_allocatable bigint not null\n" +
+                ")");
+
+        conn.execute("create table pod_affinity_match_expressions\n" +
+                "(\n" +
+                "  pod_name varchar(100) not null,\n" +
+                "  label_key varchar(100) not null,\n" +
+                "  label_value varchar(36) not null,\n" +
+                "  operator varchar(30) not null,\n" +
+                "  topology_key varchar(100) not null,\n" +
+                "  foreign key(pod_name) references pod_info(pod_name)\n" +
+                ")\n");
+
+        conn.execute("create table pod_ports_request\n" +
+                "(\n" +
+                "  pod_name varchar(100) not null,\n" +
+                "  host_ip varchar(100) not null,\n" +
+                "  host_port integer not null,\n" +
+                "  host_protocol varchar(10) not null,\n" +
+                "  foreign key(pod_name) references pod_info(pod_name)\n" +
+                ")");
+
+        conn.execute("create table pod_labels\n" +
+                "(\n" +
+                "  pod_name varchar(100) not null,\n" +
+                "  label_key varchar(100) not null,\n" +
+                "  label_value varchar(36) not null,\n" +
+                "  is_selector boolean not null,\n" +
+                "  foreign key(pod_name) references pod_info(pod_name)\n" +
+                ")\n");
+
+        conn.execute("create table pod_node_selector_labels\n" +
+                "(\n" +
+                "  pod_name varchar(100) not null,\n" +
+                "  label_key varchar(100) not null,\n" +
+                "  label_value varchar(36) not null,\n" +
+                "  operator varchar(30) not null,\n" +
+                "  foreign key(pod_name) references pod_info(pod_name)\n" +
+                ")");
+
+        conn.execute("create table node_labels\n" +
+                "(\n" +
+                "  node_name varchar(36) not null,\n" +
+                "  label_key varchar(100) not null,\n" +
+                "  label_value varchar(36) not null,\n" +
+                "  foreign key(node_name) references node_info(name)\n" +
+                ")");
+
+        conn.execute("create table pod_by_service\n" +
+                "(\n" +
+                "  pod_name varchar(100) not null,\n" +
+                "  service_name varchar(100) not null,\n" +
+                "  foreign key(pod_name) references pod_info(pod_name)\n" +
+                ")");
+
+        conn.execute("create table service_affinity_labels\n" +
+                "(label_key varchar(100) not null\n)");
+
+        insert_data(conn);
+
+        final StringBuilder stringBuilder = new StringBuilder();
+        final String pod_with_affinity_expr = "create view pod_with_affinity_expr as\n" +
+                "  select distinct \n" +
+                "  pod_info.pod_name as pod_name,\n" +
+                "  pod_affinity_match_expressions.label_key as match_key,\n" +
+                "  pod_affinity_match_expressions.label_value as match_value,\n" +
+                "  pod_info.controllable__node_name as node_name\n" +
+                "from pod_info join pod_affinity_match_expressions \n" +
+                "on pod_info.pod_name = pod_affinity_match_expressions.pod_name\n";
+        conn.execute(pod_with_affinity_expr);
+
+        final String candidate_nodes_for_pods = "create view candidate_nodes_for_pods as\n" +
+                "select pod_info.pod_name, node_labels.node_name\n" +
+                "from pod_info\n" +
+                "join pod_node_selector_labels\n" +
+                "     on pod_info.pod_name = pod_node_selector_labels.pod_name\n" +
+                "join node_labels\n" +
+                "     on node_labels.label_key = pod_node_selector_labels.label_key\n" +
+                "     and node_labels.label_value = pod_node_selector_labels.label_value";
+        conn.execute(candidate_nodes_for_pods);
+
+        final String pod_with_labels = "create view pod_with_labels  as\n" +
+                "  select distinct \n" +
+                "  pod_info.pod_name as pod_name,\n" +
+                "  pod_labels.label_key as label_key,\n" +
+                "  pod_labels.label_value as label_value,\n" +
+                "  pod_info.controllable__node_name as node_name\n" +
+                "from pod_info join pod_labels \n" +
+                "on pod_info.pod_name = pod_labels.pod_name\n";
+        conn.execute(pod_with_labels);
+
+        final String pods_with_port_requests = "create view pods_with_port_requests as\n" +
+                "select pod_info.controllable__node_name as node_name,\n" +
+                "       pod_ports_request.host_port as host_port,\n" +
+                "       pod_ports_request.host_ip as host_ip,\n" +
+                "       pod_ports_request.host_protocol as host_protocol\n" +
+                "from pod_info\n" +
+                "join pod_ports_request\n" +
+                "     on pod_ports_request.pod_name = pod_info.pod_name";
+        conn.execute(pods_with_port_requests);
+
+        final String services_with_affinity_labels = "create view services_with_affinity_labels as \n" +
+                "select pod_by_service.service_name as service_name, pod_info.controllable__node_name" +
+                " as node_name\n" +
+                "from pod_by_service\n" +
+                "join pod_info\n" +
+                "on pod_info.pod_name = pod_by_service.pod_name\n" +
+                "join pod_labels \n" +
+                "on pod_info.pod_name = pod_labels.pod_name\n" +
+                "join service_affinity_labels on \n" +
+                "pod_labels.label_key = service_affinity_labels.label_key ";
+        conn.execute(services_with_affinity_labels);
+
+        final String constraint_node_predicates = "create view constraint_node_predicates as\n" +
+                "select *\n" +
+                "from pod_info\n" +
+                "join node_info\n" +
+                "     on pod_info.controllable__node_name = node_info.name\n" +
+                "where node_info.unschedulable = false and\n" +
+                "      node_info.memory_pressure = false and\n" +
+                "      node_info.disk_pressure = false and\n" +
+                "      node_info.pid_pressure = false and\n" +
+                "      node_info.network_unavailable = false and\n" +
+                "      node_info.ready = true";
+
+        final String constraint_pod_to_pod_affinity = "create view constraint_pod_to_pod_affinity as \n" +
+                "select * from pod_with_affinity_expr  join pod_with_labels on \n" +
+                "pod_with_affinity_expr.match_key = pod_with_labels.label_key and \n" +
+                "pod_with_affinity_expr.match_value = pod_with_labels.label_value and\n" +
+                "pod_with_affinity_expr.pod_name != pod_with_labels.pod_name \n" +
+                "where (\n" +
+                "pod_with_affinity_expr.node_name in (\n" +
+                "select pod_with_labels.node_name as node_name\n" +
+                "from pod_with_labels join pod_with_affinity_expr on \n" +
+                "pod_with_affinity_expr.match_key = pod_with_labels.label_key and \n" +
+                "pod_with_affinity_expr.match_value = pod_with_labels.label_value and\n" +
+                "pod_with_affinity_expr.pod_name != pod_with_labels.pod_name \n" +
+                "where " +
+                "pod_with_affinity_expr.match_key = pod_with_labels.label_key and \n" +
+                "pod_with_affinity_expr.match_value = pod_with_labels.label_value and\n" +
+                "pod_with_affinity_expr.pod_name != pod_with_labels.pod_name))";
+
+        final String constraint_capacity = "create view constraint_capacity as\n" +
+                "select\n" +
+                "  node_info.name as name\n" +
+                "from\n" +
+                "  node_info\n" +
+                "  join pod_info on pod_info.controllable__node_name = node_info.name\n" +
+                "group by\n" +
+                "  node_info.name, node_info.cpu_allocatable,\n" +
+                "  node_info.memory_allocatable, node_info.pods_allocatable " +
+                "having\n" +
+                "  sum(pod_info.cpu_request) < node_info.cpu_allocatable and\n" +
+                "  sum(pod_info.memory_request) < node_info.memory_allocatable and\n" +
+                "  sum(pod_info.pods_request) < node_info.pods_allocatable\n";
+
+        final String constraint_service_affinity_labels = "create view constraint_service_affinity_labels as\n" +
+                "select *\n" +
+                "from services_with_affinity_labels\n" +
+                "join node_labels\n" +
+                "     on node_labels.node_name = services_with_affinity_labels.node_name\n" +
+                "group by services_with_affinity_labels.service_name\n" +
+                "having all_equal(node_labels.label_value) = true";
+
+        final String constraint_fk_constraint = "create view constraint_fk as\n" +
+                "select * from pod_info where \n" +
+                "pod_info.controllable__node_name in (select name from node_info)";
+
+        stringBuilder.append(
+                constraint_fk_constraint + ";" +
+                        constraint_node_predicates + ";" +
+                        constraint_pod_to_pod_affinity + ";" +
+                        constraint_capacity + ";" +
+                        constraint_service_affinity_labels
+        );
+        final List<String> views = toListOfViews(stringBuilder.toString());
+        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+        weaveModel.updateData();
+        assertThrows(WeaveModel.WeaveModelException.class, weaveModel::solveModel);
+    }
+
+    private void insert_data(final DSLContext conn) {
+        for (int index = 1; index <= 10; index++) {
+            String node = "null";
+            if (index > 5) {
+                node = "n6";
+            }
+            conn.execute("insert into pod_info values ('" + index + "', 'P', '" + node + "', 'default'," +
+                    " 1, 1, 1, 1, '1', '1', 1, true)");
+        }
+
+        conn.execute("insert into node_info values ('n6', false, false, false, false, false, false, " +
+                "true, false, 5, 5, 5, 5, 5, 5, 5, 5)");
+        // valid node has no more space
+        for (int index = 1; index <= 10; index++) {
+            if (index == 6) {
+                continue;
+            }
+            conn.execute("insert into node_info values ('n" + index + "', false, false, false, false, " +
+                    "false, false, false, false, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000)");
+        } // other nodes that do have space are not allowed to have a pod residing on them
+
+        for (int index = 1; index <= 10; index++) {
+            String serviceNumber = "s1";
+            String label = "label1";
+            if (index > 5) {
+                label = "label2";
+                serviceNumber = "s2";
+            }
+            conn.execute("insert into pod_affinity_match_expressions values ('" + index + "', '" + label + "', " +
+                    "'value1', '1', '1')");
+            conn.execute("insert into pod_labels values ('" + index + "', '" + label + "', 'value1', true)");
+            conn.execute("insert into pod_node_selector_labels values ('" + index + "', '" +
+                    label + "', 'value1', true)");
+            conn.execute("insert into node_labels values ('n" + index + "', '" + label + "', 'value1')");
+            conn.execute("insert into pod_by_service values ('" + index + "', '" + serviceNumber + "')");
+        }
+
+        conn.execute("insert into service_affinity_labels values ('label1')");
+        conn.execute("insert into service_affinity_labels values ('label2')");
     }
 
 

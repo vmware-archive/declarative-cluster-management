@@ -543,7 +543,7 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                 // table iterators.
                 final String op = groupByInnerComprehensionQualifier == null ?
                         MinizincString.columnNameWithIteration((ColumnIdentifier) expr) :
-                        MinizincString.columnNameWithIteration((ColumnIdentifier) expr, GROUP_KEY);
+                        MinizincString.groupColumnNameWithIteration(viewName, (ColumnIdentifier) expr);
                 operands.push(op);
             } else if (expr instanceof MonoidLiteral) {
                 operands.push(((MonoidLiteral) expr).getValue().toString());
@@ -635,7 +635,7 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                 final BinaryOperatorPredicate operator = (BinaryOperatorPredicate) expr;
                 operands.push(String.format("(%s) %s (%s)", left, operator.getOperator(), right));
             } else if (expr instanceof ColumnIdentifier) {
-                operands.push(MinizincString.columnNameWithIteration((ColumnIdentifier) expr, GROUP_KEY));
+                operands.push(MinizincString.groupColumnNameWithIteration(viewName, (ColumnIdentifier) expr));
             } else if (expr instanceof MonoidLiteral) {
                 operands.push(((MonoidLiteral) expr).getValue().toString());
             } else {
