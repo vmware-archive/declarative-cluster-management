@@ -30,6 +30,7 @@ import static junit.framework.TestCase.assertTrue;
 import static org.jooq.impl.DSL.using;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 
 /**
  * Tests Weave's use of a constraint solver. Place the mzn files in src/text/java/.../resources folder to
@@ -785,6 +786,36 @@ public class ModelTest {
         final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
         weaveModel.updateData();
         weaveModel.solveModel();
+    }
+
+    @Test
+    public void testForAllWithJoin() {
+        final String modelName = "testForAllWithJoin";
+        final DSLContext conn = setup();
+        conn.execute("create table t1\n" +
+                "(\n" +
+                "  c1 integer not null primary key,\n" +
+                "  controllable__c2 integer not null \n" +
+                ")\n");
+        conn.execute("create table t2\n" +
+                "(\n" +
+                "  c1 integer not null primary key" +
+                ")");
+        final String pod_info_constant = "create view constraint_ex as\n" +
+                " select * from t1 join t2 on t1.c1 = t2.c1" +
+                " where controllable__c2 = t1.c1";
+        conn.execute("insert into t1 values (1, 1)");
+        conn.execute("insert into t1 values (2, 1)");
+        conn.execute("insert into t1 values (3, 1)");
+        conn.execute("insert into t2 values (1)");
+        conn.execute("insert into t2 values (2)");
+        final WeaveModel weaveModel = buildWeaveModel(conn, Collections.singletonList(pod_info_constant), modelName);
+        weaveModel.updateData();
+        weaveModel.solveModel();
+        final Result<Record> t1 = conn.selectFrom("t1").fetch();
+        assertEquals(1, t1.get(0).get("CONTROLLABLE__C2"));
+        assertEquals(2, t1.get(1).get("CONTROLLABLE__C2"));
+        assertNotEquals(3, t1.get(2).get("CONTROLLABLE__C2"));
     }
 
 

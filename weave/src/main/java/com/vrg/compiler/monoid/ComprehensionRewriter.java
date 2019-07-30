@@ -42,7 +42,7 @@ public class ComprehensionRewriter<T> extends MonoidVisitor<Expr, T> {
                         new BinaryOperatorPredicateWithAggregate(node.getOperator(), left, right) :
                         new BinaryOperatorPredicate(node.getOperator(), left, right);
         node.getAlias().ifPresent(predicate::setAlias);
-        return predicate;
+        return node instanceof JoinPredicate ? new JoinPredicate(predicate) : predicate;
     }
 
     @Override
