@@ -189,7 +189,7 @@ public class OrToolsSolver implements ISolverBackend {
                     }
                 }
         );
-        Preconditions.checkArgument(aggregatePredicates.size() == 0); // Temporary
+        Preconditions.checkArgument(aggregatePredicates.isEmpty()); // Temporary
 
         // Initialize an arraylist to collect results and generate the required tuple sizes
         final int tupleSize = comprehension.getHead().getSelectExprs().size();
