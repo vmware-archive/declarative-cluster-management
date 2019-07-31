@@ -92,10 +92,12 @@ public class OrToolsSolver implements ISolverBackend {
                                                 .returns(IntVar.class)
                                                 .addStatement("return model.newIntVar(0, Integer.MAX_VALUE - 1, name)")
                                                 .build();
-    private static final Map<Integer, TypeSpec> tupleGen = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
     private final AtomicInteger generatedFieldNameCounter = new AtomicInteger();
     private final AtomicInteger intermediateViewCounter = new AtomicInteger();
+    private final Map<String, Map<String, String>> tableToFieldToType = new HashMap<>();
+    private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
+    private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
 
     static {
         System.loadLibrary("jniortools");
@@ -144,7 +146,7 @@ public class OrToolsSolver implements ISolverBackend {
                 .addSuperinterface(IGeneratedBackend.class)
                 .addMethod(solveMethod)
                 .addMethod(intVarNoBounds);
-        tupleGen.values().forEach(backendClassBuilder::addType); // Add tuple types
+        TupleGen.getAllTupleTypes().forEach(backendClassBuilder::addType); // Add tuple types
 
         final TypeSpec spec = backendClassBuilder.build();
         return compile(spec);
@@ -162,29 +164,43 @@ public class OrToolsSolver implements ISolverBackend {
             // [ [blah - sum(X) | <....>] | G]
             //                     rows
             //
-            final String tmpName = "tmp" + intermediateViewCounter.getAndIncrement();
-            buildInnerComprehension(builder, tmpName, inner, groupByQualifier);
 
+            // We create an intermediate view that extracts groups and returns a List<Tuple> per group
+            final String intermediateView = "tmp" + intermediateViewCounter.getAndIncrement();
+            buildInnerComprehension(builder, intermediateView, inner, groupByQualifier);
+
+            // We now construct the actual result set that hosts the aggregated tuples by group. This is done
+            // in two steps...
             final int groupByQualifiersSize = groupByQualifier.getColumnIdentifiers().size();
-
-            // Evaluate head items. Columns are accessed from the group tuples, and
-            // functions are evaluated on the list of tuples per group
-
+            final int selectExprSize = inner.getHead().getSelectExprs().size();
+            final String groupByTupleTypeParameters = viewGroupByTupleTypeParameters.get(intermediateView);
+            final String headItemsTupleTypeParamters = viewTupleTypeParameters.get(intermediateView);
             assert inner.getHead() != null;
-            final int innerTupleSize = viewToFieldIndex.get(tmpName.toUpperCase(Locale.US)).size();
-            builder.beginControlFlow("for (final $T<Tuple$L, List<Tuple$L>> entry: $L.entrySet())",
-                                     Map.Entry.class, groupByQualifiersSize, innerTupleSize, tmpName);
-            builder.addStatement("final Tuple$L group = entry.getKey()", groupByQualifiersSize);
-            builder.addStatement("final List<Tuple$L> data = entry.getValue()", innerTupleSize);
+            final int innerTupleSize = viewToFieldIndex.get(intermediateView.toUpperCase(Locale.US)).size();
 
-            int selectExprSize = inner.getHead().getSelectExprs().size();
-            final TypeSpec typeSpec = tupleGen.computeIfAbsent(selectExprSize, OrToolsSolver::tupleGen);
-            builder.addCode("final $1N res = new $1N(", typeSpec);
+            // (1) Create the result set
+            builder.addCode("\n");
+            builder.addComment("Non-constraint view $L", tableNameStr(viewName));
+            final TypeSpec typeSpec = TupleGen.getTupleType(selectExprSize);
+            final String viewTupleGenericParameters = generateTupleGenericParameters(inner.getHead().getSelectExprs());
+            viewTupleTypeParameters.put(tableNameStr(viewName), viewTupleGenericParameters);
+            builder.addStatement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
+                                  viewTupleGenericParameters, tableNameStr(viewName), ArrayList.class, intermediateView);
+
+            // (2) Populate the result set
+            builder.beginControlFlow("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
+                                     Map.Entry.class, groupByQualifiersSize, groupByTupleTypeParameters, innerTupleSize,
+                                     headItemsTupleTypeParamters, intermediateView);
+            builder.addStatement("final Tuple$L<$L> group = entry.getKey()", groupByQualifiersSize,
+                                                                             groupByTupleTypeParameters);
+            builder.addStatement("final List<Tuple$L<$L>> data = entry.getValue()", innerTupleSize,
+                                                                                   headItemsTupleTypeParamters);
+            builder.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
             inner.getHead().getSelectExprs()
                     .forEach(
                         e -> {
                             final String result =
-                                    exprToStr(e, true, new GroupContext(groupByQualifier, tmpName));
+                                    exprToStr(e, true, new GroupContext(groupByQualifier, intermediateView));
                             if (result.contains("$T")) {
                                 builder.addCode(result, Collectors.class);
                             } else {
@@ -194,7 +210,6 @@ public class OrToolsSolver implements ISolverBackend {
                     );
             builder.addCode(");\n");
             builder.endControlFlow();
-//            throw new UnsupportedOperationException("Does not support group bys yet");
         } else {
             buildInnerComprehension(builder, viewName, comprehension, null);
         }
@@ -244,21 +259,29 @@ public class OrToolsSolver implements ISolverBackend {
         final String headItemsStr = headItemsList.stream()
                 .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex))
                 .collect(Collectors.joining(",\n    "));
+        final String headItemsListTupleGenericParameters = generateTupleGenericParameters(headItemsList);
+        viewTupleTypeParameters.put(viewName, headItemsListTupleGenericParameters);
 
         final int tupleSize = headItemsList.size();
         // Generates a tuple type if needed
-        final TypeSpec tupleSpec = tupleGen.computeIfAbsent(tupleSize, OrToolsSolver::tupleGen);
+        final TypeSpec tupleSpec = TupleGen.getTupleType(tupleSize);
 
         final String viewRecords = nonConstraintViewName(viewName);
 
         if (groupByQualifier != null) {
             // Create group by tuple
             final int numberOfGroupColumns = groupByQualifier.getColumnIdentifiers().size();
-            final TypeSpec groupTupleSpec = tupleGen.computeIfAbsent(numberOfGroupColumns, OrToolsSolver::tupleGen);
-            builder.addStatement("final Map<$N, $T<$N>> $L = new $T<>()",
-                                 groupTupleSpec, List.class, tupleSpec, viewRecords, HashMap.class);
+            final String groupByTupleGenericParameters =
+                    generateTupleGenericParameters(groupByQualifier.getColumnIdentifiers());
+            final TypeSpec groupTupleSpec = TupleGen.getTupleType(numberOfGroupColumns);
+            viewGroupByTupleTypeParameters.put(viewName, groupByTupleGenericParameters);
+            builder.addStatement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
+                                 groupTupleSpec, groupByTupleGenericParameters,
+                                 List.class, tupleSpec, headItemsListTupleGenericParameters,
+                                 viewRecords, HashMap.class);
         } else {
-            builder.addStatement("final $T<$N> $L = new $T<>()", List.class, tupleSpec, viewRecords, ArrayList.class);
+            builder.addStatement("final $T<$N<$L>> $L = new $T<>()",
+                    List.class, tupleSpec, headItemsListTupleGenericParameters, viewRecords, ArrayList.class);
         }
 
         // Create nested for loops
@@ -286,20 +309,20 @@ public class OrToolsSolver implements ISolverBackend {
         // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
 
         // Create a tuple for the result set
-        builder.addStatement("final Tuple$1L tuple = new Tuple$1L(\n    $2L\n    )", tupleSize, headItemsStr);
+        builder.addStatement("final Tuple$1L<$2L> tuple = new Tuple$1L<>(\n    $3L\n    )",
+                             tupleSize, headItemsListTupleGenericParameters, headItemsStr);
 
         // Update result set
         if (groupByQualifier != null) {
             final int numberOfGroupByColumns = groupByQualifier.getColumnIdentifiers().size();
-
             // Comma separated list of field accesses to construct a group string
             final String groupString = groupByQualifier.getColumnIdentifiers().stream()
                     .map(e -> fieldNameStrWithIter(e.getTableName(), e.getField().getName()))
                     .collect(Collectors.joining(",     \n"));
 
             // Organize the collected tuples from the nested for loops by groupByTuple
-            builder.addStatement("final Tuple$1L groupByTuple = new Tuple$1L(\n    $2L\n    )",
-                                 numberOfGroupByColumns, groupString);
+            builder.addStatement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
+                                 numberOfGroupByColumns, viewGroupByTupleTypeParameters.get(viewName), groupString);
             builder.addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(tuple)",
                                  viewRecords, ArrayList.class);
         } else {
@@ -345,34 +368,30 @@ public class OrToolsSolver implements ISolverBackend {
      * Creates array declarations and returns the set of tables that have controllable columns in them.
      */
     private void addArrayDeclarations(final MethodSpec.Builder builder, final IRContext context) throws ClassNotFoundException {
-        // Tables
         for (final IRTable table: context.getTables()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
             }
+            // For each table...
             builder.addComment("Table $S", table.getName());
+
+            // ...1) figure out the jooq record type (e.g., Record3<Integer, String, Boolean>)
             final Class recordType = Class.forName("org.jooq.Record" + table.getIRColumns().size());
             final String recordTypeParameters = table.getIRColumns().entrySet().stream()
-                    .map(e -> e.getValue().getType())
                     .map(e -> {
-                                switch (e) {
-                                    case STRING:
-                                        return "String";
-                                    case BOOL:
-                                        return "Boolean";
-                                    case INT:
-                                        return "Integer";
-                                    case FLOAT:
-                                        return "Float";
-                                    default:
-                                        throw new IllegalArgumentException();
-                                }
-                            }
+                        final String retVal = InferType.typeStringFromColumn(e.getValue());
+                        // Tracks the type of each field.
+                        tableToFieldToType.computeIfAbsent(table.getName(), (k) -> new HashMap<>())
+                                          .putIfAbsent(e.getKey(), retVal);
+                        return retVal;
+                    }
                     ).collect(Collectors.joining(", "));
+            // ...2) create a List<[RecordType]> to represent the table
             builder.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
                                  List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),
                                  recordType, recordTypeParameters, table.getName());
-            // Fields
+
+            // ...3) for controllable fields, create a corresponding array of IntVars.
             for (final Map.Entry<String, IRColumn> fieldEntrySet : table.getIRColumns().entrySet()) {
                 final String fieldName = fieldEntrySet.getKey();
                 final IRColumn field = fieldEntrySet.getValue();
@@ -460,7 +479,9 @@ public class OrToolsSolver implements ISolverBackend {
                 final int fieldIndex = viewToFieldIndex.get(tableName).get(fieldName);
                 return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr(tableName), fieldIndex);
             } else {
-                return String.format("%s.get(%s).get(\"%s\")", tableNameStr(tableName), iterStr(tableName), fieldName);
+                final String type = tableToFieldToType.get(tableName).get(fieldName);
+                return String.format("%s.get(%s).get(\"%s\", %s.class)",
+                        tableNameStr(tableName), iterStr(tableName), fieldName, type);
             }
         }
     }
@@ -531,75 +552,6 @@ public class OrToolsSolver implements ISolverBackend {
         this.context = context;
         return null;
     }
-
-    /**
-     * Create a tuple type with 'numFields' entries. Results in a generic "plain old java object"
-     * with a getter per field.
-     */
-    private static TypeSpec tupleGen(final int numFields) {
-        final TypeSpec.Builder classBuilder = TypeSpec.classBuilder("Tuple" + numFields)
-                                                     .addModifiers(Modifier.FINAL, Modifier.PRIVATE);
-        final MethodSpec.Builder constructor = MethodSpec.constructorBuilder()
-                                                         .addModifiers(Modifier.PRIVATE);
-        for (int i = 0; i < numFields; i++) {
-            final TypeVariableName type = TypeVariableName.get("T" + i);
-            // Add parameter to constructor
-            constructor.addParameter(type, "t" + i, Modifier.FINAL)
-                       .addStatement("this.$1L = $1L", "t" + i); // assign parameters to fields
-
-            // Create getter
-            final MethodSpec getter = MethodSpec.methodBuilder("value" + i)
-                    .returns(type)
-                    .addStatement("return t" + i)
-                    .build();
-
-            // Add field and getter to class
-            classBuilder.addTypeVariable(type)
-                        .addField(type, "t" + i, Modifier.PRIVATE, Modifier.FINAL)
-                        .addMethod(getter);
-        }
-
-        final String toPrint = IntStream.range(0, numFields)
-                                        .mapToObj(i -> "t" + i)
-                                        .collect(Collectors.joining(", "));
-        final MethodSpec toStringMethod = MethodSpec.methodBuilder("toString")
-                                                    .addAnnotation(Override.class)
-                                                    .addModifiers(Modifier.PUBLIC)
-                                                    .returns(String.class)
-                                                    .addStatement("return String.format($S, $L)", "(%s)", toPrint)
-                                                    .build();
-        final MethodSpec hashCodeMethod = MethodSpec.methodBuilder("hashCode")
-                                                    .addAnnotation(Override.class)
-                                                    .addModifiers(Modifier.PUBLIC)
-                                                    .returns(int.class)
-                                                    .addStatement("return this.toString().hashCode()")
-                                                    .build();
-        final MethodSpec.Builder equals = MethodSpec.methodBuilder("equals")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(boolean.class)
-                .addParameter(Object.class, "other", Modifier.FINAL)
-                .beginControlFlow("if (other == this)")
-                .addStatement("return true")
-                .endControlFlow()
-                .beginControlFlow("if (!(other instanceof Tuple$L))", numFields)
-                .addStatement("return false")
-                .endControlFlow()
-                .addStatement("final Tuple$1L that = (Tuple$1L) other", numFields)
-                .addCode("return ");
-
-        final String returnValue = IntStream.range(0, numFields)
-                .mapToObj(i -> String.format("this.value%s().equals(that.value%s())", i, i))
-                .collect(Collectors.joining(" && "));
-        equals.addCode("$L;\n", returnValue);
-        final MethodSpec equalsMethod = equals.build();
-        return classBuilder.addMethod(constructor.build())
-                           .addMethod(toStringMethod)
-                           .addMethod(hashCodeMethod)
-                           .addMethod(equalsMethod)
-                           .build();
-    }
-
     private String exprToStr(final Expr expr) {
         return exprToStr(expr, true, null);
     }
@@ -613,6 +565,18 @@ public class OrToolsSolver implements ISolverBackend {
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
         return RewriteArity.apply(RewriteCountFunction.apply(comprehension));
     }
+
+    private <T extends Expr> String generateTupleGenericParameters(final List<T> exprs) {
+        return exprs.stream().map(this::generateTupleGenericParameters)
+                             .collect(Collectors.joining(", "));
+    }
+
+    private String generateTupleGenericParameters(final Expr expr) {
+        final InferType visitor = new InferType();
+        final String result = visitor.visit(expr);
+        return Objects.requireNonNull(result);
+    }
+
 
     private class ExprToStrVisitor extends MonoidVisitor<String, Boolean> {
         private final boolean allowControllable;
@@ -724,21 +688,6 @@ public class OrToolsSolver implements ISolverBackend {
         private GroupContext(final GroupByQualifier qualifier, final String groupViewName) {
             this.qualifier = qualifier;
             this.groupViewName = groupViewName;
-        }
-    }
-
-    private static class GetColumnIdentifiers extends MonoidVisitor<Void, Void> {
-        private final LinkedHashSet<ColumnIdentifier> columnIdentifiers = new LinkedHashSet<>();
-
-        @Nullable
-        @Override
-        protected Void visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Void context) {
-            columnIdentifiers.add(node);
-            return super.visitColumnIdentifier(node, context);
-        }
-
-        private LinkedHashSet<ColumnIdentifier> getColumnIdentifiers() {
-            return columnIdentifiers;
         }
     }
 }
