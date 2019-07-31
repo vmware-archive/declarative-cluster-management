@@ -422,6 +422,7 @@ public class OrToolsSolver implements ISolverBackend {
                .addParameter(IRContext.class, "context")
                .addComment("Create the model.")
                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
+               .addStatement("final $1T o = new $1T(model);", Ops.class)
                .addCode("\n");
     }
 
@@ -572,9 +573,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private String generateTupleGenericParameters(final Expr expr) {
-        final InferType visitor = new InferType();
-        final String result = visitor.visit(expr);
-        return Objects.requireNonNull(result);
+        return InferType.forExpr(expr);
     }
 
 
@@ -592,7 +591,8 @@ public class OrToolsSolver implements ISolverBackend {
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
             final String processedArgument = visit(node.getArgument(), true);
             final String functionName = node.getFunctionName();
-            final String ret = String.format("%s(data.stream()\n        .map(t -> %s)\n        .collect($T.toList()))",
+            Preconditions.checkArgument(functionName.equalsIgnoreCase("sum"));
+            final String ret = String.format("o.%s(data.stream()\n      .map(t -> %s)\n      .collect($T.toList()))",
                                               functionName, processedArgument);
             System.out.println(ret);
             System.out.println(processedArgument);
@@ -606,33 +606,63 @@ public class OrToolsSolver implements ISolverBackend {
             final String left = visit(node.getLeft(), isFunctionContext);
             final String right = visit(node.getRight(), isFunctionContext);
             final String op = node.getOperator();
-            switch (op) {
-                case "==":
-                    return String.format("eq(%s, %s)", left, right);
-                case "!=":
-                    return String.format("ne(%s, %s)", left, right);
-                case "/\\":
-                    return String.format("and(%s, %s)", left, right);
-                case "\\/":
-                    return String.format("or(%s, %s)", left, right);
-                case "<=":
-                    return String.format("leq(%s, %s)", left, right);
-                case "<":
-                    return String.format("le(%s, %s)", left, right);
-                case ">=":
-                    return String.format("geq(%s, %s)", left, right);
-                case ">":
-                    return String.format("gt(%s, %s)", left, right);
-                case "+":
-                    return String.format("plus(%s, %s)", left, right);
-                case "-":
-                    return String.format("minus(%s, %s)", left, right);
-                case "*":
-                    return String.format("mult(%s, %s)", left, right);
-                case "/":
-                    return String.format("div(%s, %s)", left, right);
-                default:
-                    throw new UnsupportedOperationException();
+            final String leftType = InferType.forExpr(node.getLeft());
+            final String rightType = InferType.forExpr(node.getRight());
+
+            if (leftType.equals("IntVar") || rightType.equals("IntVar")) {
+                // We need to generate an IntVar.
+                switch (op) {
+                    case "==":
+                        return String.format("eq(%s, %s)", left, right);
+                    case "!=":
+                        return String.format("ne(%s, %s)", left, right);
+                    case "/\\":
+                        return String.format("and(%s, %s)", left, right);
+                    case "\\/":
+                        return String.format("or(%s, %s)", left, right);
+                    case "<=":
+                        return String.format("leq(%s, %s)", left, right);
+                    case "<":
+                        return String.format("le(%s, %s)", left, right);
+                    case ">=":
+                        return String.format("geq(%s, %s)", left, right);
+                    case ">":
+                        return String.format("gt(%s, %s)", left, right);
+                    case "+":
+                        return String.format("plus(%s, %s)", left, right);
+                    case "-":
+                        return String.format("minus(%s, %s)", left, right);
+                    case "*":
+                        return String.format("mult(%s, %s)", left, right);
+                    case "/":
+                        return String.format("div(%s, %s)", left, right);
+                    default:
+                        throw new UnsupportedOperationException();
+                }
+            }
+            else {
+                // Both operands are non-var, so we generate an expression in Java.
+                switch (op) {
+                    case "==":
+                        return String.format("(%s.equals(%s))", left, right);
+                    case "!=":
+                        return String.format("(!%s.equals(%s))", left, right);
+                    case "/\\":
+                        return String.format("(%s && %s)", left, right);
+                    case "\\/":
+                        return String.format("(%s || %s)", left, right);
+                    case "<=":
+                    case "<":
+                    case ">=":
+                    case ">":
+                    case "+":
+                    case "-":
+                    case "*":
+                    case "/":
+                        return String.format("(%s %s %s)", left, op, right);
+                    default:
+                        throw new UnsupportedOperationException();
+                }
             }
         }
 

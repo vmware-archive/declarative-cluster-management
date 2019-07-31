@@ -1177,7 +1177,9 @@ public class ModelTest {
         // build model
         final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
         weaveModel.updateData();
-        weaveModel.solveModel();
+        final Map<String, Result<? extends Record>> least_requested_sums =
+                weaveModel.solveModelWithoutTableUpdates(Collections.singleton("LEAST_REQUESTED_SUMS"));
+        System.out.println(least_requested_sums);
     }
 
 

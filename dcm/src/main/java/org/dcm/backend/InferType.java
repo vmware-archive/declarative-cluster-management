@@ -10,10 +10,13 @@ import com.google.common.base.Preconditions;
 import com.vrg.IRColumn;
 import com.vrg.compiler.monoid.BinaryOperatorPredicate;
 import com.vrg.compiler.monoid.ColumnIdentifier;
+import com.vrg.compiler.monoid.Expr;
 import com.vrg.compiler.monoid.MonoidFunction;
+import com.vrg.compiler.monoid.MonoidLiteral;
 import com.vrg.compiler.monoid.MonoidVisitor;
 
 import javax.annotation.Nullable;
+import java.util.Objects;
 
 class InferType extends MonoidVisitor<String, Void> {
     @Nullable
@@ -59,6 +62,19 @@ class InferType extends MonoidVisitor<String, Void> {
         return visit(node.getArgument(), context);
     }
 
+    @Nullable
+    @Override
+    protected String visitMonoidLiteral(final MonoidLiteral node, @Nullable final Void context) {
+        if (node.getValue() instanceof String) {
+            return "String";
+        } else if (node.getValue() instanceof Integer) {
+            return "Integer";
+        } else if (node.getValue() instanceof Boolean) {
+            return "Boolean";
+        }
+        return super.visitMonoidLiteral(node, context);
+    }
+
     private static String typeStringFromColumn(final ColumnIdentifier node) {
         if (node.getField().isControllable()) {
             return "IntVar";
@@ -79,5 +95,11 @@ class InferType extends MonoidVisitor<String, Void> {
             default:
                 throw new IllegalArgumentException();
         }
+    }
+
+    static String forExpr(final Expr expr) {
+        final InferType visitor = new InferType();
+        final String result = visitor.visit(expr);
+        return Objects.requireNonNull(result, "Result of type inference for expr was null: " + expr);
     }
 }

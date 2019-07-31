@@ -9,6 +9,7 @@ package org.dcm.compiler;
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
+import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.DereferenceExpression;
@@ -21,6 +22,7 @@ import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.Literal;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
+import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.NotExpression;
 import com.facebook.presto.sql.tree.Query;
@@ -357,9 +359,17 @@ public class ModelCompiler {
                 final ColumnIdentifier identifier = getColumnIdentifierFromField(node, tablesReferencedInView);
                 operands.push(identifier);
             } else if (isLiteral(node)) {
-                final MonoidLiteral literal = node instanceof StringLiteral
-                                           ? new MonoidLiteral<>("\'" + ((StringLiteral) node).getValue() + "\'")
-                                           : new MonoidLiteral<>(node.toString());
+                final MonoidLiteral literal;
+                if (node instanceof StringLiteral) {
+                    literal = new MonoidLiteral<>("\'" + ((StringLiteral) node).getValue() + "\'",
+                            String.class);
+                } else if (node instanceof LongLiteral) {
+                    literal = new MonoidLiteral<>(Long.valueOf(node.toString()), Long.class);
+                } else if (node instanceof BooleanLiteral) {
+                    literal = new MonoidLiteral<>(Boolean.valueOf(node.toString()), Boolean.class);
+                } else {
+                    throw new UnsupportedOperationException("I don't know how to handle this literal " + node);
+                }
                 operands.push(literal);
             } else if (node instanceof ArithmeticBinaryExpression) {
                 assert operands.size() >= 2;
