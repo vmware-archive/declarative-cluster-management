@@ -41,6 +41,7 @@ import org.dcm.compiler.monoid.TableRowGenerator;
 
 import org.jooq.DSLContext;
 import org.jooq.Record;
+import org.jooq.Record3;
 import org.jooq.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,7 +126,11 @@ public class OrToolsSolver implements ISolverBackend {
                                           final Map<String, MonoidComprehension> objectiveFunctions) {
         final MethodSpec.Builder builder = MethodSpec.methodBuilder("solve");
         addInitializer(builder);
-        addArrayDeclarations(builder, context);
+        try {
+            addArrayDeclarations(builder, context);
+        } catch (final ClassNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
         nonConstraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
@@ -339,15 +344,34 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Creates array declarations and returns the set of tables that have controllable columns in them.
      */
-    private void addArrayDeclarations(final MethodSpec.Builder builder, final IRContext context) {
+    private void addArrayDeclarations(final MethodSpec.Builder builder, final IRContext context) throws ClassNotFoundException {
         // Tables
         for (final IRTable table: context.getTables()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
             }
             builder.addComment("Table $S", table.getName());
-            builder.addStatement("final $T<? extends $T> $L = context.getTable($S).getCurrentData()",
-                                 List.class, Record.class, tableNameStr(table.getName()), table.getName());
+            final Class recordType = Class.forName("org.jooq.Record" + table.getIRColumns().size());
+            final String recordTypeParameters = table.getIRColumns().entrySet().stream()
+                    .map(e -> e.getValue().getType())
+                    .map(e -> {
+                                switch (e) {
+                                    case STRING:
+                                        return "String";
+                                    case BOOL:
+                                        return "Boolean";
+                                    case INT:
+                                        return "Integer";
+                                    case FLOAT:
+                                        return "Float";
+                                    default:
+                                        throw new IllegalArgumentException();
+                                }
+                            }
+                    ).collect(Collectors.joining(", "));
+            builder.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
+                                 List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),
+                                 recordType, recordTypeParameters, table.getName());
             // Fields
             for (final Map.Entry<String, IRColumn> fieldEntrySet : table.getIRColumns().entrySet()) {
                 final String fieldName = fieldEntrySet.getKey();
@@ -715,51 +739,6 @@ public class OrToolsSolver implements ISolverBackend {
 
         private LinkedHashSet<ColumnIdentifier> getColumnIdentifiers() {
             return columnIdentifiers;
-        }
-    }
-
-    public static class Operators {
-
-        public static IntVar minus(final CpModel model, final IntVar v, final int other) {
-            final IntVar ret = model.newIntVar(0, Integer.MAX_VALUE, "");
-            model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{v, model.newConstant(other)}, new int[]{1, -1}));
-            return ret;
-        }
-
-        public static IntVar minus(final CpModel model, final int other, final IntVar v) {
-            return minus(model, v, other);
-        }
-
-        public static IntVar mult(final CpModel model, final IntVar v, final int other) {
-            final IntVar ret = model.newIntVar(0, Integer.MAX_VALUE, "");
-            model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{v}, new int[]{other}));
-            return ret;
-        }
-
-        public static IntVar mult(final CpModel model, final int other, final IntVar v) {
-            return mult(model, v, other);
-        }
-
-
-        public static IntVar eq(final CpModel model, final Object v1, final Object v2) {
-            if (!(v1 instanceof IntVar) && !(v2 instanceof IntVar)) {
-                return model.newConstant(v1.equals(v2) ? 1 : 0);
-            }
-            return eq(model, v1, v2);
-        }
-
-        public static IntVar eq(final CpModel model, final IntVar v1, final long v2) {
-            final IntVar ret = model.newBoolVar("");
-            model.addEquality(v1, v2).onlyEnforceIf(ret);
-            model.addDifferent(v1, v2).onlyEnforceIf(ret.not());
-            return ret;
-        }
-
-        public static IntVar eq(final CpModel model, final IntVar v1, final IntVar v2) {
-            final IntVar ret = model.newBoolVar("");
-            model.addEquality(v1, v2).onlyEnforceIf(ret);
-            model.addDifferent(v1, v2).onlyEnforceIf(ret.not());
-            return ret;
         }
     }
 }
