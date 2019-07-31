@@ -96,7 +96,6 @@ public class OrToolsTest {
             loads[node] = load;
             model.addLessOrEqual(load, 100000);
         }
-
         final IntVar max = model.newIntVar(0, 1000000000, "");
         model.addMaxEquality(max, loads);
         model.minimize(max);

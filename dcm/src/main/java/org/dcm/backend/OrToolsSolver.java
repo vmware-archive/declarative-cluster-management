@@ -14,6 +14,7 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
+import com.google.ortools.sat.LinearExpr;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
@@ -59,8 +60,10 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -91,6 +94,7 @@ public class OrToolsSolver implements ISolverBackend {
     private static final Map<Integer, TypeSpec> tupleGen = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
     private final AtomicInteger generatedFieldNameCounter = new AtomicInteger();
+    private final AtomicInteger intermediateViewCounter = new AtomicInteger();
 
     static {
         System.loadLibrary("jniortools");
@@ -124,9 +128,7 @@ public class OrToolsSolver implements ISolverBackend {
         addArrayDeclarations(builder, context);
         nonConstraintViews
                 .forEach((name, comprehension) -> {
-                    System.out.println("HERE " + comprehension);
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    System.out.println("THERE " + comprehension);
                     addNonConstraintView(builder, name, rewrittenComprehension, context);
                 });
         addSolvePhase(builder, context);
@@ -155,10 +157,38 @@ public class OrToolsSolver implements ISolverBackend {
             // [ [blah - sum(X) | <....>] | G]
             //                     rows
             //
-            System.out.println(inner);
-            System.out.println(groupByQualifier);
-            buildInnerComprehension(builder, "tmp", inner, groupByQualifier);
-            System.out.println(builder.build());
+            final String tmpName = "tmp" + intermediateViewCounter.getAndIncrement();
+            buildInnerComprehension(builder, tmpName, inner, groupByQualifier);
+
+            final int groupByQualifiersSize = groupByQualifier.getColumnIdentifiers().size();
+
+            // Evaluate head items. Columns are accessed from the group tuples, and
+            // functions are evaluated on the list of tuples per group
+
+            assert inner.getHead() != null;
+            final int innerTupleSize = viewToFieldIndex.get(tmpName.toUpperCase(Locale.US)).size();
+            builder.beginControlFlow("for (final $T<Tuple$L, List<Tuple$L>> entry: $L.entrySet())",
+                                     Map.Entry.class, groupByQualifiersSize, innerTupleSize, tmpName);
+            builder.addStatement("final Tuple$L group = entry.getKey()", groupByQualifiersSize);
+            builder.addStatement("final List<Tuple$L> data = entry.getValue()", innerTupleSize);
+
+            int selectExprSize = inner.getHead().getSelectExprs().size();
+            final TypeSpec typeSpec = tupleGen.computeIfAbsent(selectExprSize, OrToolsSolver::tupleGen);
+            builder.addCode("final $1N res = new $1N(", typeSpec);
+            inner.getHead().getSelectExprs()
+                    .forEach(
+                        e -> {
+                            final String result =
+                                    exprToStr(e, true, new GroupContext(groupByQualifier, tmpName));
+                            if (result.contains("$T")) {
+                                builder.addCode(result, Collectors.class);
+                            } else {
+                                builder.addCode(result);
+                            }
+                        }
+                    );
+            builder.addCode(");\n");
+            builder.endControlFlow();
 //            throw new UnsupportedOperationException("Does not support group bys yet");
         } else {
             buildInnerComprehension(builder, viewName, comprehension, null);
@@ -166,6 +196,10 @@ public class OrToolsSolver implements ISolverBackend {
 
     }
 
+    /**
+     * Converts a comprehension into a set of nested for loops that return a "result set". The result set
+     * is represented as a list of tuples.
+     */
     private void buildInnerComprehension(final MethodSpec.Builder builder, final String viewName,
                                          final MonoidComprehension comprehension,
                                          @Nullable final GroupByQualifier groupByQualifier) {
@@ -195,8 +229,19 @@ public class OrToolsSolver implements ISolverBackend {
         );
         Preconditions.checkArgument(aggregatePredicates.isEmpty()); // Temporary
 
-        // Initialize an arraylist to collect results and generate the required tuple sizes
-        final int tupleSize = comprehension.getHead().getSelectExprs().size();
+        // Initialize an arraylist or map to collect results and generate the required tuple sizes
+        final AtomicInteger fieldIndex = new AtomicInteger();
+        final List<ColumnIdentifier> headItemsList = comprehension.getHead().getSelectExprs().stream()
+                .map(this::getColumnsAccessed)
+                .flatMap(Collection::stream)
+                .collect(Collectors.toList());
+
+        final String headItemsStr = headItemsList.stream()
+                .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex))
+                .collect(Collectors.joining(",\n    "));
+
+        final int tupleSize = headItemsList.size();
+        // Generates a tuple type if needed
         final TypeSpec tupleSpec = tupleGen.computeIfAbsent(tupleSize, OrToolsSolver::tupleGen);
 
         final String viewRecords = nonConstraintViewName(viewName);
@@ -220,10 +265,10 @@ public class OrToolsSolver implements ISolverBackend {
         });
 
         final String joinPredicateStr = joinPredicates.stream()
-                .map(expr -> exprToStr(expr, false))
+                .map(expr -> exprToStr(expr, false, null))
                 .collect(Collectors.joining(" \n    && "));
         final String wherePredicateStr = wherePredicates.stream()
-                .map(expr -> exprToStr(expr, false))
+                .map(expr -> exprToStr(expr, false, null))
                 .collect(Collectors.joining(" \n    && "));
         final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
                 .filter(s -> !s.equals(""))
@@ -231,12 +276,9 @@ public class OrToolsSolver implements ISolverBackend {
         // Add filter predicate
         builder.beginControlFlow("if ($L)", predicateStr);
 
-        // If predicate is true, then retreive expressions to collect into result set. Note, this does not
+
+        // If predicate is true, then retrieve expressions to collect into result set. Note, this does not
         // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
-        final AtomicInteger fieldIndex = new AtomicInteger();
-        final String headItemsStr = comprehension.getHead().getSelectExprs().stream()
-                .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex))
-                .collect(Collectors.joining(",\n    "));
 
         // Create a tuple for the result set
         builder.addStatement("final Tuple$1L tuple = new Tuple$1L(\n    $2L\n    )", tupleSize, headItemsStr);
@@ -267,26 +309,27 @@ public class OrToolsSolver implements ISolverBackend {
         // builder.addStatement("$T.out.println($N)", System.class, viewRecords);
     }
 
+    private LinkedHashSet<ColumnIdentifier> getColumnsAccessed(final Expr expr) {
+        final GetColumnIdentifiers visitor = new GetColumnIdentifiers();
+        visitor.visit(expr);
+        return visitor.getColumnIdentifiers();
+    }
+
     private String convertToFieldAccess(final Expr expr, final String viewName, final AtomicInteger fieldIndex) {
-        // Implies that this is an aggregate query. We assume that the 'aggregate' is computed
-        // outside the function.
-        if (expr instanceof MonoidFunction) {
-            // Intermediate views need to have field names mapped to field indexes. The only way
-            // for a user to refer to a specific field is if they have set an alias for it. If not,
-            // we generate a name. Generated names are only used to advance the field name index, and
-            // it should not happen that a view is able to refer to it directly.
-            final Expr argument = ((MonoidFunction) expr).getArgument();
-            final String fieldName = updateFieldIndex(viewName, argument, fieldIndex);
-            assert !(argument instanceof MonoidFunction);
-            return exprToStr(argument, true) + " // " + fieldName;
-        }
+        Preconditions.checkArgument(expr instanceof ColumnIdentifier);
         final String fieldName = updateFieldIndex(viewName, expr, fieldIndex);
-        return exprToStr(expr, true)  + " /* " + fieldName + " */";
+        return exprToStr(expr)  + " /* " + fieldName + " */";
     }
 
     private String updateFieldIndex(final String viewName, final Expr argument, final AtomicInteger counter) {
-        final String fieldName = argument.getAlias().orElseGet(() ->
-                generatedFieldNamePrefix + generatedFieldNameCounter.getAndIncrement())
+        final String fieldName = argument.getAlias().orElseGet(() -> {
+                        if (argument instanceof ColumnIdentifier) {
+                            return ((ColumnIdentifier) argument).getField().getName();
+                        } else {
+                            return generatedFieldNamePrefix + generatedFieldNameCounter.getAndIncrement();
+                        }
+                    }
+                )
                 .toUpperCase(Locale.US);
         viewToFieldIndex.computeIfAbsent(viewName.toUpperCase(Locale.US), (k) -> new HashMap<>())
                         .computeIfAbsent(fieldName, (k) -> counter.getAndIncrement());
@@ -389,7 +432,6 @@ public class OrToolsSolver implements ISolverBackend {
         if (fieldName.contains("CONTROLLABLE")) {
             return String.format("%s[%s]", fieldNameStr(tableName, fieldName), iterStr(tableName));
         } else {
-            System.out.println(tableName + " " + viewToFieldIndex);
             if (viewToFieldIndex.containsKey(tableName)) {
                 final int fieldIndex = viewToFieldIndex.get(tableName).get(fieldName);
                 return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr(tableName), fieldIndex);
@@ -522,11 +564,10 @@ public class OrToolsSolver implements ISolverBackend {
                 .addStatement("final Tuple$1L that = (Tuple$1L) other", numFields)
                 .addCode("return ");
 
-        for (int i = 0; i < numFields; i++) {
-                equals
-                .addCode("this.value$1L().equals(that.value$1L())", i);
-        }
-        equals.addCode(";\n");
+        final String returnValue = IntStream.range(0, numFields)
+                .mapToObj(i -> String.format("this.value%s().equals(that.value%s())", i, i))
+                .collect(Collectors.joining(" && "));
+        equals.addCode("$L;\n", returnValue);
         final MethodSpec equalsMethod = equals.build();
         return classBuilder.addMethod(constructor.build())
                            .addMethod(toStringMethod)
@@ -535,9 +576,14 @@ public class OrToolsSolver implements ISolverBackend {
                            .build();
     }
 
-    private String exprToStr(final Expr expr, final boolean allowControllable) {
-        final ExprToStrVisitor visitor = new ExprToStrVisitor();
-        return Objects.requireNonNull(visitor.visit(expr, allowControllable));
+    private String exprToStr(final Expr expr) {
+        return exprToStr(expr, true, null);
+    }
+
+    private String exprToStr(final Expr expr, final boolean allowControllable,
+                             @Nullable final GroupContext currentGroup) {
+        final ExprToStrVisitor visitor = new ExprToStrVisitor(allowControllable, currentGroup);
+        return Objects.requireNonNull(visitor.visit(expr, false));
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
@@ -545,31 +591,58 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private class ExprToStrVisitor extends MonoidVisitor<String, Boolean> {
+        private final boolean allowControllable;
+        @Nullable private final GroupContext currentGroupContext;
+
+        private ExprToStrVisitor(final boolean allowControllable, @Nullable final GroupContext currentGroupContext) {
+            this.allowControllable = allowControllable;
+            this.currentGroupContext = currentGroupContext;
+        }
+
+        @Nullable
+        @Override
+        protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
+            final String processedArgument = visit(node.getArgument(), true);
+            final String functionName = node.getFunctionName();
+            final String ret = String.format("%s(data.stream()\n        .map(t -> %s)\n        .collect($T.toList()))",
+                                              functionName, processedArgument);
+            System.out.println(ret);
+            System.out.println(processedArgument);
+            return ret;
+        }
+
         @Nullable
         @Override
         protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
-                                                      @Nullable final Boolean allowControllable) {
-            final String left = visit(node.getLeft(), allowControllable);
-            final String right = visit(node.getRight(), allowControllable);
+                                                      @Nullable final Boolean isFunctionContext) {
+            final String left = visit(node.getLeft(), isFunctionContext);
+            final String right = visit(node.getRight(), isFunctionContext);
             final String op = node.getOperator();
             switch (op) {
                 case "==":
-                    return String.format("(%s.equals(%s))", left, right);
+                    return String.format("eq(%s, %s)", left, right);
                 case "!=":
-                    return String.format("(!%s.equals(%s))", left, right);
+                    return String.format("ne(%s, %s)", left, right);
                 case "/\\":
-                    return String.format("(%s \n    && %s))", left, right);
+                    return String.format("and(%s, %s)", left, right);
                 case "\\/":
-                    return String.format("(%s \n    || %s))", left, right);
+                    return String.format("or(%s, %s)", left, right);
                 case "<=":
+                    return String.format("leq(%s, %s)", left, right);
                 case "<":
+                    return String.format("le(%s, %s)", left, right);
                 case ">=":
+                    return String.format("geq(%s, %s)", left, right);
                 case ">":
+                    return String.format("gt(%s, %s)", left, right);
                 case "+":
+                    return String.format("plus(%s, %s)", left, right);
                 case "-":
+                    return String.format("minus(%s, %s)", left, right);
                 case "*":
+                    return String.format("mult(%s, %s)", left, right);
                 case "/":
-                    return String.format("(%s \n    %s %s))", left, op, right);
+                    return String.format("div(%s, %s)", left, right);
                 default:
                     throw new UnsupportedOperationException();
             }
@@ -577,10 +650,32 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Nullable
         @Override
-        protected String visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Boolean allowControllable) {
+        protected String visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Boolean isFunctionContext) {
+            Preconditions.checkNotNull(isFunctionContext);
+            // If we are evaluating a group-by comprehension, then column accesses that happen outside the context
+            // of an aggregation function must refer to the grouping column, not the inner tuple being iterated over.
+            if (!isFunctionContext && currentGroupContext != null) {
+                final String tableName = node.getTableName();
+                final String fieldName = node.getField().getName();
+                int i = 0;
+                for (final ColumnIdentifier ci: currentGroupContext.qualifier.getColumnIdentifiers()) {
+                    if (ci.getTableName().equalsIgnoreCase(tableName)
+                            && ci.getField().getName().equalsIgnoreCase(fieldName)) {
+                        return String.format("group.value%s()", i);
+                    }
+                    i++;
+                }
+                throw new UnsupportedOperationException("Could not find group-by column");
+            }
+
+            if (isFunctionContext && currentGroupContext != null) {
+                final String tempTableName = currentGroupContext.groupViewName.toUpperCase(Locale.US);
+                final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
+                return String.format("t.value%s()", fieldIndex);
+            }
+
             final String tableName = node.getTableName();
             final String fieldName = node.getField().getName();
-            Preconditions.checkNotNull(allowControllable);
             if (!allowControllable && fieldName.contains("CONTROLLABLE")) {
                 throw new UnsupportedOperationException("Controllable variables not allowed in predicates");
             }
@@ -589,12 +684,82 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Nullable
         @Override
-        protected String visitMonoidLiteral(final MonoidLiteral node, @Nullable final Boolean allowControllable) {
+        protected String visitMonoidLiteral(final MonoidLiteral node, @Nullable final Boolean isFunctionContext) {
             if (node.getValue() instanceof String) {
                 return node.getValue().toString().replace("'", "\"");
             } else {
                 return node.getValue().toString();
             }
+        }
+    }
+
+    private static class GroupContext {
+        private final GroupByQualifier qualifier;
+        private final String groupViewName;
+
+        private GroupContext(final GroupByQualifier qualifier, final String groupViewName) {
+            this.qualifier = qualifier;
+            this.groupViewName = groupViewName;
+        }
+    }
+
+    private static class GetColumnIdentifiers extends MonoidVisitor<Void, Void> {
+        private final LinkedHashSet<ColumnIdentifier> columnIdentifiers = new LinkedHashSet<>();
+
+        @Nullable
+        @Override
+        protected Void visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Void context) {
+            columnIdentifiers.add(node);
+            return super.visitColumnIdentifier(node, context);
+        }
+
+        private LinkedHashSet<ColumnIdentifier> getColumnIdentifiers() {
+            return columnIdentifiers;
+        }
+    }
+
+    public static class Operators {
+
+        public static IntVar minus(final CpModel model, final IntVar v, final int other) {
+            final IntVar ret = model.newIntVar(0, Integer.MAX_VALUE, "");
+            model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{v, model.newConstant(other)}, new int[]{1, -1}));
+            return ret;
+        }
+
+        public static IntVar minus(final CpModel model, final int other, final IntVar v) {
+            return minus(model, v, other);
+        }
+
+        public static IntVar mult(final CpModel model, final IntVar v, final int other) {
+            final IntVar ret = model.newIntVar(0, Integer.MAX_VALUE, "");
+            model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{v}, new int[]{other}));
+            return ret;
+        }
+
+        public static IntVar mult(final CpModel model, final int other, final IntVar v) {
+            return mult(model, v, other);
+        }
+
+
+        public static IntVar eq(final CpModel model, final Object v1, final Object v2) {
+            if (!(v1 instanceof IntVar) && !(v2 instanceof IntVar)) {
+                return model.newConstant(v1.equals(v2) ? 1 : 0);
+            }
+            return eq(model, v1, v2);
+        }
+
+        public static IntVar eq(final CpModel model, final IntVar v1, final long v2) {
+            final IntVar ret = model.newBoolVar("");
+            model.addEquality(v1, v2).onlyEnforceIf(ret);
+            model.addDifferent(v1, v2).onlyEnforceIf(ret.not());
+            return ret;
+        }
+
+        public static IntVar eq(final CpModel model, final IntVar v1, final IntVar v2) {
+            final IntVar ret = model.newBoolVar("");
+            model.addEquality(v1, v2).onlyEnforceIf(ret);
+            model.addDifferent(v1, v2).onlyEnforceIf(ret.not());
+            return ret;
         }
     }
 }
