@@ -71,7 +71,7 @@ public class ModelTest {
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId integer, controllable__hostId varchar(36))");
 
-        final WeaveModel weaveModel = buildWeaveModel(conn, Collections.emptyList(), modelName);
+        final Model weaveModel = buildModel(conn, Collections.emptyList(), modelName);
 
         conn.execute("insert into placement values (1, 'h1')");
         conn.execute("insert into placement values (2, 'h2')");
@@ -1172,16 +1172,20 @@ public class ModelTest {
 
         conn.execute("insert into node_info values ('n1', 1, 1)");
         conn.execute("insert into node_info values ('n2', 10, 10)");
-        conn.execute("insert into pod_info values ('p1', 'n1', 2, 2)");
+        conn.execute("insert into pod_info values ('p1', 'n1', 1, 2)");
+        conn.execute("insert into pod_info values ('p2', 'n1', 1, 2)");
+        conn.execute("insert into pod_info values ('p3', 'n2', 1, 2)");
+        conn.execute("insert into pod_info values ('p4', 'n2', 2, 2)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+        final Model weaveModel = buildModel(conn, views, modelName);
         weaveModel.updateData();
-        final Map<String, Result<? extends Record>> least_requested_sums =
-                weaveModel.solveModelWithoutTableUpdates(Collections.singleton("LEAST_REQUESTED_SUMS"));
-        System.out.println(least_requested_sums);
+        final Map<String, Result<? extends Record>> podInfo =
+                weaveModel.solveModelWithoutTableUpdates(Collections.singleton("POD_INFO"));
+        podInfo.get("POD_INFO").forEach(
+                e -> assertEquals("0", e.get("CONTROLLABLE__NODE_NAME"))
+        );
     }
-
 
 
     @Test

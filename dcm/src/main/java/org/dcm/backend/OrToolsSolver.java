@@ -194,21 +194,22 @@ public class OrToolsSolver implements ISolverBackend {
             builder.addStatement("final Tuple$L<$L> group = entry.getKey()", groupByQualifiersSize,
                                                                              groupByTupleTypeParameters);
             builder.addStatement("final List<Tuple$L<$L>> data = entry.getValue()", innerTupleSize,
-                                                                                   headItemsTupleTypeParamters);
+                                                                                    headItemsTupleTypeParamters);
             builder.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
             inner.getHead().getSelectExprs()
-                    .forEach(
-                        e -> {
-                            final String result =
-                                    exprToStr(e, true, new GroupContext(groupByQualifier, intermediateView));
-                            if (result.contains("$T")) {
-                                builder.addCode(result, Collectors.class);
-                            } else {
-                                builder.addCode(result);
-                            }
+                .forEach(
+                    e -> {
+                        final String result =
+                                exprToStr(e, true, new GroupContext(groupByQualifier, intermediateView));
+                        if (result.contains("$T")) {
+                            builder.addCode(result, Collectors.class);
+                        } else {
+                            builder.addCode(result);
                         }
-                    );
+                    }
+                );
             builder.addCode(");\n");
+            builder.addStatement("$L.add(res)", tableNameStr(viewName));
             builder.endControlFlow();
         } else {
             buildInnerComprehension(builder, viewName, comprehension, null);
@@ -367,7 +368,8 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Creates array declarations and returns the set of tables that have controllable columns in them.
      */
-    private void addArrayDeclarations(final MethodSpec.Builder builder, final IRContext context) throws ClassNotFoundException {
+    private void addArrayDeclarations(final MethodSpec.Builder builder,
+                                      final IRContext context) throws ClassNotFoundException {
         for (final IRTable table: context.getTables()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
@@ -432,8 +434,8 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement("final $1T solver = new $1T()", CpSolver.class)
                .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
                .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
-               .addStatement("final Map<IRTable, Result<? extends Record>> result = new $T<>()",
-                              HashMap.class);
+               .addStatement("final Map<IRTable, Result<? extends Record>> result = new $T<>()", HashMap.class)
+               .addCode("final Object[] obj = new Object[1]; // Used to update controllable fields;\n");
         for (final IRTable table: context.getTables()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
@@ -446,14 +448,24 @@ public class OrToolsSolver implements ISolverBackend {
                                                                    .collect(Collectors.toSet());
             // If the table does not have vars, we can return the original input as is
             if (controllableColumns.isEmpty()) {
+                // Is an input table/view
                 builder.addStatement("result.put(context.getTable($1S), context.getTable($1S).getCurrentData())",
-                                      tableName);
+                                     tableName);
             } else {
                 table.getIRColumns().forEach(
                     (name, field) -> {
                         // Else, we update the records corresponding to the table.
                         if (controllableColumns.contains(name)) {
-
+                            final int i = intermediateViewCounter.incrementAndGet();
+                            builder.addStatement("final Result<? extends Record> tmp$L = " +
+                                    "context.getTable($S).getCurrentData()", i, tableName);
+                            builder.beginControlFlow("for (int i = 0; i < $L; i++)",
+                                    tableNumRowsStr(tableName));
+                            builder.addStatement("obj[0] = solver.value($L[i])",
+                                                 fieldNameStr(tableName, field.getName()));
+                            builder.addStatement("tmp$L.get(i).from(obj, $S)", i, field.getName());
+                            builder.endControlFlow();
+                            builder.addStatement("result.put(context.getTable($S), tmp$L)", tableName, i);
                         }
                     }
                 );
