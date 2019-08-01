@@ -15,6 +15,7 @@ import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
+import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
@@ -47,6 +48,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+import javax.annotation.processing.Generated;
 import javax.lang.model.element.Modifier;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
@@ -142,6 +144,9 @@ public class OrToolsSolver implements ISolverBackend {
         final MethodSpec solveMethod = builder.addStatement("return null").build();
 
         final TypeSpec.Builder backendClassBuilder = TypeSpec.classBuilder(generatedBackendName)
+                .addAnnotation(AnnotationSpec.builder(Generated.class)
+                                 .addMember("value", "$S", "com.vrg.backend.OrToolsSolver")
+                                 .build())
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .addSuperinterface(IGeneratedBackend.class)
                 .addMethod(solveMethod)
@@ -421,7 +426,7 @@ public class OrToolsSolver implements ISolverBackend {
         final ParameterizedTypeName returnT = ParameterizedTypeName.get(map, irTableT, resultT);
         builder.addModifiers(Modifier.PUBLIC)
                .returns(returnT)
-               .addParameter(IRContext.class, "context")
+               .addParameter(IRContext.class, "context", Modifier.FINAL)
                .addComment("Create the model.")
                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
                .addStatement("final $1T o = new $1T(model);", Ops.class)
