@@ -10,11 +10,9 @@ import javax.annotation.Nullable;
 
 public class MonoidLiteral<T> extends Expr {
     private final T value;
-    private final Class<T> type;
 
     public MonoidLiteral(final T value, final Class<T> type) {
         this.value = value;
-        this.type = type;
     }
 
     public T getValue() {

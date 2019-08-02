@@ -15,20 +15,17 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
-import com.google.ortools.sat.LinearExpr;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
-import com.squareup.javapoet.TypeVariableName;
 import com.squareup.javapoet.WildcardTypeName;
-
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
-import org.dcm.Model;
+import org.dcm.ModelException;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import org.dcm.compiler.monoid.ColumnIdentifier;
@@ -41,11 +38,8 @@ import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.TableRowGenerator;
-import org.apache.commons.lang3.StringUtils;
-
 import org.jooq.DSLContext;
 import org.jooq.Record;
-import org.jooq.Record3;
 import org.jooq.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,10 +70,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -88,10 +80,11 @@ import java.util.stream.Stream;
  * which can be invoked to run the solver.
  */
 public class OrToolsSolver implements ISolverBackend {
+    private static final String GENERATED_BACKEND_CLASS_FILE_PATH = "/tmp";
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
-    private static final String generatedBackendName = "GeneratedBackend";
-    private static final String generatedFieldNamePrefix = "GenField";
-    private static final MethodSpec intVarNoBounds = MethodSpec.methodBuilder("intVarNoBounds")
+    private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
+    private static final String GENERATED_FIELD_NAME_PREFIX = "GenField";
+    private static final MethodSpec INT_VAR_NO_BOUNDS = MethodSpec.methodBuilder("INT_VAR_NO_BOUNDS")
                                     .addModifiers(Modifier.PRIVATE)
                                     .addParameter(CpModel.class, "model", Modifier.FINAL)
                                     .addParameter(String.class, "name",  Modifier.FINAL)
@@ -142,20 +135,20 @@ public class OrToolsSolver implements ISolverBackend {
         nonConstraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    addNonConstraintView(builder, name, rewrittenComprehension, context);
+                    addNonConstraintView(builder, name, rewrittenComprehension);
                 });
 
         addSolvePhase(builder, context);
         final MethodSpec solveMethod = builder.build();
 
-        final TypeSpec.Builder backendClassBuilder = TypeSpec.classBuilder(generatedBackendName)
+        final TypeSpec.Builder backendClassBuilder = TypeSpec.classBuilder(GENERATED_BACKEND_NAME)
                 .addAnnotation(AnnotationSpec.builder(Generated.class)
                                  .addMember("value", "$S", "org.dcm.backend.OrToolsSolver")
                                  .build())
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .addSuperinterface(IGeneratedBackend.class)
                 .addMethod(solveMethod)
-                .addMethod(intVarNoBounds);
+                .addMethod(INT_VAR_NO_BOUNDS);
         TupleGen.getAllTupleTypes().forEach(backendClassBuilder::addType); // Add tuple types
 
         final TypeSpec spec = backendClassBuilder.build();
@@ -164,7 +157,7 @@ public class OrToolsSolver implements ISolverBackend {
 
 
     private void addNonConstraintView(final MethodSpec.Builder builder, final String viewName,
-                                      final MonoidComprehension comprehension, final IRContext context) {
+                                      final MonoidComprehension comprehension) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
             final MonoidComprehension inner = groupByComprehension.getComprehension();
@@ -195,7 +188,7 @@ public class OrToolsSolver implements ISolverBackend {
             final String viewTupleGenericParameters = generateTupleGenericParameters(inner.getHead().getSelectExprs());
             viewTupleTypeParameters.put(tableNameStr(viewName), viewTupleGenericParameters);
             builder.addStatement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
-                                  viewTupleGenericParameters, tableNameStr(viewName), ArrayList.class, intermediateView);
+                                 viewTupleGenericParameters, tableNameStr(viewName), ArrayList.class, intermediateView);
 
             // (2) Populate the result set
             builder.beginControlFlow("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
@@ -300,7 +293,7 @@ public class OrToolsSolver implements ISolverBackend {
         if (!predicateStr.isEmpty()) {
             // Add filter predicate
             builder.beginControlFlow("if ($L)", predicateStr);
-            controlFlowsToPop.add(builder.toString());
+            controlFlowsToPop.add("if (" + predicateStr + ")");
         }
 
 
@@ -352,7 +345,7 @@ public class OrToolsSolver implements ISolverBackend {
                         if (argument instanceof ColumnIdentifier) {
                             return ((ColumnIdentifier) argument).getField().getName();
                         } else {
-                            return generatedFieldNamePrefix + generatedFieldNameCounter.getAndIncrement();
+                            return GENERATED_FIELD_NAME_PREFIX + generatedFieldNameCounter.getAndIncrement();
                         }
                     }
                 )
@@ -401,7 +394,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                                        tableNumRowsStr(table.getName()))
                             .beginControlFlow("for (int i = 0; i < $L; i++)",
                                               tableNumRowsStr(table.getName()))
-                            .addStatement("$L[i] = $N(model, $S)", variableName, intVarNoBounds, fieldName)
+                            .addStatement("$L[i] = $N(model, $S)", variableName, INT_VAR_NO_BOUNDS, fieldName)
                             .endControlFlow();
                 }
             }
@@ -435,7 +428,7 @@ public class OrToolsSolver implements ISolverBackend {
                         // we don't need to add that as constraints in the solver
                         e.getPrimaryKeyFields().stream()
                             .filter(IRColumn::isControllable)
-                            .forEach( field -> builder.addStatement("model.addDifferent($L, $L)",
+                            .forEach(field -> builder.addStatement("model.addDifferent($L, $L)",
                                 fieldNameStrWithIter(field.getIRTable().getName(), field.getName(), "i"),
                                 fieldNameStrWithIter(field.getIRTable().getName(), field.getName(), "j"))
                         );
@@ -560,7 +553,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
         builder.addStatement("return result");
         builder.endControlFlow();
-        builder.addStatement("throw new $T($S + status)", WeaveModel.WeaveModelException.class, "Could not solve ");
+        builder.addStatement("throw new $T($S + status)", ModelException.class, "Could not solve ");
     }
 
     private static String tableNameStr(final String tableName) {
@@ -635,14 +628,13 @@ public class OrToolsSolver implements ISolverBackend {
         // Once compiled, load the generated class, save an instance of it to the generatedBackend method
         // which we will invoke whenever we run the solver, and return the generated Java source to the caller.
         try {
-            File classesDir = new File("/tmp/");
+            final File classesDir = new File(GENERATED_BACKEND_CLASS_FILE_PATH);
             // Load and instantiate compiled class.
-            URLClassLoader classLoader;
+            final URLClassLoader classLoader = URLClassLoader.newInstance(new URL[]{classesDir.toURI().toURL()});
             // Loading the class
-            classLoader = URLClassLoader.newInstance(new URL[]{classesDir.toURI().toURL()});
-            Class<?> cls;
-            cls = Class.forName(String.format("org.dcm.backend.%s", generatedBackendName), true, classLoader);
-            ConstructorAccess<?> access = ConstructorAccess.get(cls);
+            final Class<?> cls = Class.forName(String.format("org.dcm.backend.%s", GENERATED_BACKEND_NAME), true,
+                                               classLoader);
+            final ConstructorAccess<?> access = ConstructorAccess.get(cls);
             generatedBackend = (IGeneratedBackend) access.newInstance();
             final StringWriter writer = new StringWriter();
             javaFile.writeTo(writer);
@@ -655,8 +647,9 @@ public class OrToolsSolver implements ISolverBackend {
     @Override
     public List<String> generateDataCode(final IRContext context) {
         this.context = context;
-        return null;
+        return Collections.emptyList();
     }
+
     private String exprToStr(final Expr expr) {
         return exprToStr(expr, true, null);
     }
@@ -728,7 +721,7 @@ public class OrToolsSolver implements ISolverBackend {
             Preconditions.checkArgument(node.getFunctionName().equalsIgnoreCase("sum"));
             final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ?
                                          node.getFunctionName() + "V" : node.getFunctionName();
-            final String ret = String.format("o.%s(data.stream()\n      .map(t -> %s)\n      .collect($T.toList()))",
+            final String ret = String.format("o.%s(data.stream()%n      .map(t -> %s)%n      .collect($T.toList()))",
                                               functionName, processedArgument);
             System.out.println(ret);
             System.out.println(processedArgument);
@@ -811,13 +804,13 @@ public class OrToolsSolver implements ISolverBackend {
             if (!isFunctionContext && currentGroupContext != null) {
                 final String tableName = node.getTableName();
                 final String fieldName = node.getField().getName();
-                int i = 0;
+                int columnNumber = 0;
                 for (final ColumnIdentifier ci: currentGroupContext.qualifier.getColumnIdentifiers()) {
                     if (ci.getTableName().equalsIgnoreCase(tableName)
                             && ci.getField().getName().equalsIgnoreCase(fieldName)) {
-                        return String.format("group.value%s()", i);
+                        return String.format("group.value%s()", columnNumber);
                     }
-                    i++;
+                    columnNumber++;
                 }
                 throw new UnsupportedOperationException("Could not find group-by column");
             }

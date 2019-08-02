@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vrg.backend;
+package org.dcm.backend;
 
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.IntVar;

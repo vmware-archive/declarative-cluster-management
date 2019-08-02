@@ -4,16 +4,16 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vrg.backend;
+package org.dcm.backend;
 
 import com.google.common.base.Preconditions;
-import com.vrg.IRColumn;
-import com.vrg.compiler.monoid.BinaryOperatorPredicate;
-import com.vrg.compiler.monoid.ColumnIdentifier;
-import com.vrg.compiler.monoid.Expr;
-import com.vrg.compiler.monoid.MonoidFunction;
-import com.vrg.compiler.monoid.MonoidLiteral;
-import com.vrg.compiler.monoid.MonoidVisitor;
+import org.dcm.IRColumn;
+import org.dcm.compiler.monoid.BinaryOperatorPredicate;
+import org.dcm.compiler.monoid.ColumnIdentifier;
+import org.dcm.compiler.monoid.Expr;
+import org.dcm.compiler.monoid.MonoidFunction;
+import org.dcm.compiler.monoid.MonoidLiteral;
+import org.dcm.compiler.monoid.MonoidVisitor;
 
 import javax.annotation.Nullable;
 import java.util.Objects;

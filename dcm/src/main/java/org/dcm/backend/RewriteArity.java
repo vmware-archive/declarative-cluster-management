@@ -6,6 +6,7 @@
 
 package org.dcm.backend;
 
+
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import org.dcm.compiler.monoid.ComprehensionRewriter;
 import org.dcm.compiler.monoid.Expr;
@@ -14,6 +15,7 @@ import org.dcm.compiler.monoid.Head;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.Qualifier;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

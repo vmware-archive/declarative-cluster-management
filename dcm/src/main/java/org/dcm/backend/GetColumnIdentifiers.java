@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vrg.backend;
+package org.dcm.backend;
 
-import com.vrg.compiler.monoid.ColumnIdentifier;
-import com.vrg.compiler.monoid.MonoidVisitor;
+import org.dcm.compiler.monoid.ColumnIdentifier;
+import org.dcm.compiler.monoid.MonoidVisitor;
 
 import javax.annotation.Nullable;
 import java.util.LinkedHashSet;

@@ -13,7 +13,6 @@ import com.google.ortools.sat.DecisionStrategyProto;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
-import com.google.ortools.util.Domain;
 import org.junit.Test;
 
 public class OrToolsTest {

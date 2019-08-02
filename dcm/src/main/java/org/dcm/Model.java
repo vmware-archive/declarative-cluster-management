@@ -66,6 +66,7 @@ public class Model {
     private final ISolverBackend backend;
 
 
+    @SuppressWarnings("unused")
     private Model(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
                   final File modelFile, final File dataFile, final Conf conf) {
         this.dbCtx = dbCtx;
