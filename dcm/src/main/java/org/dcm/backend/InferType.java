@@ -71,6 +71,8 @@ class InferType extends MonoidVisitor<String, Void> {
             return "Integer";
         } else if (node.getValue() instanceof Boolean) {
             return "Boolean";
+        } else if (node.getValue() instanceof Long) {
+            return "Integer";
         }
         return super.visitMonoidLiteral(node, context);
     }

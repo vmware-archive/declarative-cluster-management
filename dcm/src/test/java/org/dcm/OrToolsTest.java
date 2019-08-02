@@ -13,6 +13,7 @@ import com.google.ortools.sat.DecisionStrategyProto;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
+import com.google.ortools.util.Domain;
 import org.junit.Test;
 
 public class OrToolsTest {
@@ -139,9 +140,35 @@ public class OrToolsTest {
         System.out.println(solver.responseStats());
     }
 
-
     @Test
     public void test4() {
+        // Create the model.
+        final CpModel model = new CpModel();
+
+        // Create the variables.
+        final IntVar var1 = model.newIntVar(0, 100, "");
+        final IntVar var2 = model.newIntVar(0, 100, "");
+        final IntVar result = model.newIntVar(0, 1000, "");
+        model.addProductEquality(result, new IntVar[]{var1, var2});
+
+        model.maximize(result);
+        // Create a solver and solve the model.
+        final CpSolver solver = new CpSolver();
+        solver.getParameters().setNumSearchWorkers(4);
+        solver.getParameters().setLogSearchProgress(true);
+        final CpSolverStatus status = solver.solve(model);
+        if (status == CpSolverStatus.FEASIBLE ||
+                status == CpSolverStatus.OPTIMAL) {
+            System.out.println(solver.value(var1));
+            System.out.println(solver.value(var2));
+            System.out.println(solver.value(result));
+        }
+        System.out.println(solver.responseStats());
+    }
+
+
+    @Test
+    public void test5() {
         // Create the model.
         final CpModel model = new CpModel();
 
@@ -163,4 +190,29 @@ public class OrToolsTest {
         }
         System.out.println(solver.responseStats());
     }
+
+
+    @Test
+    public void test6() {
+        // Create the model.
+        final CpModel model = new CpModel();
+
+        // Create the variables.
+        final IntVar index = model.newIntVar(0, 4, "");
+        final IntVar var1 = model.newIntVar(0, 100, "");
+        final int[] var2 = new int[]{17, 41, 43, 93, 81};
+        model.addElement(index, var2, var1);
+        model.maximize(var1);
+        // Create a solver and solve the model.
+        final CpSolver solver = new CpSolver();
+        solver.getParameters().setNumSearchWorkers(4);
+        solver.getParameters().setLogSearchProgress(true);
+        final CpSolverStatus status = solver.solve(model);
+        if (status == CpSolverStatus.FEASIBLE ||
+                status == CpSolverStatus.OPTIMAL) {
+            System.out.println(solver.value(var1));
+        }
+        System.out.println(solver.responseStats());
+    }
+
 }

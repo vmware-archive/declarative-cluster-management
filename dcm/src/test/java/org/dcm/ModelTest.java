@@ -773,14 +773,14 @@ public class ModelTest {
 
         conn.execute("create table node_info\n" +
                 "(\n" +
-                "  name varchar(36) not null primary key,\n" +
+                "  name integer not null primary key,\n" +
                 "  cpu_allocatable integer not null\n" +
                 ")\n");
         conn.execute("create table pod_info\n" +
                 "(\n" +
                 "  pod_name varchar(100) not null primary key,\n" +
                 "  status varchar(36) not null,\n" +
-                "  controllable__node_name varchar(36) not null,\n" +
+                "  controllable__node_name integer not null,\n" +
                 "  cpu_request integer not null,\n" +
                 "  foreign key(controllable__node_name) references node_info(name)\n" +
                 ")\n");
@@ -793,8 +793,8 @@ public class ModelTest {
                 "where status = 'Pending'\n" +
                 "group by node_info.name, node_info.cpu_allocatable;");
 
-        conn.execute("insert into node_info values ('n1', 10)");
-        conn.execute("insert into pod_info values ('p1', 'Pending', 'n1', 5)");
+        conn.execute("insert into node_info values (1, 10)");
+        conn.execute("insert into pod_info values ('p1', 'Pending', 1, 5)");
 
         // Should not be opt
         final Model model = buildModel(conn, views, modelName);

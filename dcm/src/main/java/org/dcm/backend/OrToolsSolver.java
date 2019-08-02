@@ -8,6 +8,7 @@ package org.dcm.backend;
 
 import com.esotericsoftware.reflectasm.ConstructorAccess;
 import com.google.common.base.CaseFormat;
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.ortools.sat.CpModel;
@@ -27,6 +28,7 @@ import com.squareup.javapoet.WildcardTypeName;
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
+import org.dcm.Model;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import org.dcm.compiler.monoid.ColumnIdentifier;
@@ -39,6 +41,7 @@ import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.TableRowGenerator;
+import org.apache.commons.lang3.StringUtils;
 
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -62,6 +65,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -88,12 +92,12 @@ public class OrToolsSolver implements ISolverBackend {
     private static final String generatedBackendName = "GeneratedBackend";
     private static final String generatedFieldNamePrefix = "GenField";
     private static final MethodSpec intVarNoBounds = MethodSpec.methodBuilder("intVarNoBounds")
-                                                .addModifiers(Modifier.PRIVATE)
-                                                .addParameter(CpModel.class, "model", Modifier.FINAL)
-                                                .addParameter(String.class, "name",  Modifier.FINAL)
-                                                .returns(IntVar.class)
-                                                .addStatement("return model.newIntVar(0, Integer.MAX_VALUE - 1, name)")
-                                                .build();
+                                    .addModifiers(Modifier.PRIVATE)
+                                    .addParameter(CpModel.class, "model", Modifier.FINAL)
+                                    .addParameter(String.class, "name",  Modifier.FINAL)
+                                    .returns(IntVar.class)
+                                    .addStatement("return model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, name)")
+                                    .build();
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
     private final AtomicInteger generatedFieldNameCounter = new AtomicInteger();
     private final AtomicInteger intermediateViewCounter = new AtomicInteger();
@@ -140,12 +144,13 @@ public class OrToolsSolver implements ISolverBackend {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     addNonConstraintView(builder, name, rewrittenComprehension, context);
                 });
+
         addSolvePhase(builder, context);
-        final MethodSpec solveMethod = builder.addStatement("return null").build();
+        final MethodSpec solveMethod = builder.build();
 
         final TypeSpec.Builder backendClassBuilder = TypeSpec.classBuilder(generatedBackendName)
                 .addAnnotation(AnnotationSpec.builder(Generated.class)
-                                 .addMember("value", "$S", "com.vrg.backend.OrToolsSolver")
+                                 .addMember("value", "$S", "org.dcm.backend.OrToolsSolver")
                                  .build())
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .addSuperinterface(IGeneratedBackend.class)
@@ -229,31 +234,14 @@ public class OrToolsSolver implements ISolverBackend {
     private void buildInnerComprehension(final MethodSpec.Builder builder, final String viewName,
                                          final MonoidComprehension comprehension,
                                          @Nullable final GroupByQualifier groupByQualifier) {
+        final ArrayDeque<String> controlFlowsToPop = new ArrayDeque<>();
+
         Preconditions.checkNotNull(comprehension.getHead());
         builder.addCode("\n").addComment("Non-constraint view $L", viewName);
 
-        final List<BinaryOperatorPredicate> wherePredicates = new ArrayList<>();
-        final List<JoinPredicate> joinPredicates = new ArrayList<>();
-        final List<BinaryOperatorPredicateWithAggregate> aggregatePredicates = new ArrayList<>();
-        final List<TableRowGenerator> tableRowGenerators = new ArrayList<>();
-        comprehension.getQualifiers().forEach(
-                q -> {
-                    if (q instanceof BinaryOperatorPredicateWithAggregate) {
-                        aggregatePredicates.add((BinaryOperatorPredicateWithAggregate) q);
-                    } else if (q instanceof JoinPredicate) {
-                        joinPredicates.add((JoinPredicate) q);
-                    } else if (q instanceof BinaryOperatorPredicate) {
-                        wherePredicates.add((BinaryOperatorPredicate) q);
-                    } else if (q instanceof TableRowGenerator) {
-                        tableRowGenerators.add((TableRowGenerator) q);
-                    } else if (q instanceof GroupByQualifier) {
-                        System.err.println("Ignoring group-by qualifier");
-                    } else {
-                        throw new IllegalArgumentException();
-                    }
-                }
-        );
-        Preconditions.checkArgument(aggregatePredicates.isEmpty()); // Temporary
+        final QualifiersByType varQualifiers = new QualifiersByType();
+        final QualifiersByType nonVarQualifiers = new QualifiersByType();
+        populateQualifiersByVarType(comprehension, varQualifiers, nonVarQualifiers);
 
         // Initialize an arraylist or map to collect results and generate the required tuple sizes
         final AtomicInteger fieldIndex = new AtomicInteger();
@@ -291,24 +279,29 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         // Create nested for loops
-        tableRowGenerators.forEach(tr -> {
+        nonVarQualifiers.tableRowGenerators.forEach(tr -> {
             final String tableName = tr.getTable().getName();
             final String tableNumRowsStr = tableNumRowsStr(tableName);
             final String iterStr = iterStr(tr.getTable().getAliasedName());
             builder.beginControlFlow("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr);
+            controlFlowsToPop.add(String.format("for (%s)", iterStr));
         });
 
-        final String joinPredicateStr = joinPredicates.stream()
+        final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
                 .map(expr -> exprToStr(expr, false, null))
                 .collect(Collectors.joining(" \n    && "));
-        final String wherePredicateStr = wherePredicates.stream()
+        final String wherePredicateStr = nonVarQualifiers.wherePredicates.stream()
                 .map(expr -> exprToStr(expr, false, null))
                 .collect(Collectors.joining(" \n    && "));
         final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
                 .filter(s -> !s.equals(""))
                 .collect(Collectors.joining(" \n    && "));
-        // Add filter predicate
-        builder.beginControlFlow("if ($L)", predicateStr);
+
+        if (!predicateStr.isEmpty()) {
+            // Add filter predicate
+            builder.beginControlFlow("if ($L)", predicateStr);
+            controlFlowsToPop.add(builder.toString());
+        }
 
 
         // If predicate is true, then retrieve expressions to collect into result set. Note, this does not
@@ -334,11 +327,10 @@ public class OrToolsSolver implements ISolverBackend {
         } else {
             builder.addStatement("$L.add(tuple)", viewRecords);
         }
-        builder.endControlFlow(); // end filter predicate if statement
 
-        // Pop nested for loops
-        tableRowGenerators.forEach(tr -> builder.endControlFlow());
-
+        controlFlowsToPop.forEach(
+                e -> builder.endControlFlow() // end filter predicate if statement
+        );
         // Print debugging info
         // builder.addStatement("$T.out.println($N)", System.class, viewRecords);
     }
@@ -375,11 +367,12 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private void addArrayDeclarations(final MethodSpec.Builder builder,
                                       final IRContext context) throws ClassNotFoundException {
+        // For each table...
         for (final IRTable table: context.getTables()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
             }
-            // For each table...
+            builder.addCode("\n");
             builder.addComment("Table $S", table.getName());
 
             // ...1) figure out the jooq record type (e.g., Record3<Integer, String, Boolean>)
@@ -413,6 +406,94 @@ public class OrToolsSolver implements ISolverBackend {
                 }
             }
         }
+
+        // Once all tables and arrays can be referenced...
+        for (final IRTable table: context.getTables()) {
+            if (table.isViewTable() || table.isAliasedTable()) {
+                continue;
+            }
+            //..4) introduce primary-key constraints
+            table.getPrimaryKey().ifPresent(e -> {
+                if (!e.getPrimaryKeyFields().isEmpty() && e.hasControllableColumn()) {
+                    builder.addCode("\n");
+                    builder.addComment("Primary key constraints for $L", tableNameStr(table.getName()));
+
+                    // Use a specialized propagator if we only have a single column primary key
+                    if (e.getPrimaryKeyFields().size() == 1) {
+                        final IRColumn field = e.getPrimaryKeyFields().get(0);
+                        final String fieldName = field.getName();
+                        builder.addStatement("model.AddAllDifferent($L)",
+                                fieldNameStr(table.getName(), fieldName));
+                    }
+                    else {
+                        // We need to specify that tuples are unique. Perform this decomposition manually.
+                        builder.beginControlFlow("for (int i = 0; i < $L; i++)",
+                                                 tableNumRowsStr(table.getName()));
+                        builder.beginControlFlow("for (int j = 0; i < j; j++)");
+
+                        // non-controllable primary keys will be unique in the database,
+                        // we don't need to add that as constraints in the solver
+                        e.getPrimaryKeyFields().stream()
+                            .filter(IRColumn::isControllable)
+                            .forEach( field -> builder.addStatement("model.addDifferent($L, $L)",
+                                fieldNameStrWithIter(field.getIRTable().getName(), field.getName(), "i"),
+                                fieldNameStrWithIter(field.getIRTable().getName(), field.getName(), "j"))
+                        );
+                        builder.endControlFlow();
+                        builder.endControlFlow();
+                    }
+                }
+            });
+
+            //..5) introduce foreign-key constraints
+            table.getForeignKeys().forEach(e -> {
+                if (e.hasConstraint()) {
+                    Preconditions.checkArgument(e.getFields().size() == 1);
+                    final Map.Entry<IRColumn, IRColumn> next = e.getFields().entrySet().iterator().next();
+                    final IRColumn child = next.getKey();
+                    final IRColumn parent = next.getValue();
+                    builder.addCode("\n");
+                    builder.addComment("Foreign key constraints: $L.$L -> $L.$L",
+                            child.getIRTable().getName(), child.getName(),
+                            parent.getIRTable().getName(), parent.getName());
+                    final String indexVarStr = "index" + intermediateViewCounter.incrementAndGet();
+                    builder.addStatement("final IntVar $L = model.newIntVar(0, $L - 1, \"\")",
+                            indexVarStr, tableNumRowsStr(table.getName()));
+                    builder.beginControlFlow("for (int i = 0; i < $L; i++)",
+                            tableNumRowsStr(table.getName()));
+                    final String fkChild =
+                            fieldNameStr(next.getKey().getIRTable().getName(), next.getKey().getName());
+
+                    final String snippet = Joiner.on('\n').join(
+                         "final int[] domain = context.getTable($S).getCurrentData()",
+                         "                        .getValues($S, $L.class)",
+                         "                        .stream()",
+                         "                        .mapToInt(Integer::intValue).toArray()"
+                    );
+
+                    builder.addStatement(snippet,
+                            parent.getIRTable().getName(), parent.getName().toUpperCase(Locale.US),
+                            toJavaClass(next.getValue().getType()));
+                    builder.addStatement("model.addElement($L, domain, $L[i])", indexVarStr, fkChild);
+                    builder.endControlFlow();
+                }
+            });
+        }
+    }
+
+    private static String toJavaClass(final IRColumn.FieldType type) {
+        switch (type) {
+            case FLOAT:
+                return "Float";
+            case INT:
+                return "Integer";
+            case BOOL:
+                return "Boolean";
+            case STRING:
+                return "String";
+            default:
+                throw new RuntimeException();
+        }
     }
 
     private void addInitializer(final MethodSpec.Builder builder) {
@@ -437,6 +518,7 @@ public class OrToolsSolver implements ISolverBackend {
         builder.addCode("\n")
                .addComment("Start solving")
                .addStatement("final $1T solver = new $1T()", CpSolver.class)
+               .addStatement("solver.getParameters().setLogSearchProgress(true)")
                .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
                .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
                .addStatement("final Map<IRTable, Result<? extends Record>> result = new $T<>()", HashMap.class)
@@ -478,6 +560,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
         builder.addStatement("return result");
         builder.endControlFlow();
+        builder.addStatement("throw new $T($S + status)", WeaveModel.WeaveModelException.class, "Could not solve ");
     }
 
     private static String tableNameStr(final String tableName) {
@@ -490,16 +573,20 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private String fieldNameStrWithIter(final String tableName, final String fieldName) {
+        return fieldNameStrWithIter(tableName, fieldName, iterStr(tableName));
+    }
+
+    private String fieldNameStrWithIter(final String tableName, final String fieldName, final String iterStr) {
         if (fieldName.contains("CONTROLLABLE")) {
-            return String.format("%s[%s]", fieldNameStr(tableName, fieldName), iterStr(tableName));
+            return String.format("%s[%s]", fieldNameStr(tableName, fieldName), iterStr);
         } else {
             if (viewToFieldIndex.containsKey(tableName)) {
                 final int fieldIndex = viewToFieldIndex.get(tableName).get(fieldName);
-                return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr(tableName), fieldIndex);
+                return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr, fieldIndex);
             } else {
                 final String type = tableToFieldToType.get(tableName).get(fieldName);
                 return String.format("%s.get(%s).get(\"%s\", %s.class)",
-                        tableNameStr(tableName), iterStr(tableName), fieldName, type);
+                        tableNameStr(tableName), iterStr, fieldName, type);
             }
         }
     }
@@ -593,6 +680,37 @@ public class OrToolsSolver implements ISolverBackend {
         return InferType.forExpr(expr);
     }
 
+    private void populateQualifiersByVarType(final MonoidComprehension comprehension, final QualifiersByType var,
+                                             final QualifiersByType nonVar) {
+        comprehension.getQualifiers().forEach(
+                q -> {
+                    final GetVarQualifiers.QualifiersList qualifiersList = GetVarQualifiers.apply(q);
+                    Preconditions.checkArgument(qualifiersList.getNonVarQualifiers().size() +
+                            qualifiersList.getVarQualifiers().size() == 1);
+
+                    final QualifiersByType curr = qualifiersList.getNonVarQualifiers().size() == 1 ?
+                            nonVar : var;
+                    // The considered qualifier is a non-var one
+                    if (q instanceof BinaryOperatorPredicateWithAggregate) {
+                        curr.aggregatePredicates.add((BinaryOperatorPredicateWithAggregate) q);
+                    } else if (q instanceof JoinPredicate) {
+                        curr.joinPredicates.add((JoinPredicate) q);
+                    } else if (q instanceof BinaryOperatorPredicate) {
+                        curr.wherePredicates.add((BinaryOperatorPredicate) q);
+                    } else if (q instanceof TableRowGenerator) {
+                        curr.tableRowGenerators.add((TableRowGenerator) q);
+                    } else if (q instanceof GroupByQualifier) {
+                        System.err.println("Ignoring group-by qualifier");
+                    } else {
+                        throw new IllegalArgumentException();
+                    }
+                    // The considered qualifier is a non-var one
+                }
+        );
+        Preconditions.checkArgument(nonVar.aggregatePredicates.isEmpty()); // Temporary
+        Preconditions.checkArgument(var.aggregatePredicates.isEmpty()); // Temporary
+        Preconditions.checkArgument(var.tableRowGenerators.isEmpty());
+    }
 
     private class ExprToStrVisitor extends MonoidVisitor<String, Boolean> {
         private final boolean allowControllable;
@@ -607,8 +725,9 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
             final String processedArgument = visit(node.getArgument(), true);
-            final String functionName = node.getFunctionName();
-            Preconditions.checkArgument(functionName.equalsIgnoreCase("sum"));
+            Preconditions.checkArgument(node.getFunctionName().equalsIgnoreCase("sum"));
+            final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ?
+                                         node.getFunctionName() + "V" : node.getFunctionName();
             final String ret = String.format("o.%s(data.stream()\n      .map(t -> %s)\n      .collect($T.toList()))",
                                               functionName, processedArgument);
             System.out.println(ret);
@@ -630,29 +749,29 @@ public class OrToolsSolver implements ISolverBackend {
                 // We need to generate an IntVar.
                 switch (op) {
                     case "==":
-                        return String.format("eq(%s, %s)", left, right);
+                        return String.format("o.eq(%s, %s)", left, right);
                     case "!=":
-                        return String.format("ne(%s, %s)", left, right);
+                        return String.format("o.ne(%s, %s)", left, right);
                     case "/\\":
-                        return String.format("and(%s, %s)", left, right);
+                        return String.format("o.and(%s, %s)", left, right);
                     case "\\/":
-                        return String.format("or(%s, %s)", left, right);
+                        return String.format("o.or(%s, %s)", left, right);
                     case "<=":
-                        return String.format("leq(%s, %s)", left, right);
+                        return String.format("o.leq(%s, %s)", left, right);
                     case "<":
-                        return String.format("le(%s, %s)", left, right);
+                        return String.format("o.le(%s, %s)", left, right);
                     case ">=":
-                        return String.format("geq(%s, %s)", left, right);
+                        return String.format("o.geq(%s, %s)", left, right);
                     case ">":
-                        return String.format("gt(%s, %s)", left, right);
+                        return String.format("o.gt(%s, %s)", left, right);
                     case "+":
-                        return String.format("plus(%s, %s)", left, right);
+                        return String.format("o.plus(%s, %s)", left, right);
                     case "-":
-                        return String.format("minus(%s, %s)", left, right);
+                        return String.format("o.minus(%s, %s)", left, right);
                     case "*":
-                        return String.format("mult(%s, %s)", left, right);
+                        return String.format("o.mult(%s, %s)", left, right);
                     case "/":
-                        return String.format("div(%s, %s)", left, right);
+                        return String.format("o.div(%s, %s)", left, right);
                     default:
                         throw new UnsupportedOperationException();
                 }
@@ -736,5 +855,12 @@ public class OrToolsSolver implements ISolverBackend {
             this.qualifier = qualifier;
             this.groupViewName = groupViewName;
         }
+    }
+
+    private static class QualifiersByType {
+        private final List<BinaryOperatorPredicate> wherePredicates = new ArrayList<>();
+        private final List<JoinPredicate> joinPredicates = new ArrayList<>();
+        private final List<BinaryOperatorPredicateWithAggregate> aggregatePredicates = new ArrayList<>();
+        private final List<TableRowGenerator> tableRowGenerators = new ArrayList<>();
     }
 }
