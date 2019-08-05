@@ -284,14 +284,14 @@ public class OrToolsTest {
     @Test
     public void testStringEncoder() {
         final StringEncoding encoder = new StringEncoding();
-        long hello = encoder.toLong("hello");
-        long world = encoder.toLong("world");
+        final long hello = encoder.toLong("hello");
+        final long world = encoder.toLong("world");
         assertNotEquals(hello, world);
 
-        long helloAgain = encoder.toLong("hello");
+        final long helloAgain = encoder.toLong("hello");
         assertEquals(hello, helloAgain);
 
-        long worldAgain = encoder.toLong("world");
+        final long worldAgain = encoder.toLong("world");
         assertEquals(world, worldAgain);
 
         assertEquals("hello", encoder.toStr(hello));

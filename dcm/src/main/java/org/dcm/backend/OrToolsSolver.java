@@ -17,7 +17,6 @@ import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
@@ -39,6 +38,7 @@ import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.TableRowGenerator;
+
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;

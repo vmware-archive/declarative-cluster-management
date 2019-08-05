@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vrg.backend;
+package org.dcm.backend;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2LongArrayMap;
