@@ -15,7 +15,7 @@ public class SqlToMnzCompilerTest {
 //    public void testSymbolExtractor() {
 //        final ReferencedSymbols symbols = new ReferencedSymbols();
 //        final IRContext context = new IRContext(Collections.emptyMap());
-//        final WeaveCompiler compiler = new WeaveCompiler(context, symbols);
+//        final ModelCompiler compiler = new ModelCompiler(context, symbols);
 //        final List<String> code = getViewsExample();
 //        code.forEach(compiler::extractSymbols);
 //        assertEquals(3, symbols.getTables().size());
@@ -34,7 +34,7 @@ public class SqlToMnzCompilerTest {
 //        final Table hostsTable = table(name("HOSTS"));
 //        final IRTable mnzTable = new IRTable(hostsTable);
 //        final IRContext context = new IRContext(Collections.singletonMap("HOSTS", mnzTable));
-//        final WeaveCompiler compiler = new WeaveCompiler(context);
+//        final ModelCompiler compiler = new ModelCompiler(context);
 //        final ForAllStatement forAllStatement = compiler.parseView(view.getQuery());
 //        assertEquals(1, forAllStatement.getMnzTableIterators().size());
 //        assertEquals(0, forAllStatement.getJoinCriteria().size());
@@ -50,7 +50,7 @@ public class SqlToMnzCompilerTest {
 //        final Table hostsTable = table(name("HOSTS"));
 //        final IRTable mnzTable = new IRTable(hostsTable);
 //        final IRContext context = new IRContext(Collections.singletonMap("HOSTS", mnzTable));
-//        final WeaveCompiler compiler = new WeaveCompiler(context);
+//        final ModelCompiler compiler = new ModelCompiler(context);
 //        System.out.println(compiler.parseViewMonoid(view.getQuery()));
 //    }
 

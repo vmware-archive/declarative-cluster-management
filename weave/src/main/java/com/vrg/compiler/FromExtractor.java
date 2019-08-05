@@ -46,7 +46,7 @@ class FromExtractor extends DefaultTraversalVisitor<Void, Void> {
         assert node.getRelation() instanceof Table : "Only table relations may have aliases";
         final IRTable irTable = irContext.getTable(((Table) node.getRelation()).getName().toString());
 
-        // TODO: This duplicates code from WeaveModel in creating IRTable and IRColumn instances.
+        // TODO: This duplicates code from Model in creating IRTable and IRColumn instances.
         final org.jooq.Table<? extends Record> table = irTable.isViewTable() ? null : irTable.getTable();
         final IRTable tableAlias = new IRTable(table, irTable.getName(), node.getAlias().getValue());
 

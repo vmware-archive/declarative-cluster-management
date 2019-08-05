@@ -46,15 +46,15 @@ public class ModelTest {
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId integer, hostId varchar(36))");
 
-        final WeaveModel weaveModel = buildWeaveModel(conn, Collections.emptyList(), modelName);
+        final Model model = buildWeaveModel(conn, Collections.emptyList(), modelName);
 
         conn.execute("insert into placement values (1, 'h1')");
         conn.execute("insert into placement values (2, 'h2')");
         conn.execute("insert into placement values (3, 'h3')");
         conn.execute("insert into placement values (4, 'h4')");
 
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        model.updateData();
+        model.solveModel();
 
         final Result<Record> fetch = conn.selectFrom("curr.placement").fetch();
         assertEquals(4, fetch.size());
@@ -67,16 +67,16 @@ public class ModelTest {
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId integer, hostId varchar(36))");
 
-        final WeaveModel weaveModel = buildWeaveModel(conn, Collections.emptyList(), modelName);
+        final Model model = buildWeaveModel(conn, Collections.emptyList(), modelName);
 
         conn.execute("insert into placement values (1, 'h1')");
         conn.execute("insert into placement values (2, 'h2')");
         conn.execute("insert into placement values (3, 'h3')");
         conn.execute("insert into placement values (4, 'h4')");
 
-        weaveModel.updateData();
+        model.updateData();
         final Map<String, Result<? extends Record>> placement =
-                weaveModel.solveModelWithoutTableUpdates(Sets.newHashSet("PLACEMENT"));
+                model.solveModelWithoutTableUpdates(Sets.newHashSet("PLACEMENT"));
         assertEquals(1, placement.size());
     }
 
@@ -88,13 +88,13 @@ public class ModelTest {
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId varchar(100))");
 
-        final WeaveModel weaveModel = buildWeaveModel(conn, Collections.emptyList(), modelName);
+        final Model model = buildWeaveModel(conn, Collections.emptyList(), modelName);
 
         conn.insertInto(DSL.table("placement"))
             .values(Collections.singletonList(null)).execute();
 
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        model.updateData();
+        model.solveModel();
 
         final Result<Record> fetch = conn.selectFrom("curr.placement").fetch();
         assertEquals(1, fetch.size());
@@ -120,7 +120,7 @@ public class ModelTest {
                 ")");
 
         // build model - fails when building for the first time
-        final WeaveModel weaveModel = buildWeaveModel(conn, Collections.emptyList(), modelName);
+        final Model model = buildWeaveModel(conn, Collections.emptyList(), modelName);
 
         final int NUM_HOSTS = 20;
         final int NUM_STRIPES = 4;
@@ -138,8 +138,8 @@ public class ModelTest {
         }
 
         // update and solve
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        model.updateData();
+        model.solveModel();
 
         // TODO: missing the assert. What to expect when the solver can return multiple results?
     }
@@ -175,7 +175,7 @@ public class ModelTest {
                 "having count(hosts.host_id) <= 2;\n"
         );
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+        final Model model = buildWeaveModel(conn, views, modelName);
 
         // insert hosts
         conn.execute("insert into HOSTS values ('h1', true)");
@@ -190,8 +190,8 @@ public class ModelTest {
         conn.execute("insert into STRIPES values (3,'h2')");
 
         // update and solve
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        model.updateData();
+        model.solveModel();
 
         final List<?> results = conn.selectFrom("STRIPES")
                 .fetch("CONTROLLABLE__HOST_ID");
@@ -228,7 +228,7 @@ public class ModelTest {
                 "having count(hosts.host_id) <= 2;\n"
         );
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+        final Model model = buildWeaveModel(conn, views, modelName);
 
         // insert hosts
         conn.execute("insert into HOSTS values ('h1', true)");
@@ -243,8 +243,8 @@ public class ModelTest {
         conn.execute("insert into STRIPES values (3,'h2')");
 
         // update and solve
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        model.updateData();
+        model.solveModel();
 
         final List<?> results = conn.selectFrom("STRIPES")
                 .fetch("CONTROLLABLE__HOST_ID");
@@ -280,7 +280,7 @@ public class ModelTest {
                 "where (select count(hosts.host_id) from stripes) >= 2;\n"
         );
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+        final Model model = buildWeaveModel(conn, views, modelName);
 
         // insert hosts
         conn.execute("insert into HOSTS values ('h1', true)");
@@ -295,8 +295,8 @@ public class ModelTest {
         conn.execute("insert into STRIPES values (3,'h2')");
 
         // update and solve
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        model.updateData();
+        model.solveModel();
 
         final List<?> results = conn.selectFrom("STRIPES")
                 .fetch("CONTROLLABLE__HOST_ID");
@@ -306,7 +306,7 @@ public class ModelTest {
     }
 
 
-    @Test(expected = WeaveModel.WeaveModelException.class)
+    @Test(expected = Model.WeaveModelException.class)
     public void ambiguousFieldsInViewTest() {
         // model and data files will use this as its name
         final String modelName = "ambiguousFieldsInViewTest";
@@ -332,7 +332,7 @@ public class ModelTest {
                 "SELECT * FROM hosts JOIN epochs ON epoch_id = epochs.epoch_id;");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
+        final Model model = buildWeaveModel(conn, views, modelName);
 
         conn.execute("insert into epochs values (1)");
         conn.execute("insert into epochs values (2)");
@@ -340,8 +340,8 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 2)");
         conn.execute("insert into HOSTS values ('h3', 2)");
 
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        model.updateData();
+        model.solveModel();
     }
 
     @Test
@@ -382,9 +382,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 3)");
 
         // build model - fails when building for the first time
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
     @Test
@@ -421,9 +421,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -451,9 +451,9 @@ public class ModelTest {
         conn.execute("insert into t1 values (2, 1)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
 
         final List<?> results = conn.selectFrom("T1")
                 .fetch("CONTROLLABLE__C2");
@@ -487,9 +487,9 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, 5)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
 
         final List<?> results = conn.selectFrom("T1")
                 .fetch("CONTROLLABLE__C2");
@@ -598,9 +598,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // Should not be opt
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -629,9 +629,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // Should not be opt
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -661,9 +661,9 @@ public class ModelTest {
         conn.execute("insert into t2 values (3)");
 
         // Should not be opt
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
 
         final List<Integer> fetch = conn.selectFrom("t1").fetch("CONTROLLABLE__C1", Integer.class);
         assertEquals(1, fetch.size());
@@ -696,9 +696,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // Should not be opt
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
     @Test
@@ -744,9 +744,9 @@ public class ModelTest {
         conn.execute("insert into pod_ports_request values ('p1', '127.0.0.1', 1841, 'tcp')");
 
         // Should not be opt
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -784,9 +784,9 @@ public class ModelTest {
         conn.execute("insert into pod_info values ('p1', 'Pending', 'n1', 5)");
 
         // Should not be opt
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
     @Test
@@ -810,9 +810,9 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, 1)");
         conn.execute("insert into t2 values (1)");
         conn.execute("insert into t2 values (2)");
-        final WeaveModel weaveModel = buildWeaveModel(conn, Collections.singletonList(pod_info_constant), modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, Collections.singletonList(pod_info_constant), modelName);
+        model.updateData();
+        model.solveModel();
         final Result<Record> t1 = conn.selectFrom("t1").fetch();
         assertEquals(1, t1.get(0).get("CONTROLLABLE__C2"));
         assertEquals(2, t1.get(1).get("CONTROLLABLE__C2"));
@@ -857,9 +857,9 @@ public class ModelTest {
             conn.execute(String.format("insert into pod_info values ('p%s', 'Pending', 'n1', 5)", i));
         }
         // Should not be opt
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -888,9 +888,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
     @Test
@@ -931,9 +931,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -975,9 +975,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 'ACTIVE', 3)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -1026,9 +1026,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 'ACTIVE', 3)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -1069,9 +1069,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 'ACTIVE', 3)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -1093,9 +1093,9 @@ public class ModelTest {
         conn.execute("insert into t1 values ('some-other-string')");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -1117,9 +1117,9 @@ public class ModelTest {
         conn.execute("insert into t1 values (1)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
 
         final List<Integer> fetch = conn.selectFrom("t1").fetch("CONTROLLABLE__C1", Integer.class);
         assertEquals(1, fetch.size());
@@ -1163,9 +1163,9 @@ public class ModelTest {
         conn.execute("insert into pod_info values ('p1', 'n1', 2, 2)");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -1200,9 +1200,9 @@ public class ModelTest {
         conn.execute("insert into pod_info values ('p1', 'blah')");
 
         // build model
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        weaveModel.solveModel();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        model.solveModel();
     }
 
 
@@ -1304,8 +1304,8 @@ public class ModelTest {
                         "    having increasing(controllable__node_name) = true;"
         );
 
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
     }
 
     @Test
@@ -1580,9 +1580,9 @@ public class ModelTest {
                         constraint_service_affinity_labels
         );
         final List<String> views = toListOfViews(stringBuilder.toString());
-        final WeaveModel weaveModel = buildWeaveModel(conn, views, modelName);
-        weaveModel.updateData();
-        assertThrows(WeaveModel.WeaveModelException.class, weaveModel::solveModel);
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateData();
+        assertThrows(Model.WeaveModelException.class, model::solveModel);
     }
 
     private void insert_data(final DSLContext conn) {
@@ -1733,15 +1733,15 @@ public class ModelTest {
      *
      * @param conn Connection to the DB
      * @param testName Name of the test case. Model and data files will be based on that name
-     * @return built WeaveModel
+     * @return built Model
      */
     @CanIgnoreReturnValue
-    private WeaveModel buildWeaveModel(final DSLContext conn, final List<String> views, final String testName) {
+    private Model buildWeaveModel(final DSLContext conn, final List<String> views, final String testName) {
         // get model file for the current test
         final File modelFile = new File("src/test/resources/" + testName + ".mzn");
         // create data file
         final File dataFile = new File("/tmp/" + testName + ".dzn");
-        return WeaveModel.buildModel(conn, views, modelFile, dataFile);
+        return Model.buildModel(conn, views, modelFile, dataFile);
     }
 
     /*

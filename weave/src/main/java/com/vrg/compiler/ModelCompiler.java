@@ -36,7 +36,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.vrg.IRColumn;
 import com.vrg.IRContext;
 import com.vrg.IRTable;
-import com.vrg.WeaveModel;
+import com.vrg.Model;
 import com.vrg.backend.ISolverBackend;
 import com.vrg.compiler.monoid.BinaryOperatorPredicate;
 import com.vrg.compiler.monoid.BinaryOperatorPredicateWithAggregate;
@@ -65,8 +65,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public class WeaveCompiler {
-    private static final Logger LOG = LoggerFactory.getLogger(WeaveModel.class);
+public class ModelCompiler {
+    private static final Logger LOG = LoggerFactory.getLogger(Model.class);
     private static final Map<ArithmeticBinaryExpression.Operator, String> ARITHMETIC_OP_TABLE =
             new EnumMap<>(ArithmeticBinaryExpression.Operator.class);
     private static final Map<ComparisonExpression.Operator, String> COMPARISON_OP_TABLE =
@@ -94,7 +94,7 @@ public class WeaveCompiler {
 
     private final IRContext irContext;
 
-    public WeaveCompiler(final IRContext irContext) {
+    public ModelCompiler(final IRContext irContext) {
         this.irContext = irContext;
     }
 

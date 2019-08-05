@@ -121,7 +121,7 @@ public class IRColumn {
             try {
                 fieldTag = FieldTag.valueOf(fieldParts[0]);
             } catch (final IllegalArgumentException iae) {
-                throw new WeaveModel.WeaveModelException(
+                throw new Model.WeaveModelException(
                         String.format("Sequence '%s' is reserved for Weave use to define jooqField prefixes.",
                                 FIELD_PREFIX_SEP), iae);
             }
@@ -129,7 +129,7 @@ public class IRColumn {
             // Force FIELD_PREFIX_SEP to only exist once: for the tags
             // if even after the prefix we have our FIELD_PREFIX_SEP being used we also throw an exception
             if (fieldParts[1].contains(FIELD_PREFIX_SEP)) {
-                throw new WeaveModel.WeaveModelException(
+                throw new Model.WeaveModelException(
                         String.format("Sequence '%s' is reserved for Weave to define jooqField prefixes.",
                                 FIELD_PREFIX_SEP));
             }
@@ -137,7 +137,7 @@ public class IRColumn {
 
         // NUM_ROWS jooqField should not be used by the model
         if (fieldName.equals(IRTable.NUM_ROWS_NAME)) {
-            throw new WeaveModel.WeaveModelException(
+            throw new Model.WeaveModelException(
                     String.format("Field name '%s' is reserved for Weave.", IRTable.NUM_ROWS_NAME));
         }
 

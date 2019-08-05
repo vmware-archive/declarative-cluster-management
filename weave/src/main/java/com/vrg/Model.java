@@ -14,7 +14,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.vrg.backend.ISolverBackend;
 import com.vrg.backend.MinizincSolver;
-import com.vrg.compiler.WeaveCompiler;
+import com.vrg.compiler.ModelCompiler;
 import org.jooq.Constraint;
 import org.jooq.DSLContext;
 import org.jooq.Field;
@@ -45,14 +45,14 @@ import static org.jooq.impl.DSL.values;
 /**
  * Used synthesize a MiniZinc model based on a set of SQL tables.
  *
- * The public API for WeaveModel involves two narrow interfaces:
+ * The public API for Model involves two narrow interfaces:
  *
- *   - buildModel() to create WeaveModel instances based on a supplied JOOQ DSLContext.
- *   - updateData() to extract the input data for the WeaveModel that we can then feed to solvers.
+ *   - buildModel() to create Model instances based on a supplied JOOQ DSLContext.
+ *   - updateData() to extract the input data for the Model that we can then feed to solvers.
  *   - solveModel() to solve the current model based on the current modelFile and dataFile
  */
-public class WeaveModel {
-    private static final Logger LOG = LoggerFactory.getLogger(WeaveModel.class);
+public class Model {
+    private static final Logger LOG = LoggerFactory.getLogger(Model.class);
     private static final String CURRENT_SCHEMA = "CURR";
     private static final SqlParser PARSER = new SqlParser();
     private final ParsingOptions options = new ParsingOptions();
@@ -60,13 +60,13 @@ public class WeaveModel {
     private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
     private final Multimap<Table, Constraint> jooqTableConstraintMap;
-    private final WeaveCompiler compiler;
+    private final ModelCompiler compiler;
     private IRContext irContext;
     private final ISolverBackend backend;
 
 
-    private WeaveModel(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
-                       final File modelFile, final File dataFile, final Conf conf) {
+    private Model(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
+                  final File modelFile, final File dataFile, final Conf conf) {
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
@@ -120,7 +120,7 @@ public class WeaveModel {
             }
         }
         irContext = new IRContext(irTables);
-        compiler = new WeaveCompiler(irContext);
+        compiler = new ModelCompiler(irContext);
         compiler.compile(viewsInPolicy, backend);
     }
 
@@ -132,11 +132,11 @@ public class WeaveModel {
      * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
-     * @return An initialized WeaveModel instance with a populated modelFile
+     * @return An initialized Model instance with a populated modelFile
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized WeaveModel buildModel(final DSLContext dslContext, final List<String> views,
-                                                     final File modelFile, final File dataFile) {
+    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> views,
+                                                final File modelFile, final File dataFile) {
         final List<Table<?>> tables = getTablesFromContext(dslContext);
         return buildModel(dslContext, tables, views, modelFile, dataFile);
     }
@@ -149,11 +149,11 @@ public class WeaveModel {
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
      * @param conf configuration object
-     * @return An initialized WeaveModel instance with a populated modelFile
+     * @return An initialized Model instance with a populated modelFile
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized WeaveModel buildModel(final DSLContext dslContext, final List<String> views,
-                                                     final File modelFile, final File dataFile,  final Conf conf) {
+    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> views,
+                                                final File modelFile, final File dataFile, final Conf conf) {
         final List<Table<?>> tables = getTablesFromContext(dslContext);
         return buildModel(dslContext, tables, views, modelFile, dataFile, conf);
     }
@@ -166,12 +166,12 @@ public class WeaveModel {
      * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
-     * @return An initialized WeaveModel instance with a populated modelFile
+     * @return An initialized Model instance with a populated modelFile
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized WeaveModel buildModel(final DSLContext dslContext, final List<Table<?>> tables,
-                                                     final List<String> views, final File modelFile,
-                                                     final File dataFile) {
+    public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
+                                                final List<String> views, final File modelFile,
+                                                final File dataFile) {
         return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf());
     }
 
@@ -184,13 +184,13 @@ public class WeaveModel {
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
      * @param conf configuration object
-     * @return An initialized WeaveModel instance with a populated modelFile
+     * @return An initialized Model instance with a populated modelFile
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized WeaveModel buildModel(final DSLContext dslContext, final List<Table<?>> tables,
-                                                     final List<String> views, final File modelFile,
-                                                     final File dataFile, final Conf conf) {
-        return new WeaveModel(dslContext, tables, views, modelFile, dataFile, conf);
+    public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
+                                                final List<String> views, final File modelFile,
+                                                final File dataFile, final Conf conf) {
+        return new Model(dslContext, tables, views, modelFile, dataFile, conf);
     }
 
     /**
