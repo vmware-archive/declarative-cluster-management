@@ -15,8 +15,8 @@ import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.util.Domain;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
-import org.dcm.Model;
 import org.dcm.ModelException;
+
 import org.jooq.Record;
 import org.jooq.Record2;
 import org.jooq.Record4;
