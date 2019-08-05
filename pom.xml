@@ -13,13 +13,13 @@
     </properties>
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.vrg</groupId>
-    <artifactId>weave-project</artifactId>
+    <artifactId>dcm-project</artifactId>
     <packaging>pom</packaging>
     <version>1.0-SNAPSHOT</version>
-    <name>weave-project</name>
+    <name>dcm-project</name>
     <modules>
         <module>build-common</module>
-        <module>weave</module>
+        <module>dcm</module>
     </modules>
     <dependencies>
         <dependency>
