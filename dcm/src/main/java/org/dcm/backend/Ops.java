@@ -14,9 +14,11 @@ import java.util.List;
 
 public class Ops {
     private final CpModel model;
+    private final StringEncoding encoder;
 
-    public Ops(final CpModel model) {
+    public Ops(final CpModel model, final StringEncoding encoding) {
         this.model = model;
+        this.encoder = encoding;
     }
 
     public int sum(final List<Integer> data) {
@@ -60,7 +62,11 @@ public class Ops {
         return ret;
     }
 
-    public IntVar eq(final IntVar left, final int right) {
+    public IntVar eq(final IntVar left, final String right) {
+        return eq(left, encoder.toLong(right));
+    }
+
+    public IntVar eq(final IntVar left, final long right) {
         final IntVar bool = model.newBoolVar("");
         model.addEquality(left, right).onlyEnforceIf(bool);
         model.addDifferent(left, right).onlyEnforceIf(bool.not());

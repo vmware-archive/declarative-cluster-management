@@ -17,6 +17,7 @@ import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
@@ -102,7 +103,7 @@ public class OrToolsSolver implements ISolverBackend {
         System.loadLibrary("jniortools");
     }
 
-    @Nullable private IGeneratedBackend generatedBackend = null;
+    @Nullable private IGeneratedBackend generatedBackend = new GeneratedBackendSample();
     @Nullable private IRContext context = null;
 
     @Override
@@ -125,6 +126,9 @@ public class OrToolsSolver implements ISolverBackend {
                                           final Map<String, MonoidComprehension> nonConstraintViews,
                                           final Map<String, MonoidComprehension> constraintViews,
                                           final Map<String, MonoidComprehension> objectiveFunctions) {
+        if (generatedBackend != null) {
+            return Collections.emptyList();
+        }
         final MethodSpec.Builder builder = MethodSpec.methodBuilder("solve");
         addInitializer(builder);
         try {
@@ -183,6 +187,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             // (1) Create the result set
             builder.addCode("\n");
+            builder.addStatement(printTime("Group-by intermediate view"));
             builder.addComment("Non-constraint view $L", tableNameStr(viewName));
             final TypeSpec typeSpec = TupleGen.getTupleType(selectExprSize);
             final String viewTupleGenericParameters = generateTupleGenericParameters(inner.getHead().getSelectExprs());
@@ -214,6 +219,7 @@ public class OrToolsSolver implements ISolverBackend {
             builder.addCode(");\n");
             builder.addStatement("$L.add(res)", tableNameStr(viewName));
             builder.endControlFlow();
+            builder.addStatement(printTime("Group-by final view"));
         } else {
             buildInnerComprehension(builder, viewName, comprehension, null);
         }
@@ -379,6 +385,7 @@ public class OrToolsSolver implements ISolverBackend {
                         return retVal;
                     }
                     ).collect(Collectors.joining(", "));
+
             // ...2) create a List<[RecordType]> to represent the table
             builder.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
                                  List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),
@@ -415,7 +422,7 @@ public class OrToolsSolver implements ISolverBackend {
                     if (e.getPrimaryKeyFields().size() == 1) {
                         final IRColumn field = e.getPrimaryKeyFields().get(0);
                         final String fieldName = field.getName();
-                        builder.addStatement("model.AddAllDifferent($L)",
+                        builder.addStatement("model.addAllDifferent($L)",
                                 fieldNameStr(table.getName(), fieldName));
                     }
                     else {
@@ -458,10 +465,10 @@ public class OrToolsSolver implements ISolverBackend {
                             fieldNameStr(next.getKey().getIRTable().getName(), next.getKey().getName());
 
                     final String snippet = Joiner.on('\n').join(
-                         "final int[] domain = context.getTable($S).getCurrentData()",
+                         "final long[] domain = context.getTable($S).getCurrentData()",
                          "                        .getValues($S, $L.class)",
                          "                        .stream()",
-                         "                        .mapToInt(Integer::intValue).toArray()"
+                         "                        .mapToLong(encoder::toLong).toArray()"
                     );
 
                     builder.addStatement(snippet,
@@ -472,6 +479,8 @@ public class OrToolsSolver implements ISolverBackend {
                 }
             });
         }
+
+        builder.addStatement(printTime("Array declarations"));
     }
 
     private static String toJavaClass(final IRColumn.FieldType type) {
@@ -502,14 +511,17 @@ public class OrToolsSolver implements ISolverBackend {
                .returns(returnT)
                .addParameter(IRContext.class, "context", Modifier.FINAL)
                .addComment("Create the model.")
+               .addStatement("final long startTime = $T.nanoTime()", System.class)
                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
-               .addStatement("final $1T o = new $1T(model);", Ops.class)
+               .addStatement("final $1T encoder = new $1T()", StringEncoding.class)
+               .addStatement("final $1T o = new $1T(model, encoder)", Ops.class)
                .addCode("\n");
     }
 
     private void addSolvePhase(final MethodSpec.Builder builder, final IRContext context) {
         builder.addCode("\n")
                .addComment("Start solving")
+               .addStatement(printTime("Model creation"))
                .addStatement("final $1T solver = new $1T()", CpSolver.class)
                .addStatement("solver.getParameters().setLogSearchProgress(true)")
                .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
@@ -541,8 +553,13 @@ public class OrToolsSolver implements ISolverBackend {
                                     "context.getTable($S).getCurrentData()", i, tableName);
                             builder.beginControlFlow("for (int i = 0; i < $L; i++)",
                                     tableNumRowsStr(tableName));
-                            builder.addStatement("obj[0] = solver.value($L[i])",
-                                                 fieldNameStr(tableName, field.getName()));
+                            if (field.getType().equals(IRColumn.FieldType.STRING)) {
+                                builder.addStatement("obj[0] = encoder.toStr(solver.value($L[i]))",
+                                        fieldNameStr(tableName, field.getName()));
+                            } else {
+                                builder.addStatement("obj[0] = solver.value($L[i])",
+                                        fieldNameStr(tableName, field.getName()));
+                            }
                             builder.addStatement("tmp$L.get(i).from(obj, $S)", i, field.getName());
                             builder.endControlFlow();
                             builder.addStatement("result.put(context.getTable($S), tmp$L)", tableName, i);
@@ -717,6 +734,8 @@ public class OrToolsSolver implements ISolverBackend {
         @Nullable
         @Override
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
+            // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
+            // the computed inner expression within a function to avoid creating too many intermediate variables.
             final String processedArgument = visit(node.getArgument(), true);
             Preconditions.checkArgument(node.getFunctionName().equalsIgnoreCase("sum"));
             final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ?
@@ -855,5 +874,9 @@ public class OrToolsSolver implements ISolverBackend {
         private final List<JoinPredicate> joinPredicates = new ArrayList<>();
         private final List<BinaryOperatorPredicateWithAggregate> aggregatePredicates = new ArrayList<>();
         private final List<TableRowGenerator> tableRowGenerators = new ArrayList<>();
+    }
+
+    private String printTime(final String event) {
+        return String.format("System.out.println(\"%s: we are at \" + (System.nanoTime() - startTime))", event);
     }
 }

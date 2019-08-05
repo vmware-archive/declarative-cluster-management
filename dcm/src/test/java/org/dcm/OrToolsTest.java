@@ -13,7 +13,11 @@ import com.google.ortools.sat.DecisionStrategyProto;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
+import com.vrg.backend.StringEncoding;
 import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 
 public class OrToolsTest {
     static {
@@ -65,7 +69,7 @@ public class OrToolsTest {
 
         // Create the variables.
         final int numPods = 100;
-        final int numNodes = 100;
+        final int numNodes = 1000;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
         final int[] podsDemands = new int[numPods];
 
@@ -114,6 +118,69 @@ public class OrToolsTest {
         }
         System.out.println("Done: " + (System.currentTimeMillis() - now));
     }
+
+
+    @Test
+    public void test2Ineff() {
+        final long now = System.currentTimeMillis();
+        // Create the model.
+        final CpModel model = new CpModel();
+
+        // Create the variables.
+        final int numPods = 100;
+        final int numNodes = 1000;
+        final IntVar[] podsControllableNodes = new IntVar[numPods];
+        final int[] podsDemands = new int[numPods];
+
+        for (int i = 0; i < numPods; i++) {
+            podsControllableNodes[i] = model.newIntVar(0, numNodes - 1, "");
+        }
+        for (int i = 0; i < numPods; i++) {
+            podsDemands[i] = 5;
+        }
+
+        // 1. Symmetry breaking
+        for (int i = 0; i < numPods - 1; i++) {
+            model.addLessThan(podsControllableNodes[i], podsControllableNodes[i + 1]);
+        }
+
+        // 2. Capacity constraint
+        final IntVar[] loads = new IntVar[numNodes];
+        for (int node = 0; node < numNodes; node++) {
+            final IntVar[] bools = new IntVar[numPods];
+            for (int i = 0; i < numPods; i++) {
+                final IntVar bVar = model.newBoolVar("");
+                model.addEquality(podsControllableNodes[i], node).onlyEnforceIf(bVar);
+                model.addDifferent(podsControllableNodes[i], node).onlyEnforceIf(bVar.not());
+                bools[i] = bVar;
+            }
+            final IntVar load = model.newIntVar(0, 10000000, "");
+            model.addEquality(load, LinearExpr.scalProd(bools, podsDemands));
+            loads[node] = load;
+            model.addLessOrEqual(load, 100000);
+        }
+        final IntVar max = model.newIntVar(0, 1000000000, "");
+        model.addMaxEquality(max, loads);
+        model.minimize(max);
+
+        System.out.println("Model creation: " + (System.currentTimeMillis() - now));
+        // Create a solver and solve the model.
+        final CpSolver solver = new CpSolver();
+//        solver.getParameters().setNumSearchWorkers(4);
+        solver.getParameters().setLogSearchProgress(true);
+        solver.getParameters().setCpModelPresolve(false);
+        solver.getParameters().setCpModelProbingLevel(0);
+        final CpSolverStatus status = solver.solve(model);
+
+        System.out.println(model.model().getConstraintsCount());
+        System.out.println(model.model().getVariablesCount());
+        if (status == CpSolverStatus.FEASIBLE ||
+                status == CpSolverStatus.OPTIMAL) {
+            System.out.println(solver.value(max));
+        }
+        System.out.println("Done: " + (System.currentTimeMillis() - now));
+    }
+
 
     @Test
     public void test3() {
@@ -214,4 +281,22 @@ public class OrToolsTest {
         System.out.println(solver.responseStats());
     }
 
+    @Test
+    public void testStringEncoder() {
+        final StringEncoding encoder = new StringEncoding();
+        long hello = encoder.toLong("hello");
+        long world = encoder.toLong("world");
+        assertNotEquals(hello, world);
+
+        long helloAgain = encoder.toLong("hello");
+        assertEquals(hello, helloAgain);
+
+        long worldAgain = encoder.toLong("world");
+        assertEquals(world, worldAgain);
+
+        assertEquals("hello", encoder.toStr(hello));
+        assertEquals("hello", encoder.toStr(helloAgain));
+        assertEquals("world", encoder.toStr(world));
+        assertEquals("world", encoder.toStr(worldAgain));
+    }
 }

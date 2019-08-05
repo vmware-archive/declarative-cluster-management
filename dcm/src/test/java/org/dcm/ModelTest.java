@@ -834,7 +834,7 @@ public class ModelTest {
 
 
     @Test
-    public void testControllableInJoinLarge() {
+    public void testControllableInJoinLarge() throws InterruptedException {
         // model and data files will use this as its name
         final String modelName = "testControllableInJoinLarge";
 
@@ -863,8 +863,8 @@ public class ModelTest {
                 "where status = 'Pending'\n" +
                 "group by node_info.name, node_info.cpu_allocatable;");
 
-        for (int i = 0; i < 50; i++) {
-            conn.execute(String.format("insert into node_info values ('n%s', 10)", i));
+        for (int i = 0; i < 1000; i++) {
+            conn.execute(String.format("insert into node_info values ('n%s', 100000)", i));
         }
         for (int i = 0; i < 100; i++) {
             conn.execute(String.format("insert into pod_info values ('p%s', 'Pending', 'n1', 5)", i));
