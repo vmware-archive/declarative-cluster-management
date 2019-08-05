@@ -13,7 +13,7 @@ import com.vrg.Conf;
 import com.vrg.IRColumn;
 import com.vrg.IRContext;
 import com.vrg.IRTable;
-import com.vrg.Model;
+import com.vrg.ModelException;
 import com.vrg.compiler.monoid.MonoidComprehension;
 import freemarker.cache.ClassTemplateLoader;
 import freemarker.template.Configuration;
@@ -88,7 +88,7 @@ public class MinizincSolver implements ISolverBackend {
             this.stdout = File.createTempFile("mnz", "-out");
             this.stdout.deleteOnExit();
         } catch (final IOException e) {
-            throw new Model.WeaveModelException("Model file not found or has formatting errors", e);
+            throw new ModelException("Model file not found or has formatting errors", e);
         }
 
         // Freemarker configuration
@@ -102,7 +102,7 @@ public class MinizincSolver implements ISolverBackend {
             this.modelTemplate = cfg.getTemplate(MODEL_FILENAME);
             this.dataTemplate = cfg.getTemplate(DATA_FILENAME);
         } catch (final IOException e) {
-            throw new Model.WeaveModelException("Model file not found or has formatting errors", e);
+            throw new ModelException("Model file not found or has formatting errors", e);
         }
     }
 
@@ -313,7 +313,7 @@ public class MinizincSolver implements ISolverBackend {
                 if (irTable == null) {
                     LOG.error("Null irtable with batch-ID {}, tablename {} and " +
                               "line {}", batch.get(), tableLine, tableName);
-                    throw new Model.WeaveModelException("Null irtable");
+                    throw new ModelException("Null irtable");
                 }
                 // - 2nd to nth line: CSV with header
                 // TODO: workaround for single-quoted strings
@@ -323,7 +323,7 @@ public class MinizincSolver implements ISolverBackend {
                         .into(irTable.getTable());
                 csvPerTable.put(irTable, records);
             } catch (final IndexOutOfBoundsException e) {
-                throw new Model.WeaveModelException("Mal-formed output!", e);
+                throw new ModelException("Mal-formed output!", e);
             }
         }
         return csvPerTable;
@@ -347,13 +347,13 @@ public class MinizincSolver implements ISolverBackend {
 
                 mnz = pb.redirectError(stderr).redirectOutput(stdout).start();
             } catch (final IOException e) {
-                throw new Model.WeaveModelException("Could not execute MiniZinc", e);
+                throw new ModelException("Could not execute MiniZinc", e);
             }
             // wait for minizinc to solve the model
             try {
                 mnz.waitFor();
             } catch (final InterruptedException e) {
-                throw new Model.WeaveModelException("MiniZinc was interrupted", e);
+                throw new ModelException("MiniZinc was interrupted", e);
             }
 
             LOG.info("Solver command completed. Parsing output.");
@@ -363,11 +363,11 @@ public class MinizincSolver implements ISolverBackend {
                              new BufferedReader(new InputStreamReader(new FileInputStream(stderr), UTF_8))) {
                     final String errorOutput = stdError.lines().collect(Collectors.joining());
                     if (!errorOutput.contains("WARNING: the --time-out flag has recently been changed")) {
-                        throw new Model.WeaveModelException(
+                        throw new ModelException(
                                 String.format("MiniZinc exited with error code %d:%n%s", mnz.exitValue(), errorOutput));
                     }
                 } catch (final IOException ioe) {
-                    throw new Model.WeaveModelException("Could not execute MiniZinc", ioe);
+                    throw new ModelException("Could not execute MiniZinc", ioe);
                 }
             }
 
@@ -383,7 +383,7 @@ public class MinizincSolver implements ISolverBackend {
                 while ((line = stdInput.readLine()) != null) {
                     // if we find the unsatisfiable line in the output we throw an exception
                     if (line.equals(MNZ_UNSATISFIABLE)) {
-                        throw new Model.WeaveModelException("Model UNSATISFIABLE. Please verify your " +
+                        throw new ModelException("Model UNSATISFIABLE. Please verify your " +
                                                                  "model and data.");
                     }
                     // break at first solution. Since we are not specifying '--all-solutions' the solver
@@ -400,7 +400,7 @@ public class MinizincSolver implements ISolverBackend {
                 // LOG.info("MNZ OUTPUT = " + output.toString());
                 return output.toString();
             } catch (final IOException ioe) {
-                throw new Model.WeaveModelException("Could not execute MiniZinc", ioe);
+                throw new ModelException("Could not execute MiniZinc", ioe);
             }
         } finally {
             if (debugMode) {
@@ -425,7 +425,7 @@ public class MinizincSolver implements ISolverBackend {
             final Writer writer = Files.newBufferedWriter(templateFile.toPath(), UTF_8);
             template.process(templateVars, writer);
         } catch (final TemplateException | IOException e) {
-            throw new Model.WeaveModelException("Error processing template", e);
+            throw new ModelException("Error processing template", e);
         }
     }
 }

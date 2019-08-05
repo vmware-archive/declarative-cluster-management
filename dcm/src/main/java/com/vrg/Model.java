@@ -223,7 +223,7 @@ public class Model {
      * Solves the current model by running the current modelFile and dataFile against MiniZinc
      */
     @SuppressWarnings("WeakerAccess")
-    public synchronized void solveModel() throws WeaveModelException {
+    public synchronized void solveModel() throws ModelException {
         // run the solver and get a result set per table
         LOG.info("Running the solver");
         final long start = System.nanoTime();
@@ -238,7 +238,7 @@ public class Model {
      */
     @SuppressWarnings("WeakerAccess")
     public synchronized Map<String, Result<? extends Record>> solveModelWithoutTableUpdates(final Set<String> tables)
-            throws WeaveModelException {
+            throws ModelException {
         // run the solver and get a result set per table
         LOG.info("Running the solver");
         final long start = System.nanoTime();
@@ -422,14 +422,4 @@ public class Model {
         LOG.info("compiler.updateData() took {}ns to complete", (updateData - System.nanoTime()));
     }
 
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static class WeaveModelException extends RuntimeException {
-        public WeaveModelException(final String message, final Throwable cause) {
-            super(message, cause);
-        }
-
-        public WeaveModelException(final String message) {
-            super(message);
-        }
-    }
 }

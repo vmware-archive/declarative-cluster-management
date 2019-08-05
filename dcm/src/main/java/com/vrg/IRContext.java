@@ -34,7 +34,7 @@ public class IRContext {
     public IRTable getTable(final String tableName) {
         final String tableNameCaps = tableName.toUpperCase(Locale.US);
         if (!irTables.containsKey(tableNameCaps)) {
-            throw new Model.WeaveModelException(String.format("Table '%s' not found!", tableName));
+            throw new ModelException(String.format("Table '%s' not found!", tableName));
         }
         return irTables.get(tableNameCaps);
     }
@@ -57,7 +57,7 @@ public class IRContext {
     private IRColumn getColumn(final IRTable irTable, final String fieldName) {
         final String fieldNameCaps = fieldName.toUpperCase(Locale.US);
         if (!irTable.getIRColumns().containsKey(fieldNameCaps)) {
-            throw new Model.WeaveModelException(
+            throw new ModelException(
                     String.format("Field '%s' not found at table '%s'!", fieldName, irTable.getName()));
         }
         return irTable.getIRColumns().get(fieldNameCaps);
@@ -77,11 +77,11 @@ public class IRContext {
         // - we find more than one field with the same name in a set of tables
         // - no field was found
         if (IRColumns.size() > 1) {
-            throw new Model.WeaveModelException("Ambiguous column (" + fieldName  +
+            throw new ModelException("Ambiguous column (" + fieldName  +
                     ") name in the given set of tables (" + tables + ")");
         }
         if (IRColumns.isEmpty()) {
-            throw new Model.WeaveModelException("Column name (" + fieldName  + ") not found in " +
+            throw new ModelException("Column name (" + fieldName  + ") not found in " +
                     "the given set of tables (" + tables + ")");
         }
 

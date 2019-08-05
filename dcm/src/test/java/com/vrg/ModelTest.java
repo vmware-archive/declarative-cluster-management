@@ -306,7 +306,7 @@ public class ModelTest {
     }
 
 
-    @Test(expected = Model.WeaveModelException.class)
+    @Test(expected = ModelException.class)
     public void ambiguousFieldsInViewTest() {
         // model and data files will use this as its name
         final String modelName = "ambiguousFieldsInViewTest";
@@ -1582,7 +1582,7 @@ public class ModelTest {
         final List<String> views = toListOfViews(stringBuilder.toString());
         final Model model = buildWeaveModel(conn, views, modelName);
         model.updateData();
-        assertThrows(Model.WeaveModelException.class, model::solveModel);
+        assertThrows(ModelException.class, model::solveModel);
     }
 
     private void insert_data(final DSLContext conn) {
