@@ -34,7 +34,7 @@ class TupleGen {
      */
     static TypeSpec tupleGen(final int numFields) {
         final TypeSpec.Builder classBuilder = TypeSpec.classBuilder("Tuple" + numFields)
-                .addModifiers(Modifier.FINAL, Modifier.PRIVATE);
+                .addModifiers(Modifier.FINAL, Modifier.PRIVATE, Modifier.STATIC);
         final MethodSpec.Builder constructor = MethodSpec.constructorBuilder()
                 .addModifiers(Modifier.PRIVATE);
         for (int i = 0; i < numFields; i++) {
@@ -58,11 +58,16 @@ class TupleGen {
         final String toPrint = IntStream.range(0, numFields)
                 .mapToObj(i -> "t" + i)
                 .collect(Collectors.joining(", "));
+
+        final String formatString = IntStream.of(0, numFields)
+                                         .mapToObj(i -> "%s")
+                                         .collect(Collectors.joining(","));
+
         final MethodSpec toStringMethod = MethodSpec.methodBuilder("toString")
                 .addAnnotation(Override.class)
                 .addModifiers(Modifier.PUBLIC)
                 .returns(String.class)
-                .addStatement("return String.format($S, $L)", "(%s)", toPrint)
+                .addStatement("return String.format(($S), $L)", formatString, toPrint)
                 .build();
         final MethodSpec hashCodeMethod = MethodSpec.methodBuilder("hashCode")
                 .addAnnotation(Override.class)
