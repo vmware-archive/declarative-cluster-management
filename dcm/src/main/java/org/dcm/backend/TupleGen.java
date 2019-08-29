@@ -59,7 +59,7 @@ class TupleGen {
                 .mapToObj(i -> "t" + i)
                 .collect(Collectors.joining(", "));
 
-        final String formatString = IntStream.of(0, numFields)
+        final String formatString = IntStream.range(0, numFields)
                                          .mapToObj(i -> "%s")
                                          .collect(Collectors.joining(","));
 

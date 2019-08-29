@@ -58,7 +58,7 @@ public class MinizincSolver implements ISolverBackend {
     private static final String CONF_SOLVER_KEY = "solver";
     private static final String CONF_DEBUG_MODE = "debug_mode";
     private static final String CONF_FZN_FLAGS = "fzn_flags";
-    private static final int MNZ_SOLVER_TIMEOUT_MS = 300000;
+    private static final int MNZ_SOLVER_TIMEOUT_MS = 1000000;
     private final SolverBackend solverToUse;
     private final boolean debugMode;
     private final String fznFlags;

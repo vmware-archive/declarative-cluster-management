@@ -104,7 +104,7 @@ public class OrToolsSolver implements ISolverBackend {
         System.loadLibrary("jniortools");
     }
 
-    @Nullable private IGeneratedBackend generatedBackend = new GeneratedBackendSample();
+    @Nullable private IGeneratedBackend generatedBackend;// = new GeneratedBackendSample();
     @Nullable private IRContext context = null;
 
     @Override
@@ -130,6 +130,7 @@ public class OrToolsSolver implements ISolverBackend {
         if (generatedBackend != null) {
             return Collections.emptyList();
         }
+
         final MethodSpec.Builder builder = MethodSpec.methodBuilder("solve");
         addInitializer(builder);
         try {
@@ -140,7 +141,12 @@ public class OrToolsSolver implements ISolverBackend {
         nonConstraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    addNonConstraintView(builder, name, rewrittenComprehension);
+                    addView(builder, name, rewrittenComprehension, false);
+                });
+        constraintViews
+                .forEach((name, comprehension) -> {
+                    final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
+                    addView(builder, name, rewrittenComprehension, true);
                 });
 
         addSolvePhase(builder, context);
@@ -160,9 +166,8 @@ public class OrToolsSolver implements ISolverBackend {
         return compile(spec);
     }
 
-
-    private void addNonConstraintView(final MethodSpec.Builder builder, final String viewName,
-                                      final MonoidComprehension comprehension) {
+    private void addView(final MethodSpec.Builder builder, final String viewName,
+                         final MonoidComprehension comprehension, final boolean isConstraint) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
             final MonoidComprehension inner = groupByComprehension.getComprehension();
@@ -175,7 +180,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             // We create an intermediate view that extracts groups and returns a List<Tuple> per group
             final String intermediateView = "tmp" + intermediateViewCounter.getAndIncrement();
-            buildInnerComprehension(builder, intermediateView, inner, groupByQualifier);
+            buildInnerComprehension(builder, intermediateView, inner, groupByQualifier, isConstraint);
 
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
             // in two steps...
@@ -222,7 +227,7 @@ public class OrToolsSolver implements ISolverBackend {
             builder.endControlFlow();
             builder.addStatement(printTime("Group-by final view"));
         } else {
-            buildInnerComprehension(builder, viewName, comprehension, null);
+            buildInnerComprehension(builder, viewName, comprehension, null, isConstraint);
         }
 
     }
@@ -233,103 +238,62 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private void buildInnerComprehension(final MethodSpec.Builder builder, final String viewName,
                                          final MonoidComprehension comprehension,
-                                         @Nullable final GroupByQualifier groupByQualifier) {
-        final ArrayDeque<String> controlFlowsToPop = new ArrayDeque<>();
-
+                                         @Nullable final GroupByQualifier groupByQualifier,
+                                         final boolean isConstraint) {
         Preconditions.checkNotNull(comprehension.getHead());
-        builder.addCode("\n").addComment("Non-constraint view $L", viewName);
+        // Add a comment with the view name
+        builder.addCode("\n").addComment("$L view $L", isConstraint ? "Constraint" : "Non-constraint", viewName);
 
-        final QualifiersByType varQualifiers = new QualifiersByType();
-        final QualifiersByType nonVarQualifiers = new QualifiersByType();
-        populateQualifiersByVarType(comprehension, varQualifiers, nonVarQualifiers);
-
-        // Initialize an arraylist or map to collect results and generate the required tuple sizes
+        // Extract the set of columns being selected in this view
         final AtomicInteger fieldIndex = new AtomicInteger();
         final List<ColumnIdentifier> headItemsList = comprehension.getHead().getSelectExprs().stream()
                 .map(this::getColumnsAccessed)
                 .flatMap(Collection::stream)
                 .collect(Collectors.toList());
 
+        // Compute a string that represents the set of field accesses for the above columns
         final String headItemsStr = headItemsList.stream()
                 .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex))
                 .collect(Collectors.joining(",\n    "));
+
+        // Compute a string that represents the Java types corresponding to the headItemsStr
         final String headItemsListTupleGenericParameters = generateTupleGenericParameters(headItemsList);
         viewTupleTypeParameters.put(viewName, headItemsListTupleGenericParameters);
 
         final int tupleSize = headItemsList.size();
-        // Generates a tuple type if needed
-        final TypeSpec tupleSpec = TupleGen.getTupleType(tupleSize);
+        final String resultSetNameStr = nonConstraintViewName(viewName);
+        final ArrayDeque<String> controlFlowsToPop = new ArrayDeque<>();
 
-        final String viewRecords = nonConstraintViewName(viewName);
+        // For non-constraints, create a Map<> or a List<> to collect the result-set (depending on
+        // whether the query is a group by or not)
+        if (!isConstraint) {
+            addMapOrListForResultSet(builder, viewName, tupleSize, headItemsListTupleGenericParameters, resultSetNameStr,
+                    groupByQualifier);
+        }
 
-        if (groupByQualifier != null) {
-            // Create group by tuple
-            final int numberOfGroupColumns = groupByQualifier.getColumnIdentifiers().size();
-            final String groupByTupleGenericParameters =
-                    generateTupleGenericParameters(groupByQualifier.getColumnIdentifiers());
-            final TypeSpec groupTupleSpec = TupleGen.getTupleType(numberOfGroupColumns);
-            viewGroupByTupleTypeParameters.put(viewName, groupByTupleGenericParameters);
-            builder.addStatement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
-                                 groupTupleSpec, groupByTupleGenericParameters,
-                                 List.class, tupleSpec, headItemsListTupleGenericParameters,
-                                 viewRecords, HashMap.class);
+        // Separate out qualifiers into variable and non-variable types.
+        final QualifiersByType varQualifiers = new QualifiersByType();
+        final QualifiersByType nonVarQualifiers = new QualifiersByType();
+        populateQualifiersByVarType(comprehension, varQualifiers, nonVarQualifiers);
+
+        // Start control flows to create nested for loops
+        addNestedForLoops(builder, nonVarQualifiers, controlFlowsToPop);
+
+        // Filter out nested for loops using an if(predicate) statement
+        maybeAddNonVarFilters(builder, nonVarQualifiers, controlFlowsToPop, isConstraint);
+
+        if (!isConstraint) {
+            // If predicate is true, then retrieve expressions to collect into result set. Note, this does not
+            // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
+            addToResultSet(builder, viewName, tupleSize, headItemsStr, headItemsListTupleGenericParameters,
+                    resultSetNameStr, groupByQualifier);
         } else {
-            builder.addStatement("final $T<$N<$L>> $L = new $T<>()",
-                    List.class, tupleSpec, headItemsListTupleGenericParameters, viewRecords, ArrayList.class);
+            addRowConstraint(builder, varQualifiers, nonVarQualifiers);
         }
 
-        // Create nested for loops
-        nonVarQualifiers.tableRowGenerators.forEach(tr -> {
-            final String tableName = tr.getTable().getName();
-            final String tableNumRowsStr = tableNumRowsStr(tableName);
-            final String iterStr = iterStr(tr.getTable().getAliasedName());
-            builder.beginControlFlow("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr);
-            controlFlowsToPop.add(String.format("for (%s)", iterStr));
-        });
-
-        final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
-                .map(expr -> exprToStr(expr, false, null))
-                .collect(Collectors.joining(" \n    && "));
-        final String wherePredicateStr = nonVarQualifiers.wherePredicates.stream()
-                .map(expr -> exprToStr(expr, false, null))
-                .collect(Collectors.joining(" \n    && "));
-        final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
-                .filter(s -> !s.equals(""))
-                .collect(Collectors.joining(" \n    && "));
-
-        if (!predicateStr.isEmpty()) {
-            // Add filter predicate
-            builder.beginControlFlow("if ($L)", predicateStr);
-            controlFlowsToPop.add("if (" + predicateStr + ")");
-        }
-
-
-        // If predicate is true, then retrieve expressions to collect into result set. Note, this does not
-        // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
-
-        // Create a tuple for the result set
-        builder.addStatement("final Tuple$1L<$2L> tuple = new Tuple$1L<>(\n    $3L\n    )",
-                             tupleSize, headItemsListTupleGenericParameters, headItemsStr);
-
-        // Update result set
-        if (groupByQualifier != null) {
-            final int numberOfGroupByColumns = groupByQualifier.getColumnIdentifiers().size();
-            // Comma separated list of field accesses to construct a group string
-            final String groupString = groupByQualifier.getColumnIdentifiers().stream()
-                    .map(e -> fieldNameStrWithIter(e.getTableName(), e.getField().getName()))
-                    .collect(Collectors.joining(",     \n"));
-
-            // Organize the collected tuples from the nested for loops by groupByTuple
-            builder.addStatement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
-                                 numberOfGroupByColumns, viewGroupByTupleTypeParameters.get(viewName), groupString);
-            builder.addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(tuple)",
-                                 viewRecords, ArrayList.class);
-        } else {
-            builder.addStatement("$L.add(tuple)", viewRecords);
-        }
-
+        // Pop all control flows (nested for loops and if statement)
         controlFlowsToPop.forEach(
-                e -> builder.endControlFlow() // end filter predicate if statement
+                e -> builder.endControlFlow()
         );
         // Print debugging info
         // builder.addStatement("$T.out.println($N)", System.class, viewRecords);
@@ -361,6 +325,137 @@ public class OrToolsSolver implements ISolverBackend {
                         .computeIfAbsent(fieldName, (k) -> counter.getAndIncrement());
         return fieldName;
     }
+
+    private void addMapOrListForResultSet(final MethodSpec.Builder builder,
+                                          final String viewName,
+                                          final int tupleSize,
+                                          final String headItemsListTupleGenericParameters,
+                                          final String viewRecords,
+                                          @Nullable final GroupByQualifier groupByQualifier) {
+        final TypeSpec tupleSpec = TupleGen.getTupleType(tupleSize);
+
+        if (groupByQualifier != null) {
+            // Create group by tuple
+            final int numberOfGroupColumns = groupByQualifier.getColumnIdentifiers().size();
+            final String groupByTupleGenericParameters =
+                    generateTupleGenericParameters(groupByQualifier.getColumnIdentifiers());
+            final TypeSpec groupTupleSpec = TupleGen.getTupleType(numberOfGroupColumns);
+            viewGroupByTupleTypeParameters.put(viewName, groupByTupleGenericParameters);
+            builder.addStatement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
+                    groupTupleSpec, groupByTupleGenericParameters,
+                    List.class, tupleSpec, headItemsListTupleGenericParameters,
+                    viewRecords, HashMap.class);
+        } else {
+            builder.addStatement("final $T<$N<$L>> $L = new $T<>()",
+                    List.class, tupleSpec, headItemsListTupleGenericParameters, viewRecords, ArrayList.class);
+        }
+    }
+
+    private void addNestedForLoops(final MethodSpec.Builder builder, final QualifiersByType nonVarQualifiers,
+                                   final ArrayDeque<String> controlFlowsToPop) {
+        nonVarQualifiers.tableRowGenerators.forEach(tr -> {
+            final String tableName = tr.getTable().getName();
+            final String tableNumRowsStr = tableNumRowsStr(tableName);
+            final String iterStr = iterStr(tr.getTable().getAliasedName());
+            builder.beginControlFlow("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr);
+            controlFlowsToPop.add(String.format("for (%s)", iterStr));
+        });
+    }
+
+    private void maybeAddNonVarFilters(final MethodSpec.Builder builder, final QualifiersByType nonVarQualifiers,
+                                       final ArrayDeque<String> controlFlowsToPop, final boolean isConstraint) {
+        final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
+                .map(expr -> exprToStr(expr, false, null))
+                .collect(Collectors.joining(" \n    && "));
+        // For non constraint views, where clauses are a filter criterion, whereas for constraint views, they
+        // are the constraint itself.
+        final String wherePredicateStr = isConstraint ? "" :
+                                         nonVarQualifiers.wherePredicates.stream()
+                                                .map(expr -> exprToStr(expr, false, null))
+                                                .collect(Collectors.joining(" \n    && "));
+        final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
+                .filter(s -> !s.equals(""))
+                .collect(Collectors.joining(" \n    && "));
+        if (!predicateStr.isEmpty()) {
+            // Add filter predicate if available
+            builder.beginControlFlow("if ($L)", predicateStr);
+            controlFlowsToPop.add("if (" + predicateStr + ")");
+        }
+    }
+
+
+    private void addToResultSet(final MethodSpec.Builder builder, final String viewName, final int tupleSize,
+                                final String headItemsStr, final String headItemsListTupleGenericParameters,
+                                final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
+        // Create a tuple for the result set
+        builder.addStatement("final Tuple$1L<$2L> tuple = new Tuple$1L<>(\n    $3L\n    )",
+                tupleSize, headItemsListTupleGenericParameters, headItemsStr);
+
+        // Update result set
+        if (groupByQualifier != null) {
+            final int numberOfGroupByColumns = groupByQualifier.getColumnIdentifiers().size();
+            // Comma separated list of field accesses to construct a group string
+            final String groupString = groupByQualifier.getColumnIdentifiers().stream()
+                    .map(e -> fieldNameStrWithIter(e.getTableName(), e.getField().getName()))
+                    .collect(Collectors.joining(",     \n"));
+
+            // Organize the collected tuples from the nested for loops by groupByTuple
+            builder.addStatement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
+                    numberOfGroupByColumns, viewGroupByTupleTypeParameters.get(viewName), groupString);
+            builder.addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(tuple)",
+                    viewRecords, ArrayList.class);
+        } else {
+            builder.addStatement("$L.add(tuple)", viewRecords);
+        }
+    }
+
+    private void addRowConstraint(final MethodSpec.Builder builder, final QualifiersByType varQualifiers,
+                                  final QualifiersByType nonVarQualifiers) {
+        final List<String> varJoinPredicateStr = varQualifiers.joinPredicates.stream()
+                .map(expr -> exprToStr(expr, true, null))
+                .collect(Collectors.toList());
+        Preconditions.checkArgument(varJoinPredicateStr.isEmpty());
+        final List<String> varWherePredicateStr = varQualifiers.wherePredicates.stream()
+                .map(this::topLevelConstraint)
+                .collect(Collectors.toList());
+        final List<String> nonvarWherePredicateStr = nonVarQualifiers.wherePredicates.stream()
+                .map(this::topLevelConstraint)
+                .collect(Collectors.toList());
+        Stream.of(varWherePredicateStr, nonvarWherePredicateStr)
+              .flatMap(Collection::stream)
+              .filter(e -> !e.isEmpty())
+              .forEach(builder::addStatement);
+    }
+
+    private String topLevelConstraint(final Expr expr) {
+        Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
+        System.out.println(expr);
+        final BinaryOperatorPredicate predicate = (BinaryOperatorPredicate) expr;
+        final String left = exprToStr(predicate.getLeft(), true, null);
+        final String right = exprToStr(predicate.getRight(), true, null);
+        final String leftMaybeWrapped = InferType.forExpr(predicate.getLeft()).equals("IntVar") ?
+                                             left : String.format("model.newConstant(%s)", left);
+        final String rightMaybeWrapped = InferType.forExpr(predicate.getRight()).equals("IntVar") ?
+                                             right : String.format("model.newConstant(%s)", right);
+        final String op = predicate.getOperator();
+        switch (op) {
+            case "==":
+                return String.format("model.addEquality(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+            case "!=":
+                return String.format("model.addDifferent((%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+            case "<=":
+                return String.format("model.addLessOrEqual(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+            case "<":
+                return String.format("model.addLessThan(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+            case ">=":
+                return String.format("model.addGreaterOrEqual(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+            case ">":
+                return String.format("model.addGreaterThan(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+            default:
+                throw new UnsupportedOperationException();
+        }
+    }
+
 
     /**
      * Creates array declarations and returns the set of tables that have controllable columns in them.
@@ -694,29 +789,11 @@ public class OrToolsSolver implements ISolverBackend {
     private void populateQualifiersByVarType(final MonoidComprehension comprehension, final QualifiersByType var,
                                              final QualifiersByType nonVar) {
         comprehension.getQualifiers().forEach(
-                q -> {
-                    final GetVarQualifiers.QualifiersList qualifiersList = GetVarQualifiers.apply(q);
-                    Preconditions.checkArgument(qualifiersList.getNonVarQualifiers().size() +
-                            qualifiersList.getVarQualifiers().size() == 1);
-
-                    final QualifiersByType curr = qualifiersList.getNonVarQualifiers().size() == 1 ?
-                            nonVar : var;
-                    // The considered qualifier is a non-var one
-                    if (q instanceof BinaryOperatorPredicateWithAggregate) {
-                        curr.aggregatePredicates.add((BinaryOperatorPredicateWithAggregate) q);
-                    } else if (q instanceof JoinPredicate) {
-                        curr.joinPredicates.add((JoinPredicate) q);
-                    } else if (q instanceof BinaryOperatorPredicate) {
-                        curr.wherePredicates.add((BinaryOperatorPredicate) q);
-                    } else if (q instanceof TableRowGenerator) {
-                        curr.tableRowGenerators.add((TableRowGenerator) q);
-                    } else if (q instanceof GroupByQualifier) {
-                        System.err.println("Ignoring group-by qualifier");
-                    } else {
-                        throw new IllegalArgumentException();
-                    }
-                    // The considered qualifier is a non-var one
-                }
+            q -> {
+                final GetVarQualifiers.QualifiersList qualifiersList = GetVarQualifiers.apply(q);
+                qualifiersList.getNonVarQualifiers().forEach(nonVar::addQualifierByType);
+                qualifiersList.getVarQualifiers().forEach(var::addQualifierByType);
+            }
         );
         Preconditions.checkArgument(nonVar.aggregatePredicates.isEmpty()); // Temporary
         Preconditions.checkArgument(var.aggregatePredicates.isEmpty()); // Temporary
@@ -875,6 +952,22 @@ public class OrToolsSolver implements ISolverBackend {
         private final List<JoinPredicate> joinPredicates = new ArrayList<>();
         private final List<BinaryOperatorPredicateWithAggregate> aggregatePredicates = new ArrayList<>();
         private final List<TableRowGenerator> tableRowGenerators = new ArrayList<>();
+
+        private void addQualifierByType(final Qualifier q) {
+            if (q instanceof BinaryOperatorPredicateWithAggregate) {
+                aggregatePredicates.add((BinaryOperatorPredicateWithAggregate) q);
+            } else if (q instanceof JoinPredicate) {
+                joinPredicates.add((JoinPredicate) q);
+            } else if (q instanceof BinaryOperatorPredicate) {
+                wherePredicates.add((BinaryOperatorPredicate) q);
+            } else if (q instanceof TableRowGenerator) {
+                tableRowGenerators.add((TableRowGenerator) q);
+            } else if (q instanceof GroupByQualifier) {
+                System.err.println("Ignoring group-by qualifier");
+            } else {
+                throw new IllegalArgumentException();
+            }
+        }
     }
 
     private String printTime(final String event) {

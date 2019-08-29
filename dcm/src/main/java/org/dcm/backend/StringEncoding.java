@@ -6,14 +6,13 @@
 
 package org.dcm.backend;
 
-import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
-import it.unimi.dsi.fastutil.objects.Object2LongArrayMap;
+import java.util.HashMap;
 
 public class StringEncoding {
-    private static final int DEFAULT_CAPACITY = 1000;
-    private int counter = 0;
-    private final Object2LongArrayMap<String> strToLongMap = new Object2LongArrayMap<>(DEFAULT_CAPACITY);
-    private final Long2ObjectArrayMap<String> longToStrMap = new Long2ObjectArrayMap<>(DEFAULT_CAPACITY);
+    private static final int DEFAULT_CAPACITY = 10000;
+    private long counter = 0;
+    private final HashMap<String, Long> strToLongMap = new HashMap<>(DEFAULT_CAPACITY);
+    private final HashMap<Long, String> longToStrMap = new HashMap<>(DEFAULT_CAPACITY);
 
     public long toLong(final String str) {
         return strToLongMap.computeIfAbsent(str, this::update);

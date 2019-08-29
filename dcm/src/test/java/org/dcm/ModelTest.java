@@ -1085,6 +1085,8 @@ public class ModelTest {
         final Model model = buildModel(conn, views, modelName);
         model.updateData();
         model.solveModel();
+
+        // Should not be unsat.
     }
 
 
@@ -1183,7 +1185,7 @@ public class ModelTest {
         final Map<String, Result<? extends Record>> podInfo =
                 model.solveModelWithoutTableUpdates(Collections.singleton("POD_INFO"));
         podInfo.get("POD_INFO").forEach(
-                e -> assertEquals("0", e.get("CONTROLLABLE__NODE_NAME"))
+                e -> assertEquals("n1", e.get("CONTROLLABLE__NODE_NAME"))
         );
     }
 
