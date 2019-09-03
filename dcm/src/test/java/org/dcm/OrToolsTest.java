@@ -16,8 +16,6 @@ import com.google.ortools.sat.SatParameters;
 import com.vrg.backend.StringEncoding;
 import org.junit.Test;
 
-import java.util.stream.IntStream;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
@@ -114,9 +112,8 @@ public class OrToolsTest {
         solver.getParameters().setCpModelPresolve(false);
         solver.getParameters().setCpModelProbingLevel(0);
         final CpSolverStatus status = solver.solve(model);
-        if (status == CpSolverStatus.FEASIBLE ||
-                status == CpSolverStatus.OPTIMAL) {
-//            System.out.println(solver.value(max));
+        if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
+            System.out.println(solver.value(max));
         }
         System.out.println("Done: " + (System.currentTimeMillis() - now));
     }

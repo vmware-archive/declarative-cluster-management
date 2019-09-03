@@ -29,7 +29,12 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+<<<<<<< HEAD:dcm/src/main/java/org/dcm/backend/GeneratedBackendSample.java
 @Generated("org.dcm.backend.OrToolsSolver")
+=======
+@Generated("com.vrg.backend.OrToolsSolver")
+@SuppressWarnings("all")
+>>>>>>> 597057f... Checkpoint:dcm/src/main/java/com/vrg/backend/GeneratedBackendSample.java
 public final class GeneratedBackendSample implements IGeneratedBackend {
     private final ExecutorService executorService = Executors.newFixedThreadPool(2);
 
@@ -86,7 +91,8 @@ public final class GeneratedBackendSample implements IGeneratedBackend {
         System.out.println("Group-by intermediate view: we are at " + (System.nanoTime() - startTime));
         // Non-constraint view podsDemandPerNode
         final List<Tuple1<IntVar>> podsDemandPerNode = new ArrayList<>(tmp1.size());
-        for (final Map.Entry<Tuple2<String, Integer>, List<Tuple4<Integer, Integer, IntVar, String>>> entry : tmp1.entrySet()) {
+        for (final Map.Entry<Tuple2<String, Integer>,
+                List<Tuple4<Integer, Integer, IntVar, String>>> entry : tmp1.entrySet()) {
             final Tuple2<String, Integer> group = entry.getKey();
             final List<Tuple4<Integer, Integer, IntVar, String>> data = entry.getValue();
             final IntVar[] vars = data.stream().map(Tuple4::value2).toArray(IntVar[]::new);
@@ -118,7 +124,8 @@ public final class GeneratedBackendSample implements IGeneratedBackend {
             }
             result.put(context.getTable("POD_INFO"), tmp3);
             result.put(context.getTable("NODE_INFO"), context.getTable("NODE_INFO").getCurrentData());
-            result.put(context.getTable("GROUP_TABLE__PODS_DEMAND_PER_NODE"), context.getTable("GROUP_TABLE__PODS_DEMAND_PER_NODE").getCurrentData());
+            result.put(context.getTable("GROUP_TABLE__PODS_DEMAND_PER_NODE"),
+                    context.getTable("GROUP_TABLE__PODS_DEMAND_PER_NODE").getCurrentData());
             return result;
         }
         throw new ModelException("Could not solve");
@@ -254,7 +261,10 @@ public final class GeneratedBackendSample implements IGeneratedBackend {
                 return false;
             }
             final Tuple4 that = (Tuple4) other;
-            return this.value0().equals(that.value0()) && this.value1().equals(that.value1()) && this.value2().equals(that.value2()) && this.value3().equals(that.value3());
+            return this.value0().equals(that.value0())
+                    && this.value1().equals(that.value1())
+                    && this.value2().equals(that.value2())
+                    && this.value3().equals(that.value3());
         }
     }
 }
