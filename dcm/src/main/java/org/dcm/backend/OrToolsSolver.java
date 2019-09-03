@@ -212,18 +212,21 @@ public class OrToolsSolver implements ISolverBackend {
             builder.addStatement("final List<Tuple$L<$L>> data = entry.getValue()", innerTupleSize,
                                                                                     headItemsTupleTypeParamters);
             builder.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
-            inner.getHead().getSelectExprs()
-                .forEach(
-                    e -> {
-                        final String result =
-                                exprToStr(e, true, new GroupContext(groupByQualifier, intermediateView));
-                        if (result.contains("$T")) {
-                            builder.addCode(result, Collectors.class);
-                        } else {
-                            builder.addCode(result);
-                        }
-                    }
-                );
+            int numSelectExprs = inner.getHead().getSelectExprs().size();
+            for (final Expr expr: inner.getHead().getSelectExprs()) {
+                final String result =
+                        exprToStr(expr, true, new GroupContext(groupByQualifier, intermediateView));
+                if (result.contains("$1T")) {
+                    builder.addCode(result, Collectors.class);
+                } else {
+                    builder.addCode(result);
+                }
+
+                if (numSelectExprs > 1) {
+                    numSelectExprs--;
+                    builder.addCode(","); // Separate tuple entries by a comma
+                }
+            }
             builder.addCode(");\n");
             builder.addStatement("$L.add(res)", tableNameStr(viewName));
             builder.endControlFlow();
@@ -251,6 +254,7 @@ public class OrToolsSolver implements ISolverBackend {
         final List<ColumnIdentifier> headItemsList = comprehension.getHead().getSelectExprs().stream()
                 .map(this::getColumnsAccessed)
                 .flatMap(Collection::stream)
+                .distinct()
                 .collect(Collectors.toList());
 
         // Compute a string that represents the set of field accesses for the above columns
@@ -820,7 +824,7 @@ public class OrToolsSolver implements ISolverBackend {
             Preconditions.checkArgument(node.getFunctionName().equalsIgnoreCase("sum"));
             final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ?
                                          node.getFunctionName() + "V" : node.getFunctionName();
-            final String ret = String.format("o.%s(data.stream()%n      .map(t -> %s)%n      .collect($T.toList()))",
+            final String ret = String.format("o.%s(data.stream()%n      .map(t -> %s)%n      .collect($1T.toList()))",
                                               functionName, processedArgument);
             System.out.println(ret);
             System.out.println(processedArgument);

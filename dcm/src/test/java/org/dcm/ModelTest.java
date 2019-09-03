@@ -834,7 +834,7 @@ public class ModelTest {
 
 
     @Test
-    public void testControllableInJoinLarge() throws InterruptedException {
+    public void testControllableInJoinLarge() {
         // model and data files will use this as its name
         final String modelName = "testControllableInJoinLarge";
 
@@ -1279,20 +1279,8 @@ public class ModelTest {
         conn.execute("create table node_info\n" +
                 "(\n" +
                 "  name varchar(36) not null primary key,\n" +
-                "  unschedulable boolean not null,\n" +
-                "  out_of_disk boolean not null,\n" +
-                "  memory_pressure boolean not null,\n" +
-                "  disk_pressure boolean not null,\n" +
-                "  pid_pressure boolean not null,\n" +
-                "  ready boolean not null,\n" +
-                "  cpu_capacity bigint not null,\n" +
-                "  memory_capacity bigint not null,\n" +
-                "  ephemeral_storage_capacity bigint not null,\n" +
-                "  pods_capacity bigint not null,\n" +
                 "  cpu_allocatable bigint not null,\n" +
-                "  memory_allocatable bigint not null,\n" +
-                "  ephemeral_storage_allocatable bigint not null,\n" +
-                "  pods_allocatable bigint not null\n" +
+                "  memory_allocatable bigint not null\n" +
                 ")"
         );
         conn.execute("create table pod_info\n" +
@@ -1301,12 +1289,9 @@ public class ModelTest {
                 "  controllable__node_name varchar(36) not null,\n" +
                 "  cpu_request bigint not null,\n" +
                 "  memory_request bigint not null,\n" +
-                "  ephemeral_storage_request bigint not null,\n" +
-                "  pods_request bigint not null,\n" +
                 "  foreign key(controllable__node_name) references node_info(name)\n" +
                 ")"
         );
-
 
         final List<String> views = toListOfViews(
                 "create view least_requested as\n" +
@@ -1317,7 +1302,19 @@ public class ModelTest {
                     "            on pod_info.controllable__node_name = node_info.name\n" +
                     "       group by node_info.name;");
 
-        buildModel(conn, views, modelName);
+
+        for (int i = 0; i < 1; i++) {
+            conn.execute(String.format("insert into node_info values ('n%s', 1000, 2000)", i));
+        }
+        for (int i = 0; i < 10; i++) {
+            conn.execute(String.format("insert into pod_info values ('p%s', 'n0', 5, 10)", i));
+        }
+
+        final Model model = buildModel(conn, views, modelName);
+        model.updateData();
+        final Map<String, Result<? extends Record>> results
+                = model.solveModelWithoutTableUpdates(Collections.singleton("LEAST_REQUESTED"));
+        System.out.println(results);
     }
 
     @Test

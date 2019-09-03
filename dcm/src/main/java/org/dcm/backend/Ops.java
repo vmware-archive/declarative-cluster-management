@@ -46,6 +46,13 @@ public class Ops {
         return ret;
     }
 
+    public IntVar minus(final IntVar left, final IntVar right) {
+        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{left, right}, new int[]{1, -1}));
+        return ret;
+    }
+
+
     public IntVar mult(final int left, final IntVar right) {
         return mult(right, left);
     }
