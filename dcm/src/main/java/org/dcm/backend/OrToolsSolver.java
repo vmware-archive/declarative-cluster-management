@@ -168,7 +168,7 @@ public class OrToolsSolver implements ISolverBackend {
         return compile(spec);
     }
 
-    private void addView(final MethodSpec.Builder builder, final String viewName,
+    private void addView(final MethodSpec.Builder output, final String viewName,
                          final MonoidComprehension comprehension, final boolean isConstraint) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
@@ -182,7 +182,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             // We create an intermediate view that extracts groups and returns a List<Tuple> per group
             final String intermediateView = "tmp" + intermediateViewCounter.getAndIncrement();
-            buildInnerComprehension(builder, intermediateView, inner, groupByQualifier, isConstraint);
+            buildInnerComprehension(output, intermediateView, inner, groupByQualifier, isConstraint);
 
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
             // in two steps...
@@ -194,45 +194,45 @@ public class OrToolsSolver implements ISolverBackend {
             final int innerTupleSize = viewToFieldIndex.get(intermediateView.toUpperCase(Locale.US)).size();
 
             // (1) Create the result set
-            builder.addCode("\n");
-            builder.addStatement(printTime("Group-by intermediate view"));
-            builder.addComment("Non-constraint view $L", tableNameStr(viewName));
+            output.addCode("\n");
+            output.addStatement(printTime("Group-by intermediate view"));
+            output.addComment("Non-constraint view $L", tableNameStr(viewName));
             final TypeSpec typeSpec = TupleGen.getTupleType(selectExprSize);
             final String viewTupleGenericParameters = generateTupleGenericParameters(inner.getHead().getSelectExprs());
             viewTupleTypeParameters.put(tableNameStr(viewName), viewTupleGenericParameters);
-            builder.addStatement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
+            output.addStatement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
                                  viewTupleGenericParameters, tableNameStr(viewName), ArrayList.class, intermediateView);
 
             // (2) Populate the result set
-            builder.beginControlFlow("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
+            output.beginControlFlow("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
                                      Map.Entry.class, groupByQualifiersSize, groupByTupleTypeParameters, innerTupleSize,
                                      headItemsTupleTypeParamters, intermediateView);
-            builder.addStatement("final Tuple$L<$L> group = entry.getKey()", groupByQualifiersSize,
+            output.addStatement("final Tuple$L<$L> group = entry.getKey()", groupByQualifiersSize,
                                                                              groupByTupleTypeParameters);
-            builder.addStatement("final List<Tuple$L<$L>> data = entry.getValue()", innerTupleSize,
+            output.addStatement("final List<Tuple$L<$L>> data = entry.getValue()", innerTupleSize,
                                                                                     headItemsTupleTypeParamters);
-            builder.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
+            output.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
             int numSelectExprs = inner.getHead().getSelectExprs().size();
             for (final Expr expr: inner.getHead().getSelectExprs()) {
                 final String result =
                         exprToStr(expr, true, new GroupContext(groupByQualifier, intermediateView));
                 if (result.contains("$1T")) {
-                    builder.addCode(result, Collectors.class);
+                    output.addCode(result, Collectors.class);
                 } else {
-                    builder.addCode(result);
+                    output.addCode(result);
                 }
 
                 if (numSelectExprs > 1) {
                     numSelectExprs--;
-                    builder.addCode(","); // Separate tuple entries by a comma
+                    output.addCode(","); // Separate tuple entries by a comma
                 }
             }
-            builder.addCode(");\n");
-            builder.addStatement("$L.add(res)", tableNameStr(viewName));
-            builder.endControlFlow();
-            builder.addStatement(printTime("Group-by final view"));
+            output.addCode(");\n");
+            output.addStatement("$L.add(res)", tableNameStr(viewName));
+            output.endControlFlow();
+            output.addStatement(printTime("Group-by final view"));
         } else {
-            buildInnerComprehension(builder, viewName, comprehension, null, isConstraint);
+            buildInnerComprehension(output, viewName, comprehension, null, isConstraint);
         }
 
     }
@@ -241,13 +241,14 @@ public class OrToolsSolver implements ISolverBackend {
      * Converts a comprehension into a set of nested for loops that return a "result set". The result set
      * is represented as a list of tuples.
      */
-    private void buildInnerComprehension(final MethodSpec.Builder builder, final String viewName,
+    private void buildInnerComprehension(final MethodSpec.Builder output, final String viewName,
                                          final MonoidComprehension comprehension,
                                          @Nullable final GroupByQualifier groupByQualifier,
                                          final boolean isConstraint) {
+        System.out.println(comprehension);
         Preconditions.checkNotNull(comprehension.getHead());
         // Add a comment with the view name
-        builder.addCode("\n").addComment("$L view $L", isConstraint ? "Constraint" : "Non-constraint", viewName);
+        output.addCode("\n").addComment("$L view $L", isConstraint ? "Constraint" : "Non-constraint", viewName);
 
         // Extract the set of columns being selected in this view
         final AtomicInteger fieldIndex = new AtomicInteger();
@@ -273,7 +274,7 @@ public class OrToolsSolver implements ISolverBackend {
         // For non-constraints, create a Map<> or a List<> to collect the result-set (depending on
         // whether the query is a group by or not)
         if (!isConstraint) {
-            addMapOrListForResultSet(builder, viewName, tupleSize, headItemsListTupleGenericParameters,
+            addMapOrListForResultSet(output, viewName, tupleSize, headItemsListTupleGenericParameters,
                                      resultSetNameStr, groupByQualifier);
         }
 
@@ -283,26 +284,26 @@ public class OrToolsSolver implements ISolverBackend {
         populateQualifiersByVarType(comprehension, varQualifiers, nonVarQualifiers);
 
         // Start control flows to create nested for loops
-        addNestedForLoops(builder, nonVarQualifiers, controlFlowsToPop);
+        addNestedForLoops(output, nonVarQualifiers, controlFlowsToPop);
 
         // Filter out nested for loops using an if(predicate) statement
-        maybeAddNonVarFilters(builder, nonVarQualifiers, controlFlowsToPop, isConstraint);
+        maybeAddNonVarFilters(output, nonVarQualifiers, controlFlowsToPop, isConstraint);
 
         if (!isConstraint) {
             // If predicate is true, then retrieve expressions to collect into result set. Note, this does not
             // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
-            addToResultSet(builder, viewName, tupleSize, headItemsStr, headItemsListTupleGenericParameters,
+            addToResultSet(output, viewName, tupleSize, headItemsStr, headItemsListTupleGenericParameters,
                     resultSetNameStr, groupByQualifier);
         } else {
-            addRowConstraint(builder, varQualifiers, nonVarQualifiers);
+            addRowConstraint(output, varQualifiers, nonVarQualifiers);
         }
 
         // Pop all control flows (nested for loops and if statement)
         controlFlowsToPop.forEach(
-                e -> builder.endControlFlow()
+                e -> output.endControlFlow()
         );
         // Print debugging info
-        // builder.addStatement("$T.out.println($N)", System.class, viewRecords);
+        // output.addStatement("$T.out.println($N)", System.class, viewRecords);
     }
 
     private LinkedHashSet<ColumnIdentifier> getColumnsAccessed(final Expr expr) {
@@ -332,7 +333,7 @@ public class OrToolsSolver implements ISolverBackend {
         return fieldName;
     }
 
-    private void addMapOrListForResultSet(final MethodSpec.Builder builder,
+    private void addMapOrListForResultSet(final MethodSpec.Builder output,
                                           final String viewName,
                                           final int tupleSize,
                                           final String headItemsListTupleGenericParameters,
@@ -347,28 +348,28 @@ public class OrToolsSolver implements ISolverBackend {
                     generateTupleGenericParameters(groupByQualifier.getColumnIdentifiers());
             final TypeSpec groupTupleSpec = TupleGen.getTupleType(numberOfGroupColumns);
             viewGroupByTupleTypeParameters.put(viewName, groupByTupleGenericParameters);
-            builder.addStatement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
+            output.addStatement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
                     groupTupleSpec, groupByTupleGenericParameters,
                     List.class, tupleSpec, headItemsListTupleGenericParameters,
                     viewRecords, HashMap.class);
         } else {
-            builder.addStatement("final $T<$N<$L>> $L = new $T<>()",
+            output.addStatement("final $T<$N<$L>> $L = new $T<>()",
                     List.class, tupleSpec, headItemsListTupleGenericParameters, viewRecords, ArrayList.class);
         }
     }
 
-    private void addNestedForLoops(final MethodSpec.Builder builder, final QualifiersByType nonVarQualifiers,
+    private void addNestedForLoops(final MethodSpec.Builder output, final QualifiersByType nonVarQualifiers,
                                    final ArrayDeque<String> controlFlowsToPop) {
         nonVarQualifiers.tableRowGenerators.forEach(tr -> {
             final String tableName = tr.getTable().getName();
             final String tableNumRowsStr = tableNumRowsStr(tableName);
             final String iterStr = iterStr(tr.getTable().getAliasedName());
-            builder.beginControlFlow("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr);
+            output.beginControlFlow("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr);
             controlFlowsToPop.add(String.format("for (%s)", iterStr));
         });
     }
 
-    private void maybeAddNonVarFilters(final MethodSpec.Builder builder, final QualifiersByType nonVarQualifiers,
+    private void maybeAddNonVarFilters(final MethodSpec.Builder output, final QualifiersByType nonVarQualifiers,
                                        final ArrayDeque<String> controlFlowsToPop, final boolean isConstraint) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
                 .map(expr -> exprToStr(expr, false, null))
@@ -384,17 +385,17 @@ public class OrToolsSolver implements ISolverBackend {
                 .collect(Collectors.joining(" \n    && "));
         if (!predicateStr.isEmpty()) {
             // Add filter predicate if available
-            builder.beginControlFlow("if ($L)", predicateStr);
+            output.beginControlFlow("if ($L)", predicateStr);
             controlFlowsToPop.add("if (" + predicateStr + ")");
         }
     }
 
 
-    private void addToResultSet(final MethodSpec.Builder builder, final String viewName, final int tupleSize,
+    private void addToResultSet(final MethodSpec.Builder output, final String viewName, final int tupleSize,
                                 final String headItemsStr, final String headItemsListTupleGenericParameters,
                                 final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
         // Create a tuple for the result set
-        builder.addStatement("final Tuple$1L<$2L> tuple = new Tuple$1L<>(\n    $3L\n    )",
+        output.addStatement("final Tuple$1L<$2L> tuple = new Tuple$1L<>(\n    $3L\n    )",
                 tupleSize, headItemsListTupleGenericParameters, headItemsStr);
 
         // Update result set
@@ -406,12 +407,12 @@ public class OrToolsSolver implements ISolverBackend {
                     .collect(Collectors.joining(",     \n"));
 
             // Organize the collected tuples from the nested for loops by groupByTuple
-            builder.addStatement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
+            output.addStatement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
                     numberOfGroupByColumns, viewGroupByTupleTypeParameters.get(viewName), groupString);
-            builder.addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(tuple)",
+            output.addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(tuple)",
                     viewRecords, ArrayList.class);
         } else {
-            builder.addStatement("$L.add(tuple)", viewRecords);
+            output.addStatement("$L.add(tuple)", viewRecords);
         }
     }
 
@@ -466,15 +467,15 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Creates array declarations and returns the set of tables that have controllable columns in them.
      */
-    private void addArrayDeclarations(final MethodSpec.Builder builder,
+    private void addArrayDeclarations(final MethodSpec.Builder output,
                                       final IRContext context) throws ClassNotFoundException {
         // For each table...
         for (final IRTable table: context.getTables()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
             }
-            builder.addCode("\n");
-            builder.addComment("Table $S", table.getName());
+            output.addCode("\n");
+            output.addComment("Table $S", table.getName());
 
             // ...1) figure out the jooq record type (e.g., Record3<Integer, String, Boolean>)
             final Class recordType = Class.forName("org.jooq.Record" + table.getIRColumns().size());
@@ -489,7 +490,7 @@ public class OrToolsSolver implements ISolverBackend {
                     ).collect(Collectors.joining(", "));
 
             // ...2) create a List<[RecordType]> to represent the table
-            builder.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
+            output.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
                                  List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),
                                  recordType, recordTypeParameters, table.getName());
 
@@ -499,7 +500,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final IRColumn field = fieldEntrySet.getValue();
                 if (field.isControllable()) {
                     final String variableName = fieldNameStr(table.getName(), fieldName);
-                    builder.addStatement("final $T[] $L = new $T[$L]", IntVar.class, variableName, IntVar.class,
+                    output.addStatement("final $T[] $L = new $T[$L]", IntVar.class, variableName, IntVar.class,
                                                                        tableNumRowsStr(table.getName()))
                             .beginControlFlow("for (int i = 0; i < $L; i++)",
                                               tableNumRowsStr(table.getName()))
@@ -517,32 +518,32 @@ public class OrToolsSolver implements ISolverBackend {
             //..4) introduce primary-key constraints
             table.getPrimaryKey().ifPresent(e -> {
                 if (!e.getPrimaryKeyFields().isEmpty() && e.hasControllableColumn()) {
-                    builder.addCode("\n");
-                    builder.addComment("Primary key constraints for $L", tableNameStr(table.getName()));
+                    output.addCode("\n");
+                    output.addComment("Primary key constraints for $L", tableNameStr(table.getName()));
 
                     // Use a specialized propagator if we only have a single column primary key
                     if (e.getPrimaryKeyFields().size() == 1) {
                         final IRColumn field = e.getPrimaryKeyFields().get(0);
                         final String fieldName = field.getName();
-                        builder.addStatement("model.addAllDifferent($L)",
+                        output.addStatement("model.addAllDifferent($L)",
                                 fieldNameStr(table.getName(), fieldName));
                     }
                     else {
                         // We need to specify that tuples are unique. Perform this decomposition manually.
-                        builder.beginControlFlow("for (int i = 0; i < $L; i++)",
+                        output.beginControlFlow("for (int i = 0; i < $L; i++)",
                                                  tableNumRowsStr(table.getName()));
-                        builder.beginControlFlow("for (int j = 0; i < j; j++)");
+                        output.beginControlFlow("for (int j = 0; i < j; j++)");
 
                         // non-controllable primary keys will be unique in the database,
                         // we don't need to add that as constraints in the solver
                         e.getPrimaryKeyFields().stream()
                             .filter(IRColumn::isControllable)
-                            .forEach(field -> builder.addStatement("model.addDifferent($L, $L)",
+                            .forEach(field -> output.addStatement("model.addDifferent($L, $L)",
                                 fieldNameStrWithIter(field.getIRTable().getName(), field.getName(), "i"),
                                 fieldNameStrWithIter(field.getIRTable().getName(), field.getName(), "j"))
                         );
-                        builder.endControlFlow();
-                        builder.endControlFlow();
+                        output.endControlFlow();
+                        output.endControlFlow();
                     }
                 }
             });
@@ -554,14 +555,14 @@ public class OrToolsSolver implements ISolverBackend {
                     final Map.Entry<IRColumn, IRColumn> next = e.getFields().entrySet().iterator().next();
                     final IRColumn child = next.getKey();
                     final IRColumn parent = next.getValue();
-                    builder.addCode("\n");
-                    builder.addComment("Foreign key constraints: $L.$L -> $L.$L",
+                    output.addCode("\n");
+                    output.addComment("Foreign key constraints: $L.$L -> $L.$L",
                             child.getIRTable().getName(), child.getName(),
                             parent.getIRTable().getName(), parent.getName());
                     final String indexVarStr = "index" + intermediateViewCounter.incrementAndGet();
-                    builder.addStatement("final IntVar $L = model.newIntVar(0, $L - 1, \"\")",
+                    output.addStatement("final IntVar $L = model.newIntVar(0, $L - 1, \"\")",
                             indexVarStr, tableNumRowsStr(table.getName()));
-                    builder.beginControlFlow("for (int i = 0; i < $L; i++)",
+                    output.beginControlFlow("for (int i = 0; i < $L; i++)",
                             tableNumRowsStr(table.getName()));
                     final String fkChild =
                             fieldNameStr(next.getKey().getIRTable().getName(), next.getKey().getName());
@@ -573,16 +574,16 @@ public class OrToolsSolver implements ISolverBackend {
                          "                        .mapToLong(encoder::toLong).toArray()"
                     );
 
-                    builder.addStatement(snippet,
+                    output.addStatement(snippet,
                             parent.getIRTable().getName(), parent.getName().toUpperCase(Locale.US),
                             toJavaClass(next.getValue().getType()));
-                    builder.addStatement("model.addElement($L, domain, $L[i])", indexVarStr, fkChild);
-                    builder.endControlFlow();
+                    output.addStatement("model.addElement($L, domain, $L[i])", indexVarStr, fkChild);
+                    output.endControlFlow();
                 }
             });
         }
 
-        builder.addStatement(printTime("Array declarations"));
+        output.addStatement(printTime("Array declarations"));
     }
 
     private static String toJavaClass(final IRColumn.FieldType type) {
@@ -600,7 +601,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
-    private void addInitializer(final MethodSpec.Builder builder) {
+    private void addInitializer(final MethodSpec.Builder output) {
         // ? extends Record
         final WildcardTypeName recordT = WildcardTypeName.subtypeOf(Record.class);
         // Result<? extends Record>
@@ -609,7 +610,7 @@ public class OrToolsSolver implements ISolverBackend {
         final ClassName map = ClassName.get(Map.class);
         // Map<IRTable, Result<? extends Record>>
         final ParameterizedTypeName returnT = ParameterizedTypeName.get(map, irTableT, resultT);
-        builder.addModifiers(Modifier.PUBLIC)
+        output.addModifiers(Modifier.PUBLIC)
                .returns(returnT)
                .addParameter(IRContext.class, "context", Modifier.FINAL)
                .addComment("Create the model.")
@@ -620,8 +621,8 @@ public class OrToolsSolver implements ISolverBackend {
                .addCode("\n");
     }
 
-    private void addSolvePhase(final MethodSpec.Builder builder, final IRContext context) {
-        builder.addCode("\n")
+    private void addSolvePhase(final MethodSpec.Builder output, final IRContext context) {
+        output.addCode("\n")
                .addComment("Start solving")
                .addStatement(printTime("Model creation"))
                .addStatement("final $1T solver = new $1T()", CpSolver.class)
@@ -643,7 +644,7 @@ public class OrToolsSolver implements ISolverBackend {
             // If the table does not have vars, we can return the original input as is
             if (controllableColumns.isEmpty()) {
                 // Is an input table/view
-                builder.addStatement("result.put(context.getTable($1S), context.getTable($1S).getCurrentData())",
+                output.addStatement("result.put(context.getTable($1S), context.getTable($1S).getCurrentData())",
                                      tableName);
             } else {
                 table.getIRColumns().forEach(
@@ -651,28 +652,28 @@ public class OrToolsSolver implements ISolverBackend {
                         // Else, we update the records corresponding to the table.
                         if (controllableColumns.contains(name)) {
                             final int i = intermediateViewCounter.incrementAndGet();
-                            builder.addStatement("final Result<? extends Record> tmp$L = " +
+                            output.addStatement("final Result<? extends Record> tmp$L = " +
                                     "context.getTable($S).getCurrentData()", i, tableName);
-                            builder.beginControlFlow("for (int i = 0; i < $L; i++)",
+                            output.beginControlFlow("for (int i = 0; i < $L; i++)",
                                     tableNumRowsStr(tableName));
                             if (field.getType().equals(IRColumn.FieldType.STRING)) {
-                                builder.addStatement("obj[0] = encoder.toStr(solver.value($L[i]))",
+                                output.addStatement("obj[0] = encoder.toStr(solver.value($L[i]))",
                                         fieldNameStr(tableName, field.getName()));
                             } else {
-                                builder.addStatement("obj[0] = solver.value($L[i])",
+                                output.addStatement("obj[0] = solver.value($L[i])",
                                         fieldNameStr(tableName, field.getName()));
                             }
-                            builder.addStatement("tmp$L.get(i).from(obj, $S)", i, field.getName());
-                            builder.endControlFlow();
-                            builder.addStatement("result.put(context.getTable($S), tmp$L)", tableName, i);
+                            output.addStatement("tmp$L.get(i).from(obj, $S)", i, field.getName());
+                            output.endControlFlow();
+                            output.addStatement("result.put(context.getTable($S), tmp$L)", tableName, i);
                         }
                     }
                 );
             }
         }
-        builder.addStatement("return result");
-        builder.endControlFlow();
-        builder.addStatement("throw new $T($S + status)", ModelException.class, "Could not solve ");
+        output.addStatement("return result");
+        output.endControlFlow();
+        output.addStatement("throw new $T($S + status)", ModelException.class, "Could not solve ");
     }
 
     private static String tableNameStr(final String tableName) {
