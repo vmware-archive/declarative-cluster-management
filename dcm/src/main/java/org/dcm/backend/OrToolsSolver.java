@@ -15,6 +15,7 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
+import com.google.ortools.util.Domain;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.JavaFile;
@@ -88,6 +89,7 @@ public class OrToolsSolver implements ISolverBackend {
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
     private static final String GENERATED_FIELD_NAME_PREFIX = "GenField";
+    private static final String SUBQUERY_NAME_PREFIX = "subQuery";
     private static final MethodSpec INT_VAR_NO_BOUNDS = MethodSpec.methodBuilder("INT_VAR_NO_BOUNDS")
                                     .addModifiers(Modifier.PRIVATE)
                                     .addParameter(CpModel.class, "model", Modifier.FINAL)
@@ -96,8 +98,9 @@ public class OrToolsSolver implements ISolverBackend {
                                     .addStatement("return model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, name)")
                                     .build();
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
-    private final AtomicInteger generatedFieldNameCounter = new AtomicInteger();
-    private final AtomicInteger intermediateViewCounter = new AtomicInteger();
+    private final AtomicInteger generatedFieldNameCounter = new AtomicInteger(0);
+    private final AtomicInteger intermediateViewCounter = new AtomicInteger(0);
+    private final AtomicInteger subqueryCounter = new AtomicInteger(0);
     private final Map<String, Map<String, String>> tableToFieldToType = new HashMap<>();
     private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
@@ -133,26 +136,27 @@ public class OrToolsSolver implements ISolverBackend {
             return Collections.emptyList();
         }
 
-        final MethodSpec.Builder builder = MethodSpec.methodBuilder("solve");
-        addInitializer(builder);
+        final MethodSpec.Builder output = MethodSpec.methodBuilder("solve");
+
+        addInitializer(output);
         try {
-            addArrayDeclarations(builder, context);
+            addArrayDeclarations(output, context);
         } catch (final ClassNotFoundException e) {
             throw new IllegalStateException(e);
         }
         nonConstraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    addView(builder, name, rewrittenComprehension, false);
+                    addView(output, name, rewrittenComprehension, false);
                 });
         constraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    addView(builder, name, rewrittenComprehension, true);
+                    addView(output, name, rewrittenComprehension, true);
                 });
 
-        addSolvePhase(builder, context);
-        final MethodSpec solveMethod = builder.build();
+        addSolvePhase(output, context);
+        final MethodSpec solveMethod = output.build();
 
         final TypeSpec.Builder backendClassBuilder = TypeSpec.classBuilder(GENERATED_BACKEND_NAME)
                 .addAnnotation(AnnotationSpec.builder(Generated.class)
@@ -416,53 +420,65 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
-    private void addRowConstraint(final MethodSpec.Builder builder, final QualifiersByType varQualifiers,
+    private void addRowConstraint(final MethodSpec.Builder output, final QualifiersByType varQualifiers,
                                   final QualifiersByType nonVarQualifiers) {
         final List<String> varJoinPredicateStr = varQualifiers.joinPredicates.stream()
                 .map(expr -> exprToStr(expr, true, null))
                 .collect(Collectors.toList());
         Preconditions.checkArgument(varJoinPredicateStr.isEmpty());
-        final List<String> varWherePredicateStr = varQualifiers.wherePredicates.stream()
-                .map(this::topLevelConstraint)
-                .collect(Collectors.toList());
-        final List<String> nonvarWherePredicateStr = nonVarQualifiers.wherePredicates.stream()
-                .map(this::topLevelConstraint)
-                .collect(Collectors.toList());
-        Stream.of(varWherePredicateStr, nonvarWherePredicateStr)
-              .flatMap(Collection::stream)
-              .filter(e -> !e.isEmpty())
-              .forEach(builder::addStatement);
+        varQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e));
+        nonVarQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e));
     }
 
-    private String topLevelConstraint(final Expr expr) {
+    private void topLevelConstraint(final MethodSpec.Builder output, final Expr expr) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
-        System.out.println(expr);
         final BinaryOperatorPredicate predicate = (BinaryOperatorPredicate) expr;
-        final String left = exprToStr(predicate.getLeft(), true, null);
-        final String right = exprToStr(predicate.getRight(), true, null);
-        final String leftMaybeWrapped = InferType.forExpr(predicate.getLeft()).equals("IntVar") ?
-                                             left : String.format("model.newConstant(%s)", left);
-        final String rightMaybeWrapped = InferType.forExpr(predicate.getRight()).equals("IntVar") ?
-                                             right : String.format("model.newConstant(%s)", right);
+        final Expr left = predicate.getLeft();
+        final Expr right = predicate.getRight();
         final String op = predicate.getOperator();
+        // TODO: May not be necessary to wrap the 'right' parameters for the below constraints
+        String statement;
         switch (op) {
+            case "in":
+                final String subqueryStr = exprToStr(right, true, null);
+                addView(output, subqueryStr, (MonoidComprehension) right, false);
+                final String block = "final $T domain = $T.fromValues($L.stream()" +
+                                             "\n                                .map(Tuple1::value0)" +
+                                             "\n                                .mapToLong(encoder::toLong).toArray())";
+                output.addStatement(block, Domain.class, Domain.class, nonConstraintViewName(subqueryStr));
+                output.addStatement(String.format("model.addLinearExpressionInDomain(%s, domain)", maybeWrapped(left)));
+                return;
             case "==":
-                return String.format("model.addEquality(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+                statement = String.format("model.addEquality(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                break;
             case "!=":
-                return String.format("model.addDifferent((%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+                statement = String.format("model.addDifferent((%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                break;
             case "<=":
-                return String.format("model.addLessOrEqual(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+                statement = String.format("model.addLessOrEqual(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                break;
             case "<":
-                return String.format("model.addLessThan(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+                statement = String.format("model.addLessThan(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                break;
             case ">=":
-                return String.format("model.addGreaterOrEqual(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+                statement = String.format("model.addGreaterOrEqual(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                break;
             case ">":
-                return String.format("model.addGreaterThan(%s, %s)", leftMaybeWrapped, rightMaybeWrapped);
+                statement = String.format("model.addGreaterThan(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                break;
             default:
                 throw new UnsupportedOperationException();
         }
+        output.addStatement(statement);
     }
 
+    /**
+     * Wrap constants 'x' in model.newConstant(x) depending on the type
+     */
+    private String maybeWrapped(final Expr expr) {
+        final String exprStr = exprToStr(expr, true, null);
+        return InferType.forExpr(expr).equals("IntVar") ? exprStr : String.format("model.newConstant(%s)", exprStr);
+    }
 
     /**
      * Creates array declarations and returns the set of tables that have controllable columns in them.
@@ -825,11 +841,8 @@ public class OrToolsSolver implements ISolverBackend {
             Preconditions.checkArgument(node.getFunctionName().equalsIgnoreCase("sum"));
             final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ?
                                          node.getFunctionName() + "V" : node.getFunctionName();
-            final String ret = String.format("o.%s(data.stream()%n      .map(t -> %s)%n      .collect($1T.toList()))",
+            return String.format("o.%s(data.stream()%n      .map(t -> %s)%n      .collect($1T.toList()))",
                                               functionName, processedArgument);
-            System.out.println(ret);
-            System.out.println(processedArgument);
-            return ret;
         }
 
         @Nullable
@@ -941,6 +954,13 @@ public class OrToolsSolver implements ISolverBackend {
             } else {
                 return node.getValue().toString();
             }
+        }
+
+        @Nullable
+        @Override
+        protected String visitMonoidComprehension(final MonoidComprehension node, final @Nullable Boolean context) {
+            // We are in a subquery.
+            return SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
         }
     }
 

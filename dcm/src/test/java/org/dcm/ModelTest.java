@@ -1266,6 +1266,10 @@ public class ModelTest {
         final Model model = buildModel(conn, views, modelName);
         model.updateData();
         model.solveModel();
+        final Result<Record> podInfo = conn.selectFrom("POD_INFO").fetch();
+        assertEquals(1, podInfo.size());
+        assertTrue(podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n1") ||
+                            podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n2"));
     }
 
 
