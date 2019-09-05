@@ -34,6 +34,7 @@ import org.dcm.compiler.monoid.ColumnIdentifier;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.GroupByQualifier;
+import org.dcm.compiler.monoid.Head;
 import org.dcm.compiler.monoid.JoinPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
@@ -104,6 +105,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final Map<String, Map<String, String>> tableToFieldToType = new HashMap<>();
     private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
+    private final TupleGen tupleGen = new TupleGen();
 
     static {
         System.loadLibrary("jniortools");
@@ -166,7 +168,7 @@ public class OrToolsSolver implements ISolverBackend {
                 .addSuperinterface(IGeneratedBackend.class)
                 .addMethod(solveMethod)
                 .addMethod(INT_VAR_NO_BOUNDS);
-        TupleGen.getAllTupleTypes().forEach(backendClassBuilder::addType); // Add tuple types
+        tupleGen.getAllTupleTypes().forEach(backendClassBuilder::addType); // Add tuple types
 
         final TypeSpec spec = backendClassBuilder.build();
         return compile(spec);
@@ -174,6 +176,12 @@ public class OrToolsSolver implements ISolverBackend {
 
     private void addView(final MethodSpec.Builder output, final String viewName,
                          final MonoidComprehension comprehension, final boolean isConstraint) {
+        addView(output, viewName, comprehension, isConstraint, false);
+    }
+
+    private void addView(final MethodSpec.Builder output, final String viewName,
+                         final MonoidComprehension comprehension, final boolean isConstraint,
+                         final boolean isSubquery) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
             final MonoidComprehension inner = groupByComprehension.getComprehension();
@@ -185,7 +193,7 @@ public class OrToolsSolver implements ISolverBackend {
             //
 
             // We create an intermediate view that extracts groups and returns a List<Tuple> per group
-            final String intermediateView = "tmp" + intermediateViewCounter.getAndIncrement();
+            final String intermediateView = getTempViewName();
             buildInnerComprehension(output, intermediateView, inner, groupByQualifier, isConstraint);
 
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
@@ -201,23 +209,23 @@ public class OrToolsSolver implements ISolverBackend {
             output.addCode("\n");
             output.addStatement(printTime("Group-by intermediate view"));
             output.addComment("Non-constraint view $L", tableNameStr(viewName));
-            final TypeSpec typeSpec = TupleGen.getTupleType(selectExprSize);
+            final TypeSpec typeSpec = tupleGen.getTupleType(selectExprSize);
             final String viewTupleGenericParameters = generateTupleGenericParameters(inner.getHead().getSelectExprs());
             viewTupleTypeParameters.put(tableNameStr(viewName), viewTupleGenericParameters);
             output.addStatement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
-                                 viewTupleGenericParameters, tableNameStr(viewName), ArrayList.class, intermediateView);
+                    viewTupleGenericParameters, tableNameStr(viewName), ArrayList.class, intermediateView);
 
             // (2) Populate the result set
             output.beginControlFlow("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
-                                     Map.Entry.class, groupByQualifiersSize, groupByTupleTypeParameters, innerTupleSize,
-                                     headItemsTupleTypeParamters, intermediateView);
+                    Map.Entry.class, groupByQualifiersSize, groupByTupleTypeParameters, innerTupleSize,
+                    headItemsTupleTypeParamters, intermediateView);
             output.addStatement("final Tuple$L<$L> group = entry.getKey()", groupByQualifiersSize,
-                                                                             groupByTupleTypeParameters);
+                    groupByTupleTypeParameters);
             output.addStatement("final List<Tuple$L<$L>> data = entry.getValue()", innerTupleSize,
-                                                                                    headItemsTupleTypeParamters);
+                    headItemsTupleTypeParamters);
             output.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
             int numSelectExprs = inner.getHead().getSelectExprs().size();
-            for (final Expr expr: inner.getHead().getSelectExprs()) {
+            for (final Expr expr : inner.getHead().getSelectExprs()) {
                 final String result =
                         exprToStr(output, expr, true, new GroupContext(groupByQualifier, intermediateView));
                 if (result.contains("$1T")) {
@@ -235,10 +243,20 @@ public class OrToolsSolver implements ISolverBackend {
             output.addStatement("$L.add(res)", tableNameStr(viewName));
             output.endControlFlow();
             output.addStatement(printTime("Group-by final view"));
-        } else {
-            buildInnerComprehension(output, viewName, comprehension, null, isConstraint);
+            return;
+        } else if (isSubquery) {
+            if (comprehension.getHead() != null && comprehension.getHead().getSelectExprs().size() == 1 &&
+                    hasAggregate(comprehension.getHead().getSelectExprs().get(0))) {
+                final String intermediateViewName = getTempViewName();
+                buildInnerComprehension(output, intermediateViewName, comprehension, null, isConstraint);
+                final MonoidFunction function = (MonoidFunction) comprehension.getHead().getSelectExprs().get(0);
+                output.addStatement("final Integer $L = o.$LV($L.stream().map(Tuple1::value0)" +
+                                "\n                                 .mapToLong(encoder::toLong).toArray())",
+                                     viewName, function.getFunctionName(), intermediateViewName);
+                return;
+            }
         }
-
+        buildInnerComprehension(output, viewName, comprehension, null, isConstraint);
     }
 
     /**
@@ -268,6 +286,8 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
         final String headItemsListTupleGenericParameters = generateTupleGenericParameters(headItemsList);
+        Preconditions.checkArgument(!headItemsListTupleGenericParameters.isEmpty(),
+                "Generic parameters list for " + headItemsList + " was empty");
         viewTupleTypeParameters.put(viewName, headItemsListTupleGenericParameters);
 
         final int tupleSize = headItemsList.size();
@@ -343,14 +363,14 @@ public class OrToolsSolver implements ISolverBackend {
                                           final String headItemsListTupleGenericParameters,
                                           final String viewRecords,
                                           @Nullable final GroupByQualifier groupByQualifier) {
-        final TypeSpec tupleSpec = TupleGen.getTupleType(tupleSize);
+        final TypeSpec tupleSpec = tupleGen.getTupleType(tupleSize);
 
         if (groupByQualifier != null) {
             // Create group by tuple
             final int numberOfGroupColumns = groupByQualifier.getColumnIdentifiers().size();
             final String groupByTupleGenericParameters =
                     generateTupleGenericParameters(groupByQualifier.getColumnIdentifiers());
-            final TypeSpec groupTupleSpec = TupleGen.getTupleType(numberOfGroupColumns);
+            final TypeSpec groupTupleSpec = tupleGen.getTupleType(numberOfGroupColumns);
             viewGroupByTupleTypeParameters.put(viewName, groupByTupleGenericParameters);
             output.addStatement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
                     groupTupleSpec, groupByTupleGenericParameters,
@@ -804,7 +824,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
-        return RewriteArity.apply(RewriteCountFunction.apply(comprehension));
+        return RewriteArity.apply(comprehension);
     }
 
     private <T extends Expr> String generateTupleGenericParameters(final List<T> exprs) {
@@ -971,7 +991,7 @@ public class OrToolsSolver implements ISolverBackend {
         protected String visitMonoidComprehension(final MonoidComprehension node, final @Nullable Boolean context) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
-            addView(output, newSubqueryName, node, false);
+            addView(output, newSubqueryName, node, false, true);
             return newSubqueryName;
         }
     }
@@ -1011,5 +1031,33 @@ public class OrToolsSolver implements ISolverBackend {
 
     private String printTime(final String event) {
         return String.format("System.out.println(\"%s: we are at \" + (System.nanoTime() - startTime))", event);
+    }
+
+    private static class HasAggregates extends MonoidVisitor<Void, Void> {
+        boolean hasAggregate = false;
+
+        @Nullable
+        @Override
+        protected Void visitHead(Head node, @Nullable Void context) {
+            node.getSelectExprs().forEach(super::visit);
+            return super.visitHead(node, context);
+        }
+
+        @Nullable
+        @Override
+        protected Void visitMonoidFunction(MonoidFunction node, @Nullable Void context) {
+            hasAggregate = true;
+            return super.visitMonoidFunction(node, context);
+        }
+    }
+
+    private boolean hasAggregate(final Expr expr) {
+        final HasAggregates visitor = new HasAggregates();
+        visitor.visit(expr);
+        return visitor.hasAggregate;
+    }
+
+    private String getTempViewName() {
+        return  "tmp" + intermediateViewCounter.getAndIncrement();
     }
 }

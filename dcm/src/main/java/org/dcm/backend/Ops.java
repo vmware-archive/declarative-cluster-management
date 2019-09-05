@@ -10,6 +10,7 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 
+import java.util.Arrays;
 import java.util.List;
 
 public class Ops {
@@ -35,12 +36,13 @@ public class Ops {
         return ret;
     }
 
-    public IntVar maxV(final List<IntVar> data) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
-        model.addMaxEquality(ret, data.toArray(new IntVar[0]));
-        return ret;
+    public int maxV(final long[] data) {
+        return (int) Arrays.stream(data).max().getAsLong();
     }
 
+    public int countV(final long[] data) {
+        return data.length;
+    }
 
     public IntVar minus(final int left, final IntVar right) {
         return minus(right, left);

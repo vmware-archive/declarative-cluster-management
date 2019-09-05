@@ -108,7 +108,9 @@ class InferType extends MonoidVisitor<String, Void> {
 
     static String forExpr(final Expr expr) {
         final InferType visitor = new InferType();
-        final String result = visitor.visit(expr);
-        return Objects.requireNonNull(result, "Result of type inference for expr was null: " + expr);
+        final String result =
+            Objects.requireNonNull(visitor.visit(expr), "Result of type inference for expr was null: " + expr);
+        assert !result.isEmpty();
+        return result;
     }
 }

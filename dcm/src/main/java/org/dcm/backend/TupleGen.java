@@ -18,22 +18,21 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 class TupleGen {
-    private static final Map<Integer, TypeSpec> TUPLES = new ConcurrentHashMap<>();
+    private final Map<Integer, TypeSpec> tuples = new ConcurrentHashMap<>();
 
-    static Collection<TypeSpec> getAllTupleTypes() {
-        return TUPLES.values();
+    Collection<TypeSpec> getAllTupleTypes() {
+        return tuples.values();
     }
 
-    static TypeSpec getTupleType(final int numRecords) {
-        return TUPLES.computeIfAbsent(numRecords, TupleGen::tupleGen);
+    TypeSpec getTupleType(final int numRecords) {
+        return tuples.computeIfAbsent(numRecords, this::tupleGen);
     }
 
     /**
      * Create a tuple type with 'numFields' entries. Results in a generic "plain old java object"
      * with a getter per field.
      */
-    static TypeSpec tupleGen(final int numFields) {
-        assert numFields > 0;
+    TypeSpec tupleGen(final int numFields) {
         final TypeSpec.Builder classBuilder = TypeSpec.classBuilder("Tuple" + numFields)
                 .addModifiers(Modifier.FINAL, Modifier.PRIVATE, Modifier.STATIC);
         final MethodSpec.Builder constructor = MethodSpec.constructorBuilder()
