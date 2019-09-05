@@ -35,6 +35,12 @@ public class Ops {
         return ret;
     }
 
+    public IntVar maxV(final List<IntVar> data) {
+        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        model.addMaxEquality(ret, data.toArray(new IntVar[0]));
+        return ret;
+    }
+
 
     public IntVar minus(final int left, final IntVar right) {
         return minus(right, left);

@@ -219,7 +219,7 @@ public class OrToolsSolver implements ISolverBackend {
             int numSelectExprs = inner.getHead().getSelectExprs().size();
             for (final Expr expr: inner.getHead().getSelectExprs()) {
                 final String result =
-                        exprToStr(expr, true, new GroupContext(groupByQualifier, intermediateView));
+                        exprToStr(output, expr, true, new GroupContext(groupByQualifier, intermediateView));
                 if (result.contains("$1T")) {
                     output.addCode(result, Collectors.class);
                 } else {
@@ -249,7 +249,6 @@ public class OrToolsSolver implements ISolverBackend {
                                          final MonoidComprehension comprehension,
                                          @Nullable final GroupByQualifier groupByQualifier,
                                          final boolean isConstraint) {
-        System.out.println(comprehension);
         Preconditions.checkNotNull(comprehension.getHead());
         // Add a comment with the view name
         output.addCode("\n").addComment("$L view $L", isConstraint ? "Constraint" : "Non-constraint", viewName);
@@ -264,7 +263,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Compute a string that represents the set of field accesses for the above columns
         final String headItemsStr = headItemsList.stream()
-                .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex))
+                .map(expr -> convertToFieldAccess(output, expr, viewName, fieldIndex))
                 .collect(Collectors.joining(",\n    "));
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
@@ -316,10 +315,11 @@ public class OrToolsSolver implements ISolverBackend {
         return visitor.getColumnIdentifiers();
     }
 
-    private String convertToFieldAccess(final Expr expr, final String viewName, final AtomicInteger fieldIndex) {
+    private String convertToFieldAccess(final MethodSpec.Builder output, final Expr expr,
+                                        final String viewName, final AtomicInteger fieldIndex) {
         Preconditions.checkArgument(expr instanceof ColumnIdentifier);
         final String fieldName = updateFieldIndex(viewName, expr, fieldIndex);
-        return exprToStr(expr)  + " /* " + fieldName + " */";
+        return exprToStr(output, expr)  + " /* " + fieldName + " */";
     }
 
     private String updateFieldIndex(final String viewName, final Expr argument, final AtomicInteger counter) {
@@ -376,17 +376,18 @@ public class OrToolsSolver implements ISolverBackend {
     private void maybeAddNonVarFilters(final MethodSpec.Builder output, final QualifiersByType nonVarQualifiers,
                                        final ArrayDeque<String> controlFlowsToPop, final boolean isConstraint) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
-                .map(expr -> exprToStr(expr, false, null))
+                .map(expr -> exprToStr(output, expr, false, null))
                 .collect(Collectors.joining(" \n    && "));
         // For non constraint views, where clauses are a filter criterion, whereas for constraint views, they
         // are the constraint itself.
         final String wherePredicateStr = isConstraint ? "" :
                                          nonVarQualifiers.wherePredicates.stream()
-                                                .map(expr -> exprToStr(expr, false, null))
+                                                .map(expr -> exprToStr(output, expr, false, null))
                                                 .collect(Collectors.joining(" \n    && "));
         final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
                 .filter(s -> !s.equals(""))
                 .collect(Collectors.joining(" \n    && "));
+
         if (!predicateStr.isEmpty()) {
             // Add filter predicate if available
             output.beginControlFlow("if ($L)", predicateStr);
@@ -423,7 +424,7 @@ public class OrToolsSolver implements ISolverBackend {
     private void addRowConstraint(final MethodSpec.Builder output, final QualifiersByType varQualifiers,
                                   final QualifiersByType nonVarQualifiers) {
         final List<String> varJoinPredicateStr = varQualifiers.joinPredicates.stream()
-                .map(expr -> exprToStr(expr, true, null))
+                .map(expr -> exprToStr(output, expr, true, null))
                 .collect(Collectors.toList());
         Preconditions.checkArgument(varJoinPredicateStr.isEmpty());
         varQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e));
@@ -440,31 +441,37 @@ public class OrToolsSolver implements ISolverBackend {
         String statement;
         switch (op) {
             case "in":
-                final String subqueryStr = exprToStr(right, true, null);
-                addView(output, subqueryStr, (MonoidComprehension) right, false);
+                final String subqueryStr = exprToStr(output, right, true, null);
                 final String block = "final $T domain = $T.fromValues($L.stream()" +
                                              "\n                                .map(Tuple1::value0)" +
                                              "\n                                .mapToLong(encoder::toLong).toArray())";
                 output.addStatement(block, Domain.class, Domain.class, nonConstraintViewName(subqueryStr));
-                output.addStatement(String.format("model.addLinearExpressionInDomain(%s, domain)", maybeWrapped(left)));
+                output.addStatement(String.format("model.addLinearExpressionInDomain(%s, domain)",
+                                    maybeWrapped(output, left)));
                 return;
             case "==":
-                statement = String.format("model.addEquality(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                statement = String.format("model.addEquality(%s, %s)", maybeWrapped(output, left),
+                                                                       maybeWrapped(output, right));
                 break;
             case "!=":
-                statement = String.format("model.addDifferent((%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                statement = String.format("model.addDifferent((%s, %s)", maybeWrapped(output, left),
+                                                                         maybeWrapped(output, right));
                 break;
             case "<=":
-                statement = String.format("model.addLessOrEqual(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                statement = String.format("model.addLessOrEqual(%s, %s)", maybeWrapped(output, left),
+                                                                          maybeWrapped(output, right));
                 break;
             case "<":
-                statement = String.format("model.addLessThan(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                statement = String.format("model.addLessThan(%s, %s)", maybeWrapped(output, left),
+                                                                       maybeWrapped(output, right));
                 break;
             case ">=":
-                statement = String.format("model.addGreaterOrEqual(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                statement = String.format("model.addGreaterOrEqual(%s, %s)", maybeWrapped(output, left),
+                                                                             maybeWrapped(output, right));
                 break;
             case ">":
-                statement = String.format("model.addGreaterThan(%s, %s)", maybeWrapped(left), maybeWrapped(right));
+                statement = String.format("model.addGreaterThan(%s, %s)", maybeWrapped(output, left),
+                                                                          maybeWrapped(output, right));
                 break;
             default:
                 throw new UnsupportedOperationException();
@@ -475,8 +482,8 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Wrap constants 'x' in model.newConstant(x) depending on the type
      */
-    private String maybeWrapped(final Expr expr) {
-        final String exprStr = exprToStr(expr, true, null);
+    private String maybeWrapped(final MethodSpec.Builder output, final Expr expr) {
+        final String exprStr = exprToStr(output, expr, true, null);
         return InferType.forExpr(expr).equals("IntVar") ? exprStr : String.format("model.newConstant(%s)", exprStr);
     }
 
@@ -786,13 +793,13 @@ public class OrToolsSolver implements ISolverBackend {
         return Collections.emptyList();
     }
 
-    private String exprToStr(final Expr expr) {
-        return exprToStr(expr, true, null);
+    private String exprToStr(final MethodSpec.Builder output, final Expr expr) {
+        return exprToStr(output, expr, true, null);
     }
 
-    private String exprToStr(final Expr expr, final boolean allowControllable,
+    private String exprToStr(final MethodSpec.Builder output, final Expr expr, final boolean allowControllable,
                              @Nullable final GroupContext currentGroup) {
-        final ExprToStrVisitor visitor = new ExprToStrVisitor(allowControllable, currentGroup);
+        final ExprToStrVisitor visitor = new ExprToStrVisitor(output, allowControllable, currentGroup);
         return Objects.requireNonNull(visitor.visit(expr, false));
     }
 
@@ -824,10 +831,13 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private class ExprToStrVisitor extends MonoidVisitor<String, Boolean> {
+        private final MethodSpec.Builder output;
         private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
 
-        private ExprToStrVisitor(final boolean allowControllable, @Nullable final GroupContext currentGroupContext) {
+        private ExprToStrVisitor(final MethodSpec.Builder output, final boolean allowControllable,
+                                 @Nullable final GroupContext currentGroupContext) {
+            this.output = output;
             this.allowControllable = allowControllable;
             this.currentGroupContext = currentGroupContext;
         }
@@ -960,7 +970,9 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitMonoidComprehension(final MonoidComprehension node, final @Nullable Boolean context) {
             // We are in a subquery.
-            return SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
+            final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
+            addView(output, newSubqueryName, node, false);
+            return newSubqueryName;
         }
     }
 

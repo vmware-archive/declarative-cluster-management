@@ -33,6 +33,7 @@ class TupleGen {
      * with a getter per field.
      */
     static TypeSpec tupleGen(final int numFields) {
+        assert numFields > 0;
         final TypeSpec.Builder classBuilder = TypeSpec.classBuilder("Tuple" + numFields)
                 .addModifiers(Modifier.FINAL, Modifier.PRIVATE, Modifier.STATIC);
         final MethodSpec.Builder constructor = MethodSpec.constructorBuilder()
