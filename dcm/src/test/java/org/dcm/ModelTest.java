@@ -9,6 +9,9 @@ package org.dcm;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import ddlogapi.DDlogAPI;
+import ddlogapi.DDlogCommand;
+import ddlogapi.DDlogRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -1165,6 +1168,95 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, views, modelName);
         model.updateData();
+        model.solveModel();
+    }
+
+    @Test
+    public void testDDlog() {
+        final DDlogAPI api = new DDlogAPI(1, this::commit, false);
+        final String commandsBackupFile = "replay.dat";
+        api.record_commands(commandsBackupFile, false);
+        DDlogCommand [] commandsArray = new DDlogCommand[8];
+
+        for (int i = 0; i < 4; i++) {
+            final DDlogRecord [] podArr = new DDlogRecord[] { new DDlogRecord(Integer.toString(i)),
+                    new DDlogRecord("n" + i), new DDlogRecord(1) };
+            final DDlogRecord pod = DDlogRecord.makeStruct("POD", podArr);
+
+            final DDlogRecord [] nodeArr = new DDlogRecord[] { new DDlogRecord("n" + i),
+                    new DDlogRecord(true), new DDlogRecord(1)};
+            final DDlogRecord node = DDlogRecord.makeStruct("NODE", nodeArr);
+
+            commandsArray[i * 2] = new DDlogCommand(DDlogCommand.Kind.Insert, api.getTableId("POD"), pod);
+            commandsArray[i * 2 + 1] = new DDlogCommand(DDlogCommand.Kind.Insert, api.getTableId("NODE"), node);
+        }
+        checkExitCode(api.start());
+        checkExitCode(api.applyUpdates(commandsArray));
+        checkExitCode(api.commit());
+        commandsArray = new DDlogCommand[6];
+
+        for (int i = 4; i < 7; i++) {
+            final DDlogRecord [] podArr = new DDlogRecord[] { new DDlogRecord(Integer.toString(i)),
+                    new DDlogRecord("n" + (i - 4)), new DDlogRecord(1)};
+            final DDlogRecord pod = DDlogRecord.makeStruct("POD", podArr);
+
+            final DDlogRecord [] nodeArr = new DDlogRecord[] { new DDlogRecord("n" + (i - 4)),
+                    new DDlogRecord(true), new DDlogRecord(1)};
+            final DDlogRecord node = DDlogRecord.makeStruct("NODE", nodeArr);
+
+            commandsArray[(i - 4) * 2] = new DDlogCommand(DDlogCommand.Kind.Insert, api.getTableId("POD"), pod);
+            commandsArray[(i - 4) * 2 + 1] =
+                    new DDlogCommand(DDlogCommand.Kind.Insert, api.getTableId("NODE"), node);
+        }
+        checkExitCode(api.start());
+        checkExitCode(api.applyUpdates(commandsArray));
+        checkExitCode(api.commit());
+    }
+
+    //TODO: Improve test
+    void commit(final DDlogCommand command) {
+        assertEquals(2, command.table);
+    }
+
+    void checkExitCode(final int exitCode) {
+        assertTrue(exitCode >= 0);
+    }
+
+    @Test
+    public void testUpdateDataWithDDlog() {
+        final String modelName = "testUpdateDataWithDDlog";
+        // create database
+        final DSLContext conn = setup();
+
+        conn.execute("create table NODE\n" +
+                "(name varchar(36) not null primary key,\n" +
+                "  unschedulable boolean not null,\n" +
+                "  cpu_capacity bigint not null)");
+
+        conn.execute("create table pod\n" +
+                "(pod_name varchar(100) not null primary key,\n" +
+                "  controllable__node_name varchar(36) not null,\n" +
+                "  cpu_request bigint not null)");
+
+        conn.execute("create table USABLENODES (\n" +
+                        "name varchar(36) not null )");
+
+        conn.execute("insert into node values ('n1', true, 10)");
+        conn.execute("insert into node values ('n2', true, 10)");
+        conn.execute("insert into node values ('n3', false, 10)");
+        conn.execute("insert into node values ('n4', false, 10)");
+
+        conn.execute("insert into pod values ('p1', 'null', 1)");
+        conn.execute("insert into pod values ('p2', 'null', 1)");
+        conn.execute("insert into pod values ('p3', 'n1', 1)");
+        conn.execute("insert into pod values ('p4', 'n2', 1)");
+
+        final List<String> views = toListOfViews("create view constraint_fk as select * from pod " +
+                        "where controllable__node_name in (select name from USABLENODES);");
+
+        // build model
+        final Model model = buildWeaveModel(conn, views, modelName);
+        model.updateDataWithDDLog();
         model.solveModel();
     }
 
