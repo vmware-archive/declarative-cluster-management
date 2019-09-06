@@ -70,7 +70,6 @@ public class Model {
     private final ISolverBackend backend;
     private final Map<String, Integer> tableIDMap = new HashMap<>();
     private final DDlogAPI api = new DDlogAPI(1, null, false);
-//    private final DDlogAPI api = new DDlogAPI(1, r -> commit(r), false);
 
     private Model(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
                   final File modelFile, final File dataFile, final Conf conf) {
@@ -271,8 +270,7 @@ public class Model {
         final DDlogCommand [] ca = commands.toArray(new DDlogCommand[commands.size()]);
         checkExitCode(api.start());
         checkExitCode(api.applyUpdates(ca));
-        checkExitCode(api.commit_dump_changes(r -> commit(r)));
-//        checkExitCode(api.commit());
+        checkExitCode(api.commit_dump_changes(this::commit));
 
         updateDataFields();
     }
