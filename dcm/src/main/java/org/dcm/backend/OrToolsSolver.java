@@ -514,24 +514,28 @@ public class OrToolsSolver implements ISolverBackend {
                                       final IRContext context) throws ClassNotFoundException {
         // For each table...
         for (final IRTable table: context.getTables()) {
-            if (table.isViewTable() || table.isAliasedTable()) {
+            if (table.isViewTable()) {
                 continue;
             }
-            output.addCode("\n");
-            output.addComment("Table $S", table.getName());
 
             // ...1) figure out the jooq record type (e.g., Record3<Integer, String, Boolean>)
             final Class recordType = Class.forName("org.jooq.Record" + table.getIRColumns().size());
+            Preconditions.checkArgument(!tableToFieldToType.containsKey(table.getAliasedName()));
             final String recordTypeParameters = table.getIRColumns().entrySet().stream()
                     .map(e -> {
                         final String retVal = InferType.typeStringFromColumn(e.getValue());
                         // Tracks the type of each field.
-                        tableToFieldToType.computeIfAbsent(table.getName(), (k) -> new HashMap<>())
+                        tableToFieldToType.computeIfAbsent(table.getAliasedName(), (k) -> new HashMap<>())
                                           .putIfAbsent(e.getKey(), retVal);
                         return retVal;
                     }
                     ).collect(Collectors.joining(", "));
 
+            if (table.isAliasedTable()) {
+                continue;
+            }
+            output.addCode("\n");
+            output.addComment("Table $S", table.getName());
             // ...2) create a List<[RecordType]> to represent the table
             output.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
                                  List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),

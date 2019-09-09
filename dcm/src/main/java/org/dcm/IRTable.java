@@ -205,6 +205,7 @@ public class IRTable {
         return "IRTable{" +
                 "table=" + jooqTable +
                 ", name='" + getName() + "'" +
+                ", alias='" + getAliasedName() + "'" +
                 ", irColumns=" + irColumns +
                 '}';
     }
