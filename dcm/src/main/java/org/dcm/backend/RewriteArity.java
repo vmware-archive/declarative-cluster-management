@@ -14,6 +14,7 @@ import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.Head;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
+import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.Qualifier;
 
 import org.slf4j.Logger;
@@ -55,10 +56,7 @@ class RewriteArity {
             LOG.debug("Attempting to rewrite: {}", input);
             // Extract var and non-var qualifiers
             List<GetVarQualifiers.QualifiersList> collect = input.getQualifiers().stream()
-                                                .map(q -> {
-                                                    final GetVarQualifiers visitor = new GetVarQualifiers();
-                                                    return visitor.visit(q);
-                                                })
+                                                .map(GetVarQualifiers::apply)
                                                 .collect(Collectors.toList());
             final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.getVarQualifiers().stream())
                                                                   .collect(Collectors.toList());
@@ -118,7 +116,8 @@ class RewriteArity {
             assert qualifier != null;
             if (node.getFunctionName().equalsIgnoreCase("sum") ||
                 node.getFunctionName().equalsIgnoreCase("count")) {
-                final Expr oldSumArg = node.getArgument();
+                final Expr oldSumArg = node.getFunctionName().equalsIgnoreCase("count")
+                                        ? new MonoidLiteral<>(1, Integer.class) : node.getArgument();
                 final BinaryOperatorPredicateWithAggregate newArgument
                         = new BinaryOperatorPredicateWithAggregate("*", oldSumArg, qualifier);
                 didRewrite = true;

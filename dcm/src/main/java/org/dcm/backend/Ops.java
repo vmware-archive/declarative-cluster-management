@@ -77,6 +77,10 @@ public class Ops {
         return ret;
     }
 
+    public IntVar eq(final String left, final IntVar right) {
+        return eq(right, left);
+    }
+
     public IntVar eq(final IntVar left, final String right) {
         return eq(left, encoder.toLong(right));
     }

@@ -246,7 +246,7 @@ public class ModelTest {
         // wrong sql with ambiguous field
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_exclude_non_data_nodes2 AS " +
-                "SELECT count(*) FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
+                "SELECT * FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
                 "group by hosts.host_id " +
                 "having count(hosts.host_id) <= 2;\n"
         );
@@ -259,11 +259,11 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', true)");
         // insert stripes which do not use all the hosts (in this case h3)
         conn.execute("insert into STRIPES values (1,'h1')");
-        conn.execute("insert into STRIPES values (1,'h2')");
+        conn.execute("insert into STRIPES values (1,'h3')");
         conn.execute("insert into STRIPES values (2,'h1')");
-        conn.execute("insert into STRIPES values (2,'h2')");
+        conn.execute("insert into STRIPES values (2,'h3')");
         conn.execute("insert into STRIPES values (3,'h1')");
-        conn.execute("insert into STRIPES values (3,'h2')");
+        conn.execute("insert into STRIPES values (3,'h3')");
 
         // update and solve
         model.updateData();
@@ -273,6 +273,8 @@ public class ModelTest {
                 .fetch("CONTROLLABLE__HOST_ID");
 
         // check the size of the stripes
+        assertTrue(results.contains("h1"));
+        assertTrue(results.contains("h2"));
         assertTrue(results.contains("h3"));
     }
 
@@ -300,7 +302,7 @@ public class ModelTest {
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_x AS " +
                 "SELECT * FROM hosts " +
-                "where (select count(hosts.host_id) from stripes) >= 2;\n"
+                "where (select count(stripes.stripe_id) from stripes) >= 2;\n"
         );
         // build model
         final Model model = buildModel(conn, views, modelName);
@@ -325,7 +327,7 @@ public class ModelTest {
                 .fetch("CONTROLLABLE__HOST_ID");
 
         // check the size of the stripes
-        assertTrue(results.contains("h3"));
+        assertTrue(results.contains("h1") || results.contains("h2") || results.contains("h3"));
     }
 
     @Test
@@ -1318,7 +1320,6 @@ public class ModelTest {
         model.updateData();
         final Map<String, Result<? extends Record>> results
                 = model.solveModelWithoutTableUpdates(Collections.singleton("LEAST_REQUESTED"));
-        System.out.println(results);
     }
 
     @Test

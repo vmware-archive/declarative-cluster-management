@@ -28,10 +28,19 @@ import java.util.Objects;
  * Separates qualifiers in an expression into vars and non-vars.
  */
 class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, GetVarQualifiers.QualifiersList> {
+    private final boolean skipAggregates;
+
+    GetVarQualifiers(final boolean skipAggregates) {
+        this.skipAggregates = skipAggregates;
+    }
+
+    static QualifiersList apply(final Expr expr, final boolean skipAggregates) {
+        final GetVarQualifiers visitor = new GetVarQualifiers(skipAggregates);
+        return Objects.requireNonNull(visitor.visit(expr));
+    }
 
     static QualifiersList apply(final Expr expr) {
-        final GetVarQualifiers visitor = new GetVarQualifiers();
-        return Objects.requireNonNull(visitor.visit(expr));
+        return apply(expr, true);
     }
 
     @Nullable
@@ -87,8 +96,7 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
                 // function expressions do not necessarily affect the arity of an outer expression.
                 // We err on the conservative side for now.
                 if ((isControllableField(node.getLeft()) || isControllableField(node.getRight()))
-                        && (!(node.getLeft() instanceof MonoidFunction)
-                        && !(node.getRight() instanceof MonoidFunction))) {
+                        && involvesAggregateFunctions(node)) {
                     return context.withVarQualifier(checkForAggregate(node));
                 }
                 return context.withNonVarQualifier(checkForAggregate(node));
@@ -100,6 +108,15 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
             }
             default:
                 throw new RuntimeException("Missing case " + node.getOperator());
+        }
+    }
+
+    private boolean involvesAggregateFunctions(final BinaryOperatorPredicate node) {
+        if (skipAggregates) {
+            return (!(node.getLeft() instanceof MonoidFunction) && !(node.getRight() instanceof MonoidFunction));
+        }
+        else {
+            return true;
         }
     }
 
