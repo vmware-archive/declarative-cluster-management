@@ -6,6 +6,7 @@
 
 package org.dcm.backend;
 
+import com.google.ortools.sat.Constraint;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
@@ -34,6 +35,12 @@ public class Ops {
         final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
         model.addEquality(ret, LinearExpr.sum(data.toArray(new IntVar[0])));
         return ret;
+    }
+
+    public void increasing(final List<IntVar> data) {
+        for (int i = 0; i < data.size() - 1; i++) {
+            model.addLessOrEqual(data.get(i), data.get(i + 1));
+        }
     }
 
     public int maxV(final long[] data) {

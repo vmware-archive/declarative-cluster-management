@@ -572,10 +572,15 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     /**
-     * Wrap constants 'x' in model.newConstant(x) depending on the type
+     * Wrap constants 'x' in model.newConstant(x) depending on the type. Also converts true/false to 1/0.
      */
     private String maybeWrapped(final MethodSpec.Builder output, final Expr expr, final GroupContext groupContext) {
-        final String exprStr = exprToStr(output, expr, true, groupContext);
+        String exprStr = exprToStr(output, expr, true, groupContext);
+
+        // Some special cases to handle booleans because the or-tools API does not convert well to booleans
+        if (expr instanceof MonoidLiteral && ((MonoidLiteral) expr).getValue() instanceof Boolean) {
+            exprStr = (Boolean) ((MonoidLiteral) expr).getValue() ? "1" : "0";
+        }
         return InferType.forExpr(expr).equals("IntVar") ? exprStr : String.format("model.newConstant(%s)", exprStr);
     }
 
@@ -943,11 +948,19 @@ public class OrToolsSolver implements ISolverBackend {
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
             final String processedArgument = visit(node.getArgument(), true);
-            Preconditions.checkArgument(node.getFunctionName().equalsIgnoreCase("sum") ||
-                                        node.getFunctionName().equalsIgnoreCase("count"));
-            final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ? "sumV" : "sum";
-            return String.format("o.%s(data.stream()%n      .map(t -> %s)%n      .collect($1T.toList()))",
-                                              functionName, processedArgument);
+            if (node.getFunctionName().equalsIgnoreCase("sum") ||
+                node.getFunctionName().equalsIgnoreCase("count")) {
+                // the assumption here for count functions it that the RewriteArity pass has already been made on
+                // the input comprehensions to rewrite the column being counted with '1'.
+                final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ? "sumV" : "sum";
+                return String.format("o.%s(data.stream()%n      .map(t -> %s)%n      .collect($1T.toList()))",
+                        functionName, processedArgument);
+            } else if (node.getFunctionName().equalsIgnoreCase("increasing")) {
+                output.addStatement("o.increasing(data.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                                    processedArgument, Collectors.class);
+                return "model.newConstant(1)";
+            }
+            throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunctionName());
         }
 
         @Nullable
