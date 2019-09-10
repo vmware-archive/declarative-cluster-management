@@ -9,6 +9,7 @@ package org.dcm;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import junit.framework.TestCase;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -1320,6 +1321,7 @@ public class ModelTest {
         model.updateData();
         final Map<String, Result<? extends Record>> results
                 = model.solveModelWithoutTableUpdates(Collections.singleton("LEAST_REQUESTED"));
+        TestCase.assertEquals(0, results.size());
     }
 
     @Test

@@ -213,7 +213,8 @@ public class OrToolsSolver implements ISolverBackend {
             if (!isConstraint) {
                 final int selectExprSize = inner.getHead().getSelectExprs().size();
                 final TypeSpec typeSpec = tupleGen.getTupleType(selectExprSize);
-                final String viewTupleGenericParameters = generateTupleGenericParameters(inner.getHead().getSelectExprs());
+                final String viewTupleGenericParameters =
+                        generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 viewTupleTypeParameters.put(tableNameStr(viewName), viewTupleGenericParameters);
                 output.addStatement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
                         viewTupleGenericParameters, tableNameStr(viewName), ArrayList.class, intermediateView);
@@ -242,7 +243,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String viewTupleGenericParameters =
                         generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 output.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
-                int numSelectExprs = inner.getHead().getSelectExprs().size();;
+                int numSelectExprs = inner.getHead().getSelectExprs().size();
                 for (final Expr expr : inner.getHead().getSelectExprs()) {
                     final String result =
                             exprToStr(output, expr, true, new GroupContext(groupByQualifier, intermediateView));
@@ -360,10 +361,12 @@ public class OrToolsSolver implements ISolverBackend {
                 // There are constraints that are trivially true or false, wherein the predicate does not depend on
                 // on any columns from the relations in the query. See the ModelTest.innerSubqueryCountTest
                 // as an example. In such cases, we simply revert to pulling out all the head items for the outer query.
+                Preconditions.checkArgument(comprehension.getHead() != null);
                 return getColumnsAccessed(comprehension.getHead().getSelectExprs());
             }
             return columnsAccessed;
         } else {
+            Preconditions.checkArgument(comprehension.getHead() != null);
             return getColumnsAccessed(comprehension.getHead().getSelectExprs());
         }
     }
@@ -574,7 +577,8 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Wrap constants 'x' in model.newConstant(x) depending on the type. Also converts true/false to 1/0.
      */
-    private String maybeWrapped(final MethodSpec.Builder output, final Expr expr, final GroupContext groupContext) {
+    private String maybeWrapped(final MethodSpec.Builder output, final Expr expr,
+                                @Nullable final GroupContext groupContext) {
         String exprStr = exprToStr(output, expr, true, groupContext);
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
@@ -1077,7 +1081,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Nullable
         @Override
-        protected String visitMonoidComprehension(final MonoidComprehension node, final @Nullable Boolean context) {
+        protected String visitMonoidComprehension(final MonoidComprehension node, @Nullable final Boolean context) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             addView(output, newSubqueryName, node, false, true);
@@ -1127,14 +1131,14 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Nullable
         @Override
-        protected Void visitHead(Head node, @Nullable Void context) {
+        protected Void visitHead(final Head node, @Nullable final Void context) {
             node.getSelectExprs().forEach(super::visit);
             return super.visitHead(node, context);
         }
 
         @Nullable
         @Override
-        protected Void visitMonoidFunction(MonoidFunction node, @Nullable Void context) {
+        protected Void visitMonoidFunction(final MonoidFunction node, @Nullable final Void context) {
             hasAggregate = true;
             return super.visitMonoidFunction(node, context);
         }

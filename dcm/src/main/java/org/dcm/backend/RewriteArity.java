@@ -55,7 +55,7 @@ class RewriteArity {
         private MonoidComprehension rewriteComprehension(final MonoidComprehension input) {
             LOG.debug("Attempting to rewrite: {}", input);
             // Extract var and non-var qualifiers
-            List<GetVarQualifiers.QualifiersList> collect = input.getQualifiers().stream()
+            final List<GetVarQualifiers.QualifiersList> collect = input.getQualifiers().stream()
                                                 .map(GetVarQualifiers::apply)
                                                 .collect(Collectors.toList());
             final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.getVarQualifiers().stream())

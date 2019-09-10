@@ -53,7 +53,7 @@ class InferType extends MonoidVisitor<String, Void> {
 
     @Nullable
     @Override
-    protected String visitMonoidComprehension(MonoidComprehension node, @Nullable Void context) {
+    protected String visitMonoidComprehension(final MonoidComprehension node, @Nullable final Void context) {
         return "SubQuery";
     }
 

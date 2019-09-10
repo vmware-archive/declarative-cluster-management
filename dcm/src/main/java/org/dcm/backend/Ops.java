@@ -6,7 +6,6 @@
 
 package org.dcm.backend;
 
-import com.google.ortools.sat.Constraint;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
