@@ -1416,17 +1416,17 @@ public class ModelTest {
                 ")");
 
         final List<String> views = toListOfViews("create view constraint_capacity as\n" +
-                "select\n" +
-                "  node_info.name as name\n" +
-                "from\n" +
-                "  node_info\n" +
-                "  join pod_info on pod_info.controllable__node_name = node_info.name\n" +
-                "group by\n" +
-                "  node_info.name\n" +
-                "having\n" +
-                "  sum(pod_info.cpu_request) < node_info.cpu_allocatable and\n" +
-                "  sum(pod_info.memory_request) < node_info.memory_allocatable and\n" +
-                "  sum(pod_info.pods_request) < node_info.pods_allocatable;");
+            "select\n" +
+            "  node_info.name as name\n" +
+            "from\n" +
+            "  node_info\n" +
+            "  join pod_info on pod_info.controllable__node_name = node_info.name\n" +
+            "group by\n" +
+            "  node_info.name, node_info.cpu_allocatable, node_info.memory_allocatable, node_info.pods_allocatable\n" +
+            "having\n" +
+            "  sum(pod_info.cpu_request) < node_info.cpu_allocatable and\n" +
+            "  sum(pod_info.memory_request) < node_info.memory_allocatable and\n" +
+            "  sum(pod_info.pods_request) < node_info.pods_allocatable;");
 
         buildModel(conn, views, modelName);
     }

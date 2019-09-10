@@ -263,10 +263,8 @@ public class OrToolsSolver implements ISolverBackend {
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
                 assert !varQualifiers.aggregatePredicates.isEmpty();
-                for (final Expr expr: varQualifiers.aggregatePredicates) {
-                    addAggregateConstraint(output, varQualifiers, nonVarQualifiers,
-                            new GroupContext(groupByQualifier, intermediateView));
-                }
+                addAggregateConstraint(output, varQualifiers, nonVarQualifiers,
+                                       new GroupContext(groupByQualifier, intermediateView));
             }
 
             controlFlowsToPop.forEach(s -> output.endControlFlow());
@@ -1045,12 +1043,13 @@ public class OrToolsSolver implements ISolverBackend {
                 return String.format("t.value%s()", fieldIndex);
             }
 
-            final String tableName = node.getTableName();
+            final String tableName = node.getField().getIRTable().getName();
             final String fieldName = node.getField().getName();
+            final String iterStr = iterStr(node.getTableName());
             if (!allowControllable && fieldName.contains("CONTROLLABLE")) {
                 throw new UnsupportedOperationException("Controllable variables not allowed in predicates");
             }
-            return fieldNameStrWithIter(tableName, fieldName);
+            return fieldNameStrWithIter(tableName, fieldName, iterStr);
         }
 
         @Nullable
