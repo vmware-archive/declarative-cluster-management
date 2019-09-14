@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/vmware/declarative-cluster-management.svg?branch=master)](https://travis-ci.org/vmware/declarative-cluster-management)
+[![Build Status](https://travis-ci.com/vmware/declarative-cluster-management.svg?branch=master)](https://travis-ci.com/vmware/declarative-cluster-management)
 
 # Declarative Cluster Management
 
