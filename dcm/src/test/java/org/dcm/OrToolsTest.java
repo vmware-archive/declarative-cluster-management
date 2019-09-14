@@ -13,6 +13,7 @@ import com.google.ortools.sat.DecisionStrategyProto;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
+import com.google.ortools.util.Domain;
 import com.vrg.backend.StringEncoding;
 import org.junit.Test;
 
@@ -297,4 +298,36 @@ public class OrToolsTest {
         assertEquals("world", encoder.toStr(world));
         assertEquals("world", encoder.toStr(worldAgain));
     }
+
+
+
+    @Test
+    public void testDisjunctionWithMembership() {
+        // Create the model.
+        final CpModel model = new CpModel();
+
+        // Create the variables.
+        final IntVar var = model.newIntVar(0, 4, "");
+        final IntVar bool = model.newBoolVar("");
+
+        model.addLinearExpressionInDomain(var, Domain.fromValues(new long[]{1, 2, 3, 4})).onlyEnforceIf(bool);
+        model.addDifferent(var, 1).onlyEnforceIf(bool.not());
+        model.addDifferent(var, 2).onlyEnforceIf(bool.not());
+        model.addDifferent(var, 3).onlyEnforceIf(bool.not());
+        model.addDifferent(var, 4).onlyEnforceIf(bool.not());
+        model.addEquality(bool, 0);
+
+        model.maximize(var);
+        // Create a solver and solve the model.
+        final CpSolver solver = new CpSolver();
+        solver.getParameters().setNumSearchWorkers(4);
+        final CpSolverStatus status = solver.solve(model);
+        if (status == CpSolverStatus.FEASIBLE ||
+                status == CpSolverStatus.OPTIMAL) {
+            System.out.println(solver.value(var));
+            System.out.println(solver.value(bool));
+        }
+        System.out.println(solver.responseStats());
+    }
+
 }

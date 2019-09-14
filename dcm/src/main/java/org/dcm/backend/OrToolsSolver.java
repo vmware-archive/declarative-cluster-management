@@ -31,6 +31,7 @@ import org.dcm.ModelException;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import org.dcm.compiler.monoid.ColumnIdentifier;
+import org.dcm.compiler.monoid.ExistsPredicate;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.GroupByQualifier;
@@ -90,7 +91,7 @@ public class OrToolsSolver implements ISolverBackend {
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
     private static final String GENERATED_FIELD_NAME_PREFIX = "GenField";
-    private static final String SUBQUERY_NAME_PREFIX = "subQuery";
+    private static final String SUBQUERY_NAME_PREFIX = "subquery";
     private static final MethodSpec INT_VAR_NO_BOUNDS = MethodSpec.methodBuilder("INT_VAR_NO_BOUNDS")
                                     .addModifiers(Modifier.PRIVATE)
                                     .addParameter(CpModel.class, "model", Modifier.FINAL)
@@ -564,6 +565,10 @@ public class OrToolsSolver implements ISolverBackend {
                 statement = String.format("model.addGreaterThan(%s, %s)", maybeWrapped(output, left, groupContext),
                                                                           maybeWrapped(output, right, groupContext));
                 break;
+            case "\\/":
+                statement = String.format("model.addBoolOr(%s, %s)", maybeWrapped(output, left, groupContext),
+                        maybeWrapped(output, right, groupContext));
+                break;
             default:
                 throw new UnsupportedOperationException();
         }
@@ -579,6 +584,7 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private String maybeWrapped(final MethodSpec.Builder output, final Expr expr,
                                 @Nullable final GroupContext groupContext) {
+        System.out.println(expr);
         String exprStr = exprToStr(output, expr, true, groupContext);
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
@@ -965,6 +971,14 @@ public class OrToolsSolver implements ISolverBackend {
                 return "model.newConstant(1)";
             }
             throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunctionName());
+        }
+
+        @Nullable
+        @Override
+        protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final Boolean context) {
+            final String processedArgument = visit(node.getArgument(), context);
+            return String.format("o.exists(%s.stream().map(e -> e.value0()).collect($1T.toList()))",
+                                 processedArgument);
         }
 
         @Nullable

@@ -72,20 +72,26 @@ class RewriteArity {
                 }
                 return input;
             }
-            final FunctionRewriter functionRewriter = new FunctionRewriter();
-            final MonoidComprehension comprehensionWithoutVarQualifiers =
-                    new MonoidComprehension(input.getHead(), nonVarQualifiers);
-            final MonoidComprehension result =
-                    (MonoidComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers,
-                                                                 varQualifiers.get(0));
-            if (functionRewriter.didRewrite) {
-                LOG.debug("Rewrote: {} into {}", input, Objects.requireNonNull(result));
-                return result;
-            }
-            else {
-                LOG.debug("Did not rewrite: {}", input);
-                return input;
-            }
+            return maybeRewriteFunctions(input, varQualifiers, nonVarQualifiers);
+        }
+    }
+
+    private static MonoidComprehension maybeRewriteFunctions(final MonoidComprehension input,
+                                                      final List<Qualifier> varQualifiers,
+                                                      final List<Qualifier> nonVarQualifiers) {
+        final FunctionRewriter functionRewriter = new FunctionRewriter();
+        final MonoidComprehension comprehensionWithoutVarQualifiers =
+                new MonoidComprehension(input.getHead(), nonVarQualifiers);
+        final MonoidComprehension result =
+                (MonoidComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers,
+                        varQualifiers.get(0));
+        if (functionRewriter.didRewrite) {
+            LOG.info("Rewrote: {} into {}", input, Objects.requireNonNull(result));
+            return result;
+        }
+        else {
+            LOG.debug("Did not rewrite: {}", input);
+            return input;
         }
     }
 

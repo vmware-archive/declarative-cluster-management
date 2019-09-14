@@ -10,6 +10,7 @@ import com.google.common.base.Preconditions;
 import org.dcm.IRColumn;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.ColumnIdentifier;
+import org.dcm.compiler.monoid.ExistsPredicate;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
@@ -67,6 +68,12 @@ class InferType extends MonoidVisitor<String, Void> {
     @Override
     protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Void context) {
         return visit(node.getArgument(), context);
+    }
+
+    @Nullable
+    @Override
+    protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final Void context) {
+        return "IntVar";
     }
 
     @Nullable

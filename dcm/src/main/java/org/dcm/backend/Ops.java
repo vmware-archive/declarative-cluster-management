@@ -9,6 +9,7 @@ package org.dcm.backend;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
+import com.google.ortools.sat.Literal;
 
 import java.util.Arrays;
 import java.util.List;
@@ -41,6 +42,15 @@ public class Ops {
             model.addLessOrEqual(data.get(i), data.get(i + 1));
         }
     }
+
+    public IntVar exists(final List<IntVar> data) {
+        final IntVar bool = model.newBoolVar("");
+        final Literal[] literals = data.toArray(new Literal[0]);
+        model.addBoolOr(literals).onlyEnforceIf(bool);
+        model.addBoolAnd(data.stream().map(IntVar::not).toArray(Literal[]::new)).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
 
     public int maxV(final long[] data) {
         return (int) Arrays.stream(data).max().getAsLong();
