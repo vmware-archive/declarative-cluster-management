@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.com/vmware/declarative-cluster-management.svg?branch=master)](https://travis-ci.com/vmware/declarative-cluster-management)
+[![codecov](https://codecov.io/gh/vmware/declarative-cluster-management/branch/master/graph/badge.svg)](https://codecov.io/gh/vmware/declarative-cluster-management)
+
 # Declarative Cluster Management
 
 ## Overview
@@ -22,6 +25,8 @@ Make sure you are able to invoke the `minizinc` binary from your commandline.
  $: mvn package
 
 ### References
+
+To learn more about DCM, we suggest going through the following research papers:
 
 * [Automating Cluster Management with Weave](https://arxiv.org/pdf/1909.03130.pdf)<br>
   Lalith Suresh, Joao Loff, Faria Kalim, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Zeeshan Lokhandwala, Mukesh Hira, Mooly Sagiv. arXiv preprint arXiv:1909.03130 (2019).
