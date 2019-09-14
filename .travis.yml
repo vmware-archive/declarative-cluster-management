@@ -1,5 +1,4 @@
 language: java
-sudo: true
 dist: xenial
 jdk:
 - openjdk12
