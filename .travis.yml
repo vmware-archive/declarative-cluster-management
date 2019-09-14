@@ -1,5 +1,9 @@
 language: java
 dist: xenial
+addons:
+  - name: minizinc
+    confinement: classic
+
 jdk:
 - openjdk12
 
