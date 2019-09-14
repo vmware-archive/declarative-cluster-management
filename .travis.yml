@@ -10,4 +10,5 @@ script:
 - mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent package
 
 after_success:
-- mvn -pl '!build-common' jacoco:report coveralls:report
+  - mvn -pl '!build-common' jacoco:report
+  - bash <(curl -s https://codecov.io/bash)
