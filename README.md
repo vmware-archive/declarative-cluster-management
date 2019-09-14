@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.com/vmware/declarative-cluster-management.svg?branch=master)](https://travis-ci.com/vmware/declarative-cluster-management)
+[![Coverage Status](https://coveralls.io/repos/github/vmware/declarative-cluster-management/badge.svg?branch=master)](https://coveralls.io/github/vmware/declarative-cluster-management?branch=master)
 
 # Declarative Cluster Management
 
