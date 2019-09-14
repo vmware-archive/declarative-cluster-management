@@ -7,7 +7,7 @@ jdk:
 
 script:
 - sudo snap install minizinc --classic
-- mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent package sonar:sonar
+- mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent package
 
 after_success:
 - mvn -pl '!build-common' jacoco:report coveralls:report
