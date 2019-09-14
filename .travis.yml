@@ -1,13 +1,11 @@
 language: java
 dist: xenial
-addons:
-  - name: minizinc
-    confinement: classic
 
 jdk:
 - openjdk12
 
 script:
+- snap install minizinc --classic
 - mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent package sonar:sonar
 
 after_success:
