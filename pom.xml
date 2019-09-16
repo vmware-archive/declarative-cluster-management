@@ -12,7 +12,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.vrg</groupId>
+    <groupId>org.dcm</groupId>
     <artifactId>dcm-project</artifactId>
     <packaging>pom</packaging>
     <version>1.0-SNAPSHOT</version>
@@ -103,11 +103,11 @@
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
-                <version>3.1.12</version>
+                <version>3.1.12.2</version>
                 <dependencies>
                     <!-- overwrite dependency on spotbugs if you want to specify the version of spotbugs -->
                     <dependency>
-                        <groupId>com.vrg</groupId>
+                        <groupId>org.dcm</groupId>
                         <artifactId>build-common</artifactId>
                         <version>1.0</version>
                     </dependency>
@@ -150,7 +150,7 @@
                 <version>2.17</version>
                 <dependencies>
                     <dependency>
-                        <groupId>com.vrg</groupId>
+                        <groupId>org.dcm</groupId>
                         <artifactId>build-common</artifactId>
                         <version>1.0</version>
                     </dependency>
