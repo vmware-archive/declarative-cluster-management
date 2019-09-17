@@ -16,16 +16,6 @@ public class LoadBalanceTest {
         System.getProperties().setProperty("org.jooq.no-logo", "true");
     }
 
-    private final String capacityConstraint =
-            "create view constraint_capacity as\n" +
-            "select * from virtual_machine\n" +
-            "join physical_machine\n" +
-            "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
-            "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity\n" +
-            "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and\n" +
-            "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
-
-
     /*
      * We don't supply any constraints. So the solver will arbitrarily pick a few nodes to assign
      * these VMs to.
@@ -56,6 +46,15 @@ public class LoadBalanceTest {
      */
     @Test
     public void testCapacityConstraints() {
+        final String capacityConstraint =
+                "create view constraint_capacity as\n" +
+                "select * from virtual_machine\n" +
+                "join physical_machine\n" +
+                "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
+                "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity\n" +
+                "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and\n" +
+                "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
+
         final LoadBalance lb = new LoadBalance(Collections.singletonList(capacityConstraint));
         addInventory(lb);
         lb.run();
@@ -67,6 +66,15 @@ public class LoadBalanceTest {
      */
     @Test
     public void testDistributeLoad() {
+        final String capacityConstraint =
+                "create view constraint_capacity as\n" +
+                "select * from virtual_machine\n" +
+                "join physical_machine\n" +
+                "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
+                "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity\n" +
+                "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and\n" +
+                "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
+
         final String load = "create view load as\n" +
                 "select sum(virtual_machine.cpu) as cpu_load, sum(virtual_machine.memory) as mem_load\n" +
                 "from virtual_machine\n" +
@@ -87,13 +95,13 @@ public class LoadBalanceTest {
 
     private void addInventory(final LoadBalance lb) {
         // Add physical machines with CPU and Memory capacity as 100 units.
-        int numPhysicalMachines = 5;
+        final int numPhysicalMachines = 5;
         for (int i = 0; i < numPhysicalMachines; i++) {
             lb.addNode("pm" + i, 50, 50);
         }
 
         // Add some VMs with CPU and Memory demand as 10 units.
-        int numVirtualMachines = 10;
+        final int numVirtualMachines = 10;
         for (int i = 0; i < numVirtualMachines; i++) {
             lb.addVm("vm" + i, 10, 10);
         }

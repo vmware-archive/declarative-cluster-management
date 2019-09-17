@@ -6,6 +6,7 @@
 package org.dcm.examples;
 
 import com.google.common.base.Splitter;
+import com.google.common.io.Files;
 import org.dcm.Model;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -14,6 +15,7 @@ import org.jooq.SQLDialect;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
@@ -38,8 +40,9 @@ class LoadBalance {
 
     LoadBalance(final List<String> constraints) {
         conn = setup();
-        final File modelFile = new File("/tmp/load_balance_model.mzn");
-        final File dataFile = new File("/tmp/load_balance_data.dzn");
+        final File tempDir = Files.createTempDir();
+        final File modelFile = new File(tempDir.getPath() + "/load_balance_model.mzn");
+        final File dataFile = new File(tempDir.getPath() + "/load_balance_data.dzn");
         model = Model.buildModel(conn, constraints, modelFile, dataFile);
     }
 
@@ -70,7 +73,7 @@ class LoadBalance {
             // The following block ensures we always drop the database between invocations of this method
             try {
                 final String dropUrl = "jdbc:derby:memory:test;drop=true";
-                getConnection(dropUrl, properties);
+                getConnection(dropUrl, properties).close();
             } catch (final SQLException e) {
                 // We could not drop a database because it was never created. Move on.
             }
@@ -81,8 +84,9 @@ class LoadBalance {
             using.execute("create schema curr");
             using.execute("set schema curr");
             final InputStream resourceAsStream = this.getClass().getResourceAsStream("/schema.sql");
-            final String schemaAsString = new BufferedReader(new InputStreamReader(resourceAsStream,
-                    Charset.forName("UTF8")))
+            final BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(resourceAsStream, Charset.forName("UTF8")));
+            final String schemaAsString = reader
                     .lines()
                     .filter(line -> !line.startsWith("--")) // remove SQL comments
                     .collect(Collectors.joining("\n"));
@@ -90,9 +94,10 @@ class LoadBalance {
                     .trimResults()
                     .omitEmptyStrings()
                     .splitToList(schemaAsString);
+            reader.close();
             semiColonSeparated.forEach(using::execute);
             return using;
-        } catch (final SQLException e) {
+        } catch (final SQLException | IOException e) {
             throw new RuntimeException(e);
         }
     }
