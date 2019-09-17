@@ -415,11 +415,10 @@ public class Model {
             irTable.updateValues(recentData);
             final long updateValues = System.nanoTime();
             LOG.info("updateDataFields for table {} took {}ns to fetch from DB, and {}ns to reflect in IRTables",
-                     table.getName(), (select - start), (updateValues - System.nanoTime()));
+                     table.getName(), (select - start), (System.nanoTime() - updateValues));
         }
         final long updateData = System.nanoTime();
         compiler.updateData(irContext, backend);
         LOG.info("compiler.updateData() took {}ns to complete", (updateData - System.nanoTime()));
     }
-
 }
