@@ -20,6 +20,7 @@
     <modules>
         <module>build-common</module>
         <module>dcm</module>
+        <module>examples</module>
     </modules>
     <dependencies>
         <dependency>
