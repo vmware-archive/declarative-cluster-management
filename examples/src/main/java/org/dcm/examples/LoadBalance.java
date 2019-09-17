@@ -32,6 +32,14 @@ import static org.jooq.impl.DSL.table;
 import static org.jooq.impl.DSL.using;
 
 
+/**
+ * A simple class to highlight DCM's capabilities. Loading this class creates a database schema
+ * that according to resources/schema.sql. It creates two tables, one for physical machines, and
+ * one for virtual machines. A variable column in the virtual machines table tracks the assignment
+ * of each virtual machine to a physical machine.
+ *
+ * The class is currently driven by tests written in LoadBalanceTest.
+ */
 class LoadBalance {
     private static final String PHYSICAL_MACHINES_TABLE = "PHYSICAL_MACHINE";
     private static final String VIRTUAL_MACHINES_TABLE = "VIRTUAL_MACHINE";
@@ -46,22 +54,46 @@ class LoadBalance {
         model = Model.buildModel(conn, constraints, modelFile, dataFile);
     }
 
-    void run() {
-        model.updateData();
-        final Map<String, Result<? extends Record>> virtualMachineTableNew
-                = model.solveModelWithoutTableUpdates(Collections.singleton(VIRTUAL_MACHINES_TABLE));
-        System.out.println(virtualMachineTableNew.values());
-    }
-
-    void addNode(final String nodeName, final int cpuCapacity, final int memoryCapacity) {
+    /**
+     * Add a physical machine to the inventory.
+     *
+     * @param nodeName machine name
+     * @param cpuCapacity CPU capacity
+     * @param memoryCapacity Memory capacity
+     */
+    void addPhysicalMachine(final String nodeName, final int cpuCapacity, final int memoryCapacity) {
         conn.insertInto(table(PHYSICAL_MACHINES_TABLE))
                 .values(nodeName, cpuCapacity, memoryCapacity).execute();
     }
 
-    void addVm(final String vmName, final int cpu, final int memory) {
+
+    /**
+     * Add a virtual machine to the inventory.
+     *
+     * @param vmName name
+     * @param cpu CPU demand
+     * @param memory Memory demand
+     */
+    void addVirtualMachine(final String vmName, final int cpu, final int memory) {
         conn.insertInto(table(VIRTUAL_MACHINES_TABLE))
-            .values(vmName, cpu, memory, null).execute();
+                .values(vmName, cpu, memory, null).execute();
     }
+    /**
+     * Invoke to solve for a given database (physical and virtual machine tables).
+     *
+     * @return The new virtual machine table after the solver identifies a new placement.
+     */
+    Result<? extends Record> run() {
+        // Pull the latest state from the DB
+        model.updateData();
+
+        // Run the solver and return the virtual machines table with solver-identified values for the
+        // controllable__physical_machines column
+        final Map<String, Result<? extends Record>> virtualMachineTableNew
+            = model.solveModelWithoutTableUpdates(Collections.singleton(VIRTUAL_MACHINES_TABLE));
+        return virtualMachineTableNew.get(VIRTUAL_MACHINES_TABLE);
+    }
+
 
     /*
      * Sets up an in-memory Apache Derby database.

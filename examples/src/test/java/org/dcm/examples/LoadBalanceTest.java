@@ -5,12 +5,21 @@
 
 package org.dcm.examples;
 
+import org.jooq.Record;
+import org.jooq.Result;
 import org.junit.Test;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class LoadBalanceTest {
+    private static final int NUM_PHYSICAL_MACHINES = 5;
+    private static final int NUM_VIRTUAL_MACHINES = 10;
 
     static {
         System.getProperties().setProperty("org.jooq.no-logo", "true");
@@ -24,25 +33,28 @@ public class LoadBalanceTest {
     public void testNoConstraints() {
         final LoadBalance lb = new LoadBalance(Collections.emptyList());
         addInventory(lb);
-        lb.run();
+        final Result<? extends Record> results = lb.run();
+        assertEquals(NUM_VIRTUAL_MACHINES, results.size());
     }
 
-
     /*
-     * We don't supply any constraints. So the solver will arbitrarily pick a few nodes to assign
-     * these VMs to.
+     * A simple constraint that forces all assignments to go the same node
      */
     @Test
     public void testSimpleConstraint() {
-        final LoadBalance lb = new LoadBalance(Collections.emptyList());
+        final String allVmsGoToPm3 = "create view constraint_simple as\n" +
+                                     "select * from virtual_machine\n" +
+                                     "where controllable__physical_machine = 'pm3'";
+        final LoadBalance lb = new LoadBalance(Collections.singletonList(allVmsGoToPm3));
         addInventory(lb);
-        lb.run();
+        final Result<? extends Record> results = lb.run();
+        results.forEach(e -> assertEquals(e.get("CONTROLLABLE__PHYSICAL_MACHINE"), "pm3"));
     }
-
 
     /*
      * We now add a capacity constraint to make sure that no physical machine is assigned more VMs
-     * than it has capacity for.
+     * than it has capacity for. Given the constants we've chosen in addInventory(), there should be
+     * at least two physical machines that receive VMs.
      */
     @Test
     public void testCapacityConstraints() {
@@ -57,12 +69,15 @@ public class LoadBalanceTest {
 
         final LoadBalance lb = new LoadBalance(Collections.singletonList(capacityConstraint));
         addInventory(lb);
-        lb.run();
+        final Result<? extends Record> results = lb.run();
+        final Set<String> setOfPhysicalMachines = results.stream()
+                                                     .map(e -> e.get("CONTROLLABLE__PHYSICAL_MACHINE", String.class))
+                                                     .collect(Collectors.toSet());
+        assertTrue(setOfPhysicalMachines.size() >= 2);
     }
 
-
     /*
-     * Add a load balancing objective function.
+     * Add a load balancing objective function. This should spread out VMs across all physical machines.
      */
     @Test
     public void testDistributeLoad() {
@@ -90,20 +105,22 @@ public class LoadBalanceTest {
         final LoadBalance lb =
                   new LoadBalance(List.of(capacityConstraint, load, distributeLoadCpu, distributeLoadMemory));
         addInventory(lb);
-        lb.run();
+        final Result<? extends Record> result = lb.run();
+        final Set<String> setOfPhysicalMachines = result.stream()
+                .map(e -> e.get("CONTROLLABLE__PHYSICAL_MACHINE", String.class))
+                .collect(Collectors.toSet());
+        assertEquals(NUM_PHYSICAL_MACHINES, setOfPhysicalMachines.size());
     }
 
     private void addInventory(final LoadBalance lb) {
-        // Add physical machines with CPU and Memory capacity as 100 units.
-        final int numPhysicalMachines = 5;
-        for (int i = 0; i < numPhysicalMachines; i++) {
-            lb.addNode("pm" + i, 50, 50);
+        // Add physical machines with CPU and Memory capacity as 50 units.
+        for (int i = 0; i < NUM_PHYSICAL_MACHINES; i++) {
+            lb.addPhysicalMachine("pm" + i, 50, 50);
         }
 
         // Add some VMs with CPU and Memory demand as 10 units.
-        final int numVirtualMachines = 10;
-        for (int i = 0; i < numVirtualMachines; i++) {
-            lb.addVm("vm" + i, 10, 10);
+        for (int i = 0; i < NUM_VIRTUAL_MACHINES; i++) {
+            lb.addVirtualMachine("vm" + i, 10, 10);
         }
     }
 }
