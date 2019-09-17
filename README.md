@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/vmware/declarative-cluster-management.svg?branch=master)](https://travis-ci.com/vmware/declarative-cluster-management)
+[![Build Status](https://circleci.com/gh/vmware/declarative-cluster-management.svg?style=svg)](https://circleci.com/gh/vmware/declarative-cluster-management)
 [![codecov](https://codecov.io/gh/vmware/declarative-cluster-management/branch/master/graph/badge.svg)](https://codecov.io/gh/vmware/declarative-cluster-management)
 
 # Declarative Cluster Management
