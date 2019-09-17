@@ -28,7 +28,6 @@ import java.util.Properties;
 import java.util.stream.Collectors;
 
 import static java.sql.DriverManager.getConnection;
-import static java.sql.DriverManager.registerDriver;
 import static org.jooq.impl.DSL.table;
 import static org.jooq.impl.DSL.using;
 

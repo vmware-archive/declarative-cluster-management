@@ -18,8 +18,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class LoadBalanceTest {
-    private final int numPhysicalMachines = 5;
-    private final int numVirtualMachines = 10;
+    private static final int NUM_PHYSICAL_MACHINES = 5;
+    private static final int NUM_VIRTUAL_MACHINES = 10;
 
     static {
         System.getProperties().setProperty("org.jooq.no-logo", "true");
@@ -34,9 +34,8 @@ public class LoadBalanceTest {
         final LoadBalance lb = new LoadBalance(Collections.emptyList());
         addInventory(lb);
         final Result<? extends Record> results = lb.run();
-        assertEquals(numVirtualMachines, results.size());
+        assertEquals(NUM_VIRTUAL_MACHINES, results.size());
     }
-
 
     /*
      * A simple constraint that forces all assignments to go the same node
@@ -51,7 +50,6 @@ public class LoadBalanceTest {
         final Result<? extends Record> results = lb.run();
         results.forEach(e -> assertEquals(e.get("CONTROLLABLE__PHYSICAL_MACHINE"), "pm3"));
     }
-
 
     /*
      * We now add a capacity constraint to make sure that no physical machine is assigned more VMs
@@ -77,7 +75,6 @@ public class LoadBalanceTest {
                                                      .collect(Collectors.toSet());
         assertTrue(setOfPhysicalMachines.size() >= 2);
     }
-
 
     /*
      * Add a load balancing objective function. This should spread out VMs across all physical machines.
@@ -112,17 +109,17 @@ public class LoadBalanceTest {
         final Set<String> setOfPhysicalMachines = result.stream()
                 .map(e -> e.get("CONTROLLABLE__PHYSICAL_MACHINE", String.class))
                 .collect(Collectors.toSet());
-        assertEquals(numPhysicalMachines, setOfPhysicalMachines.size());
+        assertEquals(NUM_PHYSICAL_MACHINES, setOfPhysicalMachines.size());
     }
 
     private void addInventory(final LoadBalance lb) {
-        // Add physical machines with CPU and Memory capacity as 100 units.
-        for (int i = 0; i < numPhysicalMachines; i++) {
+        // Add physical machines with CPU and Memory capacity as 50 units.
+        for (int i = 0; i < NUM_PHYSICAL_MACHINES; i++) {
             lb.addPhysicalMachine("pm" + i, 50, 50);
         }
 
         // Add some VMs with CPU and Memory demand as 10 units.
-        for (int i = 0; i < numVirtualMachines; i++) {
+        for (int i = 0; i < NUM_VIRTUAL_MACHINES; i++) {
             lb.addVirtualMachine("vm" + i, 10, 10);
         }
     }
