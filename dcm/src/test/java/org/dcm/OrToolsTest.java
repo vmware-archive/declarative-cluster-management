@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vrg;
+package org.dcm;
 
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
@@ -14,7 +14,7 @@ import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
 import com.google.ortools.util.Domain;
-import com.vrg.backend.StringEncoding;
+import org.dcm.backend.StringEncoding;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
