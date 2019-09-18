@@ -1256,7 +1256,7 @@ public class ModelTest {
 
         // build model
         final Model model = buildWeaveModel(conn, views, modelName);
-        model.updateDataWithDDLog();
+        model.updateData();
         model.solveModel();
     }
 
