@@ -49,7 +49,7 @@ public class LoadBalanceTest {
         addInventory(lb);
         final Result<? extends Record> results = lb.run();
         System.out.println(results);
-        results.forEach(e -> assertEquals(e.get("CONTROLLABLE__PHYSICAL_MACHINE"), "pm3"));
+        results.forEach(e -> assertEquals("pm3", e.get("CONTROLLABLE__PHYSICAL_MACHINE")));
     }
 
     /*
