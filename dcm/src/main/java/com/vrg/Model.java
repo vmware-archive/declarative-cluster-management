@@ -15,9 +15,7 @@ import com.google.common.collect.Multimap;
 import com.vrg.backend.ISolverBackend;
 import com.vrg.backend.MinizincSolver;
 import com.vrg.compiler.ModelCompiler;
-import ddlogapi.DDlogAPI;
-import ddlogapi.DDlogCommand;
-import ddlogapi.DDlogRecord;
+
 import org.jooq.Constraint;
 import org.jooq.DSLContext;
 import org.jooq.Field;
@@ -66,12 +64,11 @@ public class Model {
     private final ModelCompiler compiler;
     private IRContext irContext;
     private final ISolverBackend backend;
-    private final Map<String, Integer> tableIDMap = new HashMap<>();
-    private final DDlogAPI api = new DDlogAPI(1, null, false);
+    private static IncrementalViewUpdater asyncUpdater = new IncrementalViewUpdater();
 
     private Model(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
                   final File modelFile, final File dataFile, final Conf conf) {
-        api.record_commands("replay.dat", false);
+
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
@@ -125,10 +122,11 @@ public class Model {
             }
         }
         irContext = new IRContext(irTables);
+        asyncUpdater.initializeIncrementalViewUpdater(irTables, dbCtx);
+        asyncUpdater.createDBTriggers();
         compiler = new ModelCompiler(irContext);
         compiler.compile(viewsInPolicy, backend);
     }
-
 
     /**
      * Builds a Minizinc model out of dslContext
@@ -221,120 +219,8 @@ public class Model {
      */
     @SuppressWarnings("WeakerAccess")
     public synchronized void updateData() {
+        asyncUpdater.flushUpdatesToDatabase();
         updateDataFields();
-    }
-
-    DDlogRecord toDDlogRecord(final String className, final Record record) {
-        final List<DDlogRecord> records = new ArrayList<>();
-        for (final Field<?> field: record.fields()) {
-                final Class<?> cls = field.getType();
-                if (cls.getName().equals("java.lang.Boolean")) {
-                    records.add(new DDlogRecord((Boolean) field.getValue(record)));
-                } else if (cls.getName().equals("java.lang.Integer") || cls.getName().equals("int")) {
-                    records.add(new DDlogRecord((Integer) field.getValue(record)));
-                } else if (cls.getName().equals("java.lang.Long") || cls.getName().equals("long")) {
-                    records.add(new DDlogRecord((Long) field.getValue(record)));
-                } else if (cls.getName().equals("java.lang.String")) {
-                    records.add(new DDlogRecord(String.valueOf(field.getValue(record))));
-                } else {
-                    throw new RuntimeException("unexpected datatype: "  + cls.getName());
-                }
-        }
-        DDlogRecord[] recordsArray = new DDlogRecord[records.size()];
-        recordsArray = records.toArray(recordsArray);
-        return DDlogRecord.makeStruct(className, recordsArray);
-    }
-
-    synchronized void updateDataWithDDLog() {
-        final List<DDlogCommand> commands = new ArrayList<>();
-        for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
-            final Table<? extends Record> table = entry.getKey();
-            final Result<? extends Record> recentData = dbCtx.selectFrom(table).fetch();
-            for (final Record record: recentData) {
-                final DDlogRecord ddlogRecord  = toDDlogRecord(table.getName(), record);
-                final String relation = ddlogRecord.getStructName();
-                int id;
-                if (tableIDMap.containsKey(relation)) {
-                    id = tableIDMap.get(relation);
-                }
-                else  {
-                    id = api.getTableId(relation);
-                    tableIDMap.put(relation, id);
-                }
-                commands.add(new DDlogCommand(DDlogCommand.Kind.Insert, id, ddlogRecord));
-            }
-        }
-
-        final DDlogCommand [] ca = commands.toArray(new DDlogCommand[commands.size()]);
-        checkExitCode(api.start());
-        checkExitCode(api.applyUpdates(ca));
-        checkExitCode(api.commit_dump_changes(this::commit));
-
-        updateDataFields();
-    }
-
-    void checkExitCode(final int exitCode) {
-        if (exitCode < 0) {
-            throw new RuntimeException("Error executing " + exitCode);
-        }
-    }
-
-    synchronized void commit(final DDlogCommand command) {
-        final DDlogRecord record = command.value;
-        final String dataType = record.getStructName();
-
-        if (irTables.containsKey(dataType)) {
-            final StringBuilder stringBuilder = new StringBuilder();
-            final IRTable irTable = irTables.get(dataType);
-            final Table<? extends Record> table = irTable.getTable();
-            final Field[] fields = table.fields();
-            if (command.kind == DDlogCommand.Kind.Insert) {
-                stringBuilder.append("insert into " + dataType + " values ( \n");
-                int counter = 0;
-                for (final Field field : fields) {
-                    final Class fieldClass = field.getType();
-                    final DDlogRecord item = record.getStructField(counter);
-
-                    if (fieldClass.getName().equals("java.lang.String")) {
-                        stringBuilder.append("'" + item.getString() + "'");
-                    } else if (fieldClass.getName().equals("java.lang.Long")) {
-                        stringBuilder.append(item.getLong());
-                    } else if (fieldClass.getName().equals("java.lang.Integer")) {
-                        stringBuilder.append(item.getU128());
-                    } else if (fieldClass.getName().equals("java.lang.Boolean")) {
-                        stringBuilder.append(item.getBoolean());
-                    }
-                    if (counter < fields.length - 1) {
-                        stringBuilder.append(", ");
-                    }
-                    counter = counter + 1;
-                }
-            } else if (command.kind == DDlogCommand.Kind.DeleteVal) {
-                stringBuilder.append("delete from " + dataType + " where ( \n");
-                int counter = 0;
-                for (final Field field : fields) {
-                    final Class fieldClass = field.getType();
-                    final DDlogRecord item = record.getStructField(counter);
-                    if (fieldClass.getName().equals("java.lang.String")) {
-                        stringBuilder.append(field.getName() + " = '" + item.getString() + "'");
-                    } else if (fieldClass.getName().equals("java.lang.Long")) {
-                        stringBuilder.append(field.getName() + " = " + item.getLong());
-                    } else if (fieldClass.getName().equals("java.lang.Integer")) {
-                        stringBuilder.append(field.getName() + " = " + item.getU128());
-                    } else if (fieldClass.getName().equals("java.lang.Boolean")) {
-                        stringBuilder.append(field.getName() + " = " + item.getBoolean());
-                    }
-                    if (counter < fields.length - 1) {
-                        stringBuilder.append(" and ");
-                    }
-                    counter = counter + 1;
-                }
-            }
-            stringBuilder.append("\n)");
-            final String query = stringBuilder.toString();
-            System.out.println(query);
-            dbCtx.execute(query);
-        }
     }
 
     /**
