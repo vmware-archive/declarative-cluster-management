@@ -48,6 +48,7 @@ public class LoadBalanceTest {
         final LoadBalance lb = new LoadBalance(Collections.singletonList(allVmsGoToPm3));
         addInventory(lb);
         final Result<? extends Record> results = lb.run();
+        System.out.println(results);
         results.forEach(e -> assertEquals(e.get("CONTROLLABLE__PHYSICAL_MACHINE"), "pm3"));
     }
 
@@ -70,6 +71,7 @@ public class LoadBalanceTest {
         final LoadBalance lb = new LoadBalance(Collections.singletonList(capacityConstraint));
         addInventory(lb);
         final Result<? extends Record> results = lb.run();
+        System.out.println(results);
         final Set<String> setOfPhysicalMachines = results.stream()
                                                      .map(e -> e.get("CONTROLLABLE__PHYSICAL_MACHINE", String.class))
                                                      .collect(Collectors.toSet());
@@ -90,25 +92,24 @@ public class LoadBalanceTest {
                 "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and\n" +
                 "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
 
-        final String load = "create view load as\n" +
-                "select sum(virtual_machine.cpu) as cpu_load, sum(virtual_machine.memory) as mem_load\n" +
+        final String spareCpu = "create view spare_cpu as\n" +
+                "select physical_machine.cpu_capacity - sum(virtual_machine.cpu) as cpu_spare\n" +
                 "from virtual_machine\n" +
                 "join physical_machine\n" +
                 "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
-                "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity";
+                "group by physical_machine.name, physical_machine.cpu_capacity";
 
-        // Queries presented as objectives, will have their values maximized. If there are multiple objectives,
-        // the sum of their values will be maximized.
-        final String distributeLoadCpu = "create view objective_load_cpu as select min(cpu_load) from load";
-        final String distributeLoadMemory = "create view objective_load_mem as select min(mem_load) from load";
+        // Queries presented as objectives, will have their values maximized.
+        final String distributeLoadCpu = "create view objective_load_cpu as select min(cpu_spare) from spare_cpu";
 
         final LoadBalance lb =
-                  new LoadBalance(List.of(capacityConstraint, load, distributeLoadCpu, distributeLoadMemory));
+                new LoadBalance(List.of(capacityConstraint, spareCpu, distributeLoadCpu));
         addInventory(lb);
         final Result<? extends Record> result = lb.run();
         final Set<String> setOfPhysicalMachines = result.stream()
                 .map(e -> e.get("CONTROLLABLE__PHYSICAL_MACHINE", String.class))
                 .collect(Collectors.toSet());
+        System.out.println(result);
         assertEquals(NUM_PHYSICAL_MACHINES, setOfPhysicalMachines.size());
     }
 
