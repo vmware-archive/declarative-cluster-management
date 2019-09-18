@@ -91,9 +91,36 @@ simple cluster manager.
 - We can update the tables with some simple helper methods, `LoadBalance.addVm()` and `LoadBalance.addNode()`. 
 
 - Let's now drive our simple example with some tests. Have a look at `examples/src/test/java/org/dcm/examples/LoadBalanceTest.java`.
+  All the tests populate the database with the following initial state using the `LoadBalanceTest.addInventory()` method:
+  
+  ```
+  +----+------------+---------------+
+  |NAME|CPU_CAPACITY|MEMORY_CAPACITY|
+  +----+------------+---------------+
+  |pm0 |          50|             50|
+  |pm1 |          50|             50|
+  |pm2 |          50|             50|
+  |pm3 |          50|             50|
+  |pm4 |          50|             50|
+  +----+------------+---------------+
+  
+  +----+----+------+------------------------------+
+  |NAME| CPU|MEMORY|CONTROLLABLE__PHYSICAL_MACHINE|
+  +----+----+------+------------------------------+
+  |vm0 |  10|    10|{null}                        |
+  |vm1 |  10|    10|{null}                        |
+  |vm2 |  10|    10|{null}                        |
+  |vm3 |  10|    10|{null}                        |
+  |vm4 |  10|    10|{null}                        |
+  |vm5 |  10|    10|{null}                        |
+  |vm6 |  10|    10|{null}                        |
+  |vm7 |  10|    10|{null}                        |
+  |vm8 |  10|    10|{null}                        |
+  |vm9 |  10|    10|{null}                        |
+  +----+----+------+------------------------------+
+  ```
  
-- Let's first start by specifying a very simple constraint: assign all VMs to physical machine pm3 (which is added
-  using the `addInventory()` method):
+- Let's first start by specifying a very simple constraint: assign all VMs to physical machine `pm3`:
 
   ```java
     /*
@@ -101,8 +128,8 @@ simple cluster manager.
      */
     @Test
     public void testSimpleConstraint() {
-        final String allVmsGoToPm3 = "create view constraint_simple as\n" +
-                                     "select * from virtual_machine\n" +
+        final String allVmsGoToPm3 = "create view constraint_simple as " +
+                                     "select * from virtual_machine " +
                                      "where controllable__physical_machine = 'pm3'";
         final LoadBalance lb = new LoadBalance(Collections.singletonList(allVmsGoToPm3));
         addInventory(lb);
@@ -145,12 +172,12 @@ simple cluster manager.
       @Test
       public void testCapacityConstraints() {
           final String capacityConstraint =
-                  "create view constraint_capacity as\n" +
-                  "select * from virtual_machine\n" +
-                  "join physical_machine\n" +
-                  "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
-                  "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity\n" +
-                  "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and\n" +
+                  "create view constraint_capacity as " +
+                  "select * from virtual_machine " +
+                  "join physical_machine " +
+                  "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
+                  "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
+                  "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
                   "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
   
           final LoadBalance lb = new LoadBalance(Collections.singletonList(capacityConstraint));
@@ -192,19 +219,19 @@ simple cluster manager.
       @Test
       public void testDistributeLoad() {
           final String capacityConstraint =
-                  "create view constraint_capacity as\n" +
-                  "select * from virtual_machine\n" +
-                  "join physical_machine\n" +
-                  "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
-                  "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity\n" +
-                  "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and\n" +
+                  "create view constraint_capacity as " +
+                  "select * from virtual_machine " +
+                  "join physical_machine " +
+                  "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
+                  "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
+                  "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
                   "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
   
-          final String spareCpu = "create view spare_cpu as\n" +
-                  "select physical_machine.cpu_capacity - sum(virtual_machine.cpu) as cpu_spare\n" +
-                  "from virtual_machine\n" +
-                  "join physical_machine\n" +
-                  "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
+          final String spareCpu = "create view spare_cpu as " +
+                  "select physical_machine.cpu_capacity - sum(virtual_machine.cpu) as cpu_spare " +
+                  "from virtual_machine " +
+                  "join physical_machine " +
+                  "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
                   "group by physical_machine.name, physical_machine.cpu_capacity";
   
           // Queries presented as objectives, will have their values maximized.

@@ -42,8 +42,8 @@ public class LoadBalanceTest {
      */
     @Test
     public void testSimpleConstraint() {
-        final String allVmsGoToPm3 = "create view constraint_simple as\n" +
-                                     "select * from virtual_machine\n" +
+        final String allVmsGoToPm3 = "create view constraint_simple as " +
+                                     "select * from virtual_machine " +
                                      "where controllable__physical_machine = 'pm3'";
         final LoadBalance lb = new LoadBalance(Collections.singletonList(allVmsGoToPm3));
         addInventory(lb);
@@ -60,12 +60,12 @@ public class LoadBalanceTest {
     @Test
     public void testCapacityConstraints() {
         final String capacityConstraint =
-                "create view constraint_capacity as\n" +
-                "select * from virtual_machine\n" +
-                "join physical_machine\n" +
-                "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
-                "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity\n" +
-                "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and\n" +
+                "create view constraint_capacity as " +
+                "select * from virtual_machine " +
+                "join physical_machine " +
+                "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
+                "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
+                "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
                 "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
 
         final LoadBalance lb = new LoadBalance(Collections.singletonList(capacityConstraint));
@@ -84,19 +84,19 @@ public class LoadBalanceTest {
     @Test
     public void testDistributeLoad() {
         final String capacityConstraint =
-                "create view constraint_capacity as\n" +
-                "select * from virtual_machine\n" +
-                "join physical_machine\n" +
-                "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
-                "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity\n" +
-                "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and\n" +
+                "create view constraint_capacity as " +
+                "select * from virtual_machine " +
+                "join physical_machine " +
+                "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
+                "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
+                "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
                 "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
 
-        final String spareCpu = "create view spare_cpu as\n" +
-                "select physical_machine.cpu_capacity - sum(virtual_machine.cpu) as cpu_spare\n" +
-                "from virtual_machine\n" +
-                "join physical_machine\n" +
-                "  on physical_machine.name = virtual_machine.controllable__physical_machine\n" +
+        final String spareCpu = "create view spare_cpu as " +
+                "select physical_machine.cpu_capacity - sum(virtual_machine.cpu) as cpu_spare " +
+                "from virtual_machine " +
+                "join physical_machine " +
+                "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
                 "group by physical_machine.name, physical_machine.cpu_capacity";
 
         // Queries presented as objectives, will have their values maximized.
