@@ -18,44 +18,6 @@ import static org.jooq.impl.DSL.using;
 
 public class TriggerTest {
 
-    public static void capitalize(final String... input) {
-        final StringBuilder builder = new StringBuilder();
-        builder.append("Length of array: ").append(input.length);
-        int counter = 0;
-        for (final String i: input) {
-            builder.append(" [").append(counter).append("]: ").append(i.trim());
-            counter = counter + 1;
-        }
-        System.out.println(builder.toString());
-    }
-
-    @Test
-    public void simpleExample() {
-        final DSLContext conn = setup();
-
-        conn.execute("create table temp (test varchar(100) not null primary key, id int not null)");
-        conn.execute("select * from temp");
-
-        conn.execute("CREATE procedure capitalize_columns (vals varchar(100) ...) " +
-                "LANGUAGE JAVA  " +
-                "PARAMETER STYLE DERBY " +
-                "NO SQL  " +
-                "EXTERNAL NAME 'com.vrg.compiler.TriggerTest.capitalize'");
-
-        final String table = "TEMP";
-        conn.execute("CREATE TRIGGER  capitalize_columns_trigger " +
-                "AFTER INSERT ON " + table + " " +
-                "REFERENCING NEW AS newTable " +
-                "FOR EACH ROW " +
-                "CALL capitalize_columns( " +
-                "cast(cast('" + table + "' as char(38)) as varchar(100))," +
-                "cast(cast(newTable.test as char(38)) as varchar(100))," +
-                "cast(cast(newTable.id as char(38)) as varchar(100)))");
-
-        conn.execute("insert into temp values ('test1', 1)");
-        conn.execute("insert into temp values ('test2', 2)");
-    }
-
     private DSLContext setup() {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
@@ -105,12 +67,19 @@ public class TriggerTest {
                 ")"
         );
 
-        final Model model = buildWeaveModel(conn, new ArrayList<>(), "testModel");
+        final List<String> baseTables = new ArrayList<>();
+        baseTables.add("POD");
+        baseTables.add("NODE");
+        final Model model = buildWeaveModel(conn, new ArrayList<>(), "testModel", true, baseTables);
 
         conn.execute("insert into node values('node1', true, 1)");
         conn.execute("insert into node values('node2', true, 1)");
+
         conn.execute("insert into pod values('pod1', 'node1', 1)");
         conn.execute("insert into pod values('pod2', 'node2', 1)");
+
+        conn.execute("insert into node values('node3', true, 1)");
+        conn.execute("insert into pod values('pod3', 'node1', 1)");
         model.updateData();
     }
 
@@ -129,12 +98,12 @@ public class TriggerTest {
      * @return built Model
      */
     @CanIgnoreReturnValue
-    private Model buildWeaveModel(final DSLContext conn, final List<String> views, final String testName) {
+    private Model buildWeaveModel(final DSLContext conn, final List<String> views, final String testName,
+                                  final boolean useDDlog, final List<String> list) {
         // get model file for the current test
         final File modelFile = new File("src/test/resources/" + testName + ".mzn");
         // create data file
         final File dataFile = new File("/tmp/" + testName + ".dzn");
-        return Model.buildModel(conn, views, modelFile, dataFile);
+        return Model.buildModel(conn, views, modelFile, dataFile, useDDlog, list);
     }
-
 }
