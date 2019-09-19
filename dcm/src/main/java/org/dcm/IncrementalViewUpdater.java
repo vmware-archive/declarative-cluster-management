@@ -16,8 +16,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.HashMap;
 
-import static org.dcm.ExtractGroupTable.GROUP_TABLE_PREFIX;
-
 public class IncrementalViewUpdater {
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalViewUpdater.class);
     private static Map<String, Integer> tableIDMap = new HashMap<>();
@@ -25,11 +23,16 @@ public class IncrementalViewUpdater {
     private static DSLContext dbCtx = null;
     private static final DDlogAPI API = new DDlogAPI(1, IncrementalViewUpdater::receiveUpdateFromDDlog, false);
     private static final List<String> UPDATE_QUERIES = new ArrayList<>();
+    private static List<String> baseTables = new ArrayList<>();
+    private static final String INTEGER_TYPE = "java.lang.Integer";
+    private static final String STRING_TYPE = "java.lang.String";
+    private static final String BOOLEAN_TYPE = "java.lang.Boolean";
+    private static final String LONG_TYPE = "java.lang.Long";
 
-    IncrementalViewUpdater() { }
-
-    static void initializeIncrementalViewUpdater(final Map<String, IRTable> irTables, final DSLContext dbCtx) {
+    static void initializeIncrementalViewUpdater(final Map<String, IRTable> irTables, final DSLContext dbCtx,
+                                                 final List<String> baseTables) {
         API.record_commands("replay.dat", false);
+        IncrementalViewUpdater.baseTables = baseTables;
         IncrementalViewUpdater.irTables = irTables;
         IncrementalViewUpdater.dbCtx = dbCtx;
     }
@@ -51,13 +54,13 @@ public class IncrementalViewUpdater {
                     final DDlogRecord item = record.getStructField(counter);
 
                     switch (fieldClass.getName()) {
-                        case "java.lang.Long":
+                        case LONG_TYPE:
                             stringBuilder.append(item.getLong());
                             break;
-                        case "java.lang.Integer":
+                        case INTEGER_TYPE:
                             stringBuilder.append(item.getU128());
                             break;
-                        case "java.lang.Boolean":
+                        case BOOLEAN_TYPE:
                             stringBuilder.append(item.getBoolean());
                             break;
                         default:
@@ -75,13 +78,13 @@ public class IncrementalViewUpdater {
                     final Class fieldClass = field.getType();
                     final DDlogRecord item = record.getStructField(counter);
                     switch (fieldClass.getName()) {
-                        case "java.lang.Long":
+                        case LONG_TYPE:
                             stringBuilder.append(field.getName() + " = " + item.getLong());
                             break;
-                        case "java.lang.Integer":
+                        case INTEGER_TYPE:
                             stringBuilder.append(field.getName() + " = " + item.getU128());
                             break;
-                        case "java.lang.Boolean":
+                        case BOOLEAN_TYPE:
                             stringBuilder.append(field.getName() + " = " + item.getBoolean());
                             break;
                         default:
@@ -132,22 +135,20 @@ public class IncrementalViewUpdater {
             final Class<?> cls = field.getType();
             final String argument = args[counter].trim();
             switch (cls.getName()) {
-                case "java.lang.Boolean":
+                case BOOLEAN_TYPE:
                     records.add(new DDlogRecord(Boolean.parseBoolean(argument)));
                     break;
-                case "java.lang.Integer":
-                case "int":
+                case INTEGER_TYPE:
                     records.add(new DDlogRecord(Integer.parseInt(argument)));
                     break;
-                case "java.lang.Long":
-                case "long":
+                case LONG_TYPE:
                     records.add(new DDlogRecord(Long.parseLong(argument)));
                     break;
-                case "java.lang.String":
+                case STRING_TYPE:
                     records.add(new DDlogRecord(argument));
                     break;
                 default:
-                    throw new RuntimeException("unexpected datatype: " + cls.getName());
+                    throw new RuntimeException("Unexpected datatype: " + cls.getName());
             }
             counter = counter + 1;
         }
@@ -169,15 +170,13 @@ public class IncrementalViewUpdater {
                 "PARAMETER STYLE DERBY " +
                 "NO SQL " +
                 "EXTERNAL NAME 'com.vrg.IncrementalViewUpdater.sendUpdateToDDlog'");
+        for (final String entry : baseTables) {
+            final String tableName = entry.toUpperCase(Locale.US);
+            if (irTables.containsKey(tableName)) {
+            final IRTable irTable = irTables.get(tableName);
 
-        for (final Map.Entry<String, IRTable> entry : irTables.entrySet()) {
-            //TODO: get which tables we need to do this for from the DDLog API
-            final String tableName = entry.getKey().toUpperCase(Locale.US);
-            // TODO: remove this above TODO is resolved
-            if (!(tableName.contains(GROUP_TABLE_PREFIX) || tableName.contains("USABLENODES"))) {
                 final String newTableName = "NEW_" + tableName;
                 final String triggerName = "TRIGGER_" + tableName;
-                final IRTable irTable = entry.getValue();
 
                 final StringBuilder builder = new StringBuilder();
                 builder.append("CREATE TRIGGER " + triggerName + " " +
@@ -199,7 +198,10 @@ public class IncrementalViewUpdater {
     }
 
     void flushUpdatesToDatabase() {
-        UPDATE_QUERIES.forEach(q -> dbCtx.execute(q));
+        UPDATE_QUERIES.forEach(q -> {
+            LOG.info("Query: {}", q);
+            dbCtx.execute(q);
+        });
         UPDATE_QUERIES.clear();
     }
 }
