@@ -419,6 +419,6 @@ public class Model {
         }
         final long updateData = System.nanoTime();
         compiler.updateData(irContext, backend);
-        LOG.info("compiler.updateData() took {}ns to complete", (updateData - System.nanoTime()));
+        LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
     }
 }
