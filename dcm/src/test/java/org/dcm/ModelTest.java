@@ -1751,17 +1751,11 @@ public class ModelTest {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
         try {
-            // The following block ensures we always drop the database between tests
-            try {
-                final String dropUrl = "jdbc:derby:memory:test;drop=true";
-                getConnection(dropUrl, properties);
-            } catch (final SQLException e) {
-                // We could not drop a database because it was never created. Move on.
-            }
             // Create a fresh database
-            final String connectionURL = "jdbc:derby:memory:test;create=true";
+            final String connectionURL = "jdbc:h2" +
+                    ":mem:;create=true";
             final Connection conn = getConnection(connectionURL, properties);
-            final DSLContext using = using(conn, SQLDialect.DERBY);
+            final DSLContext using = using(conn, SQLDialect.H2);
             using.execute("create schema curr");
             using.execute("set schema curr");
             return using;
