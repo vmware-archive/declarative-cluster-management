@@ -42,7 +42,77 @@ public class TriggerTest {
     }
 
     @Test
-    public void testSelectExpression() {
+    public void testLargerExample() {
+        final DSLContext conn = setup();
+
+        conn.execute("create table NODE\n" +
+                "(\n" +
+                " name varchar(36) not null primary key, "  +
+                " is_master boolean not null, "  +
+                " unschedulable boolean not null, "  +
+                " out_of_disk boolean not null, "  +
+                " memory_pressure boolean not null, "  +
+                " disk_pressure boolean not null,"  +
+                " pid_pressure boolean not null,"  +
+                " ready boolean not null,"  +
+                " network_unavailable boolean not null,"  +
+                " cpu_capacity bigint not null,"  +
+                " memory_capacity bigint not null,"  +
+                " ephemeral_storage_capacity bigint not null,"  +
+                " pods_capacity bigint not null,"  +
+                " cpu_allocatable bigint not null,"  +
+                " memory_allocatable bigint not null,"  +
+                " ephemeral_storage_allocatable bigint not null,"  +
+                " pods_allocatable bigint not null)"
+        );
+        conn.execute("create table POD\n" +
+                "(\n" +
+                " pod_name varchar(100) not null primary key,\n" +
+                " status varchar(36) not null,\n" +
+                " node_name varchar(36) not null,\n" +
+                " namespace varchar(100) not null,\n" +
+                " cpu_request bigint not null,\n" +
+                " memory_request bigint not null,\n" +
+                " ephemeral_storage_request bigint not null,\n" +
+                " pods_request bigint not null,\n" +
+                " owner_name varchar(100) not null,\n" +
+                " creation_timestamp varchar(100) not null,\n" +
+                " priority integer not null)"
+        );
+
+        conn.execute("create table SPARECAPACITY\n" +
+                "(\n" +
+                "  name varchar(36) not null,\n" +
+                "  cpu_remaining bigint not null,  " +
+                "  memory_remaining bigint not null, " +
+                "  pods_remaining bigint not null " +  ")"
+        );
+
+        final List<String> baseTables = new ArrayList<>();
+        baseTables.add("POD");
+        baseTables.add("NODE");
+
+        Model model = buildWeaveModel(conn, new ArrayList<>(), "testModel", true, baseTables);
+
+        for (int j = 1; j < 6; j++) {
+            long start = System.nanoTime();
+            int delta = 100000;
+            int i = j * delta;
+            int iEnd = i + delta;
+            for (; i < iEnd; i++) {
+                conn.execute("insert into node values('node" + i + "', false, false, false, false, false, false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)");
+                conn.execute("insert into pod values('pod" + i + "', 'scheduled', 'node" + i + "', 'default', 1, 1, 1, 1, 'owner', 'owner', 1)");
+            }
+            long end = System.nanoTime();
+            System.out.println("Time to receive updates: " + (end-start));
+            model.updateData();
+        }
+
+    }
+
+
+    @Test
+    public void testSimpleExample() {
         final DSLContext conn = setup();
 
         conn.execute("create table NODE\n" +

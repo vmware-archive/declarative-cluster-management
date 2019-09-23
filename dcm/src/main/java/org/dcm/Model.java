@@ -273,7 +273,10 @@ public class Model {
      */
     @SuppressWarnings("WeakerAccess")
     public synchronized void updateData() {
+        long start = System.nanoTime();
         asyncUpdater.flushUpdatesToDatabase();
+        long end = System.nanoTime();
+        LOG.info("Time to update DB: {}", (end-start));
         updateDataFields();
     }
 

@@ -199,7 +199,6 @@ public class IncrementalViewUpdater {
 
     void flushUpdatesToDatabase() {
         UPDATE_QUERIES.forEach(q -> {
-            LOG.info("Query: {}", q);
             dbCtx.execute(q);
         });
         UPDATE_QUERIES.clear();
