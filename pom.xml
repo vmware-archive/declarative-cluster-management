@@ -21,6 +21,7 @@
         <module>build-common</module>
         <module>dcm</module>
         <module>examples</module>
+        <module>benchmarks</module>
     </modules>
     <dependencies>
         <dependency>
@@ -51,13 +52,20 @@
                         <arg>-XDcompilePolicy=simple</arg>
                         <arg>-Xplugin:ErrorProne
                              -XepAllErrorsAsWarnings
-                             -Xep:Finally:OFF</arg>
+                             -Xep:Finally:OFF
+                             -XepExcludedPaths:.*/annotations/org/dcm/generated/.*
+                        </arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>com.google.errorprone</groupId>
                             <artifactId>error_prone_core</artifactId>
                             <version>2.3.3</version>
+                        </path>
+                        <path>
+                            <groupId>org.openjdk.jmh</groupId>
+                            <artifactId>jmh-generator-annprocess</artifactId>
+                            <version>1.21</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>

@@ -3,4 +3,7 @@
         <Class name="ComprehensionRewriter" />
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
     </Match>
+    <Match>
+        <Package name="org.dcm.generated"/>
+    </Match>
 </FindBugsFilter>
