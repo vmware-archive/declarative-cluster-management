@@ -22,3 +22,15 @@ jobs:
       - run: mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent package 
       - run: mvn -pl '!build-common' jacoco:report
       - run: bash <(curl -s https://codecov.io/bash)
+
+      # collect test metadata
+      - run:
+          name: Save test results
+          command: |
+            mkdir -p ~/test-results/junit/
+            find . -type f -regex ".*/target/surefire-reports/.*xml" -exec cp {} ~/test-results/junit/ \;
+          when: always
+      - store_test_results:
+          path: ~/test-results
+      - store_artifacts:
+          path: ~/test-results/junit 
