@@ -22,6 +22,7 @@
         <module>dcm</module>
         <module>examples</module>
         <module>benchmarks</module>
+        <module>k8s-scheduler</module>
     </modules>
     <dependencies>
         <dependency>
@@ -33,6 +34,18 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
             <version>1.7.25</version>
+            <scope>test</scope>
+        </dependency>
+            <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.5.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.12</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -53,7 +66,7 @@
                         <arg>-Xplugin:ErrorProne
                              -XepAllErrorsAsWarnings
                              -Xep:Finally:OFF
-                             -XepExcludedPaths:.*/annotations/org/dcm/generated/.*
+                             -XepExcludedPaths:(.*/annotations/org/dcm/generated/.*|.*/org/dcm/k8s/generated/.*)
                         </arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
