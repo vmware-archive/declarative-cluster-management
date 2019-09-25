@@ -46,13 +46,13 @@ class Utils {
                 case "Gi":
                     return baseAmount * Math.pow(2, 20);
                 case "Ti":
-                    return baseAmount * (Math.pow(2, 30));
+                    return baseAmount * Math.pow(2, 30);
                 case "Pi":
                     // XXX: Likely to overflow
-                    return baseAmount * (Math.pow(2, 40));
+                    return baseAmount * Math.pow(2, 40);
                 case "Ei":
                     // XXX: Likely to overflow
-                    return baseAmount * (Math.pow(2, 50));
+                    return baseAmount * Math.pow(2, 50);
                 default:
                     return baseAmount / Math.pow(2, 10);
             }
