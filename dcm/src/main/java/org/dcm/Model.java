@@ -380,10 +380,6 @@ public class Model {
             irTables.put(irTable.getName(), irTable);
         }
 
-        // TODO: Assumes tables do not have foreign key relationships for now and that the user
-        // has to specify them manually using membership constraints
-
-
         // parses foreign keys after initiating the tables
         // because for fks we need to setup relationships between different table fields
         for (final IRTable childTable : jooqTableToIRTable.values()) {
