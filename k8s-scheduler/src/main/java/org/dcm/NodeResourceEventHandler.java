@@ -31,27 +31,24 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
 
     @Override
     public void onAdd(final V1Node node) {
-        System.out.printf("%s node added!\n", node.getMetadata().getName());
+        LOG.debug("{} node added", node.getMetadata().getName());
         addNodeInfo(node, conn);
     }
 
     @Override
     public void onUpdate(final V1Node oldNode, final V1Node newNode) {
-        System.out.printf(
-                "%s => %s node updated!\n",
-                oldNode.getMetadata().getName(), newNode.getMetadata().getName());
+        LOG.debug("{} => {} node updated", oldNode.getMetadata().getName(), newNode.getMetadata().getName());
     }
 
     @Override
     public void onDelete(final V1Node node, final boolean deletedFinalStateUnknown) {
-        System.out.printf("%s node deleted!\n", node.getMetadata().getName());
+        LOG.debug("{} node deleted", node.getMetadata().getName());
         deleteNode(node, conn);
     }
 
-
     private void addNodeInfo(final V1Node node, final DSLContext conn) {
         final boolean exists = conn.fetchExists(conn.selectFrom(Tables.NODE_INFO)
-                .where(Tables.NODE_INFO.NAME.eq(node.getMetadata().getName())));
+                                                    .where(Tables.NODE_INFO.NAME.eq(node.getMetadata().getName())));
         if (exists) {
             LOG.info("Node {} already exists in NODE_INFO table. Ignoring event.", node.getMetadata().getName());
             return;

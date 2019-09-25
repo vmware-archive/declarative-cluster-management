@@ -36,7 +36,6 @@ import static org.jooq.impl.DSL.using;
  */
 public final class Scheduler {
     private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
-    private static final String PATH = "/tmp/";
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final DSLContext conn;
     private final String k8sApiUrl;
@@ -77,14 +76,16 @@ public final class Scheduler {
         this.model = createDcmModel(conn, conf, relevantTables);
         this.puller = new DataPuller();
         puller.run(conn, k8sApiUrl);
+        LOG.info("Initialized scheduler with batchCount:{} batchSize:{} model:{} relevantTables:{}", this.batchCount,
+                this.batchTimeInMs, model, relevantTables);
     }
 
     /**
      * Instantiates a DCM model based on the configured policies.
      */
     private Model createDcmModel(final DSLContext conn, final Conf conf, final List<Table<?>> tables) {
-        final File modelFile = new File(PATH + "/k8s_model.mzn");
-        final File dataFile = new File(PATH + "/k8s_data.mzn");
+        final File modelFile = new File("k8s_model.mzn");
+        final File dataFile = new File("k8s_data.mzn");
         final List<String> policies = Policies.getDefaultPolicies();
         return Model.buildModel(conn, tables, policies, modelFile, dataFile, conf);
     }

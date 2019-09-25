@@ -64,7 +64,7 @@ class Policies {
             if (this == o) {
                 return true;
             }
-            if (o == null || getClass() != o.getClass()) {
+            if (o == null || o instanceof Policy) {
                 return false;
             }
             final Policy policy = (Policy) o;
