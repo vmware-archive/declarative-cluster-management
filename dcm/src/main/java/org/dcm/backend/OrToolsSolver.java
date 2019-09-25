@@ -851,14 +851,14 @@ public class OrToolsSolver implements ISolverBackend {
         return String.format("%s", CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName));
     }
 
+    // TODO: need to perform compilation entirely in memory
     private List<String> compile(final TypeSpec spec) {
         final JavaFile javaFile = JavaFile.builder("org.dcm.backend", spec).build();
         LOG.info("Generating Java or-tools code: {}\n", javaFile.toString());
 
         // Compile Java code. This steps requires an SDK, and a JRE will not suffice
         final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        final StandardJavaFileManager fileManager =
-                compiler.getStandardFileManager(null, null, null);
+        final StandardJavaFileManager fileManager = compiler.getStandardFileManager(null, null, null);
         final Iterable<? extends JavaFileObject> compilationUnit = Collections.singleton(javaFile.toJavaFileObject());
 
         try {
