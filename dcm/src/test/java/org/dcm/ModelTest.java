@@ -1752,8 +1752,7 @@ public class ModelTest {
         properties.setProperty("foreign_keys", "true");
         try {
             // Create a fresh database
-            final String connectionURL = "jdbc:h2" +
-                    ":mem:;create=true";
+            final String connectionURL = "jdbc:h2:mem:;create=true";
             final Connection conn = getConnection(connectionURL, properties);
             final DSLContext using = using(conn, SQLDialect.H2);
             using.execute("create schema curr");
