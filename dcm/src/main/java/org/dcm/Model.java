@@ -277,6 +277,7 @@ public class Model {
         asyncUpdater.flushUpdatesToDatabase();
         long end = System.nanoTime();
         LOG.info("Time to update DB: {}", (end-start));
+
         updateDataFields();
     }
 

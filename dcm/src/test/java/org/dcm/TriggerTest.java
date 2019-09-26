@@ -95,7 +95,7 @@ public class TriggerTest {
 
         for (int j = 1; j < 6; j++) {
             long start = System.nanoTime();
-            int delta = 100000;
+            int delta = 10;
             int i = j * delta;
             int iEnd = i + delta;
             for (; i < iEnd; i++) {

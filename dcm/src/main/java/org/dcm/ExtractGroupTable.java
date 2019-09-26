@@ -35,7 +35,7 @@ import java.util.Optional;
  * Output: select c1, c2, c3 from T where P1 group by c1, c2, c3;
  */
 class ExtractGroupTable {
-    public static final String GROUP_TABLE_PREFIX = "GROUP_TABLE__";
+    private static final String GROUP_TABLE_PREFIX = "GROUP_TABLE__";
 
     Optional<CreateView> process(final CreateView view) {
         final String viewName = view.getName().toString();
