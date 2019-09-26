@@ -1,7 +1,6 @@
-package com.vrg.compiler;
+package org.dcm;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.vrg.Model;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.junit.Test;
@@ -92,7 +91,7 @@ public class TriggerTest {
         baseTables.add("POD");
         baseTables.add("NODE");
 
-        Model model = buildWeaveModel(conn, new ArrayList<>(), "testModel", true, baseTables);
+        Model model = buildModel(conn, new ArrayList<>(), "testModel", true, baseTables);
 
         for (int j = 1; j < 6; j++) {
             long start = System.nanoTime();
@@ -140,7 +139,7 @@ public class TriggerTest {
         final List<String> baseTables = new ArrayList<>();
         baseTables.add("POD");
         baseTables.add("NODE");
-        final Model model = buildWeaveModel(conn, new ArrayList<>(), "testModel", true, baseTables);
+        final Model model = buildModel(conn, new ArrayList<>(), "testModel", true, baseTables);
 
         conn.execute("insert into node values('node1', true, 1)");
         conn.execute("insert into node values('node2', true, 1)");
@@ -159,7 +158,7 @@ public class TriggerTest {
     }
 
     /**
-     * Builds a Weave Model for a test case, making sure to:
+     * Builds a Model for a test case, making sure to:
      *  - Build initial model (without hand-written constraints) on the first run. Note: the test FAILS on this scenario
      *  - Build the model with an already existing file. You should edit that file in between runs.
      *
@@ -168,8 +167,8 @@ public class TriggerTest {
      * @return built Model
      */
     @CanIgnoreReturnValue
-    private Model buildWeaveModel(final DSLContext conn, final List<String> views, final String testName,
-                                  final boolean useDDlog, final List<String> list) {
+    private Model buildModel(final DSLContext conn, final List<String> views, final String testName,
+                             final boolean useDDlog, final List<String> list) {
         // get model file for the current test
         final File modelFile = new File("src/test/resources/" + testName + ".mzn");
         // create data file

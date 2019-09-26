@@ -169,7 +169,7 @@ public class IncrementalViewUpdater {
                 "LANGUAGE JAVA " +
                 "PARAMETER STYLE DERBY " +
                 "NO SQL " +
-                "EXTERNAL NAME 'com.vrg.IncrementalViewUpdater.sendUpdateToDDlog'");
+                "EXTERNAL NAME 'org.dcm.IncrementalViewUpdater.sendUpdateToDDlog'");
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
             if (irTables.containsKey(tableName)) {

@@ -1255,7 +1255,7 @@ public class ModelTest {
                         "where controllable__node_name in (select name from USABLENODES);");
 
         // build model
-        final Model model = buildWeaveModel(conn, views, modelName);
+        final Model model = buildModel(conn, views, modelName);
         model.updateData();
         model.solveModel();
     }
