@@ -1,9 +1,10 @@
-package org.dcm;
+package org.dcm.viewupdater;
 
 import ddlogapi.DDlogAPI;
 import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogRecord;
-import org.jooq.DSLContext;
+import org.dcm.IRColumn;
+import org.dcm.IRTable;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Table;
@@ -16,26 +17,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.HashMap;
 
-public class IncrementalViewUpdater {
-    private static final Logger LOG = LoggerFactory.getLogger(IncrementalViewUpdater.class);
+public class DerbyIncrementalUpdater extends ViewUpdater {
+    private static final Logger LOG = LoggerFactory.getLogger(DerbyIncrementalUpdater.class);
     private static Map<String, Integer> tableIDMap = new HashMap<>();
-    private static Map<String, IRTable> irTables = new HashMap<>();
-    private static DSLContext dbCtx = null;
-    private static final DDlogAPI API = new DDlogAPI(1, IncrementalViewUpdater::receiveUpdateFromDDlog, false);
-    private static final List<String> UPDATE_QUERIES = new ArrayList<>();
-    private static List<String> baseTables = new ArrayList<>();
+
+    private static final DDlogAPI API = new DDlogAPI(1, DerbyIncrementalUpdater::receiveUpdateFromDDlog, false);
+
     private static final String INTEGER_TYPE = "java.lang.Integer";
     private static final String STRING_TYPE = "java.lang.String";
     private static final String BOOLEAN_TYPE = "java.lang.Boolean";
     private static final String LONG_TYPE = "java.lang.Long";
-
-    static void initializeIncrementalViewUpdater(final Map<String, IRTable> irTables, final DSLContext dbCtx,
-                                                 final List<String> baseTables) {
-        API.record_commands("replay.dat", false);
-        IncrementalViewUpdater.baseTables = baseTables;
-        IncrementalViewUpdater.irTables = irTables;
-        IncrementalViewUpdater.dbCtx = dbCtx;
-    }
 
     private static void receiveUpdateFromDDlog(final DDlogCommand command) {
         final DDlogRecord record = command.value;
@@ -164,12 +155,12 @@ public class IncrementalViewUpdater {
         }
     }
 
-    static void createDBTriggers() {
+    public void createDBTriggers() {
         dbCtx.execute("CREATE procedure update_views (vals varchar(100) ...) " +
                 "LANGUAGE JAVA " +
                 "PARAMETER STYLE DERBY " +
                 "NO SQL " +
-                "EXTERNAL NAME 'org.dcm.IncrementalViewUpdater.sendUpdateToDDlog'");
+                "EXTERNAL NAME '" + DerbyIncrementalUpdater.class.getName() + ".sendUpdateToDDlog'");
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
             if (irTables.containsKey(tableName)) {
@@ -197,7 +188,7 @@ public class IncrementalViewUpdater {
         }
     }
 
-    void flushUpdatesToDatabase() {
+    public void flushUpdates() {
         UPDATE_QUERIES.forEach(q -> {
             dbCtx.execute(q);
         });

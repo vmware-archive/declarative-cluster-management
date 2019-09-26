@@ -1,6 +1,7 @@
 package org.dcm;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import org.dcm.viewupdater.H2IncrementalUpdater;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.junit.Test;
@@ -9,6 +10,7 @@ import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Properties;
 import java.util.List;
@@ -17,27 +19,62 @@ import static org.jooq.impl.DSL.using;
 
 public class TriggerTest {
 
+//    private DSLContext setup() {
+//        final Properties properties = new Properties();
+//        properties.setProperty("foreign_keys", "true");
+//        try {
+//            // The following block ensures we always drop the database between tests
+//            try {
+//                final String dropUrl = "jdbc:derby:memory:test;drop=true";
+//                getConnection(dropUrl, properties);
+//            } catch (final SQLException e) {
+//                // We could not drop a database because it was never created. Move on.
+//            }
+//            // Create a fresh database
+//            final String connectionURL = "jdbc:derby:memory:db;create=true";
+//            final Connection conn = getConnection(connectionURL, properties);
+//            final DSLContext using = using(conn, SQLDialect.DERBY);
+//            using.execute("create schema curr");
+//            using.execute("set schema curr");
+//            return using;
+//        } catch (final SQLException e) {
+//            throw new RuntimeException(e);
+//        }
+//    }
+
+    /*
+     * Sets up an in-memory H2 database that we use for all tests.
+     */
     private DSLContext setup() {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
         try {
-            // The following block ensures we always drop the database between tests
-            try {
-                final String dropUrl = "jdbc:derby:memory:test;drop=true";
-                getConnection(dropUrl, properties);
-            } catch (final SQLException e) {
-                // We could not drop a database because it was never created. Move on.
-            }
             // Create a fresh database
-            final String connectionURL = "jdbc:derby:memory:db;create=true";
+            final String connectionURL = "jdbc:h2" +
+                    ":mem:;create=true";
             final Connection conn = getConnection(connectionURL, properties);
-            final DSLContext using = using(conn, SQLDialect.DERBY);
+            final DSLContext using = using(conn, SQLDialect.H2);
             using.execute("create schema curr");
             using.execute("set schema curr");
             return using;
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Test
+    public void h2test() throws ClassNotFoundException, SQLException {
+        Class.forName("org.h2.Driver");
+        Connection conn = DriverManager.getConnection(
+                "jdbc:h2:mem:test", "sa", "");
+        Statement stat = conn.createStatement();
+        stat.execute("create table test (name bigint)");
+        stat.execute("CREATE TRIGGER T1 " + "BEFORE INSERT ON TEST " + "FOR EACH ROW CALL \"" +
+                H2IncrementalUpdater.class.getName() + "\"");
+        stat.execute("INSERT INTO TEST VALUES(1)");
+        stat.execute("INSERT INTO TEST VALUES(2)");
+        stat.close();
+        conn.close();
     }
 
     @Test
@@ -95,7 +132,7 @@ public class TriggerTest {
 
         for (int j = 1; j < 6; j++) {
             long start = System.nanoTime();
-            int delta = 10;
+            int delta = 100;
             int i = j * delta;
             int iEnd = i + delta;
             for (; i < iEnd; i++) {
@@ -106,7 +143,6 @@ public class TriggerTest {
             System.out.println("Time to receive updates: " + (end-start));
             model.updateData();
         }
-
     }
 
 

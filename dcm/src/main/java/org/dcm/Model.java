@@ -16,10 +16,10 @@ import com.google.common.collect.Multimap;
 import org.dcm.backend.ISolverBackend;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.compiler.ModelCompiler;
-import ddlogapi.DDlogAPI;
-import ddlogapi.DDlogCommand;
-import ddlogapi.DDlogRecord;
 
+//import org.dcm.viewupdater.DerbyIncrementalUpdater;
+import org.dcm.viewupdater.H2IncrementalUpdater;
+import org.dcm.viewupdater.ViewUpdater;
 import org.jooq.Constraint;
 import org.jooq.DSLContext;
 import org.jooq.Field;
@@ -68,7 +68,7 @@ public class Model {
     private final ModelCompiler compiler;
     private IRContext irContext;
     private final ISolverBackend backend;
-    private static IncrementalViewUpdater asyncUpdater = new IncrementalViewUpdater();
+    private ViewUpdater viewUpdater = new H2IncrementalUpdater();
 
     private Model(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
                   final File modelFile, final File dataFile, final Conf conf,
@@ -128,9 +128,14 @@ public class Model {
         }
         irContext = new IRContext(irTables);
 
+//        if (useDDlog) {
+//            IncrementalViewUpdater.initializeIncrementalViewUpdater(irTables, dbCtx, baseTables);
+//            IncrementalViewUpdater.createDBTriggers();
+//        }
+
         if (useDDlog) {
-            IncrementalViewUpdater.initializeIncrementalViewUpdater(irTables, dbCtx, baseTables);
-            IncrementalViewUpdater.createDBTriggers();
+            viewUpdater.initialize(irTables, dbCtx, baseTables);
+            viewUpdater.createDBTriggers();
         }
 
         compiler = new ModelCompiler(irContext);
@@ -274,7 +279,7 @@ public class Model {
     @SuppressWarnings("WeakerAccess")
     public synchronized void updateData() {
         long start = System.nanoTime();
-        asyncUpdater.flushUpdatesToDatabase();
+        viewUpdater.flushUpdates();
         long end = System.nanoTime();
         LOG.info("Time to update DB: {}", (end-start));
 
