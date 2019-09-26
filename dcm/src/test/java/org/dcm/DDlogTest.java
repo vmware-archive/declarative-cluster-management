@@ -75,7 +75,8 @@ public class DDlogTest {
                 " priority integer not null,  " +
                 " schedulerName varchar(50),\n" +
                 " has_node_selector_labels boolean not null,\n" +
-                " has_pod_affinity_requirements boolean not null)"
+                " has_pod_affinity_requirements boolean not null, " +
+                " has_pod_anti_affinity_requirements boolean not null)"
         );
 
         dbCtx.execute("create table SPARECAPACITY\n" +
@@ -100,7 +101,7 @@ public class DDlogTest {
                             "false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)");
             final PreparedStatement podStmt = conn.prepareStatement(
                     "insert into pod values(?, 'Pending', ?, 'default', 1, 1, 1, 1, 'owner', " +
-                            "'owner', 1, 'dcm-scheduler', true, true)");
+                            "'owner', 1, 'dcm-scheduler', true, true, true)");
             for (int j = 0; j < 1; j++) {
                 final int numRecords = 10;
                 int index = j * numRecords;
@@ -194,7 +195,8 @@ public class DDlogTest {
                 " priority integer not null,  " +
                 " schedulerName varchar(50),\n" +
                 " has_node_selector_labels boolean not null,\n" +
-                " has_pod_affinity_requirements boolean not null)"
+                " has_pod_affinity_requirements boolean not null, " +
+                " has_pod_anti_affinity_requirements boolean not null)"
         );
 
         dbCtx.execute("create table SPARECAPACITY\n" +
@@ -218,7 +220,7 @@ public class DDlogTest {
                             "false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)");
             final PreparedStatement podStmt = conn.prepareStatement(
                     "insert into pod values(?, 'Pending', ?, 'default', 1, 1, 1, 1, 'owner', " +
-                            "'owner', 1, 'dcm-scheduler', true, true)");
+                            "'owner', 1, 'dcm-scheduler', true, true, true)");
 
             for (int j = 0; j < 50; j++) {
                 final int numRecords = 10;

@@ -9,7 +9,7 @@ DDLOG=~/Documents/DCM/ddlog-0.10.3
 DPROG=dcm_opt
 FLATBUFFERS_JAR_PATH=~/Documents/DCM/flatbuffers-java-1.11.0.jar
 CLASSPATH=${DDLOG}/java/ddlogapi.jar:.:${FLATBUFFERS_JAR_PATH}:$CLASSPATH
-DDLOG_MODEL_ENV=${DDLOG}/${DPROG}_ddlog/libddlogapi.dylib
+export DDLOG_MODEL_ENV=${DDLOG}/${DPROG}_ddlog/libddlogapi.dylib
 
 cp ${DPROG}.dl ${DDLOG}
 cd ${DDLOG}
@@ -26,11 +26,11 @@ javac ddlog/${DPROG}/*.java
 
 jar -cf weave-apps.jar ddlog/*
 
-mvn install:install-file -Dfile=weave-apps.jar -DgroupId=ddlog.${DPROG} -DartifactId=ddlog.${DPROG} -Dversion=0.1 -Dpackaging=jar
+mvn install:install-file -Dfile=weave-apps.jar -DgroupId=ddlog.${DPROG} -DartifactId=ddlog.${DPROG} -Dversion=1.0 -Dpackaging=jar
 mvn install:install-file -Dfile=${DDLOG}/java/ddlogapi.jar -DgroupId=ddlogapi -DartifactId=ddlog -Dversion=1.0 -Dpackaging=jar
 
 cd $cwd
-mvn clean package -DskipTests
+mvn clean package 
 cd benchmarks/target
 mkdir resources
 java -cp benchmarks.jar -Djava.library.path="${DDLOG}/${DPROG}_ddlog" org.dcm.DBBenchmark
