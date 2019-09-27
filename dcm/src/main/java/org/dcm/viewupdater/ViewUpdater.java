@@ -33,7 +33,6 @@ public abstract class ViewUpdater {
 
     public void flushUpdates() {
         UPDATE_QUERIES.forEach(q -> {
-            System.out.println(q);
             dbCtx.execute(q);
         });
         UPDATE_QUERIES.clear();

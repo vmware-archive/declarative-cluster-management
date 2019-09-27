@@ -16,10 +16,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-public class H2IncrementalUpdater extends ViewUpdater implements Trigger  {
+public class H2IncrementalUpdater extends ViewUpdater implements Trigger {
     private static final List<String> UPDATE_QUERIES = new ArrayList<>();
     private String tableName = "";
-    DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
+    private DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
 
     public H2IncrementalUpdater(final Map<String, IRTable> irTables,
                                 final DSLContext dbCtx, final List<String> baseTables) {
@@ -27,8 +27,8 @@ public class H2IncrementalUpdater extends ViewUpdater implements Trigger  {
     }
 
     @Override
-    public void init(final Connection conn, final String schemaName, final String triggerName,
-                     final String tableName, final boolean before, final int type) throws SQLException {
+    public void init(Connection conn, String schemaName, String triggerName,
+                     String tableName, boolean before, int type) throws SQLException {
         this.tableName = tableName.trim().toUpperCase(Locale.US);
     }
 
@@ -40,18 +40,18 @@ public class H2IncrementalUpdater extends ViewUpdater implements Trigger  {
     }
 
     @Override
-    public void fire(final Connection conn, final Object[] old, final Object[] row) {
-        final DDlogRecord ddlogRecord  = toDDlogRecord(row);
+    public void fire(Connection conn, Object[] old, Object[] row) {
+        final DDlogRecord ddlogRecord = toDDlogRecord(row);
         updater.update(ddlogRecord);
     }
 
     public DDlogRecord toDDlogRecord(final Object[] args) {
         final List<DDlogRecord> records = new ArrayList<>();
         final IRTable irTable = this.irTables.get(tableName);
-        final Table<? extends Record> table =  irTable.getTable();
+        final Table<? extends Record> table = irTable.getTable();
 
         int counter = 0;
-        for (final Field<?> field: table.fields()) {
+        for (final Field<?> field : table.fields()) {
             final Class<?> cls = field.getType();
             switch (cls.getName()) {
                 case BOOLEAN_TYPE:
@@ -95,7 +95,7 @@ public class H2IncrementalUpdater extends ViewUpdater implements Trigger  {
 
                 final StringBuilder builder = new StringBuilder();
                 builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
-                        "FOR EACH ROW " + "CALL \"" + H2IncrementalUpdater.class.getName() + "\"");
+                        "FOR EACH ROW CALL \"" + H2IncrementalUpdater.class.getName() + "\"");
 
                 final String command = builder.toString();
                 dbCtx.execute(command);
