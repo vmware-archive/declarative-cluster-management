@@ -11,14 +11,13 @@ import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
 
+import com.google.common.collect.Multimap;
 import org.dcm.backend.ISolverBackend;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.compiler.ModelCompiler;
 
-//import org.dcm.viewupdater.DerbyIncrementalUpdater;
-import org.dcm.viewupdater.H2IncrementalUpdater;
+import org.dcm.viewupdater.PGIncrementalUpdater;
 import org.dcm.viewupdater.ViewUpdater;
 import org.jooq.Constraint;
 import org.jooq.DSLContext;
@@ -33,7 +32,9 @@ import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.io.File;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -68,9 +69,10 @@ public class Model {
     private final ModelCompiler compiler;
     private IRContext irContext;
     private final ISolverBackend backend;
-    private ViewUpdater viewUpdater = new H2IncrementalUpdater();
+    @Nullable private ViewUpdater viewUpdater = null;
 
-    private Model(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
+    private Model(@Nullable final Connection conn, final DSLContext dbCtx,
+                  final List<Table<?>> tables, final List<String> views,
                   final File modelFile, final File dataFile, final Conf conf,
                   final boolean useDDlog, final List<String> baseTables) {
 
@@ -134,7 +136,8 @@ public class Model {
 //        }
 
         if (useDDlog) {
-            viewUpdater.initialize(irTables, dbCtx, baseTables);
+
+            viewUpdater = new PGIncrementalUpdater(conn, irTables, dbCtx, baseTables);
             viewUpdater.createDBTriggers();
         }
 
@@ -213,6 +216,13 @@ public class Model {
         return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf(), useDDlog, baseTables);
     }
 
+    public static synchronized Model buildModel(final Connection conn, final DSLContext dslContext,
+                                                final List<String> views, final File modelFile, final File dataFile,
+                                                final boolean useDDlog, final List<String> baseTables) {
+        final List<Table<?>> tables = getTablesFromContext(dslContext);
+        return buildModel(conn, dslContext, tables, views, modelFile, dataFile, new Conf(), useDDlog, baseTables);
+    }
+
     /**
      * Builds a Minizinc model out of dslContext and a list of tables.
      *
@@ -251,7 +261,15 @@ public class Model {
                                                 final List<String> views, final File modelFile,
                                                 final File dataFile, final Conf conf,
                                                 final boolean useDDlog, final List<String> baseTables) {
-        return new Model(dslContext, tables, views, modelFile, dataFile, conf, useDDlog, baseTables);
+        return buildModel(null, dslContext, tables, views, modelFile, dataFile, conf, useDDlog, baseTables);
+    }
+
+    public static synchronized Model buildModel(@Nullable final Connection conn, final DSLContext dslContext,
+                                                final List<Table<?>> tables,
+                                                final List<String> views, final File modelFile,
+                                                final File dataFile, final Conf conf,
+                                                final boolean useDDlog, final List<String> baseTables) {
+        return new Model(conn, dslContext, tables, views, modelFile, dataFile, conf, useDDlog, baseTables);
     }
 
     /**
@@ -264,7 +282,8 @@ public class Model {
         final List<Table<?>> tables = new ArrayList<>();
         for (final Table<?> t : dslMeta.getTables()) {
             // skip if table not on current schema
-            if (!t.getSchema().getName().equals(CURRENT_SCHEMA)) {
+            //TODO: clean
+            if (!(t.getSchema().getName().equals(CURRENT_SCHEMA) || t.getSchema().getName().equals("public"))) {
                 continue;
             }
             tables.add(t);
@@ -278,11 +297,7 @@ public class Model {
      */
     @SuppressWarnings("WeakerAccess")
     public synchronized void updateData() {
-        long start = System.nanoTime();
         viewUpdater.flushUpdates();
-        long end = System.nanoTime();
-        LOG.info("Time to update DB: {}", (end-start));
-
         updateDataFields();
     }
 

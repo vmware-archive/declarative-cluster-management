@@ -1744,15 +1744,14 @@ public class ModelTest {
     }
 
     /*
-     * Sets up an in-memory Apache Derby database that we use for all tests.
+     * Sets up an in-memory H2 database that we use for all tests.
      */
     private DSLContext setup() {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
         try {
             // Create a fresh database
-            final String connectionURL = "jdbc:h2" +
-                    ":mem:;create=true";
+            final String connectionURL = "jdbc:h2:mem:;create=true";
             final Connection conn = getConnection(connectionURL, properties);
             final DSLContext using = using(conn, SQLDialect.H2);
             using.execute("create schema curr");

@@ -1,8 +1,10 @@
 package org.dcm.viewupdater;
+
 import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogRecord;
 import org.dcm.IRTable;
 import org.h2.api.Trigger;
+import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Table;
@@ -12,22 +14,22 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class H2IncrementalUpdater extends ViewUpdater implements Trigger  {
     private static final List<String> UPDATE_QUERIES = new ArrayList<>();
     private String tableName = "";
     DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
 
-    private static final String INTEGER_TYPE = "java.lang.Integer";
-    private static final String STRING_TYPE = "java.lang.String";
-    private static final String BOOLEAN_TYPE = "java.lang.Boolean";
-    private static final String LONG_TYPE = "java.lang.Long";
+    public H2IncrementalUpdater(final Map<String, IRTable> irTables,
+                                final DSLContext dbCtx, final List<String> baseTables) {
+        super(irTables, dbCtx, baseTables);
+    }
 
     @Override
-    public void init(Connection conn, String schemaName,
-                     String triggerName, String tableName, boolean before,
-                     int type) throws SQLException {
-        this.tableName = tableName.trim().toUpperCase(Locale.US);;
+    public void init(final Connection conn, final String schemaName, final String triggerName,
+                     final String tableName, final boolean before, final int type) throws SQLException {
+        this.tableName = tableName.trim().toUpperCase(Locale.US);
     }
 
     public void receiveUpdateFromDDlog(final DDlogCommand command) {
@@ -38,7 +40,7 @@ public class H2IncrementalUpdater extends ViewUpdater implements Trigger  {
     }
 
     @Override
-    public void fire(Connection conn, Object[] old, Object[] row) {
+    public void fire(final Connection conn, final Object[] old, final Object[] row) {
         final DDlogRecord ddlogRecord  = toDDlogRecord(row);
         updater.update(ddlogRecord);
     }
@@ -84,6 +86,7 @@ public class H2IncrementalUpdater extends ViewUpdater implements Trigger  {
         // ignore
     }
 
+    @Override
     public void createDBTriggers() {
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
@@ -91,23 +94,12 @@ public class H2IncrementalUpdater extends ViewUpdater implements Trigger  {
                 final String triggerName = "TRIGGER_" + tableName;
 
                 final StringBuilder builder = new StringBuilder();
-                builder.append("CREATE TRIGGER " + triggerName + " " +
-                        "BEFORE INSERT ON " + tableName + " " +
-                        "FOR EACH ROW " +
-                        "CALL \"" + H2IncrementalUpdater.class.getName() + "\"");
-
+                builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
+                        "FOR EACH ROW " + "CALL \"" + H2IncrementalUpdater.class.getName() + "\"");
 
                 final String command = builder.toString();
                 dbCtx.execute(command);
             }
         }
     }
-
-    public void flushUpdates() {
-        UPDATE_QUERIES.forEach(q -> {
-            dbCtx.execute(q);
-        });
-        UPDATE_QUERIES.clear();
-    }
-
 }

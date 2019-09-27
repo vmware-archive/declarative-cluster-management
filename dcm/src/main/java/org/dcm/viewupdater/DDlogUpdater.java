@@ -18,12 +18,11 @@ public class DDlogUpdater {
     private DDlogAPI API;
     private static Map<String, Integer> tableIDMap = new HashMap<>();
 
-    private final String INTEGER_TYPE = "java.lang.Integer";
-    private final String STRING_TYPE = "java.lang.String";
-    private final String BOOLEAN_TYPE = "java.lang.Boolean";
-    private final String LONG_TYPE = "java.lang.Long";
+    private static final String INTEGER_TYPE = "java.lang.Integer";
+    private static final String BOOLEAN_TYPE = "java.lang.Boolean";
+    private static final String LONG_TYPE = "java.lang.Long";
 
-    public DDlogUpdater (Consumer<DDlogCommand> consumer) {
+    public DDlogUpdater(final Consumer<DDlogCommand> consumer) {
         API = new DDlogAPI(1, consumer, false);
     }
 
@@ -92,9 +91,8 @@ public class DDlogUpdater {
         return null;
     }
 
-    public void update(DDlogRecord ddlogRecord) {
+    public void update(final DDlogRecord ddlogRecord) {
         final String relation = ddlogRecord.getStructName();
-
         int id;
         if (tableIDMap.containsKey(relation)) {
             id = tableIDMap.get(relation);
