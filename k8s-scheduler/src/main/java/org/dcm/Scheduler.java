@@ -46,6 +46,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -64,6 +65,7 @@ public final class Scheduler {
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
+
     private final DSLContext conn;
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
@@ -224,8 +226,8 @@ public final class Scheduler {
     }
 
     public static void main(final String[] args) throws InterruptedException, ParseException {
-
         final Options options = new Options();
+
         options.addRequiredOption("bc", "batch-size", true,
                 "Scheduler batch size count");
         options.addRequiredOption("bi", "batch-interval-ms", true,

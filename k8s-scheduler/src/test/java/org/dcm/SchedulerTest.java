@@ -36,6 +36,7 @@ import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
+
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -981,9 +982,6 @@ public class SchedulerTest {
         spec.setAffinity(affinity);
         final PodStatus status = new PodStatus();
         status.setPhase(phase);
-        pod.setMetadata(meta);
-        pod.setSpec(spec);
-        pod.setStatus(status);
         return pod;
     }
 
@@ -1001,11 +999,13 @@ public class SchedulerTest {
         status.setImages(Collections.emptyList());
         node.setStatus(status);
         status.setConditions(conditions);
+
         final NodeSpec spec = new NodeSpec();
         spec.setUnschedulable(false);
         spec.setTaints(Collections.emptyList());
         node.setSpec(spec);
         final ObjectMeta meta = new ObjectMeta();
+
         meta.setName(nodeName);
         meta.setLabels(labels);
         node.setMetadata(meta);
