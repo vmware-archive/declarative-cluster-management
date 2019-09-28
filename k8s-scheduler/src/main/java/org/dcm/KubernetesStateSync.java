@@ -19,20 +19,26 @@ import io.kubernetes.client.models.V1Pod;
 import io.kubernetes.client.models.V1PodList;
 import io.kubernetes.client.util.CallGeneratorParams;
 import io.kubernetes.client.util.Config;
+import io.reactivex.Flowable;
+import io.reactivex.processors.PublishProcessor;
+import org.dcm.k8s.generated.Tables;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-class DataPuller {
-    private static final Logger LOG = LoggerFactory.getLogger(DataPuller.class);
+class KubernetesStateSync {
+    private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
+    final SharedInformerFactory factory = new SharedInformerFactory();
 
-    void run(final DSLContext conn, final String url) {
+    Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn, final String url,
+                                                             final int batchCount, final long batchTimeMs) {
+        updateBatchCount(conn, batchCount);
         final ApiClient client = Config.fromUrl(url);
         client.getHttpClient().setReadTimeout(0, TimeUnit.SECONDS); // infinite timeout
         Configuration.setDefaultApiClient(client);
-        final SharedInformerFactory factory = new SharedInformerFactory();
         final CoreV1Api coreV1Api = new CoreV1Api();
 
         // Node informer
@@ -57,9 +63,20 @@ class DataPuller {
                         throw new RuntimeException(e);
                     }
                 }, V1Pod.class, V1PodList.class);
-        podInformer.addEventHandler(new PodResourceEventHandler(conn));
+        final PublishProcessor<PodEvent> podEventPublishProcessor = PublishProcessor.create();
+        podInformer.addEventHandler(new PodResourceEventHandler(conn, podEventPublishProcessor));
 
         LOG.info("Instantiated node and pod informers. Starting them all now.");
+
+        return podEventPublishProcessor.buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
+                       .filter(podEvents -> !podEvents.isEmpty());
+    }
+
+    void startProcessingEvents() {
         factory.startAllRegisteredInformers();
+    }
+
+    void updateBatchCount(final DSLContext conn, final int batchCount) {
+        conn.insertInto(Tables.BATCH_SIZE).values(batchCount).execute();
     }
 }

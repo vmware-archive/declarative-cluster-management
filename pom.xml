@@ -38,14 +38,8 @@
         </dependency>
             <dependency>
             <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
+            <artifactId>junit-jupiter</artifactId>
             <version>5.5.0</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -55,7 +49,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.0</version>
+                <version>3.8.1</version>
                 <configuration>
                     <source>12</source>
                     <target>12</target>
@@ -82,6 +76,10 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.22.2</version>
             </plugin>
             <!-- Findbugs -->
             <plugin>
