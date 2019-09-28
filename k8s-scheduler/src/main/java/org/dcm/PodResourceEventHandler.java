@@ -15,6 +15,7 @@ import io.kubernetes.client.models.V1Pod;
 import io.kubernetes.client.models.V1PodAffinityTerm;
 import io.kubernetes.client.models.V1ResourceRequirements;
 import io.kubernetes.client.models.V1Toleration;
+import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
@@ -28,16 +29,19 @@ import java.util.stream.Collectors;
 class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
     private static final Logger LOG = LoggerFactory.getLogger(PodResourceEventHandler.class);
     private final DSLContext conn;
+    private final PublishProcessor<PodEvent> flowable;
 
-    PodResourceEventHandler(final DSLContext conn) {
+    PodResourceEventHandler(final DSLContext conn, final PublishProcessor<PodEvent> flowable) {
         this.conn = conn;
+        this.flowable = flowable;
     }
 
     @Override
     public void onAdd(final V1Pod pod) {
         if (pod.getSpec().getSchedulerName().equals(Scheduler.SCHEDULER_NAME)) {
-            LOG.debug("{} pod added!\n", pod.getMetadata().getName());
+            LOG.info("{} pod added!\n", pod.getMetadata().getName());
             addPod(conn, pod);
+            flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); //
         }
     }
 
@@ -49,6 +53,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         if (newPodScheduler.equals(Scheduler.SCHEDULER_NAME)) {
             LOG.debug("{} => {} pod updated!\n", oldPod.getMetadata().getName(), newPod.getMetadata().getName());
             updatePod(conn, newPod);
+            flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
         }
     }
 
@@ -57,6 +62,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         if (pod.getSpec().getSchedulerName().equals(Scheduler.SCHEDULER_NAME)) {
             LOG.debug("{} pod deleted!\n", pod.getMetadata().getName());
             deletePod(conn, pod);
+            flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
         }
     }
 
@@ -72,39 +78,8 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
     }
 
     private void deletePod(final DSLContext conn, final V1Pod pod) {
-        // JOOQ is flakey w.r.t to enabling/disable foreign key constraints while preserving information
-        // about on delete cascades. Because of this, whenever DCM runs, we lose delete cascade
-        // settings on tables and are therefore forced to perform these deletes ourselves.
-        conn.deleteFrom(Tables.POD_PORTS_REQUEST)
-                .where(Tables.POD_PORTS_REQUEST.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
-                .where(Tables.POD_AFFINITY_MATCH_EXPRESSIONS.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
-                .where(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.CONTAINER_HOST_PORTS)
-                .where(Tables.CONTAINER_HOST_PORTS.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.POD_NODE_SELECTOR_LABELS)
-                .where(Tables.POD_NODE_SELECTOR_LABELS.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.POD_LABELS)
-                .where(Tables.POD_LABELS.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.VOLUME_LABELS)
-                .where(Tables.VOLUME_LABELS.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.POD_BY_SERVICE)
-                .where(Tables.POD_BY_SERVICE.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.POD_TOLERATIONS)
-                .where(Tables.POD_TOLERATIONS.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
-        conn.deleteFrom(Tables.POD_IMAGES)
-                .where(Tables.POD_IMAGES.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
+        // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
+        // a delete cascade
         conn.deleteFrom(Tables.POD_INFO)
                 .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
                 .execute();
@@ -158,19 +133,19 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
                 // use at this node
                 if (pod.getSpec().getNodeName() != null && portInfo.getHostPort() != null) {
                     conn.insertInto(Tables.CONTAINER_HOST_PORTS)
-                            .values(pod.getSpec().getNodeName(),
-                                    portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
-                                    portInfo.getHostPort(),
-                                    portInfo.getProtocol()).execute();
+                        .values(pod.getSpec().getNodeName(),
+                                portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
+                                portInfo.getHostPort(),
+                                portInfo.getProtocol()).execute();
                 }
                 // This pod is yet to be assigned to a host, but it has a hostPort requirement. We record
                 // this in the pod_ports_request table
-                else if (pod.getStatus().getPhase().equals("Pending") && portInfo.getHostPort() != null) {
+                else if (pod.getStatus().getPhase().equals("") && portInfo.getHostPort() != null) {
                     conn.insertInto(Tables.POD_PORTS_REQUEST)
-                            .values(pod.getMetadata().getName(),
-                                    portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
-                                    portInfo.getHostPort(),
-                                    portInfo.getProtocol()).execute();
+                        .values(pod.getMetadata().getName(),
+                                portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
+                                portInfo.getHostPort(),
+                                portInfo.getProtocol()).execute();
                 }
             }
             conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getName(), container.getImage()).execute();
@@ -182,8 +157,8 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         final Map<String, String> nodeSelector = pod.getSpec().getNodeSelector();
         if (nodeSelector != null) {
             nodeSelector.forEach(
-                    (k, v) -> conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                            .values(pod.getMetadata().getName(), k, v, "In").execute()
+                (k, v) -> conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                        .values(pod.getMetadata().getName(), k, v, "In").execute()
             );
         }
     }
@@ -194,23 +169,26 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         if (labels != null) {
             final String formatString = "insert into pod_labels values ('%s', '%s', '%s', '%s')";
             labels.forEach(
-                    (k, v) -> {
-                        // TODO: investigate
-                        final boolean isSelectorLabel = false;
-                        conn.execute(String.format(formatString, pod.getMetadata().getName(), k, v, isSelectorLabel));
-                    }
+                (k, v) -> {
+                    // TODO: investigate
+                    final boolean isSelectorLabel = false;
+                    conn.execute(String.format(formatString, pod.getMetadata().getName(), k, v, isSelectorLabel));
+                }
             );
         }
     }
 
     private void updatePodTaints(final V1Pod pod, final DSLContext conn) {
+        if (pod.getSpec().getTolerations() == null) {
+            return;
+        }
         for (final V1Toleration toleration: pod.getSpec().getTolerations()) {
             conn.insertInto(Tables.POD_TOLERATIONS)
-                    .values(pod.getMetadata().getName(),
-                            toleration.getKey(),
-                            toleration.getValue(),
-                            toleration.getEffect(),
-                            toleration.getOperator()).execute();
+                .values(pod.getMetadata().getName(),
+                        toleration.getKey(),
+                        toleration.getValue(),
+                        toleration.getEffect(),
+                        toleration.getOperator()).execute();
         }
     }
 
@@ -225,18 +203,18 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
             final V1NodeSelector selector =
                     affinity.getNodeAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
             selector.getNodeSelectorTerms().forEach(
-                    term -> term.getMatchExpressions().forEach(
-                            expr -> {
-                                LOG.info("Pod:{}, Key:{}, values:{}, op:{}", pod.getMetadata().getName(),
-                                        expr.getKey(), expr.getValues(), expr.getKey());
-                                expr.getValues().forEach(
-                                        value -> conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                                .values(pod.getMetadata().getName(),
-                                                        expr.getKey(), value,
-                                                        expr.getOperator()).execute()
-                                );
-                            }
-                    )
+                term -> term.getMatchExpressions().forEach(
+                    expr -> {
+                        LOG.info("Pod:{}, Key:{}, values:{}, op:{}", pod.getMetadata().getName(),
+                                expr.getKey(), expr.getValues(), expr.getKey());
+                        expr.getValues().forEach(
+                            value -> conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                    .values(pod.getMetadata().getName(),
+                                            expr.getKey(), value,
+                                            expr.getOperator()).execute()
+                        );
+                    }
+                )
             );
         }
 
@@ -245,14 +223,14 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
             final List<V1PodAffinityTerm> requiredDuringSchedulingIgnoredDuringExecution =
                     affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
             requiredDuringSchedulingIgnoredDuringExecution.forEach(
-                    term -> term.getLabelSelector().getMatchExpressions().forEach(
-                            expr -> expr.getValues().forEach(
-                                    value -> conn.insertInto(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
-                                            .values(pod.getMetadata().getName(),
-                                                    expr.getKey(), value,
-                                                    expr.getOperator(), term.getTopologyKey()).execute()
-                            )
+                term -> term.getLabelSelector().getMatchExpressions().forEach(
+                    expr -> expr.getValues().forEach(
+                        value -> conn.insertInto(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
+                                .values(pod.getMetadata().getName(),
+                                        expr.getKey(), value,
+                                        expr.getOperator(), term.getTopologyKey()).execute()
                     )
+                )
             );
         }
 
@@ -261,14 +239,14 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
             final List<V1PodAffinityTerm> requiredDuringSchedulingIgnoredDuringExecution =
                     affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
             requiredDuringSchedulingIgnoredDuringExecution.forEach(
-                    term -> term.getLabelSelector().getMatchExpressions().forEach(
-                            expr -> expr.getValues().forEach(
-                                    value -> conn.insertInto(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
-                                            .values(pod.getMetadata().getName(),
-                                                    expr.getKey(), value,
-                                                    expr.getOperator(), term.getTopologyKey()).execute()
-                            )
+                term -> term.getLabelSelector().getMatchExpressions().forEach(
+                    expr -> expr.getValues().forEach(
+                            value -> conn.insertInto(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
+                                    .values(pod.getMetadata().getName(),
+                                            expr.getKey(), value,
+                                            expr.getOperator(), term.getTopologyKey()).execute()
                     )
+                )
             );
         }
     }
