@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -60,8 +61,8 @@ public class SchedulerTest {
 
 
     /*
-     * Evaluates the node predicates policy. Only one node (n5) is free of any node conditions, so all pod assignments
-     * must go to that node.
+     * Evaluates the node predicates policy. One randomly chosen node is free of any node conditions, so all pod
+     * assignments must go to that node.
      */
     @ParameterizedTest
     @MethodSource("conditions")
@@ -75,13 +76,16 @@ public class SchedulerTest {
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
         emitter.subscribe();
-        for (int i = 0; i < numNodes - 1; i++) {
+
+        // We pick a random node from [0, numNodes) to assign all pods to.
+        final int nodeToAssignTo = ThreadLocalRandom.current().nextInt(numNodes);
+        for (int i = 0; i < numNodes; i++) {
             final V1NodeCondition badCondition = new V1NodeCondition();
             badCondition.setStatus(status);
             badCondition.setType(type);
-            nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(), List.of(badCondition)));
+            nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
+                                           i == nodeToAssignTo ? Collections.emptyList(): List.of(badCondition)));
         }
-        nodeResourceEventHandler.onAdd(addNode("n" + numNodes, Collections.emptyMap(), Collections.emptyList()));
 
         for (int i = 0; i < numPods; i++) {
             handler.onAdd(newPod("p" + i));
@@ -91,7 +95,7 @@ public class SchedulerTest {
         final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
-        results.forEach(r -> assertEquals("n5", r.get("CONTROLLABLE__NODE_NAME", String.class)));
+        results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
     }
 
     @SuppressWarnings("UnusedMethod")
