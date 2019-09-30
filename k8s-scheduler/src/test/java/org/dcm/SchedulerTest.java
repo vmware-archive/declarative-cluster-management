@@ -84,7 +84,7 @@ public class SchedulerTest {
             badCondition.setStatus(status);
             badCondition.setType(type);
             nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
-                                           i == nodeToAssignTo ? Collections.emptyList(): List.of(badCondition)));
+                                           i == nodeToAssignTo ? Collections.emptyList() : List.of(badCondition)));
         }
 
         for (int i = 0; i < numPods; i++) {
