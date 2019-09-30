@@ -17,10 +17,8 @@ import org.dcm.backend.ISolverBackend;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.compiler.ModelCompiler;
 
-import org.dcm.viewupdater.PGIncrementalUpdater;
-import org.dcm.viewupdater.ViewUpdater;
-import org.jooq.Constraint;
 import org.jooq.DSLContext;
+import org.jooq.Constraint;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Meta;
@@ -32,9 +30,7 @@ import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.io.File;
-import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -69,12 +65,10 @@ public class Model {
     private final ModelCompiler compiler;
     private IRContext irContext;
     private final ISolverBackend backend;
-    @Nullable private ViewUpdater viewUpdater = null;
 
-    private Model(@Nullable final Connection conn, final DSLContext dbCtx,
-                  final List<Table<?>> tables, final List<String> views,
-                  final File modelFile, final File dataFile, final Conf conf,
-                  final boolean useDDlog, final List<String> baseTables) {
+    private Model(final DSLContext dbCtx, final List<Table<?>> tables,
+                  final List<String> views, final File modelFile,
+                  final File dataFile, final Conf conf) {
 
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
@@ -129,18 +123,6 @@ public class Model {
             }
         }
         irContext = new IRContext(irTables);
-
-//        if (useDDlog) {
-//            IncrementalViewUpdater.initializeIncrementalViewUpdater(irTables, dbCtx, baseTables);
-//            IncrementalViewUpdater.createDBTriggers();
-//        }
-
-        if (useDDlog) {
-
-            viewUpdater = new PGIncrementalUpdater(conn, irTables, dbCtx, baseTables);
-            viewUpdater.createDBTriggers();
-        }
-
         compiler = new ModelCompiler(irContext);
         compiler.compile(viewsInPolicy, backend);
     }
@@ -175,7 +157,7 @@ public class Model {
     public static synchronized Model buildModel(final DSLContext dslContext, final List<String> views,
                                                 final File modelFile, final File dataFile, final Conf conf) {
         final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, tables, views, modelFile, dataFile, conf, false, new ArrayList<>());
+        return buildModel(dslContext, tables, views, modelFile, dataFile, conf);
     }
 
     /**
@@ -192,35 +174,7 @@ public class Model {
     public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
                                                 final List<String> views, final File modelFile,
                                                 final File dataFile) {
-        return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf(),
-                false, new ArrayList<>());
-    }
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param tables A set of tables for which the Minzinc model will be generated
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @param useDDlog  a flag that determines whether DDlog should be used or not to incrementally update views
-     * @param baseTables a list of tables in the weave model that are base tables on which views are built.
-     *                   The IncrementalViewUpdater uses this list to set up triggers for base tables.
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
-                                                final List<String> views, final File modelFile, final File dataFile,
-                                                final boolean useDDlog, final List<String> baseTables) {
-        return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf(), useDDlog, baseTables);
-    }
-
-    public static synchronized Model buildModel(final Connection conn, final DSLContext dslContext,
-                                                final List<String> views, final File modelFile, final File dataFile,
-                                                final boolean useDDlog, final List<String> baseTables) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(conn, dslContext, tables, views, modelFile, dataFile, new Conf(), useDDlog, baseTables);
+        return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf());
     }
 
     /**
@@ -229,18 +183,14 @@ public class Model {
      * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
-     * @param useDDlog  a flag that determines whether DDlog should be used or not to incrementally update views
-     * @param baseTables a list of tables in the weave model that are base tables on which views are built.
-     *                   The IncrementalViewUpdater uses this list to set up triggers for base tables.
      * @return An initialized Model instance with a populated modelFile
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
     public static Model buildModel(final DSLContext dslContext, final List<String> views, final File modelFile,
                                    final File dataFile, final boolean useDDlog, final List<String> baseTables) {
         final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf(), useDDlog, baseTables);
+        return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf());
     }
-
 
     /**
      * Builds a Minizinc model out of dslContext and a list of tables.
@@ -251,25 +201,13 @@ public class Model {
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
      * @param conf configuration object
-     * @param useDDlog  a flag that determines whether DDlog should be used or not to incrementally update views
-     * @param baseTables a list of tables in the weave model that are base tables on which views are built.
-     *                   The IncrementalViewUpdater uses this list to set up triggers for base tables.
      * @return An initialized Model instance with a populated modelFile
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
     public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
                                                 final List<String> views, final File modelFile,
-                                                final File dataFile, final Conf conf,
-                                                final boolean useDDlog, final List<String> baseTables) {
-        return buildModel(null, dslContext, tables, views, modelFile, dataFile, conf, useDDlog, baseTables);
-    }
-
-    public static synchronized Model buildModel(@Nullable final Connection conn, final DSLContext dslContext,
-                                                final List<Table<?>> tables,
-                                                final List<String> views, final File modelFile,
-                                                final File dataFile, final Conf conf,
-                                                final boolean useDDlog, final List<String> baseTables) {
-        return new Model(conn, dslContext, tables, views, modelFile, dataFile, conf, useDDlog, baseTables);
+                                                final File dataFile, final Conf conf) {
+        return new Model(dslContext, tables, views, modelFile, dataFile, conf);
     }
 
     /**
@@ -297,7 +235,6 @@ public class Model {
      */
     @SuppressWarnings("WeakerAccess")
     public synchronized void updateData() {
-        viewUpdater.flushUpdates();
         updateDataFields();
     }
 
@@ -482,6 +419,10 @@ public class Model {
                 childTable.addForeignKey(irForeignKey);
             }
         }
+    }
+
+    public Map<String, IRTable> getIRTables() {
+        return irTables;
     }
 
     /**

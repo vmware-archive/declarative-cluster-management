@@ -24,12 +24,12 @@ public class DDlogUpdater {
 
     public DDlogUpdater(final Consumer<DDlogCommand> consumer) {
         API = new DDlogAPI(1, consumer, false);
+        API.record_commands("replay.dat", false);
     }
 
     public String receiveUpdateFromDDlog(final Map<String, IRTable> irTables, final DDlogCommand command) {
         final DDlogRecord record = command.value;
         final String dataType = record.getStructName();
-
         if (irTables.containsKey(dataType)) {
             final StringBuilder stringBuilder = new StringBuilder();
             final IRTable irTable = irTables.get(dataType);
@@ -105,7 +105,6 @@ public class DDlogUpdater {
         final ArrayList<DDlogCommand> commands = new ArrayList<>();
         commands.add(new DDlogCommand(DDlogCommand.Kind.Insert, id, ddlogRecord));
         final DDlogCommand [] ca = commands.toArray(new DDlogCommand[commands.size()]);
-
         checkDDlogExitCode(API.start());
         checkDDlogExitCode(API.applyUpdates(ca));
         checkDDlogExitCode(API.commit());
@@ -116,5 +115,4 @@ public class DDlogUpdater {
             throw new RuntimeException("Error executing " + exitCode);
         }
     }
-
 }

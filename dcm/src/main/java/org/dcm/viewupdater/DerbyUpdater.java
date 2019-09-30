@@ -16,14 +16,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-public class DerbyIncrementalUpdater extends ViewUpdater {
-    private static final Logger LOG = LoggerFactory.getLogger(DerbyIncrementalUpdater.class);
+public class DerbyUpdater extends ViewUpdater {
+    private static final Logger LOG = LoggerFactory.getLogger(DerbyUpdater.class);
     private static DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
 
-    public DerbyIncrementalUpdater(final Map<String, IRTable> irTables,
-                                   final DSLContext dbCtx,
-                                   final List<String> baseTables) {
-        super(irTables, dbCtx, baseTables);
+    public DerbyUpdater(final DSLContext dbCtx, final List<String> baseTables) {
+        super(dbCtx, baseTables);
+        createDBTriggers();
     }
 
     private static void receiveUpdateFromDDlog(final DDlogCommand command) {
@@ -78,7 +77,7 @@ public class DerbyIncrementalUpdater extends ViewUpdater {
                 "LANGUAGE JAVA " +
                 "PARAMETER STYLE DERBY " +
                 "NO SQL " +
-                "EXTERNAL NAME '" + DerbyIncrementalUpdater.class.getName() + ".sendUpdateToDDlog'");
+                "EXTERNAL NAME '" + DerbyUpdater.class.getName() + ".sendUpdateToDDlog'");
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
             if (irTables.containsKey(tableName)) {
