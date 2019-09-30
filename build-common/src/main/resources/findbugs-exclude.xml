@@ -4,7 +4,8 @@
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
     </Match>
     <Match>
-        <Class name="SchedulerTest" />
+        <Class name="org.dcm.SchedulerTest" />
+        <Method name="conditions" />
         <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
     </Match>
     <Match>
