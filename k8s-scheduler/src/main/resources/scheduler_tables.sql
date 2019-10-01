@@ -31,7 +31,8 @@ create table pod_info
   pods_request bigint not null,
   owner_name varchar(100) not null,
   creation_timestamp varchar(100) not null,
-  priority integer not null
+  priority integer not null,
+  pod_num_selector_labels integer not null -- auxiliary state used for node selector query
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.
@@ -59,13 +60,11 @@ create table container_host_ports
 );
 
 -- Tracks the set of node selector labels per pod.
--- Also used for node affinity (IN)
 create table pod_node_selector_labels
 (
   pod_name varchar(100) not null,
   label_key varchar(100) not null,
   label_value varchar(36) not null,
-  operator varchar(30) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
@@ -200,10 +199,7 @@ select
   pods_request,
   owner_name,
   creation_timestamp,
-  (CASE
-        when pod_name in (select pod_name from pod_node_selector_labels) then true
-          else false
-        end) as has_node_affinity
+  pod_num_selector_labels
 from pod_info
 where status = 'Pending' and node_name is null
 order by creation_timestamp;
@@ -234,3 +230,21 @@ select pods_to_assign.controllable__node_name as controllable__node_name,
 from pods_to_assign
 join pod_ports_request
      on pod_ports_request.pod_name = pods_to_assign.pod_name;
+
+-- Pod node selectors
+create view pod_node_selector_matches as
+select pods_to_assign.pod_name as pod_name,
+       node_labels.node_name as node_name
+from pods_to_assign
+join pod_node_selector_labels
+     on pods_to_assign.pod_name = pod_node_selector_labels.pod_name
+join node_labels
+     on    pod_node_selector_labels.label_key = node_labels.label_key
+       and pod_node_selector_labels.label_value = node_labels.label_value
+group by pods_to_assign.pod_name, node_labels.node_name, pods_to_assign.pod_num_selector_labels
+having count(*) = pods_to_assign.pod_num_selector_labels;
+
+create index pod_name_idx1 on pod_info (pod_name, status, node_name);
+create index pod_name_idx2 on pod_node_selector_labels (pod_name);
+create index pod_name_idx3 on pod_node_selector_labels (label_key, label_value);
+create index pod_name_idx4 on node_labels (label_key, label_value);
