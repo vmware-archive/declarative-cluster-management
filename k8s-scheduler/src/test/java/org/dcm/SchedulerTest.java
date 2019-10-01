@@ -196,9 +196,9 @@ public class SchedulerTest {
         // Now test the solver itself
         final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
 
-        // Do not use Chuffed for this test until this issue is fixed:
-        // https://github.com/MiniZinc/libminizinc/issues/321
-        final Scheduler scheduler = new Scheduler(conn, policies, "GECODE", true, "");
+        // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
+        // Works when using Minizinc 2.3.2
+        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
