@@ -19,13 +19,11 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 public class PGUpdater extends ViewUpdater {
     private static DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
 
-    public PGUpdater(final Connection connection, final Map<String, IRTable> irTables,
-                     final DSLContext dbCtx, final List<String> baseTables) {
+    public PGUpdater(final Connection connection, final DSLContext dbCtx, final List<String> baseTables) {
         super(dbCtx, baseTables);
 
         createDBTriggers();
@@ -33,13 +31,6 @@ public class PGUpdater extends ViewUpdater {
         try {
             conn = connection.unwrap(PGConnection.class);
             conn.addNotificationListener(new Listener());
-
-//            final Statement statement = conn.createStatement();
-//            for (final String table : baseTables) {
-//                statement.execute("LISTEN " + table.toLowerCase(Locale.US));
-//                statement.execute("NOTIFY " + table.toLowerCase(Locale.US));
-//            }
-//            statement.close();
 
             for (final String table : baseTables) {
                 dbCtx.execute("LISTEN " + table.toLowerCase(Locale.US));

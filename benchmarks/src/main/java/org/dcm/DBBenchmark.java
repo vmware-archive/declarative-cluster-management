@@ -6,14 +6,19 @@
 package org.dcm;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import org.dcm.viewupdater.HUpdater;
+
+import org.dcm.viewupdater.DerbyUpdater;
+import org.dcm.viewupdater.H2Updater;
+import org.dcm.viewupdater.HSQLUpdater;
+import org.dcm.viewupdater.PGUpdater;
 import org.dcm.viewupdater.ViewUpdater;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 
-import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
@@ -44,13 +49,20 @@ public class DBBenchmark {
     private DSLContext dbCtx;
     private ViewUpdater viewUpdater;
     private Model model;
+    private List<String> baseTables;
+
+    @Param({"100", "1000", "10000", "100000"})
+    public int numRecords;
+
+    @Param({"H2", "HQSLDB", "DERBY", "POSTGRES"})
+    public String db;
 
     public static void main(String[] args) throws IOException, RunnerException {
         Options opts = new OptionsBuilder()
                 .include(".*")
                 .warmupIterations(1)
-                .measurementTime(TimeValue.seconds(25))
-                .measurementIterations(5)
+                .measurementTime(TimeValue.seconds(5))
+                .measurementIterations(1)
                 .mode(Mode.Throughput)
                 .shouldDoGC(true)
                 .result("profiling-result.csv").resultFormat(ResultFormatType.CSV)
@@ -60,7 +72,7 @@ public class DBBenchmark {
         new Runner(opts).run();
     }
 
-    private DSLContext setupDerby() {
+    private void setupDerby() {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
         try {
@@ -72,12 +84,17 @@ public class DBBenchmark {
                 // We could not drop a database because it was never created. Move on.
             }
             // Create a fresh database
+            System.out.println("Derby Iteration");
             final String connectionURL = "jdbc:derby:memory:db;create=true";
             final Connection conn = getConnection(connectionURL, properties);
-            final DSLContext using = using(conn, SQLDialect.DERBY);
-            using.execute("create schema curr");
-            using.execute("set schema curr");
-            return using;
+            dbCtx = using(conn, SQLDialect.DERBY);
+            dbCtx.execute("create schema curr");
+            dbCtx.execute("set schema curr");
+
+            init();
+
+            ViewUpdater.irTables = model.getIRTables();
+            viewUpdater = new DerbyUpdater(dbCtx, baseTables);
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
@@ -86,7 +103,7 @@ public class DBBenchmark {
     /*
      * Sets up an in-memory H2 database that we use for all tests.
      */
-    private DSLContext setupH2() {
+    private void setupH2() {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
         try {
@@ -96,7 +113,13 @@ public class DBBenchmark {
             final DSLContext using = using(conn, SQLDialect.H2);
             using.execute("create schema curr");
             using.execute("set schema curr");
-            return using;
+
+            dbCtx = using(conn, SQLDialect.H2);
+
+            init();
+
+            ViewUpdater.irTables = model.getIRTables();
+            viewUpdater = new H2Updater(dbCtx, baseTables);
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
@@ -105,7 +128,6 @@ public class DBBenchmark {
     /*
      * Sets up an in-memory HSQLDB database that we use for all tests.
      */
-    @Setup(Level.Invocation)
     public void setupHSQLDB() {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
@@ -115,34 +137,16 @@ public class DBBenchmark {
             final Connection conn = getConnection(connectionURL, properties);
             dbCtx = using(conn, SQLDialect.HSQLDB);
 
-            createTables();
-            createModel();
-
-            final List<String> baseTables = new ArrayList<>();
-            baseTables.add("POD");
-            baseTables.add("NODE");
+            init();
 
             ViewUpdater.irTables = model.getIRTables();
-            viewUpdater = new HUpdater(dbCtx, baseTables);
+            viewUpdater = new HSQLUpdater(dbCtx, baseTables);
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public void createModel() {
-        model = buildModel(dbCtx, new ArrayList<>(), "testModel");
-    }
-    /*
-     * Tears down up an in-memory HSQLDB database.
-     */
-    @TearDown(Level.Invocation)
-    public void teardownHSQLDB() {
-        dbCtx.execute("drop table node");
-        dbCtx.execute("drop table pod");
-        dbCtx.execute("drop table sparecapacity");
-    }
-
-    public void createTables() {
+    private void init() {
         dbCtx.execute("create table NODE\n" +
                 "(\n" +
                 " name varchar(36) not null primary key, "  +
@@ -178,6 +182,8 @@ public class DBBenchmark {
                 " priority integer not null)"
         );
 
+        model = buildModel(dbCtx, new ArrayList<>(), "testModel");
+
         dbCtx.execute("create table SPARECAPACITY\n" +
                 "(\n" +
                 "  name varchar(36) not null,\n" +
@@ -185,19 +191,59 @@ public class DBBenchmark {
                 "  memory_remaining bigint not null, " +
                 "  pods_remaining bigint not null " +  ")"
         );
+
+        baseTables = new ArrayList<>();
+        baseTables.add("POD");
+        baseTables.add("NODE");
+    }
+
+    @Setup(Level.Invocation)
+    public void setupDB(){
+        switch(db) {
+            case "H2":
+                setupH2();
+                break;
+            case "HSQLDB":
+                setupHSQLDB();
+                break;
+            case "DERBY":
+                setupDerby();
+                break;
+            case "POSTGRES":
+                setupPostgres();
+                break;
+            default:
+                // code block
+        }
+    }
+
+    /*
+     * Tears down up an in-memory HSQLDB database.
+     */
+    @TearDown(Level.Invocation)
+    public void teardownHSQLDB() {
+        dbCtx.execute("drop table node");
+        dbCtx.execute("drop table pod");
+        dbCtx.execute("drop table sparecapacity");
     }
 
     /*
      * Sets up an in-memory Postgres database that we use for all tests.
      */
-    private Connection setupPostgres() {
+    private void setupPostgres() {
         try {
             final Connection conn = DriverManager.getConnection("jdbc:pgsql://127.0.0.1:5432/test");
+
             final Statement statement = conn.createStatement();
             statement.executeUpdate("drop schema public cascade;");
             statement.executeUpdate("create schema public;");
             statement.close();
-            return conn;
+
+            dbCtx = using(conn, SQLDialect.POSTGRES);
+            init();
+
+            ViewUpdater.irTables = model.getIRTables();
+            viewUpdater = new PGUpdater(conn, dbCtx, baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
@@ -206,14 +252,6 @@ public class DBBenchmark {
 
     @Benchmark
     public void insertRecords() {
-//        conn = setupPostgres();
-//        dbCtx = using(conn, SQLDialect.POSTGRES);
-
-//        dbCtx = setupH2();
-//        dbCtx = setupDerby();
-//        dbCtx = setupHSQLDB();
-
-        final int numRecords = 1000;
         for (int i = 0; i < numRecords; i++) {
             dbCtx.execute("insert into node values('node" + i + "', false, false, false, false, " +
                     "false, false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)");

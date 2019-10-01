@@ -133,7 +133,6 @@ public class H2Updater extends ViewUpdater {
                         "FOR EACH ROW CALL \"" + H2Updater.InnerH2Updater.class.getName() + "\"");
 
                 final String command = builder.toString();
-                System.out.println("Command: " + command);
                 dbCtx.execute(command);
             }
         }

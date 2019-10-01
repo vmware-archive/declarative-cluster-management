@@ -13,10 +13,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-public class HUpdater extends ViewUpdater {
+public class HSQLUpdater extends ViewUpdater {
     private static DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
 
-    public HUpdater(final DSLContext dbCtx, final List<String> baseTables) {
+    public HSQLUpdater(final DSLContext dbCtx, final List<String> baseTables) {
         super(dbCtx, baseTables);
         createDBTriggers();
     }
@@ -40,14 +40,13 @@ public class HUpdater extends ViewUpdater {
                         "FOR EACH ROW CALL \"" + InnerHUpdater.class.getName() + "\"");
 
                 final String command = builder.toString();
-                System.out.println("Command: " + command);
                 dbCtx.execute(command);
             }
         }
     }
 
     protected static class InnerHUpdater implements org.hsqldb.Trigger {
-        final Map<String, IRTable> IR_TABLES = HUpdater.irTables;
+        final Map<String, IRTable> IR_TABLES = HSQLUpdater.irTables;
 
         @Override
         public void fire(final int type, final String trigName,

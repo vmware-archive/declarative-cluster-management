@@ -88,13 +88,12 @@ public class TriggerTest {
      */
     private Connection setupPostgres() {
         try {
-            final Connection conn = DriverManager.getConnection("jdbc:pgsql://127.0.0.1:5432/test");
-            final Statement statement = conn.createStatement();
+            final Connection connection = DriverManager.getConnection("jdbc:pgsql://127.0.0.1:5432/test");
+            final Statement statement = connection.createStatement();
             statement.executeUpdate("drop schema public cascade;");
             statement.executeUpdate("create schema public;");
             statement.close();
-            return conn;
-
+            return connection;
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
@@ -163,7 +162,7 @@ public class TriggerTest {
 //        final ViewUpdater updater = new H2Updater(dbCtx, baseTables);
 //        final ViewUpdater updater = new DerbyUpdater(model.getIRTables(), dbCtx, baseTables);
 
-        final ViewUpdater updater = new PGUpdater(conn, model.getIRTables(), dbCtx, baseTables);
+        final ViewUpdater updater = new PGUpdater(conn, dbCtx, baseTables);
         for (int j = 1; j < 2; j++) {
             final long start = System.nanoTime();
             final int numRecords = 6;
@@ -178,7 +177,6 @@ public class TriggerTest {
             final long end = System.nanoTime();
             updater.flushUpdates();
             System.out.println("Time to receive updates: " + (end - start));
-
         }
     }
 
