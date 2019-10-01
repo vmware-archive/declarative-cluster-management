@@ -244,7 +244,7 @@ join node_labels
 group by pods_to_assign.pod_name, node_labels.node_name, pods_to_assign.pod_num_selector_labels
 having count(*) = pods_to_assign.pod_num_selector_labels;
 
-create index pod_name_idx1 on pod_info (pod_name, status, node_name);
-create index pod_name_idx2 on pod_node_selector_labels (pod_name);
-create index pod_name_idx3 on pod_node_selector_labels (label_key, label_value);
-create index pod_name_idx4 on node_labels (label_key, label_value);
+create index pod_info_idx on pod_info (pod_name, status, node_name);
+create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);
+create index pod_node_selector_labels_labels_idx on pod_node_selector_labels (label_key, label_value);
+create index node_labels_idx on node_labels (label_key, label_value);
