@@ -118,6 +118,11 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         podInfoRecord.setOwnerName(ownerName);
         podInfoRecord.setCreationTimestamp(pod.getMetadata().getCreationTimestamp().toString());
 
+        // Auxiliary state:
+        if (pod.getSpec().getNodeSelector() != null) {
+            podInfoRecord.setPodNumSelectorLabels(pod.getSpec().getNodeSelector().size());
+        }
+
         // We cap the max load to 100 to prevent overflow issues in the solver
         podInfoRecord.setPriority(Math.min(pod.getSpec().getPriority(), 100));
         podInfoRecord.store(); // upsert
@@ -158,7 +163,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         if (nodeSelector != null) {
             nodeSelector.forEach(
                 (k, v) -> conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                        .values(pod.getMetadata().getName(), k, v, "In").execute()
+                        .values(pod.getMetadata().getName(), k, v).execute()
             );
         }
     }

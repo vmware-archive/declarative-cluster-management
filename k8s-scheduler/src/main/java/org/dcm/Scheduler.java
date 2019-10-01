@@ -54,6 +54,7 @@ public final class Scheduler {
     @Nullable private Disposable subscription;
     private final List<Table<?>> relevantTables = Lists.newArrayList(Tables.POD_INFO,
                                                                     Tables.PODS_TO_ASSIGN,
+                                                                    Tables.POD_NODE_SELECTOR_MATCHES,
                                                                     Tables.NODE_INFO,
                                                                     Tables.NODE_LABELS);
 
