@@ -49,7 +49,7 @@ class Policies {
         final String constraint = "create view constraint_node_selector as " +
                                   "select * " +
                                   "from pods_to_assign " +
-                                  "where not(pods_to_assign.pod_num_selector_labels > 0) or " +
+                                  "where pods_to_assign.has_node_selector_labels = false or " +
                                   "      pods_to_assign.controllable__node_name in " +
                                   "         (select node_name " +
                                   "          from pod_node_selector_matches " +

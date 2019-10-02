@@ -32,7 +32,7 @@ create table pod_info
   owner_name varchar(100) not null,
   creation_timestamp varchar(100) not null,
   priority integer not null,
-  pod_num_selector_labels integer not null -- auxiliary state used for node selector query
+  has_node_selector_labels boolean not null
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.
@@ -63,7 +63,11 @@ create table container_host_ports
 create table pod_node_selector_labels
 (
   pod_name varchar(100) not null,
+  term integer not null,
+  match_expression integer not null,
+  num_match_expressions integer not null,
   label_key varchar(100) not null,
+  label_operator varchar(10) not null,
   label_value varchar(36) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
@@ -199,7 +203,7 @@ select
   pods_request,
   owner_name,
   creation_timestamp,
-  pod_num_selector_labels
+  has_node_selector_labels
 from pod_info
 where status = 'Pending' and node_name is null
 order by creation_timestamp;
@@ -239,10 +243,20 @@ from pods_to_assign
 join pod_node_selector_labels
      on pods_to_assign.pod_name = pod_node_selector_labels.pod_name
 join node_labels
-     on    pod_node_selector_labels.label_key = node_labels.label_key
-       and pod_node_selector_labels.label_value = node_labels.label_value
-group by pods_to_assign.pod_name, node_labels.node_name, pods_to_assign.pod_num_selector_labels
-having count(*) = pods_to_assign.pod_num_selector_labels;
+        on
+           (pod_node_selector_labels.label_operator = 'In'
+            and pod_node_selector_labels.label_key = node_labels.label_key
+            and pod_node_selector_labels.label_value = node_labels.label_value)
+        or (pod_node_selector_labels.label_operator = 'Exists'
+            and pod_node_selector_labels.label_key = node_labels.label_key)
+        or (pod_node_selector_labels.label_operator = 'NotIn'
+            and not(pod_node_selector_labels.label_key = node_labels.label_key
+                   and pod_node_selector_labels.label_value = node_labels.label_value))
+        or (pod_node_selector_labels.label_operator = 'DoesNotExist'
+            and pod_node_selector_labels.label_key != node_labels.label_key)
+group by pods_to_assign.pod_name,  node_labels.node_name, pod_node_selector_labels.term,
+         pod_node_selector_labels.label_operator, pod_node_selector_labels.num_match_expressions
+having count(distinct match_expression) = pod_node_selector_labels.num_match_expressions;
 
 create index pod_info_idx on pod_info (pod_name, status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);
