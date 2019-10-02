@@ -8,8 +8,12 @@ package org.dcm;
 
 import com.google.common.collect.Sets;
 import io.kubernetes.client.custom.Quantity;
+import io.kubernetes.client.models.V1Affinity;
 import io.kubernetes.client.models.V1Node;
+import io.kubernetes.client.models.V1NodeAffinity;
 import io.kubernetes.client.models.V1NodeCondition;
+import io.kubernetes.client.models.V1NodeSelector;
+import io.kubernetes.client.models.V1NodeSelectorBuilder;
 import io.kubernetes.client.models.V1NodeSpec;
 import io.kubernetes.client.models.V1NodeStatus;
 import io.kubernetes.client.models.V1ObjectMeta;
@@ -225,6 +229,48 @@ public class SchedulerTest {
     }
 
 
+    /*
+     * Tests the pod_node_selector_matches view.
+     */
+    @Test
+    public void testPodNodeAffinity() {
+        final DSLContext conn = Scheduler.setupDb();
+        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
+        emitter.subscribe();
+
+        final int numPods = 10;
+        final int numNodes = 10;
+
+        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
+
+        // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
+        // node selector
+        for (int i = 0; i < numPods; i++) {
+            final String podName = "p" + i;
+            final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            final V1NodeSelector selector = new V1NodeSelectorBuilder()
+                                               .addNewNodeSelectorTerm()
+                                                   .addNewMatchExpression()
+                                                       .withKey("diskType")
+                                                       .withOperator("in")
+                                                       .withValues("ssd", "nvme")
+                                                   .endMatchExpression()
+                                               .endNodeSelectorTerm()
+                                               .build();
+            pod.getSpec().getAffinity().getNodeAffinity().setRequiredDuringSchedulingIgnoredDuringExecution(selector);
+            handler.onAdd(pod);
+        }
+        // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        for (int i = 0; i < numNodes; i++) {
+            final String nodeName = "n" + i;
+            final Map<String, String> nodeLabels = new HashMap<>();
+            nodeLabels.put("diskType", "ssd");
+            nodeLabels.put("gpu", "true");
+            nodeResourceEventHandler.onAdd(addNode(nodeName, nodeLabels, Collections.emptyList()));
+        }
+    }
 
     private V1Pod newPod(final String name) {
         return newPod(name, "Pending", Collections.emptyMap(), Collections.emptyMap());
@@ -243,6 +289,11 @@ public class SchedulerTest {
         spec.setSchedulerName(Scheduler.SCHEDULER_NAME);
         spec.setPriority(0);
         spec.nodeSelector(selectorLabels);
+
+        final V1Affinity affinity = new V1Affinity();
+        final V1NodeAffinity nodeAffinity = new V1NodeAffinity();
+        affinity.setNodeAffinity(nodeAffinity);
+        spec.setAffinity(affinity);
         final V1PodStatus status = new V1PodStatus();
         status.setPhase(phase);
         pod.setMetadata(meta);

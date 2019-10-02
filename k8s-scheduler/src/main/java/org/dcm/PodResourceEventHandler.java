@@ -10,6 +10,8 @@ import io.kubernetes.client.models.V1Affinity;
 import io.kubernetes.client.models.V1Container;
 import io.kubernetes.client.models.V1ContainerPort;
 import io.kubernetes.client.models.V1NodeSelector;
+import io.kubernetes.client.models.V1NodeSelectorRequirement;
+import io.kubernetes.client.models.V1NodeSelectorTerm;
 import io.kubernetes.client.models.V1OwnerReference;
 import io.kubernetes.client.models.V1Pod;
 import io.kubernetes.client.models.V1PodAffinityTerm;
@@ -28,6 +30,14 @@ import java.util.stream.Collectors;
 
 class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
     private static final Logger LOG = LoggerFactory.getLogger(PodResourceEventHandler.class);
+
+    private enum Operators {
+        In,
+        Exists,
+        NotIn,
+        DoesNotExists
+    }
+
     private final DSLContext conn;
     private final PublishProcessor<PodEvent> flowable;
 
@@ -118,9 +128,8 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         podInfoRecord.setOwnerName(ownerName);
         podInfoRecord.setCreationTimestamp(pod.getMetadata().getCreationTimestamp().toString());
 
-        // Auxiliary state:
         if (pod.getSpec().getNodeSelector() != null) {
-            podInfoRecord.setPodNumSelectorLabels(pod.getSpec().getNodeSelector().size());
+            podInfoRecord.setHasNodeSelectorLabels(pod.getSpec().getNodeSelector().size() > 0);
         }
 
         // We cap the max load to 100 to prevent overflow issues in the solver
@@ -161,10 +170,20 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         // Update pod_node_selector_labels table
         final Map<String, String> nodeSelector = pod.getSpec().getNodeSelector();
         if (nodeSelector != null) {
-            nodeSelector.forEach(
-                (k, v) -> conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                        .values(pod.getMetadata().getName(), k, v).execute()
-            );
+            // Using a node selector is equivalent to having a single node-selector term and one match expression
+            // per selector term
+            final int term = 0;
+            final int numMatchExpressions = nodeSelector.size();
+            int matchExpression = 0;
+            for (final Map.Entry<String, String> entry: nodeSelector.entrySet()) {
+                matchExpression += 1;
+                final String labelKey = entry.getKey();
+                final String labelValue = entry.getValue();
+                conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                    .values(pod.getMetadata().getName(), term, matchExpression, numMatchExpressions,
+                            labelKey, Operators.In.toString(), labelValue)
+                    .execute();
+            }
         }
     }
 
@@ -204,23 +223,27 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         }
 
         // Node affinity
-        if (affinity.getNodeAffinity() != null) {
+        if (affinity.getNodeAffinity() != null
+            && affinity.getNodeAffinity().getRequiredDuringSchedulingIgnoredDuringExecution() != null) {
             final V1NodeSelector selector =
                     affinity.getNodeAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
-            selector.getNodeSelectorTerms().forEach(
-                term -> term.getMatchExpressions().forEach(
-                    expr -> {
-                        LOG.info("Pod:{}, Key:{}, values:{}, op:{}", pod.getMetadata().getName(),
-                                expr.getKey(), expr.getValues(), expr.getKey());
-                        expr.getValues().forEach(
-                            value -> conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                    .values(pod.getMetadata().getName(),
-                                            expr.getKey(), value,
-                                            expr.getOperator()).execute()
-                        );
+            int termNumber = 0;
+            for (final V1NodeSelectorTerm term: selector.getNodeSelectorTerms()) {
+                int matchExpressionNumber = 0;
+                final int numMatchExpressions = term.getMatchExpressions().size();
+                for (final V1NodeSelectorRequirement expr: term.getMatchExpressions()) {
+                    matchExpressionNumber += 1;
+                    LOG.info("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, values:{}, op:{}",
+                            pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
+                            expr.getKey(), expr.getValues(), expr.getKey());
+                    for (final String value: expr.getValues()) {
+                         conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                             .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                     numMatchExpressions, expr.getKey(), value, expr.getOperator()).execute();
                     }
-                )
-            );
+                }
+                termNumber += 1;
+            }
         }
 
         // Pod affinity
