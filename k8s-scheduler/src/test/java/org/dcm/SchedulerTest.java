@@ -9,6 +9,9 @@ package org.dcm;
 import com.google.common.collect.Sets;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.models.V1Affinity;
+import io.kubernetes.client.models.V1LabelSelector;
+import io.kubernetes.client.models.V1LabelSelectorBuilder;
+import io.kubernetes.client.models.V1LabelSelectorRequirement;
 import io.kubernetes.client.models.V1Node;
 import io.kubernetes.client.models.V1NodeAffinity;
 import io.kubernetes.client.models.V1NodeCondition;
@@ -21,6 +24,9 @@ import io.kubernetes.client.models.V1NodeSpec;
 import io.kubernetes.client.models.V1NodeStatus;
 import io.kubernetes.client.models.V1ObjectMeta;
 import io.kubernetes.client.models.V1Pod;
+import io.kubernetes.client.models.V1PodAffinity;
+import io.kubernetes.client.models.V1PodAffinityTerm;
+import io.kubernetes.client.models.V1PodAffinityTermBuilder;
 import io.kubernetes.client.models.V1PodSpec;
 import io.kubernetes.client.models.V1PodStatus;
 import io.reactivex.processors.PublishProcessor;
@@ -46,6 +52,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -248,7 +255,7 @@ public class SchedulerTest {
 
         final int numPods = 10;
         final int numNodes = 100;
-        final int numPodsToModify = 20;
+        final int numPodsToModify = 3;
         final int numNodesToModify = 20;
 
         // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
@@ -289,7 +296,7 @@ public class SchedulerTest {
             nodeResourceEventHandler.onAdd(addNode(nodeName, nodeLabels, Collections.emptyList()));
         }
 
-        // First, we check if the computed intermediate view is correct
+        // First, we check if the computed intermediate views are correct
         final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
                                                              .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
                                                                           Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
@@ -314,6 +321,11 @@ public class SchedulerTest {
             }
         );
 
+        assertEquals(Sets.newHashSet(conn.selectFrom(Tables.POD_NODE_SELECTOR_LABELS)
+                                .fetch("POD_NAME")),
+                     Sets.newHashSet(conn.selectFrom(Tables.POD_INFO)
+                                .where(Tables.POD_INFO.HAS_NODE_SELECTOR_LABELS.eq(true))
+                                .fetch("POD_NAME")));
 
         // Now test the solver itself
         final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
@@ -321,16 +333,22 @@ public class SchedulerTest {
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
         final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
-        final Result<? extends Record> results = scheduler.runOneLoop();
-        assertEquals(numPods, results.size());
+
+        if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
+            // Should be unsat
+            assertThrows(ModelException.class, scheduler::runOneLoop);
+        } else {
+            final Result<? extends Record> results = scheduler.runOneLoop();
+            assertEquals(numPods, results.size());
+        }
     }
 
     @SuppressWarnings("UnusedMethod")
     private static Stream testNodeAffinity() {
-        final List<V1NodeSelectorTerm> inTerm = List.of(term(expr("k1", "In", "l1", "l2")));
-        final List<V1NodeSelectorTerm> existsTerm = List.of(term(expr("k1", "Exists", "l1", "l2")));
-        final List<V1NodeSelectorTerm> notInTerm = List.of(term(expr("k1", "NotIn", "l1", "l2")));
-        final List<V1NodeSelectorTerm> notExistsTerm = List.of(term(expr("k1", "DoesNotExist", "l1", "l2")));
+        final List<V1NodeSelectorTerm> inTerm = List.of(term(nodeExpr("k1", "In", "l1", "l2")));
+        final List<V1NodeSelectorTerm> existsTerm = List.of(term(nodeExpr("k1", "Exists", "l1", "l2")));
+        final List<V1NodeSelectorTerm> notInTerm = List.of(term(nodeExpr("k1", "NotIn", "l1", "l2")));
+        final List<V1NodeSelectorTerm> notExistsTerm = List.of(term(nodeExpr("k1", "DoesNotExist", "l1", "l2")));
         return Stream.of(
                 // First, we test to see if all our operators work on their own
 
@@ -373,6 +391,49 @@ public class SchedulerTest {
         );
     }
 
+
+    /*
+     * Tests the pod_node_selector_matches view.
+     */
+    @Test
+    public void testPodToPodAffinity() {
+        final DSLContext conn = Scheduler.setupDb();
+        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
+        emitter.subscribe();
+
+        final int numPods = 10;
+        final int numNodes = 10;
+        final int numPodsToModify = 3;
+
+        // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
+        // node selector
+        final Set<String> podsToAssign = ThreadLocalRandom.current().ints(numPodsToModify, 0, numPods)
+                .mapToObj(i -> "p" + i)
+                .collect(Collectors.toSet());
+        for (int i = 0; i < numPods; i++) {
+            final String podName = "p" + i;
+            final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            if (podsToAssign.contains(podName)) {
+                final V1PodAffinityTerm podAffinityTerm = term("kubernetes.io/hostname",
+                                                               podExpr("k1", "In", "v1"));
+                final V1PodAffinity podAffinity = new V1PodAffinity();
+                podAffinity.addRequiredDuringSchedulingIgnoredDuringExecutionItem(podAffinityTerm);
+                pod.getMetadata().setLabels(map("k1", "v1"));
+                pod.getSpec().getAffinity().setPodAffinity(podAffinity);
+            }
+            handler.onAdd(pod);
+        }
+
+        // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        for (int i = 0; i < numNodes; i++) {
+            final String nodeName = "n" + i;
+            nodeResourceEventHandler.onAdd(addNode(nodeName, Collections.emptyMap(), Collections.emptyList()));
+        }
+    }
+
+
     private static Map<String, String> map(final String k1, final String v1) {
         return Collections.singletonMap(k1, v1);
     }
@@ -390,8 +451,27 @@ public class SchedulerTest {
                    .build();
     }
 
-    private static V1NodeSelectorRequirement expr(final String key, final String op, final String... values) {
+    private static V1NodeSelectorRequirement nodeExpr(final String key, final String op, final String... values) {
         final V1NodeSelectorRequirement requirement = new V1NodeSelectorRequirement();
+        requirement.setKey(key);
+        requirement.setOperator(op);
+        requirement.setValues(List.of(values));
+        return requirement;
+    }
+
+    private static V1PodAffinityTerm term(final String topologyKey,
+                                          final V1LabelSelectorRequirement... requirements) {
+        final V1LabelSelector labelSelector = new V1LabelSelectorBuilder()
+                .withMatchExpressions(requirements)
+                .build();
+        return new V1PodAffinityTermBuilder()
+                      .withLabelSelector(labelSelector)
+                      .withTopologyKey(topologyKey)
+                      .build();
+    }
+
+    private static V1LabelSelectorRequirement podExpr(final String key, final String op, final String... values) {
+        final V1LabelSelectorRequirement requirement = new V1LabelSelectorRequirement();
         requirement.setKey(key);
         requirement.setOperator(op);
         requirement.setValues(List.of(values));

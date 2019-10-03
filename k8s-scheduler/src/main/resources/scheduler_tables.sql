@@ -32,7 +32,8 @@ create table pod_info
   owner_name varchar(100) not null,
   creation_timestamp varchar(100) not null,
   priority integer not null,
-  has_node_selector_labels boolean not null
+  has_node_selector_labels boolean not null,
+  has_pod_affinity_requirements boolean not null
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.
@@ -77,8 +78,8 @@ create table pod_affinity_match_expressions
 (
   pod_name varchar(100) not null,
   label_key varchar(100) not null,
-  label_value varchar(36) not null,
   operator varchar(30) not null,
+  label_value varchar(36) not null,
   topology_key varchar(100) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
@@ -88,8 +89,8 @@ create table pod_anti_affinity_match_expressions
 (
   pod_name varchar(100) not null,
   label_key varchar(100) not null,
-  label_value varchar(36) not null,
   operator varchar(30) not null,
+  label_value varchar(36) not null,
   topology_key varchar(100) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
@@ -102,7 +103,6 @@ create table pod_labels
   pod_name varchar(100) not null,
   label_key varchar(100) not null,
   label_value varchar(36) not null,
-  is_selector boolean not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
@@ -203,7 +203,8 @@ select
   pods_request,
   owner_name,
   creation_timestamp,
-  has_node_selector_labels
+  has_node_selector_labels,
+  has_pod_affinity_requirements
 from pod_info
 where status = 'Pending' and node_name is null
 order by creation_timestamp;
@@ -261,3 +262,15 @@ having case pod_node_selector_labels.label_operator
 create index pod_info_idx on pod_info (status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);
 create index node_labels_idx on node_labels (label_key, label_value);
+
+-- Inter pod affinity
+create view inter_pod_affinity_matches as
+select pods_to_assign.pod_name as pod_name,
+       pod_labels.pod_name as matches
+from pods_to_assign
+join pod_affinity_match_expressions
+     on pods_to_assign.pod_name = pod_affinity_match_expressions.pod_name
+join pod_labels
+        on (pod_affinity_match_expressions.operator = 'In'
+            and pod_affinity_match_expressions.label_key = pod_labels.label_key
+            and pod_affinity_match_expressions.label_value = pod_labels.label_value);
