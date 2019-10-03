@@ -217,13 +217,8 @@ create table batch_size
 );
 
 create view pods_to_assign as
-select * from (
-    select
-         ROW_NUMBER() OVER () AS R,
-         pods_to_assign_no_limit.*
-       from pods_to_assign_no_limit
-    ) as T
-where T.R <= (select sum(pendingPodsLimit) from batch_size);
+select * from pods_to_assign_no_limit limit 100;
+
 
 -- Pods with port requests
 create view pods_with_port_requests as
@@ -262,6 +257,6 @@ having case pod_node_selector_labels.label_operator
             else count(distinct match_expression) = pod_node_selector_labels.num_match_expressions
        end;
 
-create index pod_info_idx on pod_info (pod_name, status, node_name);
+create index pod_info_idx on pod_info (status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);
 create index node_labels_idx on node_labels (label_key, label_value);
