@@ -233,13 +233,20 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
                 final int numMatchExpressions = term.getMatchExpressions().size();
                 for (final V1NodeSelectorRequirement expr: term.getMatchExpressions()) {
                     matchExpressionNumber += 1;
-                    LOG.info("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, values:{}, op:{}",
+                    LOG.info("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, op:{}, values:{}",
                             pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
-                            expr.getKey(), expr.getValues(), expr.getKey());
-                    for (final String value: expr.getValues()) {
-                         conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                             .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
-                                     numMatchExpressions, expr.getKey(), value, expr.getOperator()).execute();
+                            expr.getKey(), expr.getOperator(), expr.getValues());
+
+                    if (expr.getValues() != null) {
+                        for (final String value : expr.getValues()) {
+                            conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                    .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                            numMatchExpressions, expr.getKey(), expr.getOperator(), value).execute();
+                        }
+                    } else {
+                        conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                        numMatchExpressions, expr.getKey(), expr.getOperator(), null).execute();
                     }
                 }
                 termNumber += 1;
