@@ -286,6 +286,7 @@ public class SchedulerTest {
             }
             nodeResourceEventHandler.onAdd(addNode(nodeName, nodeLabels, Collections.emptyList()));
         }
+
         // First, we check if the computed intermediate view is correct
         final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
                                                              .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
@@ -330,11 +331,11 @@ public class SchedulerTest {
                 Arguments.of(inTerm, map("k", "l", "k1", "l3"), false, false),
 
                 // Exists
-                Arguments.of(existsTerm, Collections.singletonMap("k1", "l1"), true, false),
-                Arguments.of(existsTerm, Collections.singletonMap("k1", "l2"), true, false),
-                Arguments.of(existsTerm, Collections.singletonMap("k1", "l3"), true, false),
-                Arguments.of(existsTerm, Collections.singletonMap("k2", "l3"), false, false),
-                Arguments.of(existsTerm, Collections.singletonMap("k2", "l1"), false, false),
+                Arguments.of(existsTerm, map("k1", "l1"), true, false),
+                Arguments.of(existsTerm, map("k1", "l2"), true, false),
+                Arguments.of(existsTerm, map("k1", "l3"), true, false),
+                Arguments.of(existsTerm, map("k2", "l3"), false, false),
+                Arguments.of(existsTerm, map("k2", "l1"), false, false),
                 Arguments.of(existsTerm, map("k", "l", "k1", "l1"), true, false),
                 Arguments.of(existsTerm, map("k", "l", "k1", "l2"), true, false),
                 Arguments.of(existsTerm, map("k", "l", "k1", "l3"), true, false),
