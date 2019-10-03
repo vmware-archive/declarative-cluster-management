@@ -128,8 +128,19 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         podInfoRecord.setOwnerName(ownerName);
         podInfoRecord.setCreationTimestamp(pod.getMetadata().getCreationTimestamp().toString());
 
-        if (pod.getSpec().getNodeSelector() != null) {
-            podInfoRecord.setHasNodeSelectorLabels(pod.getSpec().getNodeSelector().size() > 0);
+        final boolean hasNodeSelector = (pod.getSpec().getNodeSelector() != null
+                                          && pod.getSpec().getNodeSelector().size() > 0)
+                                      || (pod.getSpec().getAffinity().getNodeAffinity()
+                                            .getRequiredDuringSchedulingIgnoredDuringExecution() != null
+                                        && pod.getSpec().getAffinity().getNodeAffinity()
+                                              .getRequiredDuringSchedulingIgnoredDuringExecution()
+                                              .getNodeSelectorTerms().size() > 0);
+        podInfoRecord.setHasNodeSelectorLabels(hasNodeSelector);
+        if (pod.getSpec().getAffinity().getPodAffinity() != null) {
+            podInfoRecord.setHasPodAffinityRequirements(pod.getSpec().getAffinity().getPodAffinity()
+                                                      .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0);
+        } else {
+            podInfoRecord.setHasPodAffinityRequirements(false);
         }
 
         // We cap the max load to 100 to prevent overflow issues in the solver
@@ -191,12 +202,11 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         // Update pod_labels table. This will be used for managing affinities, I think?
         final Map<String, String> labels = pod.getMetadata().getLabels();
         if (labels != null) {
-            final String formatString = "insert into pod_labels values ('%s', '%s', '%s', '%s')";
+            final String formatString = "insert into pod_labels values ('%s', '%s', '%s')";
             labels.forEach(
                 (k, v) -> {
                     // TODO: investigate
-                    final boolean isSelectorLabel = false;
-                    conn.execute(String.format(formatString, pod.getMetadata().getName(), k, v, isSelectorLabel));
+                    conn.execute(String.format(formatString, pod.getMetadata().getName(), k, v));
                 }
             );
         }
@@ -262,8 +272,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
                     expr -> expr.getValues().forEach(
                         value -> conn.insertInto(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
                                 .values(pod.getMetadata().getName(),
-                                        expr.getKey(), value,
-                                        expr.getOperator(), term.getTopologyKey()).execute()
+                                        expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute()
                     )
                 )
             );
@@ -278,8 +287,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
                     expr -> expr.getValues().forEach(
                             value -> conn.insertInto(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
                                     .values(pod.getMetadata().getName(),
-                                            expr.getKey(), value,
-                                            expr.getOperator(), term.getTopologyKey()).execute()
+                                            expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute()
                     )
                 )
             );

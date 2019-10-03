@@ -40,7 +40,6 @@ class Policies {
         return new Policy("NodePredicates", constraint);
     }
 
-
     /**
      * Ensures that the pods_to_assign.constraint_controllable__node_name column is assigned to nodes
      * that satisfy node affinity requirements. This policy covers the basic node selector as well as
@@ -57,6 +56,23 @@ class Policies {
                                   "          where pods_to_assign.pod_name = pod_node_selector_matches.pod_name)";
         return new Policy("NodeSelectorPredicate", constraint);
     }
+
+    /**
+     * Ensures that the pods_to_assign.constraint_controllable__node_name column is assigned to nodes
+     * that satisfy pod affinity requirements.
+     */
+    static Policy podAffinityPredicate() {
+        final String constraint = "create view constraint_pod_affinity as " +
+                "select * " +
+                "from pods_to_assign " +
+                "where pods_to_assign.has_node_selector_labels = false or " +
+                "      pods_to_assign.controllable__node_name in " +
+                "         (select node_name " +
+                "          from pod_node_selector_matches " +
+                "          where pods_to_assign.pod_name = pod_node_selector_matches.pod_name)";
+        return new Policy("NodeSelectorPredicate", constraint);
+    }
+
 
     static List<String> getAllPolicies() {
         return from(ALL_POLICIES);
