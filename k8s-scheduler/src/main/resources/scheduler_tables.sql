@@ -67,8 +67,8 @@ create table pod_node_selector_labels
   match_expression integer not null,
   num_match_expressions integer not null,
   label_key varchar(100) not null,
-  label_operator varchar(10) not null,
-  label_value varchar(36) not null,
+  label_operator varchar(12) not null,
+  label_value varchar(36) null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
@@ -249,16 +249,19 @@ join node_labels
             and pod_node_selector_labels.label_value = node_labels.label_value)
         or (pod_node_selector_labels.label_operator = 'Exists'
             and pod_node_selector_labels.label_key = node_labels.label_key)
-        or (pod_node_selector_labels.label_operator = 'NotIn'
-            and not(pod_node_selector_labels.label_key = node_labels.label_key
-                   and pod_node_selector_labels.label_value = node_labels.label_value))
-        or (pod_node_selector_labels.label_operator = 'DoesNotExist'
-            and pod_node_selector_labels.label_key != node_labels.label_key)
+        or (pod_node_selector_labels.label_operator = 'NotIn')
+        or (pod_node_selector_labels.label_operator = 'DoesNotExist')
 group by pods_to_assign.pod_name,  node_labels.node_name, pod_node_selector_labels.term,
          pod_node_selector_labels.label_operator, pod_node_selector_labels.num_match_expressions
-having count(distinct match_expression) = pod_node_selector_labels.num_match_expressions;
+having case pod_node_selector_labels.label_operator
+            when 'NotIn'
+                 then not(any(pod_node_selector_labels.label_key = node_labels.label_key
+                              and pod_node_selector_labels.label_value = node_labels.label_value))
+            when 'DoesNotExist'
+                 then not(any(pod_node_selector_labels.label_key = node_labels.label_key))
+            else count(distinct match_expression) = pod_node_selector_labels.num_match_expressions
+       end;
 
 create index pod_info_idx on pod_info (pod_name, status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);
-create index pod_node_selector_labels_labels_idx on pod_node_selector_labels (label_key, label_value);
 create index node_labels_idx on node_labels (label_key, label_value);

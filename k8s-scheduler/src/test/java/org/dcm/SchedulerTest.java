@@ -14,6 +14,9 @@ import io.kubernetes.client.models.V1NodeAffinity;
 import io.kubernetes.client.models.V1NodeCondition;
 import io.kubernetes.client.models.V1NodeSelector;
 import io.kubernetes.client.models.V1NodeSelectorBuilder;
+import io.kubernetes.client.models.V1NodeSelectorRequirement;
+import io.kubernetes.client.models.V1NodeSelectorTerm;
+import io.kubernetes.client.models.V1NodeSelectorTermBuilder;
 import io.kubernetes.client.models.V1NodeSpec;
 import io.kubernetes.client.models.V1NodeStatus;
 import io.kubernetes.client.models.V1ObjectMeta;
@@ -38,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -232,8 +236,10 @@ public class SchedulerTest {
     /*
      * Tests the pod_node_selector_matches view.
      */
-    @Test
-    public void testPodNodeAffinity() {
+    @ParameterizedTest
+    @MethodSource("testNodeAffinity")
+    public void testPodToNodeAffinity(final List<V1NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
+                                      final boolean shouldBeAffineToLabelledNodes) {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
@@ -246,30 +252,121 @@ public class SchedulerTest {
 
         // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
         // node selector
+        final Set<String> podsToAssign = ThreadLocalRandom.current().ints(3, 0, numPods)
+                                                           .mapToObj(i -> "p" + i)
+                                                           .collect(Collectors.toSet());
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
             final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
-            final V1NodeSelector selector = new V1NodeSelectorBuilder()
-                                               .addNewNodeSelectorTerm()
-                                                   .addNewMatchExpression()
-                                                       .withKey("diskType")
-                                                       .withOperator("in")
-                                                       .withValues("ssd", "nvme")
-                                                   .endMatchExpression()
-                                               .endNodeSelectorTerm()
-                                               .build();
-            pod.getSpec().getAffinity().getNodeAffinity().setRequiredDuringSchedulingIgnoredDuringExecution(selector);
+            if (podsToAssign.contains(podName)) {
+                final V1NodeSelector selector = new V1NodeSelectorBuilder()
+                                                            .withNodeSelectorTerms(terms)
+                                                            .build();
+                pod.getSpec().getAffinity().getNodeAffinity()
+                   .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
+            }
             handler.onAdd(pod);
         }
+
         // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final Set<Integer> nodesToAssign = ThreadLocalRandom.current()
+                                                         .ints(3, 0, numNodes).boxed()
+                                                         .collect(Collectors.toSet());
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Map<String, String> nodeLabels = new HashMap<>();
-            nodeLabels.put("diskType", "ssd");
-            nodeLabels.put("gpu", "true");
+            if (nodesToAssign.contains(i)) {
+                nodeLabels.putAll(nodeLabelsInput);
+            }
+            // TODO: add dummy labels to other nodes anyway
             nodeResourceEventHandler.onAdd(addNode(nodeName, nodeLabels, Collections.emptyList()));
         }
+
+        // First, we check if the computed intermediate view is correct
+        final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
+                                                             .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
+                                                                          Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
+        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.containsKey(p), shouldBeAffineToLabelledNodes));
+        podsToNodesMap.forEach(
+                (pod, nodeList) -> {
+                    assertEquals(podsToAssign.contains(pod), shouldBeAffineToLabelledNodes);
+                }
+        );
+    }
+
+
+    @SuppressWarnings("UnusedMethod")
+    private static Stream testNodeAffinity() {
+        final List<V1NodeSelectorTerm> inTerm = List.of(term(expr("k1", "In", "l1", "l2")));
+        final List<V1NodeSelectorTerm> existsTerm = List.of(term(expr("k1", "Exists", "l1", "l2")));
+        final List<V1NodeSelectorTerm> notInTerm = List.of(term(expr("k1", "NotIn", "l1", "l2")));
+        final List<V1NodeSelectorTerm> notExistsTerm = List.of(term(expr("k1", "DoesNotExist", "l1", "l2")));
+        return Stream.of(
+                // First, we test to see if all our operators work on their own
+
+                // In
+                Arguments.of(inTerm, map("k1", "l1"), true),
+                Arguments.of(inTerm, map("k1", "l2"), true),
+                Arguments.of(inTerm, map("k1", "l3"), false),
+                Arguments.of(inTerm, map("k", "l", "k1", "l1"), true),
+                Arguments.of(inTerm, map("k", "l", "k1", "l2"), true),
+                Arguments.of(inTerm, map("k", "l", "k1", "l3"), false),
+
+                // Exists
+                Arguments.of(existsTerm, Collections.singletonMap("k1", "l1"), true),
+                Arguments.of(existsTerm, Collections.singletonMap("k1", "l2"), true),
+                Arguments.of(existsTerm, Collections.singletonMap("k1", "l3"), true),
+                Arguments.of(existsTerm, Collections.singletonMap("k2", "l3"), false),
+                Arguments.of(existsTerm, Collections.singletonMap("k2", "l1"), false),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l1"), true),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l2"), true),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l3"), true),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l1"), false),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l2"), false),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l3"), false),
+
+                // NotIn
+                Arguments.of(notInTerm, map("k1", "l1"), false),
+                Arguments.of(notInTerm, map("k1", "l2"), false),
+                Arguments.of(notInTerm, map("k1", "l3"), true),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l1"), false),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l2"), false),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l3"), true),
+
+                // DoesNotExist
+                Arguments.of(notExistsTerm, map("k1", "l1"), false),
+                Arguments.of(notExistsTerm, map("k1", "l2"), false),
+                Arguments.of(notExistsTerm, map("k1", "l3"), false),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l1"), false),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l2"), false),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l3"), false)
+        );
+    }
+
+    private static Map<String, String> map(final String k1, final String v1) {
+        return Collections.singletonMap(k1, v1);
+    }
+
+    private static Map<String, String> map(final String k1, final String v1, final String k2, final String v2) {
+        final Map<String, String> ret = new HashMap<>();
+        ret.put(k1, v1);
+        ret.put(k2, v2);
+        return ret;
+    }
+
+    private static V1NodeSelectorTerm term(final V1NodeSelectorRequirement... requirements) {
+        return new V1NodeSelectorTermBuilder()
+                   .withMatchExpressions(requirements)
+                   .build();
+    }
+
+    private static V1NodeSelectorRequirement expr(final String key, final String op, final String... values) {
+        final V1NodeSelectorRequirement requirement = new V1NodeSelectorRequirement();
+        requirement.setKey(key);
+        requirement.setOperator(op);
+        requirement.setValues(List.of(values));
+        return requirement;
     }
 
     private V1Pod newPod(final String name) {
