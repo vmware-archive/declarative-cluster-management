@@ -257,6 +257,7 @@ having case pod_node_selector_labels.label_operator
             else count(distinct match_expression) = pod_node_selector_labels.num_match_expressions
        end;
 
+
 create index pod_info_idx on pod_info (status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);
 create index node_labels_idx on node_labels (label_key, label_value);

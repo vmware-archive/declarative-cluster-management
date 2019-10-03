@@ -43,7 +43,8 @@ class Policies {
 
     /**
      * Ensures that the pods_to_assign.constraint_controllable__node_name column is assigned to nodes
-     * that satisfy some predicates corresponding to availability and resource utilization
+     * that satisfy node affinity requirements. This policy covers the basic node selector as well as
+     * the nodeAffinity policies in k8s.
      */
     static Policy nodeSelectorPredicate() {
         final String constraint = "create view constraint_node_selector as " +

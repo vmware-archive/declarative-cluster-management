@@ -52,11 +52,9 @@ public final class Scheduler {
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
     @Nullable private Disposable subscription;
-    private final List<Table<?>> relevantTables = Lists.newArrayList(Tables.POD_INFO,
-                                                                    Tables.PODS_TO_ASSIGN,
+    private final List<Table<?>> relevantTables = Lists.newArrayList(Tables.PODS_TO_ASSIGN,
                                                                     Tables.POD_NODE_SELECTOR_MATCHES,
-                                                                    Tables.NODE_INFO,
-                                                                    Tables.NODE_LABELS);
+                                                                    Tables.NODE_INFO);
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
