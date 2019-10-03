@@ -239,7 +239,8 @@ public class SchedulerTest {
     @ParameterizedTest
     @MethodSource("testNodeAffinity")
     public void testPodToNodeAffinity(final List<V1NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
-                                      final boolean shouldBeAffineToLabelledNodes) {
+                                      final boolean shouldBeAffineToLabelledNodes,
+                                      final boolean shouldBeAffineToRemainingNodes) {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
@@ -247,8 +248,6 @@ public class SchedulerTest {
 
         final int numPods = 10;
         final int numNodes = 10;
-
-        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
 
         // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
         // node selector
@@ -270,31 +269,48 @@ public class SchedulerTest {
 
         // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
-        final Set<Integer> nodesToAssign = ThreadLocalRandom.current()
-                                                         .ints(3, 0, numNodes).boxed()
+        final Set<String> nodesToAssign = ThreadLocalRandom.current()
+                                                         .ints(3, 0, numNodes)
+                                                         .mapToObj(i -> "n" + i)
                                                          .collect(Collectors.toSet());
+        final Set<String> remainingNodes = new HashSet<>();
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Map<String, String> nodeLabels = new HashMap<>();
-            if (nodesToAssign.contains(i)) {
+            if (nodesToAssign.contains(nodeName)) {
                 nodeLabels.putAll(nodeLabelsInput);
+            } else {
+                nodeLabels.put("dummyKey1", "dummyValue1");
+                nodeLabels.put("dummyKey2", "dummyValue2");
+                remainingNodes.add(nodeName);
             }
-            // TODO: add dummy labels to other nodes anyway
             nodeResourceEventHandler.onAdd(addNode(nodeName, nodeLabels, Collections.emptyList()));
         }
-
         // First, we check if the computed intermediate view is correct
         final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
                                                              .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
                                                                           Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
-        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.containsKey(p), shouldBeAffineToLabelledNodes));
+        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.containsKey(p),
+                                               shouldBeAffineToLabelledNodes || shouldBeAffineToRemainingNodes));
         podsToNodesMap.forEach(
-                (pod, nodeList) -> {
-                    assertEquals(podsToAssign.contains(pod), shouldBeAffineToLabelledNodes);
-                }
+            (pod, nodeList) -> {
+                assertTrue(podsToAssign.contains(pod));
+                nodeList.forEach(
+                    node -> {
+                        if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
+                            assertTrue(nodesToAssign.contains(node) || remainingNodes.contains(node));
+                        }
+                        else if (shouldBeAffineToLabelledNodes) {
+                            assertTrue(nodesToAssign.contains(node));
+                        }
+                        else if (shouldBeAffineToRemainingNodes) {
+                            assertFalse(nodesToAssign.contains(node));
+                        }
+                    }
+                );
+            }
         );
     }
-
 
     @SuppressWarnings("UnusedMethod")
     private static Stream testNodeAffinity() {
@@ -306,41 +322,41 @@ public class SchedulerTest {
                 // First, we test to see if all our operators work on their own
 
                 // In
-                Arguments.of(inTerm, map("k1", "l1"), true),
-                Arguments.of(inTerm, map("k1", "l2"), true),
-                Arguments.of(inTerm, map("k1", "l3"), false),
-                Arguments.of(inTerm, map("k", "l", "k1", "l1"), true),
-                Arguments.of(inTerm, map("k", "l", "k1", "l2"), true),
-                Arguments.of(inTerm, map("k", "l", "k1", "l3"), false),
+                Arguments.of(inTerm, map("k1", "l1"), true, false),
+                Arguments.of(inTerm, map("k1", "l2"), true, false),
+                Arguments.of(inTerm, map("k1", "l3"), false, false),
+                Arguments.of(inTerm, map("k", "l", "k1", "l1"), true, false),
+                Arguments.of(inTerm, map("k", "l", "k1", "l2"), true, false),
+                Arguments.of(inTerm, map("k", "l", "k1", "l3"), false, false),
 
                 // Exists
-                Arguments.of(existsTerm, Collections.singletonMap("k1", "l1"), true),
-                Arguments.of(existsTerm, Collections.singletonMap("k1", "l2"), true),
-                Arguments.of(existsTerm, Collections.singletonMap("k1", "l3"), true),
-                Arguments.of(existsTerm, Collections.singletonMap("k2", "l3"), false),
-                Arguments.of(existsTerm, Collections.singletonMap("k2", "l1"), false),
-                Arguments.of(existsTerm, map("k", "l", "k1", "l1"), true),
-                Arguments.of(existsTerm, map("k", "l", "k1", "l2"), true),
-                Arguments.of(existsTerm, map("k", "l", "k1", "l3"), true),
-                Arguments.of(existsTerm, map("k", "l", "k2", "l1"), false),
-                Arguments.of(existsTerm, map("k", "l", "k2", "l2"), false),
-                Arguments.of(existsTerm, map("k", "l", "k2", "l3"), false),
+                Arguments.of(existsTerm, Collections.singletonMap("k1", "l1"), true, false),
+                Arguments.of(existsTerm, Collections.singletonMap("k1", "l2"), true, false),
+                Arguments.of(existsTerm, Collections.singletonMap("k1", "l3"), true, false),
+                Arguments.of(existsTerm, Collections.singletonMap("k2", "l3"), false, false),
+                Arguments.of(existsTerm, Collections.singletonMap("k2", "l1"), false, false),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l1"), true, false),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l2"), true, false),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l3"), true, false),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l1"), false, false),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l2"), false, false),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l3"), false, false),
 
                 // NotIn
-                Arguments.of(notInTerm, map("k1", "l1"), false),
-                Arguments.of(notInTerm, map("k1", "l2"), false),
-                Arguments.of(notInTerm, map("k1", "l3"), true),
-                Arguments.of(notInTerm, map("k", "l", "k1", "l1"), false),
-                Arguments.of(notInTerm, map("k", "l", "k1", "l2"), false),
-                Arguments.of(notInTerm, map("k", "l", "k1", "l3"), true),
+                Arguments.of(notInTerm, map("k1", "l1"), false, true),
+                Arguments.of(notInTerm, map("k1", "l2"), false, true),
+                Arguments.of(notInTerm, map("k1", "l3"), true, true),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l1"), false, true),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l2"), false, true),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l3"), true, true),
 
                 // DoesNotExist
-                Arguments.of(notExistsTerm, map("k1", "l1"), false),
-                Arguments.of(notExistsTerm, map("k1", "l2"), false),
-                Arguments.of(notExistsTerm, map("k1", "l3"), false),
-                Arguments.of(notExistsTerm, map("k", "l", "k1", "l1"), false),
-                Arguments.of(notExistsTerm, map("k", "l", "k1", "l2"), false),
-                Arguments.of(notExistsTerm, map("k", "l", "k1", "l3"), false)
+                Arguments.of(notExistsTerm, map("k1", "l1"), false, true),
+                Arguments.of(notExistsTerm, map("k1", "l2"), false, true),
+                Arguments.of(notExistsTerm, map("k1", "l3"), false, true),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l1"), false, true),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l2"), false, true),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l3"), false, true)
         );
     }
 
