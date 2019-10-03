@@ -15,14 +15,25 @@
     </Match>
     <Match>
         <Package name="org.dcm.k8s.generated.tables"/>
+    </Match>
+    <Match>
+        <Class name="org.dcm.backend.RewriteArity"/>
         <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
     </Match>
     <Match>
-        <Class name="com.vrg.backend.OrToolsSolver" />
+        <Class name="org.dcm.backend.OrToolsSolver$QualifiersByType"/>
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.backend.GetVarQualifiers$QualifiersList"/>
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.backend.OrToolsSolver" />
         <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME" />
     </Match>
     <Match>
-        <Class name="com.vrg.backend.OrToolsSolver$ExprToStrVisitor" />
+        <Class name="org.dcm.backend.OrToolsSolver$ExprToStrVisitor" />
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
     </Match>
 </FindBugsFilter>

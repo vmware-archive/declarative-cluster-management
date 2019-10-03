@@ -69,6 +69,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 @ExtendWith({})
 public class SchedulerTest {
+    static {
+        System.loadLibrary("jniortools");
+    }
+
     /*
      * Double checks that delete cascades work.
      */
