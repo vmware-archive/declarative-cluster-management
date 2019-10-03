@@ -247,11 +247,14 @@ public class SchedulerTest {
         emitter.subscribe();
 
         final int numPods = 10;
-        final int numNodes = 10;
+        final int numNodes = 100;
+        final int numPodsToModify = 20;
+        final int numNodesToModify = 20;
+
 
         // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
         // node selector
-        final Set<String> podsToAssign = ThreadLocalRandom.current().ints(3, 0, numPods)
+        final Set<String> podsToAssign = ThreadLocalRandom.current().ints(numPodsToModify, 0, numPods)
                                                            .mapToObj(i -> "p" + i)
                                                            .collect(Collectors.toSet());
         for (int i = 0; i < numPods; i++) {
@@ -270,7 +273,7 @@ public class SchedulerTest {
         // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
         final Set<String> nodesToAssign = ThreadLocalRandom.current()
-                                                         .ints(3, 0, numNodes)
+                                                         .ints(numNodesToModify, 0, numNodes)
                                                          .mapToObj(i -> "n" + i)
                                                          .collect(Collectors.toSet());
         final Set<String> remainingNodes = new HashSet<>();
