@@ -251,7 +251,6 @@ public class SchedulerTest {
         final int numPodsToModify = 20;
         final int numNodesToModify = 20;
 
-
         // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
         // node selector
         final Set<String> podsToAssign = ThreadLocalRandom.current().ints(numPodsToModify, 0, numPods)
@@ -314,6 +313,16 @@ public class SchedulerTest {
                 );
             }
         );
+
+
+        // Now test the solver itself
+        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
+
+        // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
+        // Works when using Minizinc 2.3.2
+        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        final Result<? extends Record> results = scheduler.runOneLoop();
+        assertEquals(numPods, results.size());
     }
 
     @SuppressWarnings("UnusedMethod")
