@@ -411,6 +411,7 @@ public class SchedulerTest {
         final Set<String> podsToAssign = ThreadLocalRandom.current().ints(numPodsToModify, 0, numPods)
                 .mapToObj(i -> "p" + i)
                 .collect(Collectors.toSet());
+
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
             final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
