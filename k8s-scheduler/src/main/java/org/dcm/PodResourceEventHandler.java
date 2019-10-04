@@ -9,6 +9,7 @@ import io.kubernetes.client.informer.ResourceEventHandler;
 import io.kubernetes.client.models.V1Affinity;
 import io.kubernetes.client.models.V1Container;
 import io.kubernetes.client.models.V1ContainerPort;
+import io.kubernetes.client.models.V1LabelSelectorRequirement;
 import io.kubernetes.client.models.V1NodeSelector;
 import io.kubernetes.client.models.V1NodeSelectorRequirement;
 import io.kubernetes.client.models.V1NodeSelectorTerm;
@@ -265,17 +266,22 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
 
         // Pod affinity
         if (affinity.getPodAffinity() != null) {
-            final List<V1PodAffinityTerm> requiredDuringSchedulingIgnoredDuringExecution =
+            final List<V1PodAffinityTerm> terms =
                     affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
-            requiredDuringSchedulingIgnoredDuringExecution.forEach(
-                term -> term.getLabelSelector().getMatchExpressions().forEach(
-                    expr -> expr.getValues().forEach(
-                        value -> conn.insertInto(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
-                                .values(pod.getMetadata().getName(),
-                                        expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute()
-                    )
-                )
-            );
+            int termNumber = 0;
+            for (final V1PodAffinityTerm term: terms) {
+                int matchExpressionNumber = 0;
+                final int numMatchExpressions =  term.getLabelSelector().getMatchExpressions().size();
+                for (final V1LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
+                    matchExpressionNumber += 1;
+                    for (final String value: expr.getValues()) {
+                        conn.insertInto(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
+                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
+                                    expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute();
+                    }
+                }
+                termNumber += 1;
+            }
         }
 
         // Pod Anti affinity
