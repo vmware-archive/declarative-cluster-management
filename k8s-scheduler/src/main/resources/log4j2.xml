@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="INFO">
+    <Appenders>
+        <Console name="console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%highlight{%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n}"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Logger name="org.jooq.Constants" additivity="false" level="OFF">
+        </Logger>
+        <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="debug">
+            <AppenderRef ref="console" />
+        </Logger>
+        <Root level="info" additivity="false">
+            <AppenderRef ref="console" />
+        </Root>
+    </Loggers>
+</Configuration>
