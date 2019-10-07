@@ -50,7 +50,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
     @Override
     public void onAdd(final V1Pod pod) {
         if (pod.getSpec().getSchedulerName().equals(Scheduler.SCHEDULER_NAME)) {
-            LOG.debug("{} pod added!\n", pod.getMetadata().getName());
+            LOG.debug("{} pod added!", pod.getMetadata().getName());
             addPod(conn, pod);
             flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); //
         }
@@ -62,7 +62,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         final String newPodScheduler = oldPod.getSpec().getSchedulerName();
         assert oldPodScheduler.equals(newPodScheduler);
         if (newPodScheduler.equals(Scheduler.SCHEDULER_NAME)) {
-            LOG.debug("{} => {} pod updated!\n", oldPod.getMetadata().getName(), newPod.getMetadata().getName());
+            LOG.debug("{} => {} pod updated!", oldPod.getMetadata().getName(), newPod.getMetadata().getName());
             updatePod(conn, newPod);
             flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
         }
@@ -71,7 +71,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
     @Override
     public void onDelete(final V1Pod pod, final boolean deletedFinalStateUnknown) {
         if (pod.getSpec().getSchedulerName().equals(Scheduler.SCHEDULER_NAME)) {
-            LOG.debug("{} pod deleted!\n", pod.getMetadata().getName());
+            LOG.debug("{} pod deleted!", pod.getMetadata().getName());
             deletePod(conn, pod);
             flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
         }
