@@ -7,11 +7,8 @@ package org.dcm;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
-import org.dcm.viewupdater.DerbyUpdater;
-import org.dcm.viewupdater.H2Updater;
-import org.dcm.viewupdater.HSQLUpdater;
-import org.dcm.viewupdater.PGUpdater;
-import org.dcm.viewupdater.ViewUpdater;
+import org.dcm.viewupdater.DDlogUpdater;
+import org.dcm.viewupdater.Updater;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 
@@ -32,10 +29,8 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -48,14 +43,14 @@ public class DBBenchmark {
 
     private DSLContext dbCtx;
     private Connection connection;
-    private ViewUpdater viewUpdater;
+    private Updater updater;
     private Model model;
     private List<String> baseTables;
 
     @Param({"100", "1000", "10000", "100000"})
     public int numRecords;
 
-    @Param({"H2", "HSQLDB", "DERBY", "POSTGRES"})
+    @Param({"H2", "HSQLDB"})
     public String db;
 
     private int index = 0;
@@ -74,32 +69,6 @@ public class DBBenchmark {
         new Runner(opts).run();
     }
 
-    private void setupDerby() {
-        final Properties properties = new Properties();
-        properties.setProperty("foreign_keys", "true");
-        try {
-            // The following block ensures we always drop the database between tests
-            try {
-                final String dropUrl = "jdbc:derby:memory:db;drop=true";
-                getConnection(dropUrl, properties);
-            } catch (final SQLException e) {
-                // We could not drop a database because it was never created. Move on.
-            }
-            // Create a fresh database
-            final String connectionURL = "jdbc:derby:memory:db;create=true";
-            connection = getConnection(connectionURL, properties);
-            dbCtx = using(connection, SQLDialect.DERBY);
-            dbCtx.execute("create schema curr");
-            dbCtx.execute("set schema curr");
-
-            init();
-
-            ViewUpdater.irTables = model.getIRTables();
-            viewUpdater = new DerbyUpdater(dbCtx, baseTables);
-        } catch (final SQLException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     /*
      * Sets up an in-memory H2 database that we use for all tests.
@@ -110,22 +79,41 @@ public class DBBenchmark {
         try {
             // Create a fresh database
             final String connectionURL = "jdbc:h2:mem:;create=true";
-            final Connection connection = getConnection(connectionURL, properties);
-            final DSLContext using = using(connection, SQLDialect.H2);
-            using.execute("create schema curr");
-            using.execute("set schema curr");
-
+            connection = getConnection(connectionURL, properties);
             dbCtx = using(connection, SQLDialect.H2);
+            dbCtx.execute("create schema curr");
+            dbCtx.execute("set schema curr");
 
             init();
 
-            ViewUpdater.irTables = model.getIRTables();
-            viewUpdater = new H2Updater(dbCtx, baseTables);
+            baseTables = new ArrayList<>();
+            baseTables.add("POD");
+            baseTables.add("NODE");
+
+
+//            for (final String entry : baseTables) {
+//                final String tableName = entry.toUpperCase(Locale.US);
+//                if (model.getIRTables().containsKey(tableName)) {
+//                    final String triggerName = "TRIGGER_" + tableName;
+//
+//                    final StringBuilder builder = new StringBuilder();
+//                    builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
+//                            "FOR EACH ROW CALL \"" + Updater.class.getName() + "\"");
+//
+//                    final String command = builder.toString();
+//                    dbCtx.execute(command);
+//                }
+//            }
+//
+            updater = new Updater(connection, dbCtx, baseTables,
+                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());
+
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
     }
+
 
     /*
      * Sets up an in-memory HSQLDB database that we use for all tests.
@@ -141,8 +129,28 @@ public class DBBenchmark {
 
             init();
 
-            ViewUpdater.irTables = model.getIRTables();
-            viewUpdater = new HSQLUpdater(connection, dbCtx, baseTables);
+            baseTables = new ArrayList<>();
+            baseTables.add("POD");
+            baseTables.add("NODE");
+
+//            for (final String entry : baseTables) {
+//                final String tableName = entry.toUpperCase(Locale.US);
+//                if (model.getIRTables().containsKey(tableName)) {
+//                    final String triggerName = "TRIGGER_" + tableName;
+//
+//                    final StringBuilder builder = new StringBuilder();
+//                    builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
+//                            "FOR EACH ROW CALL \"" + Updater.class.getName() + "\"");
+//
+//                    final String command = builder.toString();
+//                    dbCtx.execute(command);
+//                }
+//            }
+
+            updater = new Updater(connection, dbCtx, baseTables,
+                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());
+
+
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
@@ -194,12 +202,7 @@ public class DBBenchmark {
                 "  pods_remaining bigint not null " +  ")"
         );
 
-
         model = buildModel(dbCtx, new ArrayList<>(), "testModel");
-
-        baseTables = new ArrayList<>();
-        baseTables.add("POD");
-        baseTables.add("NODE");
     }
 
     @Setup(Level.Invocation)
@@ -210,12 +213,6 @@ public class DBBenchmark {
                 break;
             case "HSQLDB":
                 setupHSQLDB();
-                break;
-            case "DERBY":
-                setupDerby();
-                break;
-            case "POSTGRES":
-                setupPostgres();
                 break;
             default:
                 // code block
@@ -230,33 +227,7 @@ public class DBBenchmark {
         dbCtx.execute("drop table node");
         dbCtx.execute("drop table pod");
         dbCtx.execute("drop table sparecapacity");
-
-        if (db.equals("POSTGRES")) {
-            connection.close();
-        }
         dbCtx.close();
-    }
-
-    /*
-     * Sets up an in-memory Postgres database that we use for all tests.
-     */
-    private void setupPostgres() {
-        try {
-            connection = DriverManager.getConnection("jdbc:pgsql://127.0.0.1:5432/test");
-
-            final Statement statement = connection.createStatement();
-            statement.executeUpdate("drop schema public cascade;");
-            statement.executeUpdate("create schema public;");
-            statement.close();
-
-            dbCtx = using(connection, SQLDialect.POSTGRES);
-            init();
-
-            ViewUpdater.irTables = model.getIRTables();
-            viewUpdater = new PGUpdater(connection, dbCtx, baseTables);
-        } catch (final SQLException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     @Benchmark
@@ -283,7 +254,7 @@ public class DBBenchmark {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        viewUpdater.flushUpdates();
+        updater.flushUpdates();
     }
 
     @Benchmark
@@ -302,7 +273,7 @@ public class DBBenchmark {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        viewUpdater.flushUpdates();
+        updater.flushUpdates();
     }
 
     @CanIgnoreReturnValue

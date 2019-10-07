@@ -220,9 +220,7 @@ public class Model {
         final List<Table<?>> tables = new ArrayList<>();
         for (final Table<?> t : dslMeta.getTables()) {
             // skip if table not on current schema
-            //TODO: clean
-            if (!(t.getSchema().getName().equals(CURRENT_SCHEMA) ||
-                    t.getSchema().getName().toLowerCase(Locale.US).equals("public"))) {
+            if (!(t.getSchema().getName().equals(CURRENT_SCHEMA))) {
                 continue;
             }
             tables.add(t);

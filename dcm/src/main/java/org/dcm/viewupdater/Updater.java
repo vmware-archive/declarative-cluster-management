@@ -3,34 +3,122 @@ package org.dcm.viewupdater;
 import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogRecord;
 import org.dcm.IRTable;
+import org.h2.api.Trigger;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Table;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.*;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+public class Updater implements Trigger, org.hsqldb.Trigger {
 
-public class HSQLUpdater extends ViewUpdater {
-    private static DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
-    private final Connection connection;
-    private static final Map<String, List<LocalDDlogCommand>> RECEIVED_UPDATES = new HashMap<>();
+    private static final Logger LOG = LoggerFactory.getLogger(Updater.class);
+    static final String INTEGER_TYPE = "java.lang.Integer";
+    static final String STRING_TYPE = "java.lang.String";
+    static final String BOOLEAN_TYPE = "java.lang.Boolean";
+    static final String LONG_TYPE = "java.lang.Long";
+
+    private final DDlogUpdater updater;
+    private final Map<String, IRTable> irTables;
+
+    private final List<String> baseTables;
+    protected final DSLContext dbCtx;
+    protected final Connection connection;
+    private String tableName;
+
+    private final Map<String, List<LocalDDlogCommand>> RECEIVED_UPDATES = new HashMap<>();
     private final Map<String, Map<String, PreparedStatement>> preparedQueries = new HashMap<>();
 
-    public HSQLUpdater(final Connection connection, final DSLContext dbCtx, final List<String> baseTables) {
-        super(dbCtx, baseTables);
+    public Updater(final Connection connection, final DSLContext dbCtx,
+                   final List<String> baseTables, final DDlogUpdater updater, final Map<String, IRTable> irTables) {
         this.connection = connection;
+        this.baseTables = baseTables;
+        this.dbCtx = dbCtx;
+        this.irTables = irTables;
+        this.updater = updater;
         createDBTriggers();
     }
 
-    public static void receiveUpdateFromDDlog(final DDlogCommand command) {
+    @Override
+    public void init(final Connection conn, final String schemaName,
+                     final String triggerName, final String tableName, final boolean before,
+                     final int type) throws SQLException  {
+        this.tableName = tableName;
+    }
+
+    DDlogRecord toDDlogRecord(final String tableName, final Object[] args) {
+        final List<DDlogRecord> records = new ArrayList<>();
+        final IRTable irTable = irTables.get(tableName);
+        final Table<? extends Record> table = irTable.getTable();
+
+        int counter = 0;
+        for (final Field<?> field : table.fields()) {
+            final Class<?> cls = field.getType();
+            switch (cls.getName()) {
+                case BOOLEAN_TYPE:
+                    records.add(new DDlogRecord((Boolean) args[counter]));
+                    break;
+                case INTEGER_TYPE:
+                    records.add(new DDlogRecord((Integer) args[counter]));
+                    break;
+                case LONG_TYPE:
+                    records.add(new DDlogRecord((Long) args[counter]));
+                    break;
+                case STRING_TYPE:
+                    records.add(new DDlogRecord(args[counter].toString().trim()));
+                    break;
+                default:
+                    throw new RuntimeException("Unexpected datatype: " + cls.getName());
+            }
+            counter = counter + 1;
+        }
+        DDlogRecord[] recordsArray = new DDlogRecord[records.size()];
+        recordsArray = records.toArray(recordsArray);
+        return DDlogRecord.makeStruct(tableName, recordsArray);
+    }
+
+
+    @Override
+    public void fire(final Connection conn, final Object[] old, final Object[] newRow) throws SQLException {
+        final DDlogRecord ddlogRecord = toDDlogRecord(tableName, newRow);
+        updater.updateAndHold(ddlogRecord);
+    }
+
+    @Override
+    public void close() throws SQLException {
+
+    }
+
+    @Override
+    public void remove() throws SQLException {
+
+    }
+
+    @Override
+    public void fire(final int type, final String trigName,
+                     final String tabName, final Object[] oldRow, final Object[] newRow) {
+        final DDlogRecord ddlogRecord = toDDlogRecord(tabName, newRow);
+        updater.updateAndHold(ddlogRecord);
+    }
+
+    class LocalDDlogCommand {
+        private String command;
+        List values;
+
+        LocalDDlogCommand(final String command) {
+            this.command = command;
+            this.values = new ArrayList();
+        }
+
+    }
+
+    public void receiveUpdateFromDDlog(final DDlogCommand command) {
         final DDlogRecord record = command.value;
         final String dataType = record.getStructName();
         if (irTables.containsKey(dataType)) {
@@ -67,7 +155,7 @@ public class HSQLUpdater extends ViewUpdater {
         }
     }
 
-    public void createDBTriggers() {
+    private void createDBTriggers() {
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
             if (irTables.containsKey(tableName)) {
@@ -75,7 +163,7 @@ public class HSQLUpdater extends ViewUpdater {
 
                 final StringBuilder builder = new StringBuilder();
                 builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
-                        "FOR EACH ROW CALL \"" + HSQLUpdater.InnerHSQLUpdater.class.getName() + "\"");
+                        "FOR EACH ROW CALL \"" + Updater.class.getName() + "\"");
 
                 final String command = builder.toString();
                 dbCtx.execute(command);
@@ -83,17 +171,6 @@ public class HSQLUpdater extends ViewUpdater {
         }
     }
 
-    static class LocalDDlogCommand {
-        private String command;
-        List values;
-
-        LocalDDlogCommand(final String command) {
-            this.command = command;
-            this.values = new ArrayList();
-        }
-    }
-
-    @Override
     public void flushUpdates() {
         updater.sendUpdatesToDDlog();
 
@@ -140,7 +217,6 @@ public class HSQLUpdater extends ViewUpdater {
         }
     }
 
-
     private void updatePreparedQueries(final String tableName, final LocalDDlogCommand command) {
         final String commandKind = command.command;
         if (!preparedQueries.containsKey(tableName)) {
@@ -148,7 +224,6 @@ public class HSQLUpdater extends ViewUpdater {
         }
         if (!preparedQueries.get(tableName).containsKey(commandKind)) {
             // make prepared statement here
-            @SuppressWarnings("SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING")
             final String preparedQuery = generatePreparedQueryString(tableName, String.valueOf(command.command));
             try {
                 preparedQueries.get(tableName).put(commandKind, connection.prepareStatement(preparedQuery));
@@ -181,47 +256,5 @@ public class HSQLUpdater extends ViewUpdater {
         }
         stringBuilder.append("\n)");
         return stringBuilder.toString();
-    }
-
-    public static class InnerHSQLUpdater implements org.hsqldb.Trigger {
-        final Map<String, IRTable> IR_TABLES = HSQLUpdater.irTables;
-
-        @Override
-        public void fire(final int type, final String trigName,
-                         final String tabName, final Object[] oldRow, final Object[] newRow) {
-            final DDlogRecord ddlogRecord = toDDlogRecord(tabName, newRow);
-            updater.updateAndHold(ddlogRecord);
-        }
-
-        DDlogRecord toDDlogRecord(final String tableName, final Object[] args) {
-            final List<DDlogRecord> records = new ArrayList<>();
-            final IRTable irTable = IR_TABLES.get(tableName);
-            final Table<? extends Record> table = irTable.getTable();
-
-            int counter = 0;
-            for (final Field<?> field : table.fields()) {
-                final Class<?> cls = field.getType();
-                switch (cls.getName()) {
-                    case BOOLEAN_TYPE:
-                        records.add(new DDlogRecord((Boolean) args[counter]));
-                        break;
-                    case INTEGER_TYPE:
-                        records.add(new DDlogRecord((Integer) args[counter]));
-                        break;
-                    case LONG_TYPE:
-                        records.add(new DDlogRecord((Long) args[counter]));
-                        break;
-                    case STRING_TYPE:
-                        records.add(new DDlogRecord(args[counter].toString().trim()));
-                        break;
-                    default:
-                        throw new RuntimeException("Unexpected datatype: " + cls.getName());
-                }
-                counter = counter + 1;
-            }
-            DDlogRecord[] recordsArray = new DDlogRecord[records.size()];
-            recordsArray = records.toArray(recordsArray);
-            return DDlogRecord.makeStruct(tableName, recordsArray);
-        }
     }
 }

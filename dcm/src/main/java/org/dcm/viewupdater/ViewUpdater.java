@@ -32,7 +32,6 @@ public abstract class ViewUpdater {
         ViewUpdater.irTables = irTables;
     }
 
-    public abstract void createDBTriggers();
 
     public void flushUpdates() {
         UPDATE_QUERIES.forEach(query -> {
