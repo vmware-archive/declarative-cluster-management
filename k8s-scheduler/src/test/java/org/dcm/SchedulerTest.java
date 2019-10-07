@@ -330,8 +330,8 @@ public class SchedulerTest {
         // Now test the solver itself
         final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
 
-        // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
-        // Works when using Minizinc 2.3.2
+        // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
+        // but works when using Minizinc 2.3.2
         final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
@@ -393,10 +393,14 @@ public class SchedulerTest {
 
 
     /*
-     * Tests the pod_node_selector_matches view.
+     * Tests inter-pod affinity behavior
      */
-    @Test
-    public void testPodToPodAffinity() {
+    @ParameterizedTest
+    @MethodSource("testPodAffinity")
+    public void testPodToPodAffinity(final List<V1PodAffinityTerm> terms, final Map<String, String> podLabelsInput,
+                                     final boolean shouldBeAffineToLabelledPods,
+                                     final boolean shouldBeAffineToRemainingPods,
+                                     final boolean cannotBePlacedAnywhere) {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
@@ -409,19 +413,21 @@ public class SchedulerTest {
         // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
         // node selector
         final Set<String> podsToAssign = ThreadLocalRandom.current().ints(numPodsToModify, 0, numPods)
-                .mapToObj(i -> "p" + i)
-                .collect(Collectors.toSet());
+                                                .mapToObj(i -> "p" + i)
+                                                .collect(Collectors.toSet());
 
+        // If we only get one pod in podsToAssign, then that will be the only labelled pod. In cases of affinity
+        // requirements, that means that that pod will not have any candidate nodes to be placed on.
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
             final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
             if (podsToAssign.contains(podName)) {
-                final V1PodAffinityTerm podAffinityTerm = term("kubernetes.io/hostname",
-                                                               podExpr("k1", "In", "v1"));
                 final V1PodAffinity podAffinity = new V1PodAffinity();
-                podAffinity.addRequiredDuringSchedulingIgnoredDuringExecutionItem(podAffinityTerm);
-                pod.getMetadata().setLabels(map("k1", "v1"));
+                terms.forEach(podAffinity::addRequiredDuringSchedulingIgnoredDuringExecutionItem);
+                pod.getMetadata().setLabels(podLabelsInput);
                 pod.getSpec().getAffinity().setPodAffinity(podAffinity);
+            } else {
+                pod.getMetadata().setLabels(Collections.singletonMap("dummyKey", "dummyValue"));
             }
             handler.onAdd(pod);
         }
@@ -432,6 +438,89 @@ public class SchedulerTest {
             final String nodeName = "n" + i;
             nodeResourceEventHandler.onAdd(addNode(nodeName, Collections.emptyMap(), Collections.emptyList()));
         }
+
+        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.podAffinityPredicate());
+        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        if (cannotBePlacedAnywhere) {
+            assertThrows(ModelException.class, scheduler::runOneLoop);
+        } else {
+            final Result<? extends Record> result = scheduler.runOneLoop();
+            for (final Record record: result) {
+                final String podName = record.getValue("POD_NAME", String.class);
+                final String assignedNode = record.getValue("CONTROLLABLE__NODE_NAME", String.class);
+                final Set<String> nodesAssignedToPodsWithAffinityRequirements = result.stream()
+                        .filter(e -> podsToAssign.contains(e.getValue("POD_NAME", String.class)))
+                        .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
+                        .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                        .collect(Collectors.toSet());
+                final Set<String> nodesAssignedToPodsWithoutAffinityRequirements = result.stream()
+                        .filter(e -> !podsToAssign.contains(e.getValue("POD_NAME", String.class)))
+                        .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
+                        .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                        .collect(Collectors.toSet());
+                if (podsToAssign.contains(podName) && shouldBeAffineToLabelledPods && shouldBeAffineToRemainingPods) {
+                    assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode) ||
+                               nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                } else if (podsToAssign.contains(podName) && shouldBeAffineToLabelledPods) {
+                    assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
+                } else if (podsToAssign.contains(podName) && shouldBeAffineToRemainingPods) {
+                    assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("UnusedMethod")
+    private static Stream testPodAffinity() {
+        final String topologyKey = "kubernetes.io/hostname";
+        final List<V1PodAffinityTerm> inTerm = List.of(term(topologyKey,
+                                                       podExpr("k1", "In", "l1", "l2")));
+        final List<V1PodAffinityTerm> existsTerm = List.of(term(topologyKey,
+                                                                podExpr("k1", "Exists", "l1", "l2")));
+        final List<V1PodAffinityTerm> notInTerm = List.of(term(topologyKey,
+                                                          podExpr("k1", "NotIn", "l1", "l2")));
+        final List<V1PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
+                                                                   podExpr("k1", "DoesNotExist", "l1", "l2")));
+        return Stream.of(
+                // First, we test to see if all our operators work on their own
+
+                // In
+                Arguments.of(inTerm, map("k1", "l1"), true, false, false),
+                Arguments.of(inTerm, map("k1", "l2"), true, false, false),
+                Arguments.of(inTerm, map("k1", "l3"), false, false, true),
+                Arguments.of(inTerm, map("k", "l", "k1", "l1"), true, false, false),
+                Arguments.of(inTerm, map("k", "l", "k1", "l2"), true, false, false),
+                Arguments.of(inTerm, map("k", "l", "k1", "l3"), false, false, true),
+
+                // Exists
+                Arguments.of(existsTerm, map("k1", "l1"), true, false, false),
+                Arguments.of(existsTerm, map("k1", "l2"), true, false, false),
+                Arguments.of(existsTerm, map("k1", "l3"), true, false, false),
+                Arguments.of(existsTerm, map("k2", "l3"), false, false, true),
+                Arguments.of(existsTerm, map("k2", "l1"), false, false, true),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l1"), true, false, false),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l2"), true, false, false),
+                Arguments.of(existsTerm, map("k", "l", "k1", "l3"), true, false, false),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l1"), false, false, true),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l2"), false, false, true),
+                Arguments.of(existsTerm, map("k", "l", "k2", "l3"), false, false, true),
+
+                // NotIn
+                Arguments.of(notInTerm, map("k1", "l1"), false, true, false),
+                Arguments.of(notInTerm, map("k1", "l2"), false, true, false),
+                Arguments.of(notInTerm, map("k1", "l3"), true, true, false),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l1"), false, true, false),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l2"), false, true, false),
+                Arguments.of(notInTerm, map("k", "l", "k1", "l3"), true, true, false),
+
+                // DoesNotExist
+                Arguments.of(notExistsTerm, map("k1", "l1"), false, true, false),
+                Arguments.of(notExistsTerm, map("k1", "l2"), false, true, false),
+                Arguments.of(notExistsTerm, map("k1", "l3"), false, true, false),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
+                Arguments.of(notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
+        );
     }
 
 
@@ -460,8 +549,7 @@ public class SchedulerTest {
         return requirement;
     }
 
-    private static V1PodAffinityTerm term(final String topologyKey,
-                                          final V1LabelSelectorRequirement... requirements) {
+    private static V1PodAffinityTerm term(final String topologyKey, final V1LabelSelectorRequirement... requirements) {
         final V1LabelSelector labelSelector = new V1LabelSelectorBuilder()
                 .withMatchExpressions(requirements)
                 .build();

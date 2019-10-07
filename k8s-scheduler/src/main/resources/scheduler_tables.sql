@@ -267,7 +267,8 @@ create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_na
 create index node_labels_idx on node_labels (label_key, label_value);
 
 -- Inter pod affinity
-create view inter_pod_affinity_matches as
+-- TODO: follow what the default scheduler does w.r.t allowing the first pod of a series of pods that are affine to themselves to go through
+create view inter_pod_affinity_matches_inner as
 select pods_to_assign.pod_name as pod_name,
        pod_labels.pod_name as matches,
        pod_info.node_name as node_name
@@ -284,7 +285,6 @@ join pod_labels
         or (pod_affinity_match_expressions.label_operator = 'DoesNotExist')
 join pod_info
         on pod_labels.pod_name = pod_info.pod_name
-        and pods_to_assign.pod_name != pod_info.pod_name
 group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_affinity_match_expressions.label_selector,
          pod_affinity_match_expressions.topology_key, pod_affinity_match_expressions.label_operator,
          pod_affinity_match_expressions.num_match_expressions, pod_info.node_name
@@ -296,6 +296,9 @@ having case pod_affinity_match_expressions.label_operator
                   then not(any(pod_affinity_match_expressions.label_key = pod_labels.label_key))
              else count(distinct match_expression) = pod_affinity_match_expressions.num_match_expressions
        end;
+
+create view inter_pod_affinity_matches as
+select *, count(*) over (partition by pod_name) as num_matches from inter_pod_affinity_matches_inner;
 
 create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_name);
 create index pod_labels_idx on pod_labels (label_key, label_value);

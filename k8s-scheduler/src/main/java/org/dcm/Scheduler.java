@@ -53,8 +53,9 @@ public final class Scheduler {
     private final Model model;
     @Nullable private Disposable subscription;
     private final List<Table<?>> relevantTables = Lists.newArrayList(Tables.PODS_TO_ASSIGN,
-                                                                    Tables.POD_NODE_SELECTOR_MATCHES,
-                                                                    Tables.NODE_INFO);
+                                                                     Tables.POD_NODE_SELECTOR_MATCHES,
+                                                                     Tables.NODE_INFO,
+                                                                     Tables.INTER_POD_AFFINITY_MATCHES);
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
