@@ -17,6 +17,7 @@ public class DDlogUpdater {
 
     private DDlogAPI API;
     private static Map<String, Integer> tableIDMap = new HashMap<>();
+    final ArrayList<DDlogCommand> commands = new ArrayList<>();
 
     private static final String INTEGER_TYPE = "java.lang.Integer";
     private static final String BOOLEAN_TYPE = "java.lang.Boolean";
@@ -91,6 +92,7 @@ public class DDlogUpdater {
         return null;
     }
 
+
     public void update(final DDlogRecord ddlogRecord) {
         final String relation = ddlogRecord.getStructName();
         int id;
@@ -109,6 +111,28 @@ public class DDlogUpdater {
         checkDDlogExitCode(API.applyUpdates(ca));
         checkDDlogExitCode(API.commit());
     }
+
+    public void updateAndHold(final DDlogRecord ddlogRecord) {
+        final String relation = ddlogRecord.getStructName();
+        int id;
+        if (tableIDMap.containsKey(relation)) {
+            id = tableIDMap.get(relation);
+        }
+        else  {
+            id = API.getTableId(relation);
+            tableIDMap.put(relation, id);
+        }
+        commands.add(new DDlogCommand(DDlogCommand.Kind.Insert, id, ddlogRecord));
+    }
+
+    public void sendUpdatesToDDlog() {
+        final DDlogCommand [] ca = commands.toArray(new DDlogCommand[commands.size()]);
+        checkDDlogExitCode(API.start());
+        checkDDlogExitCode(API.applyUpdates(ca));
+        checkDDlogExitCode(API.commit());
+        commands.clear();
+    }
+
 
     public void checkDDlogExitCode(final int exitCode) {
         if (exitCode < 0) {

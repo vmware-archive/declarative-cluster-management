@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Locale;
 
 public class PGUpdater extends ViewUpdater {
-    private static DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
+    private DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
 
     public PGUpdater(final Connection connection, final DSLContext dbCtx, final List<String> baseTables) {
         super(dbCtx, baseTables);
@@ -40,7 +40,7 @@ public class PGUpdater extends ViewUpdater {
         }
     }
 
-    private static void receiveUpdateFromDDlog(final DDlogCommand command) {
+    private void receiveUpdateFromDDlog(final DDlogCommand command) {
         final String update = updater.receiveUpdateFromDDlog(irTables, command);
         if (update != null) {
             UPDATE_QUERIES.add(update);
@@ -66,7 +66,7 @@ public class PGUpdater extends ViewUpdater {
         }
     }
 
-    public static class Listener implements PGNotificationListener {
+    public class Listener implements PGNotificationListener {
             @Override
             public void notification(final int processId, final String channelName, final String payload) {
                 if (payload.length() > 0) {
@@ -75,7 +75,7 @@ public class PGUpdater extends ViewUpdater {
                 }
         }
 
-        private static DDlogRecord toDDlogRecord(final String tableName, final String jsonText) {
+        private DDlogRecord toDDlogRecord(final String tableName, final String jsonText) {
             final List<DDlogRecord> records = new ArrayList<>();
             final IRTable irTable = irTables.get(tableName);
             final Table<? extends Record> table = irTable.getTable();

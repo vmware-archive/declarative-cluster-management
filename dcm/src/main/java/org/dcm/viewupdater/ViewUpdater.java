@@ -16,7 +16,7 @@ public abstract class ViewUpdater {
     protected final DSLContext dbCtx;
 
     static final List<String> UPDATE_QUERIES = new ArrayList<>();
-    public static Map<String, IRTable> irTables = new HashMap<>();
+    static Map<String, IRTable> irTables = new HashMap<>();
 
     static final String INTEGER_TYPE = "java.lang.Integer";
     static final String STRING_TYPE = "java.lang.String";
@@ -36,7 +36,7 @@ public abstract class ViewUpdater {
 
     public void flushUpdates() {
         UPDATE_QUERIES.forEach(query -> {
-            LOG.info("Query: " + query);
+            LOG.info("Query: {}", query);
             dbCtx.execute(query);
         });
         UPDATE_QUERIES.clear();

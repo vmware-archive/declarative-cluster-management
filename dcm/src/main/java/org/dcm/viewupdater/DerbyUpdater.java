@@ -8,8 +8,6 @@ import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Table;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +15,6 @@ import java.util.Locale;
 import java.util.Map;
 
 public class DerbyUpdater extends ViewUpdater {
-    private static final Logger LOG = LoggerFactory.getLogger(DerbyUpdater.class);
     private static DDlogUpdater updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r));
 
     public DerbyUpdater(final DSLContext dbCtx, final List<String> baseTables) {
@@ -33,8 +30,10 @@ public class DerbyUpdater extends ViewUpdater {
     }
 
     public static void sendUpdateToDDlog(final String... args) {
-        final DDlogRecord ddlogRecord  = toDDlogRecord(args);
-        updater.update(ddlogRecord);
+        if (args.length > 1) {
+            final DDlogRecord ddlogRecord  = toDDlogRecord(args);
+            updater.update(ddlogRecord);
+        }
     }
 
     private static DDlogRecord toDDlogRecord(final String... args) {
@@ -81,7 +80,7 @@ public class DerbyUpdater extends ViewUpdater {
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
             if (irTables.containsKey(tableName)) {
-            final IRTable irTable = irTables.get(tableName);
+                final IRTable irTable = irTables.get(tableName);
 
                 final String newTableName = "NEW_" + tableName;
                 final String triggerName = "TRIGGER_" + tableName;
@@ -91,15 +90,13 @@ public class DerbyUpdater extends ViewUpdater {
                         "AFTER INSERT ON " + tableName + " " +
                         "REFERENCING NEW AS " + newTableName + " " +
                         "FOR EACH ROW " +
-                        "CALL update_views( " +
-                        "cast(cast('" + tableName + "' as char(38)) as varchar(100))");
-                for (final Map.Entry<String, IRColumn> column: irTable.getIRColumns().entrySet()) {
-                    builder.append(", cast(cast("
-                            + newTableName + "." + column.getKey() + " as char(38)) as varchar(100))");
+                        "CALL update_views( " + "cast(cast('" + tableName + "' as char(38)) as varchar(100))");
+                for (final Map.Entry<String, IRColumn> column : irTable.getIRColumns().entrySet()) {
+                    builder.append(", cast(cast(" + newTableName +
+                            "." + column.getKey() + " as char(38)) as varchar(100))");
                 }
                 builder.append(")");
                 final String command = builder.toString();
-                LOG.info("Trigger: {}", command);
                 dbCtx.execute(command);
             }
         }

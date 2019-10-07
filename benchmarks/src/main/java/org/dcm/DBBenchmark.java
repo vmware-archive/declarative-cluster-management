@@ -28,12 +28,12 @@ import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
-import org.openjdk.jmh.runner.options.TimeValue;
 
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -47,6 +47,7 @@ import static org.jooq.impl.DSL.using;
 public class DBBenchmark {
 
     private DSLContext dbCtx;
+    private Connection connection;
     private ViewUpdater viewUpdater;
     private Model model;
     private List<String> baseTables;
@@ -54,18 +55,19 @@ public class DBBenchmark {
     @Param({"100", "1000", "10000", "100000"})
     public int numRecords;
 
-    @Param({"H2", "HQSLDB", "DERBY", "POSTGRES"})
+    @Param({"H2", "HSQLDB", "DERBY", "POSTGRES"})
     public String db;
+
+    private int index = 0;
 
     public static void main(String[] args) throws IOException, RunnerException {
         Options opts = new OptionsBuilder()
                 .include(".*")
-                .warmupIterations(1)
-                .measurementTime(TimeValue.seconds(5))
-                .measurementIterations(1)
-                .mode(Mode.Throughput)
+                .warmupIterations(2)
+                .measurementIterations(5)
+                .mode(Mode.AverageTime)
                 .shouldDoGC(true)
-                .result("profiling-result.csv").resultFormat(ResultFormatType.CSV)
+                .result("profiling-result-using-prepared-stmts.csv").resultFormat(ResultFormatType.CSV)
                 .forks(1)
                 .build();
 
@@ -78,16 +80,15 @@ public class DBBenchmark {
         try {
             // The following block ensures we always drop the database between tests
             try {
-                final String dropUrl = "jdbc:derby:memory:test;drop=true";
+                final String dropUrl = "jdbc:derby:memory:db;drop=true";
                 getConnection(dropUrl, properties);
             } catch (final SQLException e) {
                 // We could not drop a database because it was never created. Move on.
             }
             // Create a fresh database
-            System.out.println("Derby Iteration");
             final String connectionURL = "jdbc:derby:memory:db;create=true";
-            final Connection conn = getConnection(connectionURL, properties);
-            dbCtx = using(conn, SQLDialect.DERBY);
+            connection = getConnection(connectionURL, properties);
+            dbCtx = using(connection, SQLDialect.DERBY);
             dbCtx.execute("create schema curr");
             dbCtx.execute("set schema curr");
 
@@ -109,17 +110,18 @@ public class DBBenchmark {
         try {
             // Create a fresh database
             final String connectionURL = "jdbc:h2:mem:;create=true";
-            final Connection conn = getConnection(connectionURL, properties);
-            final DSLContext using = using(conn, SQLDialect.H2);
+            final Connection connection = getConnection(connectionURL, properties);
+            final DSLContext using = using(connection, SQLDialect.H2);
             using.execute("create schema curr");
             using.execute("set schema curr");
 
-            dbCtx = using(conn, SQLDialect.H2);
+            dbCtx = using(connection, SQLDialect.H2);
 
             init();
 
             ViewUpdater.irTables = model.getIRTables();
             viewUpdater = new H2Updater(dbCtx, baseTables);
+
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
@@ -134,19 +136,21 @@ public class DBBenchmark {
         try {
             // Create a fresh database
             final String connectionURL = "jdbc:hsqldb:mem:db";
-            final Connection conn = getConnection(connectionURL, properties);
-            dbCtx = using(conn, SQLDialect.HSQLDB);
+            connection = getConnection(connectionURL, properties);
+            dbCtx = using(connection, SQLDialect.HSQLDB);
 
             init();
 
             ViewUpdater.irTables = model.getIRTables();
-            viewUpdater = new HSQLUpdater(dbCtx, baseTables);
+            viewUpdater = new HSQLUpdater(connection, dbCtx, baseTables);
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
     private void init() {
+        index += numRecords;
+
         dbCtx.execute("create table NODE\n" +
                 "(\n" +
                 " name varchar(36) not null primary key, "  +
@@ -182,15 +186,16 @@ public class DBBenchmark {
                 " priority integer not null)"
         );
 
-        model = buildModel(dbCtx, new ArrayList<>(), "testModel");
-
-        dbCtx.execute("create table SPARECAPACITY\n" +
+        dbCtx.execute("create table SPARECAPACITY " +
                 "(\n" +
-                "  name varchar(36) not null,\n" +
+                "  name varchar(36) not null, " +
                 "  cpu_remaining bigint not null,  " +
                 "  memory_remaining bigint not null, " +
                 "  pods_remaining bigint not null " +  ")"
         );
+
+
+        model = buildModel(dbCtx, new ArrayList<>(), "testModel");
 
         baseTables = new ArrayList<>();
         baseTables.add("POD");
@@ -218,13 +223,18 @@ public class DBBenchmark {
     }
 
     /*
-     * Tears down up an in-memory HSQLDB database.
+     * Tears down connection to db.
      */
     @TearDown(Level.Invocation)
-    public void teardownHSQLDB() {
+    public void teardown() throws SQLException {
         dbCtx.execute("drop table node");
         dbCtx.execute("drop table pod");
         dbCtx.execute("drop table sparecapacity");
+
+        if (db.equals("POSTGRES")) {
+            connection.close();
+        }
+        dbCtx.close();
     }
 
     /*
@@ -232,19 +242,18 @@ public class DBBenchmark {
      */
     private void setupPostgres() {
         try {
-            final Connection conn = DriverManager.getConnection("jdbc:pgsql://127.0.0.1:5432/test");
+            connection = DriverManager.getConnection("jdbc:pgsql://127.0.0.1:5432/test");
 
-            final Statement statement = conn.createStatement();
+            final Statement statement = connection.createStatement();
             statement.executeUpdate("drop schema public cascade;");
             statement.executeUpdate("create schema public;");
             statement.close();
 
-            dbCtx = using(conn, SQLDialect.POSTGRES);
+            dbCtx = using(connection, SQLDialect.POSTGRES);
             init();
 
             ViewUpdater.irTables = model.getIRTables();
-            viewUpdater = new PGUpdater(conn, dbCtx, baseTables);
-
+            viewUpdater = new PGUpdater(connection, dbCtx, baseTables);
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
@@ -252,11 +261,46 @@ public class DBBenchmark {
 
     @Benchmark
     public void insertRecords() {
-        for (int i = 0; i < numRecords; i++) {
-            dbCtx.execute("insert into node values('node" + i + "', false, false, false, false, " +
-                    "false, false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)");
-            dbCtx.execute("insert into pod values('pod" + i + "', 'scheduled', " +
-                    "'node" + i + "', 'default', 1, 1, 1, 1, 'owner', 'owner', 1)");
+
+        try {
+        final PreparedStatement nodeStmt = connection.prepareStatement(
+                "insert into node values(?, false, false, false, false, " +
+                        "false, false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)");
+        final PreparedStatement podStmt = connection.prepareStatement(
+                "insert into pod values(?, 'scheduled', ?, 'default', 1, 1, 1, 1, 'owner', 'owner', 1)");
+
+        for (int i = index; i < (numRecords + index); i++) {
+            final String node = "node" + i;
+            final String pod = "pod" + i;
+            nodeStmt.setString(1, node);
+
+            podStmt.setString(1, pod);
+            podStmt.setString(2, node);
+
+            nodeStmt.executeUpdate();
+            podStmt.executeUpdate();
+        }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        viewUpdater.flushUpdates();
+    }
+
+    @Benchmark
+    public void insertRecordsWithNoTriggers() {
+        final int largeNumber = 50000;
+        final int start = index + largeNumber;
+        final int end = (start + numRecords * 2);
+        final String insertStatement = "insert into node values(?, false, false," +
+                " false, false, false, false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)";
+        try {
+            final PreparedStatement nodeStmt = connection.prepareStatement(insertStatement);
+            for (int i = start; i < end; i++) {
+                nodeStmt.setString(1, "node" + i);
+                nodeStmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
         viewUpdater.flushUpdates();
     }
