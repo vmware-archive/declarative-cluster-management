@@ -63,14 +63,30 @@ class Policies {
      */
     static Policy podAffinityPredicate() {
         final String constraint = "create view constraint_pod_affinity as " +
-                "select * " +
-                "from pods_to_assign " +
-                "where pods_to_assign.has_node_selector_labels = false or " +
-                "      pods_to_assign.controllable__node_name in " +
-                "         (select node_name " +
-                "          from pod_node_selector_matches " +
-                "          where pods_to_assign.pod_name = pod_node_selector_matches.pod_name)";
-        return new Policy("NodeSelectorPredicate", constraint);
+            "select * " +
+            "from pods_to_assign " +
+            "where pods_to_assign.has_pod_affinity_requirements = false or " +
+
+            // Affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are affine to it
+            // from inter_pod_affinity_matches. We get this latter set of pending pods by joining
+            // inter_pod_affinity_matches with pods_to_assign (inner).
+            "      (pods_to_assign.controllable__node_name in " +
+            "         (select b.controllable__node_name" +
+            "          from pods_to_assign as b" +
+            "          join inter_pod_affinity_matches" +
+            "           on inter_pod_affinity_matches.pod_name = pods_to_assign.pod_name" +
+            "           and inter_pod_affinity_matches.matches = b.pod_name" +
+                        // If the pod is affine only to itself and no others, it can be placed anywhere
+            "           and (num_matches = 1 or inter_pod_affinity_matches.matches != pods_to_assign.pod_name)" +
+            "           and inter_pod_affinity_matches.node_name = 'null'))" + // pending pods
+
+            // Affinity to running pods...
+            "   or pods_to_assign.controllable__node_name in " +
+            "         (select inter_pod_affinity_matches.node_name " +
+            "          from inter_pod_affinity_matches " +
+            "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
+            "          and inter_pod_affinity_matches.node_name != 'null')"; // running pods
+        return new Policy("PodSelectorPredicate", constraint);
     }
 
 
