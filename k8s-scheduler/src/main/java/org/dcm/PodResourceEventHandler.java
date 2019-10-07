@@ -50,7 +50,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
     @Override
     public void onAdd(final V1Pod pod) {
         if (pod.getSpec().getSchedulerName().equals(Scheduler.SCHEDULER_NAME)) {
-            LOG.info("{} pod added!\n", pod.getMetadata().getName());
+            LOG.debug("{} pod added!\n", pod.getMetadata().getName());
             addPod(conn, pod);
             flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); //
         }

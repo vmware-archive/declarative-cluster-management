@@ -53,7 +53,6 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
             LOG.info("Node {} already exists in NODE_INFO table. Ignoring event.", node.getMetadata().getName());
             return;
         }
-        LOG.info("Node to be added {}", node.getMetadata().getName());
         final V1NodeStatus status = node.getStatus();
         final Map<String, Quantity> capacity = status.getCapacity();
         final Map<String, Quantity> allocatable = status.getAllocatable();
@@ -90,7 +89,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
                     throw new IllegalStateException("Unknown condition type " + condition.getType());
             }
         }
-        final int execute = conn.insertInto(Tables.NODE_INFO)
+        conn.insertInto(Tables.NODE_INFO)
                 .values(
                         node.getMetadata().getName(),
                         node.getMetadata().getLabels().containsKey("node-role.kubernetes.io/master"),
@@ -105,7 +104,6 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
                         Utils.convertUnit(allocatable.get("ephemeral-storage"), "ephmeral-storage"),
                         allocatable.get("pods").getNumber()
                 ).execute();
-        LOG.info("Inserted {} record(s) into {} table", execute, Tables.NODE_INFO);
         final Map<String, String> labels = node.getMetadata().getLabels();
         labels.forEach(
                 (k, v) -> conn.insertInto(Tables.NODE_LABELS)

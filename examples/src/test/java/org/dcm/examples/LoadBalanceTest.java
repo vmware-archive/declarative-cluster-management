@@ -21,10 +21,6 @@ public class LoadBalanceTest {
     private static final int NUM_PHYSICAL_MACHINES = 5;
     private static final int NUM_VIRTUAL_MACHINES = 10;
 
-    static {
-        System.getProperties().setProperty("org.jooq.no-logo", "true");
-    }
-
     /*
      * We don't supply any constraints. So the solver will arbitrarily pick a few nodes to assign
      * these VMs to.
