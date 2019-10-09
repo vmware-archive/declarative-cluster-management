@@ -9,6 +9,7 @@ package org.dcm;
 import com.google.common.collect.Sets;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.models.V1Affinity;
+import io.kubernetes.client.models.V1Container;
 import io.kubernetes.client.models.V1LabelSelector;
 import io.kubernetes.client.models.V1LabelSelectorBuilder;
 import io.kubernetes.client.models.V1LabelSelectorRequirement;
@@ -29,6 +30,7 @@ import io.kubernetes.client.models.V1PodAffinityTerm;
 import io.kubernetes.client.models.V1PodAffinityTermBuilder;
 import io.kubernetes.client.models.V1PodSpec;
 import io.kubernetes.client.models.V1PodStatus;
+import io.kubernetes.client.models.V1ResourceRequirements;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
 import org.joda.time.DateTime;
@@ -276,7 +278,8 @@ public class SchedulerTest {
             handler.onAdd(pod);
         }
 
-        // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
+        // Add all nodes, some of which have labels described by nodeLabelsInput,
+        // whereas others have a different set of labels
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
         final Set<String> nodesToAssign = ThreadLocalRandom.current()
                                                          .ints(numNodesToModify, 0, numNodes)
@@ -432,7 +435,7 @@ public class SchedulerTest {
             handler.onAdd(pod);
         }
 
-        // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
+        // Add all nodes
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
@@ -524,6 +527,104 @@ public class SchedulerTest {
     }
 
 
+    /*
+     * Capacity constraints
+     */
+    @ParameterizedTest(name = "{0} => feasible:{6}")
+    @MethodSource("spareCapacityValues")
+    public void testSpareCapacity(final String displayName, final List<Integer> cpuRequests,
+                                  final List<Integer> memoryRequests, final List<Integer> nodeCpuCapacities,
+                                  final List<Integer> nodeMemoryCapacities,
+                                  final Set<String> nodesThatShouldNotHavePods, final boolean feasible) {
+        assertEquals(cpuRequests.size(), memoryRequests.size());
+        assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
+        final DSLContext conn = Scheduler.setupDb();
+        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
+        emitter.subscribe();
+        final int numPods = cpuRequests.size();
+        final int numNodes = nodeCpuCapacities.size();
+
+        // Add pending pods
+        for (int i = 0; i < numPods; i++) {
+            final String podName = "p" + i;
+            final V1Pod pod;
+
+            final Map<String, Quantity> resourceRequests = new HashMap<>();
+            resourceRequests.put("cpu", new Quantity(String.valueOf(cpuRequests.get(i))));
+            resourceRequests.put("memory", new Quantity(String.valueOf(memoryRequests.get(i))));
+            pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+
+            // Assumes that there is only one container
+            pod.getSpec().getContainers().get(0)
+                .getResources()
+                .setRequests(resourceRequests);
+            handler.onAdd(pod);
+        }
+
+        // Add all nodes and one system pod per node
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        for (int i = 0; i < numNodes; i++) {
+            final String nodeName = "n" + i;
+            final V1Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(nodeMemoryCapacities.get(i))));
+            nodeResourceEventHandler.onAdd(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-" + nodeName;
+            final V1Pod pod;
+            final String status = "Running";
+            pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName(nodeName);
+            handler.onAdd(pod);
+        }
+
+        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.capacityConstraint());
+        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        if (feasible) {
+            final Result<? extends Record> result = scheduler.runOneLoop();
+            assertEquals(numNodes, result.size());
+            final Set<String> nodes = result.stream()
+                                            .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                                            .collect(Collectors.toSet());
+            nodes.forEach(e -> assertFalse(nodesThatShouldNotHavePods.contains(e)));
+        } else {
+            assertThrows(ModelException.class, scheduler::runOneLoop);
+        }
+    }
+
+
+    @SuppressWarnings("UnusedMethod")
+    private static Stream spareCapacityValues() {
+        return Stream.of(
+                Arguments.of("One pod per node",
+                             List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
+                             List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
+                             Set.of(), true),
+
+                Arguments.of("p1 cannot be placed",
+                        List.of(10, 11, 10, 10, 10), List.of(10, 10, 10, 10, 10),
+                        List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
+                        Set.of(), false),
+
+                Arguments.of("n2 does not have sufficient CPU capacity and should not host any new pods",
+                        List.of(5, 5, 10, 10, 10), List.of(10, 10, 10, 10, 10),
+                        List.of(10, 10, 1, 10, 10), List.of(20, 20, 20, 20, 20),
+                        Set.of("n2"), true),
+
+                Arguments.of("Only memory requests, and all pods must go to n3",
+                        List.of(0, 0, 0, 0, 0), List.of(10, 10, 10, 10, 10),
+                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 50, 0),
+                        Set.of("n0", "n1", "n2", "n4"), true),
+
+                Arguments.of("No resources requests => pods can go to any node",
+                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0),
+                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0),
+                        Set.of(), true)
+        );
+    }
+
     private static Map<String, String> map(final String k1, final String v1) {
         return Collections.singletonMap(k1, v1);
     }
@@ -585,6 +686,14 @@ public class SchedulerTest {
         spec.setPriority(0);
         spec.nodeSelector(selectorLabels);
 
+        final V1Container container = new V1Container();
+        container.setName("pause");
+
+        final V1ResourceRequirements resourceRequirements = new V1ResourceRequirements();
+        resourceRequirements.setRequests(Collections.emptyMap());
+        container.setResources(resourceRequirements);
+        spec.addContainersItem(container);
+
         final V1Affinity affinity = new V1Affinity();
         final V1NodeAffinity nodeAffinity = new V1NodeAffinity();
         affinity.setNodeAffinity(nodeAffinity);
@@ -602,7 +711,7 @@ public class SchedulerTest {
         final V1Node node = new V1Node();
         final V1NodeStatus status = new V1NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();
-        quantityMap.put("cpu", new Quantity("1000"));
+        quantityMap.put("cpu", new Quantity("10"));
         quantityMap.put("memory", new Quantity("1000"));
         quantityMap.put("ephemeral-storage", new Quantity("1000"));
         quantityMap.put("pods", new Quantity("100"));

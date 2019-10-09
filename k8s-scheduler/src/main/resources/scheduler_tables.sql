@@ -267,7 +267,6 @@ create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_na
 create index node_labels_idx on node_labels (label_key, label_value);
 
 -- Inter pod affinity
--- TODO: follow what the default scheduler does w.r.t allowing the first pod of a series of pods that are affine to themselves to go through
 create view inter_pod_affinity_matches_inner as
 select pods_to_assign.pod_name as pod_name,
        pod_labels.pod_name as matches,
@@ -302,3 +301,16 @@ select *, count(*) over (partition by pod_name) as num_matches from inter_pod_af
 
 create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_name);
 create index pod_labels_idx on pod_labels (label_key, label_value);
+
+
+-- Spare capacity
+create view spare_capacity_per_node as
+select node_info.name as name,
+       cast(node_info.cpu_allocatable - sum(pod_info.cpu_request) as integer) as cpu_remaining,
+       cast(node_info.memory_allocatable - sum(pod_info.memory_request) as integer) as memory_remaining,
+       cast(node_info.pods_allocatable - sum(pod_info.pods_request) as integer) as pods_remaining
+from node_info
+join pod_info
+     on pod_info.node_name = node_info.name and pod_info.node_name != 'null'
+group by node_info.name, node_info.cpu_allocatable,
+         node_info.memory_allocatable, node_info.pods_allocatable;

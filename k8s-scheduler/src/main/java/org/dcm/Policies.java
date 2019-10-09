@@ -90,6 +90,34 @@ class Policies {
     }
 
 
+    /**
+     * Capacity constraint
+     */
+    static Policy capacityConstraint() {
+        // We don't handle outer joins yet, so this policy currently assumes that there is at least one running
+        // pod per node. If not, those nodes will lack a row in the spare_capacity_per_node view. This is fine for
+        // Kubernetes, because there always some system pods running on each node.
+        final String intermediatView = "create view pods_slack_per_node as\n" +
+            "select (spare_capacity_per_node.cpu_remaining - sum(pods_to_assign.cpu_request)) as cpu_slack," +
+            "  (spare_capacity_per_node.memory_remaining - sum(pods_to_assign.memory_request)) as memory_slack," +
+            "  (spare_capacity_per_node.pods_remaining - sum(pods_to_assign.pods_request)) as pods_slack\n" +
+            "from spare_capacity_per_node\n" +
+            "join pods_to_assign\n" +
+            "     on pods_to_assign.controllable__node_name = spare_capacity_per_node.name\n" +
+            "group by spare_capacity_per_node.name, spare_capacity_per_node.cpu_remaining, " +
+            "         spare_capacity_per_node.memory_remaining, spare_capacity_per_node.pods_remaining";
+        final String capacityConstraint = "\n" +
+                "create view constraint_capacity as\n" +
+                "select * from pods_slack_per_node\n" +
+                "where cpu_slack >= 0\n" +
+                "  and memory_slack >= 0\n" +
+                "  and pods_slack >= 0";
+        return new Policy("CapacityConstraint", List.of(intermediatView, capacityConstraint));
+    }
+
+
+
+
     static List<String> getAllPolicies() {
         return from(ALL_POLICIES);
     }

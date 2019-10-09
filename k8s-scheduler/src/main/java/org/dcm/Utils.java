@@ -19,11 +19,11 @@ class Utils {
                                           final String resourceName) {
         return resourceRequirements.stream().mapToDouble(e -> {
             if (e.getRequests() == null) {
-                return 1L;
+                return 0L;
             }
             final Quantity resourceQuantity = e.getRequests().get(resourceName);
             if (resourceQuantity == null) {
-                return 1L;
+                return 0L;
             }
             return convertUnit(resourceQuantity, resourceName);
         }).sum();
