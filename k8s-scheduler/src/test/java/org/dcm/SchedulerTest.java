@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -535,7 +536,8 @@ public class SchedulerTest {
     public void testSpareCapacity(final String displayName, final List<Integer> cpuRequests,
                                   final List<Integer> memoryRequests, final List<Integer> nodeCpuCapacities,
                                   final List<Integer> nodeMemoryCapacities,
-                                  final Set<String> nodesThatShouldNotHavePods, final boolean feasible) {
+                                  final boolean useHardConstraint, final boolean useSoftConstraint,
+                                  final Predicate<List<String>> assertOn, final boolean feasible) {
         assertEquals(cpuRequests.size(), memoryRequests.size());
         assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
         final DSLContext conn = Scheduler.setupDb();
@@ -553,6 +555,7 @@ public class SchedulerTest {
             final Map<String, Quantity> resourceRequests = new HashMap<>();
             resourceRequests.put("cpu", new Quantity(String.valueOf(cpuRequests.get(i))));
             resourceRequests.put("memory", new Quantity(String.valueOf(memoryRequests.get(i))));
+            resourceRequests.put("pods", new Quantity("1"));
             pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
 
             // Assumes that there is only one container
@@ -580,15 +583,16 @@ public class SchedulerTest {
             handler.onAdd(pod);
         }
 
-        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.capacityConstraint());
+        final List<String> policies = Policies.from(Policies.nodePredicates(),
+                                                    Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
         final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numNodes, result.size());
-            final Set<String> nodes = result.stream()
+            final List<String> nodes = result.stream()
                                             .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                                            .collect(Collectors.toSet());
-            nodes.forEach(e -> assertFalse(nodesThatShouldNotHavePods.contains(e)));
+                                            .collect(Collectors.toList());
+            assertTrue(assertOn.test(nodes));
         } else {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         }
@@ -597,31 +601,39 @@ public class SchedulerTest {
 
     @SuppressWarnings("UnusedMethod")
     private static Stream spareCapacityValues() {
+        final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
+        final Predicate<List<String>> n2MustNotBeAssignedNewPods = nodes -> !nodes.contains("n2");
+        final Predicate<List<String>> onlyN3MustBeAssignedNewPods = nodes -> Set.of("n3").equals(Set.copyOf(nodes));
         return Stream.of(
                 Arguments.of("One pod per node",
                              List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
-                             List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
-                             Set.of(), true),
+                             List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
+                             onePodPerNode, true),
 
                 Arguments.of("p1 cannot be placed",
                         List.of(10, 11, 10, 10, 10), List.of(10, 10, 10, 10, 10),
-                        List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
-                        Set.of(), false),
+                        List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
+                        onePodPerNode, false),
 
                 Arguments.of("n2 does not have sufficient CPU capacity and should not host any new pods",
                         List.of(5, 5, 10, 10, 10), List.of(10, 10, 10, 10, 10),
-                        List.of(10, 10, 1, 10, 10), List.of(20, 20, 20, 20, 20),
-                        Set.of("n2"), true),
+                        List.of(10, 10, 1, 10, 10), List.of(20, 20, 20, 20, 20), true, false,
+                        n2MustNotBeAssignedNewPods, true),
 
                 Arguments.of("Only memory requests, and all pods must go to n3",
                         List.of(0, 0, 0, 0, 0), List.of(10, 10, 10, 10, 10),
-                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 50, 0),
-                        Set.of("n0", "n1", "n2", "n4"), true),
+                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 50, 0), true, false,
+                        onlyN3MustBeAssignedNewPods, true),
 
-                Arguments.of("No resources requests => pods can go to any node",
+                Arguments.of("No resource requests: pods will be spread out by soft constraint (no hard constraint)",
                         List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0),
+                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0), false, true,
+                        onePodPerNode, true),
+
+                Arguments.of("No resource requests: pods will be spread out by soft constraint (with hard constraint)",
                         List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0),
-                        Set.of(), true)
+                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0), true, true,
+                        onePodPerNode, true)
         );
     }
 
