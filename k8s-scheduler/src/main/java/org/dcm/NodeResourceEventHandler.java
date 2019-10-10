@@ -92,7 +92,6 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
         conn.insertInto(Tables.NODE_INFO)
                 .values(
                         node.getMetadata().getName(),
-                        node.getMetadata().getLabels().containsKey("node-role.kubernetes.io/master"),
                         getUnschedulable, outOfDisk, memoryPressure, diskPressure,
                         pidPressure, ready, networkUnavailable,
                         capacity.get("cpu").getNumber().multiply(new BigDecimal(1000)), // convert to milli-CPU
@@ -138,6 +137,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
             return;
         }
         for (final V1Taint taint: node.getSpec().getTaints()) {
+            System.out.println(taint);
             conn.insertInto(Tables.NODE_TAINTS)
                     .values(node.getMetadata().getName(),
                             taint.getKey(),

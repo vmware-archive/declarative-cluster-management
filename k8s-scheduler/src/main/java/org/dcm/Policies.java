@@ -93,9 +93,8 @@ class Policies {
         return new Policy("PodSelectorPredicate", constraint);
     }
 
-
     /**
-     * Capacity constraint over CPU, memory and the number of pods
+     * Hard and soft capacity constraints over CPU, memory and the number of pods
      */
     static Policy capacityConstraint(final boolean withHardConstraint, final boolean withSoftConstraint) {
         Preconditions.checkArgument(withHardConstraint || withSoftConstraint);
@@ -136,6 +135,22 @@ class Policies {
             views.add(capacityPodsSoftConstraint);
         }
         return new Policy("CapacityConstraint", views);
+    }
+
+
+    /**
+     * Node taints and tolerations
+     */
+    static Policy taintsAndTolerations() {
+        final String constraint = "create view constraint_node_taints as " +
+                "select * " +
+                "from pods_to_assign " +
+                "join nodes_that_have_tolerations" +
+                "    on pods_to_assign.controllable__node_name = nodes_that_have_tolerations.node_name " +
+                "where exists(select * from pods_that_tolerate_node_taints as A " +
+                "              where A.pod_name = pods_to_assign.pod_name" +
+                "                and A.node_name = pods_to_assign.controllable__node_name) = true";
+        return new Policy("NodeTaintsPredicate", constraint);
     }
 
     static List<String> getAllPolicies() {

@@ -31,6 +31,8 @@ import io.kubernetes.client.models.V1PodAffinityTermBuilder;
 import io.kubernetes.client.models.V1PodSpec;
 import io.kubernetes.client.models.V1PodStatus;
 import io.kubernetes.client.models.V1ResourceRequirements;
+import io.kubernetes.client.models.V1Taint;
+import io.kubernetes.client.models.V1Toleration;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
 import org.joda.time.DateTime;
@@ -588,7 +590,7 @@ public class SchedulerTest {
         final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
-            assertEquals(numNodes, result.size());
+            assertEquals(numPods, result.size());
             final List<String> nodes = result.stream()
                                             .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
                                             .collect(Collectors.toList());
@@ -635,6 +637,153 @@ public class SchedulerTest {
                         List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0), true, true,
                         onePodPerNode, true)
         );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("testTaintsAndTolerationsValues")
+    public void testTaintsAndTolerations(final String displayName, final List<List<V1Toleration>> tolerations,
+                                         final List<List<V1Taint>> taints, final Predicate<List<String>> assertOn,
+                                         final boolean feasible) {
+        final DSLContext conn = Scheduler.setupDb();
+        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
+        emitter.subscribe();
+
+        final int numPods = tolerations.size();
+        final int numNodes = taints.size();
+
+        // If we only get one pod in podsToAssign, then that will be the only labelled pod. In cases of affinity
+        // requirements, that means that that pod will not have any candidate nodes to be placed on.
+        for (int i = 0; i < numPods; i++) {
+            final String podName = "p" + i;
+            final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setTolerations(tolerations.get(i));
+            handler.onAdd(pod);
+        }
+
+        // Add all nodes
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        for (int i = 0; i < numNodes; i++) {
+            final String nodeName = "n" + i;
+            final V1Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            node.getSpec().setTaints(taints.get(i));
+            nodeResourceEventHandler.onAdd(node);
+        }
+        final List<String> policies = Policies.from(Policies.nodePredicates(),
+                                                    Policies.taintsAndTolerations());
+        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+
+        if (feasible) {
+            final Result<? extends Record> result = scheduler.runOneLoop();
+            assertEquals(numPods, result.size());
+            final List<String> nodes = result.stream()
+                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                    .collect(Collectors.toList());
+            assertTrue(assertOn.test(nodes));
+        } else {
+            assertThrows(ModelException.class, scheduler::runOneLoop);
+        }
+    }
+
+
+    @SuppressWarnings("UnusedMethod")
+    private static Stream testTaintsAndTolerationsValues() {
+        final V1Toleration tolerateK1EqualsV1 = new V1Toleration();
+        tolerateK1EqualsV1.setKey("k1");
+        tolerateK1EqualsV1.setOperator("Equal");
+        tolerateK1EqualsV1.setValue("v1");
+        tolerateK1EqualsV1.setEffect("NoSchedule");
+
+        final V1Toleration tolerateK2Exists = new V1Toleration();
+        tolerateK2Exists.setKey("k2");
+        tolerateK2Exists.setOperator("Exists");
+        tolerateK2Exists.setEffect("NoSchedule");
+
+        final V1Toleration tolerateK1Exists = new V1Toleration();
+        tolerateK1Exists.setKey("k1");
+        tolerateK1Exists.setOperator("Exists");
+        tolerateK1Exists.setEffect("NoSchedule");
+
+        final V1Toleration tolerateK1ExistsNoExecute = new V1Toleration();
+        tolerateK1ExistsNoExecute.setKey("k1");
+        tolerateK1ExistsNoExecute.setOperator("Exists");
+        tolerateK1ExistsNoExecute.setEffect("NoExecute");
+
+        final V1Taint taintK1V1 = new V1Taint();
+        taintK1V1.setKey("k1");
+        taintK1V1.setValue("v1");
+        taintK1V1.setEffect("NoSchedule");
+
+        final V1Taint taintK1V1NoExecute = new V1Taint();
+        taintK1V1NoExecute.setKey("k1");
+        taintK1V1NoExecute.setValue("v1");
+        taintK1V1NoExecute.setEffect("NoExecute");
+
+        final V1Taint taintK1V2 = new V1Taint();
+        taintK1V2.setKey("k1");
+        taintK1V2.setValue("v2");
+        taintK1V2.setEffect("NoSchedule");
+
+        final V1Taint taintK2V4 = new V1Taint();
+        taintK2V4.setKey("k2");
+        taintK2V4.setValue("v4");
+        taintK2V4.setEffect("NoSchedule");
+
+        final Predicate<List<String>> nodeGoesToN0 = nodes -> nodes.size() == 1 && nodes.get(0).equals("n0");
+        final Predicate<List<String>> p0goesToN1andP1GoesToN0 =
+                nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n0");
+
+        return Stream.of(
+                Arguments.of("toleration k1=v1 matches taint k1:v1",
+                             List.of(List.of(tolerateK1EqualsV1)), List.of(List.of(taintK1V1)),
+                             nodeGoesToN0, true),
+
+                Arguments.of("toleration exists(k1) matches taint k1:v1",
+                        List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK2V4)),
+                        nodeGoesToN0, true),
+
+                Arguments.of("toleration k1=v1 does not match taint k1:v2",
+                        List.of(List.of(tolerateK1EqualsV1)), List.of(List.of(taintK1V2)),
+                        null, false),
+
+                Arguments.of("toleration exists(k1) does not match taint k1:v1",
+                        List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK1V1)),
+                        null, false),
+
+                Arguments.of("toleration k1=v1 does not match taints [k1:v1, k2:v4]",
+                        List.of(List.of(tolerateK1EqualsV1)), List.of(List.of(taintK1V1, taintK2V4)),
+                        null, false),
+
+                Arguments.of("toleration [k1=v1, exists(k2)] matches taints [k1:v1, k1:v2]",
+                        List.of(List.of(tolerateK1EqualsV1, tolerateK2Exists)), List.of(List.of(taintK1V1, taintK2V4)),
+                        nodeGoesToN0, true),
+
+                Arguments.of("toleration [k1=v1, exists(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
+                        List.of(List.of(tolerateK1EqualsV1, tolerateK2Exists)),
+                        List.of(List.of(taintK1V1, taintK1V2, taintK2V4)),
+                        null, false),
+
+                Arguments.of("toleration [exists(k1), exists(k2)] matches taints [k1:v1, k1:v2, k2:v4]",
+                        List.of(List.of(tolerateK1Exists, tolerateK2Exists)),
+                        List.of(List.of(taintK1V1, taintK1V2, taintK2V4)),
+                        nodeGoesToN0, true),
+
+                Arguments.of("toleration [exists(k1), exists_noexec(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
+                        List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)),
+                        List.of(List.of(taintK1V1, taintK1V2, taintK2V4)),
+                        null, false),
+
+                Arguments.of("toleration [exists(k1), exists_noexec(k2)] matches taints [k1:v1]",
+                        List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)), List.of(List.of(taintK1V1)),
+                        nodeGoesToN0, true),
+
+                Arguments.of("Multi node: p0 should go to n1 and p1 to n0.",
+                        List.of(List.of(tolerateK1EqualsV1, tolerateK2Exists),   // pod-0
+                                List.of(tolerateK1ExistsNoExecute)),             // pod-1
+                        List.of(List.of(taintK1V1NoExecute),                     // node-0
+                                List.of(taintK1V1)),                             // node-1
+                        p0goesToN1andP1GoesToN0, true)
+            );
     }
 
     private static Map<String, String> map(final String k1, final String v1) {
@@ -734,6 +883,7 @@ public class SchedulerTest {
         status.setConditions(conditions);
         final V1NodeSpec spec = new V1NodeSpec();
         spec.setUnschedulable(false);
+        spec.setTaints(Collections.emptyList());
         node.setSpec(spec);
         final V1ObjectMeta meta = new V1ObjectMeta();
         meta.setName(nodeName);
