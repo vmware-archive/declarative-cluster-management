@@ -1,7 +1,6 @@
 create table node_info
 (
   name varchar(36) not null primary key,
-  isMaster boolean not null,
   unschedulable boolean not null,
   out_of_disk boolean not null,
   memory_pressure boolean not null,
@@ -164,10 +163,10 @@ create table node_taints
 create table pod_tolerations
 (
   pod_name varchar(100) not null,
-  taint_key varchar(100) not null,
-  taint_value varchar(100) null,
-  taint_effect varchar(100) not null,
-  taint_operator varchar(100) not null,
+  tolerations_key varchar(100) not null,
+  tolerations_value varchar(100) null,
+  tolerations_effect varchar(100) not null,
+  tolerations_operator varchar(100) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
@@ -314,3 +313,21 @@ join pod_info
      on pod_info.node_name = node_info.name and pod_info.node_name != 'null'
 group by node_info.name, node_info.cpu_allocatable,
          node_info.memory_allocatable, node_info.pods_allocatable;
+
+-- Taints and tolerations
+create view pods_that_tolerate_node_taints as
+select pods_to_assign.pod_name as pod_name,
+       A.node_name as node_name
+from pods_to_assign
+join pod_tolerations
+     on pods_to_assign.pod_name = pod_tolerations.pod_name
+join (select *, count(*) over (partition by node_name) as num_taints from node_taints) as A
+     on pod_tolerations.tolerations_key = A.taint_key
+     and pod_tolerations.tolerations_effect = A.taint_effect
+     and (pod_tolerations.tolerations_operator = 'Exists'
+          or pod_tolerations.tolerations_value = A.taint_value)
+group by pod_tolerations.pod_name, A.node_name, A.num_taints
+having count(*) = A.num_taints;
+
+create view nodes_that_have_tolerations as
+select distinct node_name from node_taints;

@@ -56,7 +56,9 @@ public final class Scheduler {
                                                                      Tables.POD_NODE_SELECTOR_MATCHES,
                                                                      Tables.NODE_INFO,
                                                                      Tables.INTER_POD_AFFINITY_MATCHES,
-                                                                     Tables.SPARE_CAPACITY_PER_NODE);
+                                                                     Tables.SPARE_CAPACITY_PER_NODE,
+                                                                     Tables.PODS_THAT_TOLERATE_NODE_TAINTS,
+                                                                     Tables.NODES_THAT_HAVE_TOLERATIONS);
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {

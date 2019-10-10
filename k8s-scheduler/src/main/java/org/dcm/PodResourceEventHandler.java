@@ -84,7 +84,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         updatePodNodeSelectorLabels(pod, conn);
         updatePodLabels(conn, pod);
         // updateVolumeInfoForPod(pod, pvcToPv, conn);
-        updatePodTaints(pod, conn);
+        updatePodTolerations(pod, conn);
         updatePodAffinity(pod, conn);
     }
 
@@ -144,7 +144,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
             podInfoRecord.setHasPodAffinityRequirements(false);
         }
 
-        // We cap the max load to 100 to prevent overflow issues in the solver
+        // We cap the max priority to 100 to prevent overflow issues in the solver
         podInfoRecord.setPriority(Math.min(pod.getSpec().getPriority(), 100));
         podInfoRecord.store(); // upsert
     }
@@ -213,7 +213,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         }
     }
 
-    private void updatePodTaints(final V1Pod pod, final DSLContext conn) {
+    private void updatePodTolerations(final V1Pod pod, final DSLContext conn) {
         if (pod.getSpec().getTolerations() == null) {
             return;
         }
