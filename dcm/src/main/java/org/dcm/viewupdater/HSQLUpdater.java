@@ -107,36 +107,41 @@ public class HSQLUpdater extends ViewUpdater {
                                 !preparedQueries.get(tableName).containsKey(command.command))) {
                     updatePreparedQueries(tableName, command);
                 }
-                try {
-                    final PreparedStatement query = preparedQueries.get(tableName).get(command.command);
+                flush(tableName, command);
+            }
+        }
+        RECEIVED_UPDATES.clear();
+    }
 
-                    final IRTable irTable = irTables.get(tableName);
-                    final Table<? extends Record> table = irTable.getTable();
-                    final Field[] fields = table.fields();
-                    for (int i = 0; i < fields.length; i++) {
-                        final Class fieldClass = fields[i].getType();
-                        final Object item = command.values.get(i);
-                        final int index = i + 1;
-                        switch (fieldClass.getName()) {
-                            case LONG_TYPE:
-                                query.setLong(index, (Long) item);
-                                break;
-                            case INTEGER_TYPE:
-                                query.setInt(index, (Integer) item);
-                                break;
-                            case BOOLEAN_TYPE:
-                                query.setBoolean(index, (Boolean) item);
-                                break;
-                            default:
-                                query.setString(index, (String) item);
-                        }
-                    }
+    private void flush(final String tableName, final LocalDDlogCommand command) {
+        try {
+            final PreparedStatement query = preparedQueries.get(tableName).get(command.command);
 
-                    query.executeUpdate();
-                } catch (final SQLException e) {
-                    throw new RuntimeException(e);
+            final IRTable irTable = irTables.get(tableName);
+            final Table<? extends Record> table = irTable.getTable();
+            final Field[] fields = table.fields();
+            for (int i = 0; i < fields.length; i++) {
+                final Class fieldClass = fields[i].getType();
+                final Object item = command.values.get(i);
+                final int index = i + 1;
+                switch (fieldClass.getName()) {
+                    case LONG_TYPE:
+                        query.setLong(index, (Long) item);
+                        break;
+                    case INTEGER_TYPE:
+                        query.setInt(index, (Integer) item);
+                        break;
+                    case BOOLEAN_TYPE:
+                        query.setBoolean(index, (Boolean) item);
+                        break;
+                    default:
+                        query.setString(index, (String) item);
                 }
             }
+
+            query.executeUpdate();
+        } catch (final SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 

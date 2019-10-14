@@ -7,8 +7,8 @@ package org.dcm;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
-import org.dcm.viewupdater.DDlogUpdater;
-import org.dcm.viewupdater.Updater;
+import org.dcm.viewupdater.HSQLUpdater;
+import org.dcm.viewupdater.ViewUpdater;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 
@@ -43,14 +43,14 @@ public class DBBenchmark {
 
     private DSLContext dbCtx;
     private Connection connection;
-    private Updater updater;
+    private HSQLUpdater updater;
     private Model model;
     private List<String> baseTables;
 
     @Param({"100", "1000", "10000", "100000"})
     public int numRecords;
 
-    @Param({"H2", "HSQLDB"})
+    @Param({"HSQLDB"})
     public String db;
 
     private int index = 0;
@@ -62,7 +62,7 @@ public class DBBenchmark {
                 .measurementIterations(5)
                 .mode(Mode.AverageTime)
                 .shouldDoGC(true)
-                .result("profiling-result-using-prepared-stmts.csv").resultFormat(ResultFormatType.CSV)
+                .result("profiling-result-using-prepared-stmts-all-data-points.csv").resultFormat(ResultFormatType.CSV)
                 .forks(1)
                 .build();
 
@@ -105,9 +105,10 @@ public class DBBenchmark {
 //                }
 //            }
 //
-            updater = new Updater(connection, dbCtx, baseTables,
-                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());
-
+//            updater = new Updater(connection, dbCtx, baseTables,
+//                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());
+            ViewUpdater.setIRTables(model.getIRTables());
+            updater = new HSQLUpdater(connection, dbCtx, baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
@@ -126,6 +127,8 @@ public class DBBenchmark {
             final String connectionURL = "jdbc:hsqldb:mem:db";
             connection = getConnection(connectionURL, properties);
             dbCtx = using(connection, SQLDialect.HSQLDB);
+            dbCtx.execute("create schema curr");
+            dbCtx.execute("set schema curr");
 
             init();
 
@@ -147,9 +150,10 @@ public class DBBenchmark {
 //                }
 //            }
 
-            updater = new Updater(connection, dbCtx, baseTables,
-                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());
-
+            /*updater = new Updater(connection, dbCtx, baseTables,
+                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());*/
+            ViewUpdater.setIRTables(model.getIRTables());
+            updater = new HSQLUpdater(connection, dbCtx, baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
@@ -227,6 +231,7 @@ public class DBBenchmark {
         dbCtx.execute("drop table node");
         dbCtx.execute("drop table pod");
         dbCtx.execute("drop table sparecapacity");
+        dbCtx.execute("drop schema curr");
         dbCtx.close();
     }
 

@@ -3,28 +3,29 @@ package org.dcm.viewupdater;
 import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogRecord;
 import org.dcm.IRTable;
-import org.h2.api.Trigger;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Table;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
-public class Updater implements Trigger, org.hsqldb.Trigger {
+public class Updater implements org.hsqldb.Trigger { //Trigger,
 
-    private static final Logger LOG = LoggerFactory.getLogger(Updater.class);
+//    private static final Logger LOG = LoggerFactory.getLogger(Updater.class);
     static final String INTEGER_TYPE = "java.lang.Integer";
     static final String STRING_TYPE = "java.lang.String";
     static final String BOOLEAN_TYPE = "java.lang.Boolean";
     static final String LONG_TYPE = "java.lang.Long";
 
-    private final DDlogUpdater updater;
+    private DDlogUpdater updater;
     private final Map<String, IRTable> irTables;
 
     private final List<String> baseTables;
@@ -36,6 +37,19 @@ public class Updater implements Trigger, org.hsqldb.Trigger {
     private final Map<String, Map<String, PreparedStatement>> preparedQueries = new HashMap<>();
 
     public Updater(final Connection connection, final DSLContext dbCtx,
+                   final List<String> baseTables, final Map<String, IRTable> irTables) {
+        this.connection = connection;
+        this.baseTables = baseTables;
+        this.dbCtx = dbCtx;
+        this.irTables = irTables;
+        createDBTriggers();
+    }
+
+    public void setUpdater(final DDlogUpdater dDlogUpdater) {
+        this.updater = dDlogUpdater;
+    }
+
+    public Updater(final Connection connection, final DSLContext dbCtx,
                    final List<String> baseTables, final DDlogUpdater updater, final Map<String, IRTable> irTables) {
         this.connection = connection;
         this.baseTables = baseTables;
@@ -45,7 +59,7 @@ public class Updater implements Trigger, org.hsqldb.Trigger {
         createDBTriggers();
     }
 
-    @Override
+//    @Override
     public void init(final Connection conn, final String schemaName,
                      final String triggerName, final String tableName, final boolean before,
                      final int type) throws SQLException  {
@@ -84,18 +98,18 @@ public class Updater implements Trigger, org.hsqldb.Trigger {
     }
 
 
-    @Override
+//    @Override
     public void fire(final Connection conn, final Object[] old, final Object[] newRow) throws SQLException {
         final DDlogRecord ddlogRecord = toDDlogRecord(tableName, newRow);
         updater.updateAndHold(ddlogRecord);
     }
 
-    @Override
+//    @Override
     public void close() throws SQLException {
 
     }
 
-    @Override
+//    @Override
     public void remove() throws SQLException {
 
     }

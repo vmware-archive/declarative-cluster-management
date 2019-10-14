@@ -181,6 +181,9 @@ public class TriggerTest {
 //        final ViewUpdater updater = new DerbyUpdater(dbCtx, baseTables);
 //        final ViewUpdater updater = new PGUpdater(conn, dbCtx, baseTables);
 
+//             final Updater updater = new Updater(conn, dbCtx, baseTables, model.getIRTables());
+//            updater.setUpdater(new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)));
+
         try {
         final PreparedStatement nodeStmt = conn.prepareStatement(
                 "insert into node values(?, false, false, false, false, " +
@@ -188,9 +191,8 @@ public class TriggerTest {
         final PreparedStatement podStmt = conn.prepareStatement(
                 "insert into pod values(?, 'scheduled', ?, 'default', 1, 1, 1, 1, 'owner', 'owner', 1)");
 
-        for (int j = 1; j < 5; j++) {
-            final long start = System.nanoTime();
-            final int numRecords = 100;
+        for (int j = 0; j < 50; j++) {
+            final int numRecords = 100000;
             int index = j * numRecords;
             final int iEnd = index + numRecords;
             for (; index < iEnd; index++) {
