@@ -7,9 +7,7 @@
 
 package org.dcm;
 
-import io.kubernetes.client.ApiClient;
 import io.kubernetes.client.ApiException;
-import io.kubernetes.client.Configuration;
 import io.kubernetes.client.apis.CoreV1Api;
 import io.kubernetes.client.informer.SharedIndexInformer;
 import io.kubernetes.client.informer.SharedInformerFactory;
@@ -18,7 +16,6 @@ import io.kubernetes.client.models.V1NodeList;
 import io.kubernetes.client.models.V1Pod;
 import io.kubernetes.client.models.V1PodList;
 import io.kubernetes.client.util.CallGeneratorParams;
-import io.kubernetes.client.util.Config;
 import io.reactivex.Flowable;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
@@ -31,15 +28,11 @@ import java.util.concurrent.TimeUnit;
 
 class KubernetesStateSync {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
-    final SharedInformerFactory factory = new SharedInformerFactory();
+    private final SharedInformerFactory factory = new SharedInformerFactory();
 
-    Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn, final String url,
+    Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn, final CoreV1Api coreV1Api,
                                                              final int batchCount, final long batchTimeMs) {
         updateBatchCount(conn, batchCount);
-        final ApiClient client = Config.fromUrl(url);
-        client.getHttpClient().setReadTimeout(0, TimeUnit.SECONDS); // infinite timeout
-        Configuration.setDefaultApiClient(client);
-        final CoreV1Api coreV1Api = new CoreV1Api();
 
         // Node informer
        final SharedIndexInformer<V1Node> nodeInformer = factory.sharedIndexInformerFor(
@@ -68,7 +61,14 @@ class KubernetesStateSync {
 
         LOG.info("Instantiated node and pod informers. Starting them all now.");
 
-        return podEventPublishProcessor.buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
+        return podEventPublishProcessor
+                       .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
+                               && podEvent.getPod().getStatus().getPhase().equals("Pending")
+                               && podEvent.getPod().getSpec().getNodeName() == null
+                               && podEvent.getPod().getSpec().getSchedulerName().equals(
+                                           Scheduler.SCHEDULER_NAME)
+                                      )
+                       .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
                        .filter(podEvents -> !podEvents.isEmpty());
     }
 
@@ -78,5 +78,9 @@ class KubernetesStateSync {
 
     void updateBatchCount(final DSLContext conn, final int batchCount) {
         conn.insertInto(Tables.BATCH_SIZE).values(batchCount).execute();
+    }
+
+    void shutdown() {
+        factory.stopAllRegisteredInformers();
     }
 }

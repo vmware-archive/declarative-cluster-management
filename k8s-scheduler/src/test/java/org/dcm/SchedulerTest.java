@@ -657,7 +657,9 @@ public class SchedulerTest {
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
             final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
-            pod.getSpec().setTolerations(tolerations.get(i));
+            if (tolerations.get(i).size() != 0) {
+                pod.getSpec().setTolerations(tolerations.get(i));
+            }
             handler.onAdd(pod);
         }
 
@@ -714,6 +716,10 @@ public class SchedulerTest {
         taintK1V1.setValue("v1");
         taintK1V1.setEffect("NoSchedule");
 
+        final V1Taint taintK1NullValue = new V1Taint();
+        taintK1NullValue.setKey("k1");
+        taintK1NullValue.setEffect("NoSchedule");
+
         final V1Taint taintK1V1NoExecute = new V1Taint();
         taintK1V1NoExecute.setKey("k1");
         taintK1V1NoExecute.setValue("v1");
@@ -732,8 +738,13 @@ public class SchedulerTest {
         final Predicate<List<String>> nodeGoesToN0 = nodes -> nodes.size() == 1 && nodes.get(0).equals("n0");
         final Predicate<List<String>> p0goesToN1andP1GoesToN0 =
                 nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n0");
-
+        final Predicate<List<String>> p0goesToN1andP1GoesToN1 =
+                nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n1");
         return Stream.of(
+                Arguments.of("No toleration => cannot match taint k1:v1",
+                        List.of(List.of()), List.of(List.of(taintK1V1)),
+                        null, false),
+
                 Arguments.of("toleration k1=v1 matches taint k1:v1",
                              List.of(List.of(tolerateK1EqualsV1)), List.of(List.of(taintK1V1)),
                              nodeGoesToN0, true),
@@ -782,8 +793,15 @@ public class SchedulerTest {
                                 List.of(tolerateK1ExistsNoExecute)),             // pod-1
                         List.of(List.of(taintK1V1NoExecute),                     // node-0
                                 List.of(taintK1V1)),                             // node-1
-                        p0goesToN1andP1GoesToN0, true)
-            );
+                        p0goesToN1andP1GoesToN0, true),
+
+                Arguments.of("Multi node: p0 and p1 cannot tolerate n0 so they go to n1",
+                        List.of(List.of(),                                       // pod-0
+                                List.of()),                                      // pod-1
+                        List.of(List.of(taintK1NullValue, taintK1V1),            // node-0
+                                List.of()),                                      // node-1
+                        p0goesToN1andP1GoesToN1, true)
+        );
     }
 
     private static Map<String, String> map(final String k1, final String v1) {

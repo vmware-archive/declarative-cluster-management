@@ -49,11 +49,9 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
 
     @Override
     public void onAdd(final V1Pod pod) {
-        if (pod.getSpec().getSchedulerName().equals(Scheduler.SCHEDULER_NAME)) {
-            LOG.debug("{} pod added!", pod.getMetadata().getName());
-            addPod(conn, pod);
-            flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); //
-        }
+        LOG.info("{} pod added!", pod.getMetadata().getName());
+        addPod(conn, pod);
+        flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); //
     }
 
     @Override
@@ -61,20 +59,16 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         final String oldPodScheduler = oldPod.getSpec().getSchedulerName();
         final String newPodScheduler = oldPod.getSpec().getSchedulerName();
         assert oldPodScheduler.equals(newPodScheduler);
-        if (newPodScheduler.equals(Scheduler.SCHEDULER_NAME)) {
-            LOG.debug("{} => {} pod updated!", oldPod.getMetadata().getName(), newPod.getMetadata().getName());
-            updatePod(conn, newPod);
-            flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
-        }
+        LOG.debug("{} => {} pod updated!", oldPod.getMetadata().getName(), newPod.getMetadata().getName());
+        updatePod(conn, newPod);
+        flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
     }
 
     @Override
     public void onDelete(final V1Pod pod, final boolean deletedFinalStateUnknown) {
-        if (pod.getSpec().getSchedulerName().equals(Scheduler.SCHEDULER_NAME)) {
-            LOG.debug("{} pod deleted!", pod.getMetadata().getName());
-            deletePod(conn, pod);
-            flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
-        }
+        LOG.debug("{} pod deleted!", pod.getMetadata().getName());
+        deletePod(conn, pod);
+        flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
     }
 
     private void addPod(final DSLContext conn, final V1Pod pod) {
@@ -131,13 +125,14 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
 
         final boolean hasNodeSelector = (pod.getSpec().getNodeSelector() != null
                                           && pod.getSpec().getNodeSelector().size() > 0)
-                                      || (pod.getSpec().getAffinity().getNodeAffinity()
-                                            .getRequiredDuringSchedulingIgnoredDuringExecution() != null
-                                        && pod.getSpec().getAffinity().getNodeAffinity()
+                                      || (pod.getSpec().getAffinity() != null
+                                          && pod.getSpec().getAffinity().getNodeAffinity()
+                                              .getRequiredDuringSchedulingIgnoredDuringExecution() != null
+                                          && pod.getSpec().getAffinity().getNodeAffinity()
                                               .getRequiredDuringSchedulingIgnoredDuringExecution()
                                               .getNodeSelectorTerms().size() > 0);
         podInfoRecord.setHasNodeSelectorLabels(hasNodeSelector);
-        if (pod.getSpec().getAffinity().getPodAffinity() != null) {
+        if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
             podInfoRecord.setHasPodAffinityRequirements(pod.getSpec().getAffinity().getPodAffinity()
                                                       .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0);
         } else {
@@ -146,6 +141,11 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
 
         // We cap the max priority to 100 to prevent overflow issues in the solver
         podInfoRecord.setPriority(Math.min(pod.getSpec().getPriority(), 100));
+
+        // This field is important because while we injest info about all pods, we only make scheduling decisions
+        // for pods that have dcm-scheduler as their name
+        podInfoRecord.setSchedulername(pod.getSpec().getSchedulerName());
+
         podInfoRecord.store(); // upsert
     }
 
@@ -222,7 +222,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
                 .values(pod.getMetadata().getName(),
                         toleration.getKey(),
                         toleration.getValue(),
-                        toleration.getEffect(),
+                        toleration.getEffect() == null ? "Equal" : toleration.getEffect(),
                         toleration.getOperator()).execute();
         }
     }
