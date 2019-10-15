@@ -117,7 +117,10 @@ public class TriggerTest {
         try {
             // Create a fresh database
             final String connectionURL = "jdbc:hsqldb:mem:db";
+//            final String connectionURL = "jdbc:h2:mem:;create=true";
+
             conn = DriverManager.getConnection(connectionURL, properties);
+//            dbCtx = using(conn, SQLDialect.H2);
             dbCtx = using(conn, SQLDialect.HSQLDB);
             dbCtx.execute("create schema curr");
             dbCtx.execute("set schema curr");
@@ -175,8 +178,8 @@ public class TriggerTest {
         final Model model =
                 buildModel(dbCtx, new ArrayList<>(), "testModel");
 
-        ViewUpdater.setIRTables(model.getIRTables());
-        final ViewUpdater updater = new HSQLUpdater(conn, dbCtx, baseTables);
+//        final ViewUpdater updater = new H2Updater(conn, dbCtx, model.getIRTables(), baseTables);
+        final ViewUpdater updater = new HSQLUpdater(conn, dbCtx, model.getIRTables(), baseTables);
 //        final ViewUpdater updater = new H2Updater(dbCtx, baseTables);
 //        final ViewUpdater updater = new DerbyUpdater(dbCtx, baseTables);
 //        final ViewUpdater updater = new PGUpdater(conn, dbCtx, baseTables);
@@ -192,7 +195,7 @@ public class TriggerTest {
                 "insert into pod values(?, 'scheduled', ?, 'default', 1, 1, 1, 1, 'owner', 'owner', 1)");
 
         for (int j = 0; j < 50; j++) {
-            final int numRecords = 100000;
+            final int numRecords = 10;
             int index = j * numRecords;
             final int iEnd = index + numRecords;
             for (; index < iEnd; index++) {

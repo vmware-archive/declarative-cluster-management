@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Properties;
 
 import static java.sql.DriverManager.getConnection;
+import static org.jooq.impl.DSL.mode;
 import static org.jooq.impl.DSL.using;
 
 @State(Scope.Benchmark)
@@ -107,8 +108,9 @@ public class DBBenchmark {
 //
 //            updater = new Updater(connection, dbCtx, baseTables,
 //                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());
-            ViewUpdater.setIRTables(model.getIRTables());
-            updater = new HSQLUpdater(connection, dbCtx, baseTables);
+//            ViewUpdater.setIRTables(model.getIRTables());
+            updater = new HSQLUpdater(connection, dbCtx, model.getIRTables(), baseTables);
+//            updater.setIRTables(model.getIRTables());
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
@@ -152,8 +154,8 @@ public class DBBenchmark {
 
             /*updater = new Updater(connection, dbCtx, baseTables,
                     new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());*/
-            ViewUpdater.setIRTables(model.getIRTables());
-            updater = new HSQLUpdater(connection, dbCtx, baseTables);
+//            ViewUpdater.setIRTables(model.getIRTables());
+            updater = new HSQLUpdater(connection, dbCtx, model.getIRTables(), baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);

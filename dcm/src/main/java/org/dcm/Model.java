@@ -220,7 +220,7 @@ public class Model {
         final List<Table<?>> tables = new ArrayList<>();
         for (final Table<?> t : dslMeta.getTables()) {
             // skip if table not on current schema
-            if (!(t.getSchema().getName().equals(CURRENT_SCHEMA))) {
+            if (!t.getSchema().getName().equals(CURRENT_SCHEMA)) {
                 continue;
             }
             tables.add(t);

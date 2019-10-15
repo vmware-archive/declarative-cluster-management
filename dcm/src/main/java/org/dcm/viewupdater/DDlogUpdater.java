@@ -9,132 +9,83 @@ import org.jooq.Record;
 import org.jooq.Table;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
 public class DDlogUpdater {
+    private final DDlogAPI API;
+    private final Map<String, Integer> tableIDMap;
+    private final Map<String, IRTable> irTables;
 
-    private DDlogAPI API;
-    private static Map<String, Integer> tableIDMap = new HashMap<>();
-    final ArrayList<DDlogCommand> commands = new ArrayList<>();
+    static final String INTEGER_TYPE = "java.lang.Integer";
+    static final String STRING_TYPE = "java.lang.String";
+    static final String BOOLEAN_TYPE = "java.lang.Boolean";
+    static final String LONG_TYPE = "java.lang.Long";
 
-    private static final String INTEGER_TYPE = "java.lang.Integer";
-    private static final String BOOLEAN_TYPE = "java.lang.Boolean";
-    private static final String LONG_TYPE = "java.lang.Long";
-
-    public DDlogUpdater(final Consumer<DDlogCommand> consumer) {
+    public DDlogUpdater(final Consumer<DDlogCommand> consumer, final Map<String, IRTable> irTables) {
         API = new DDlogAPI(1, consumer, false);
         API.record_commands("replay.dat", false);
+        tableIDMap = new HashMap<>();
+        this.irTables = irTables;
     }
 
-    public String receiveUpdateFromDDlog(final Map<String, IRTable> irTables, final DDlogCommand command) {
-        final DDlogRecord record = command.value;
-        final String dataType = record.getStructName();
-        if (irTables.containsKey(dataType)) {
-            final StringBuilder stringBuilder = new StringBuilder();
-            final IRTable irTable = irTables.get(dataType);
-            final Table<? extends Record> table = irTable.getTable();
-            final Field[] fields = table.fields();
-            if (command.kind == DDlogCommand.Kind.Insert) {
-                stringBuilder.append("insert into " + dataType + " values ( \n");
-                int counter = 0;
-                for (final Field field : fields) {
-                    final Class fieldClass = field.getType();
-                    final DDlogRecord item = record.getStructField(counter);
+    private DDlogRecord toDDlogRecord(final String tableName, final List<Object> args) {
+        final List<DDlogRecord> records = new ArrayList<>();
+        final IRTable irTable = irTables.get(tableName);
+        final Table<? extends Record> table = irTable.getTable();
 
-                    switch (fieldClass.getName()) {
-                        case LONG_TYPE:
-                            stringBuilder.append(item.getLong());
-                            break;
-                        case INTEGER_TYPE:
-                            stringBuilder.append(item.getU128());
-                            break;
-                        case BOOLEAN_TYPE:
-                            stringBuilder.append(item.getBoolean());
-                            break;
-                        default:
-                            stringBuilder.append("'" + item.getString() + "'");
-                    }
-                    if (counter < fields.length - 1) {
-                        stringBuilder.append(", ");
-                    }
-                    counter = counter + 1;
-                }
-            } else if (command.kind == DDlogCommand.Kind.DeleteVal) {
-                stringBuilder.append("delete from " + dataType + " where ( \n");
-                int counter = 0;
-                for (final Field field : fields) {
-                    final Class fieldClass = field.getType();
-                    final DDlogRecord item = record.getStructField(counter);
-                    switch (fieldClass.getName()) {
-                        case LONG_TYPE:
-                            stringBuilder.append(field.getName() + " = " + item.getLong());
-                            break;
-                        case INTEGER_TYPE:
-                            stringBuilder.append(field.getName() + " = " + item.getU128());
-                            break;
-                        case BOOLEAN_TYPE:
-                            stringBuilder.append(field.getName() + " = " + item.getBoolean());
-                            break;
-                        default:
-                            stringBuilder.append("'" + item.getString() + "'");
-                    }
-                    if (counter < fields.length - 1) {
-                        stringBuilder.append(" and ");
-                    }
-                    counter = counter + 1;
-                }
+        int counter = 0;
+        for (final Field<?> field : table.fields()) {
+            final Class<?> cls = field.getType();
+            switch (cls.getName()) {
+                case BOOLEAN_TYPE:
+                    records.add(new DDlogRecord((Boolean) args.get(counter)));
+                    break;
+                case INTEGER_TYPE:
+                    records.add(new DDlogRecord((Integer) args.get(counter)));
+                    break;
+                case LONG_TYPE:
+                    records.add(new DDlogRecord((Long) args.get(counter)));
+                    break;
+                case STRING_TYPE:
+                    records.add(new DDlogRecord(args.get(counter).toString().trim()));
+                    break;
+                default:
+                    throw new RuntimeException("Unexpected datatype: " + cls.getName());
             }
-            stringBuilder.append("\n)");
-            return stringBuilder.toString();
+            counter = counter + 1;
         }
-        return null;
+        DDlogRecord[] recordsArray = new DDlogRecord[records.size()];
+        recordsArray = records.toArray(recordsArray);
+        return DDlogRecord.makeStruct(tableName, recordsArray);
     }
 
-
-    public void update(final DDlogRecord ddlogRecord) {
-        final String relation = ddlogRecord.getStructName();
+    private DDlogCommand recordToCommand(final LocalDDlogCommand record) {
         int id;
-        if (tableIDMap.containsKey(relation)) {
-            id = tableIDMap.get(relation);
+        if (tableIDMap.containsKey(record.tableName)) {
+            id = tableIDMap.get(record.tableName);
         }
         else  {
-            id = API.getTableId(relation);
-            tableIDMap.put(relation, id);
+            id = API.getTableId(record.tableName);
+            tableIDMap.put(record.tableName, id);
         }
+        return new DDlogCommand(DDlogCommand.Kind.Insert, id, toDDlogRecord(record.tableName, record.values));
+    }
 
-        final ArrayList<DDlogCommand> commands = new ArrayList<>();
-        commands.add(new DDlogCommand(DDlogCommand.Kind.Insert, id, ddlogRecord));
+    public void sendUpdatesToDDlog(final List<LocalDDlogCommand> records) {
+        final List<DDlogCommand> commands = new ArrayList<>();
+        for (final LocalDDlogCommand record: records) {
+            commands.add(recordToCommand(record));
+        }
         final DDlogCommand [] ca = commands.toArray(new DDlogCommand[commands.size()]);
         checkDDlogExitCode(API.start());
         checkDDlogExitCode(API.applyUpdates(ca));
         checkDDlogExitCode(API.commit());
     }
 
-    public void updateAndHold(final DDlogRecord ddlogRecord) {
-        final String relation = ddlogRecord.getStructName();
-        int id;
-        if (tableIDMap.containsKey(relation)) {
-            id = tableIDMap.get(relation);
-        }
-        else  {
-            id = API.getTableId(relation);
-            tableIDMap.put(relation, id);
-        }
-        commands.add(new DDlogCommand(DDlogCommand.Kind.Insert, id, ddlogRecord));
-    }
-
-    public void sendUpdatesToDDlog() {
-        final DDlogCommand [] ca = commands.toArray(new DDlogCommand[commands.size()]);
-        checkDDlogExitCode(API.start());
-        checkDDlogExitCode(API.applyUpdates(ca));
-        checkDDlogExitCode(API.commit());
-        commands.clear();
-    }
-
-
-    public void checkDDlogExitCode(final int exitCode) {
+    private void checkDDlogExitCode(final int exitCode) {
         if (exitCode < 0) {
             throw new RuntimeException("Error executing " + exitCode);
         }
