@@ -23,6 +23,7 @@ class Policies {
         ALL_POLICIES.add(nodeSelectorPredicate());
         ALL_POLICIES.add(podAffinityPredicate());
         ALL_POLICIES.add(capacityConstraint(true, true));
+        ALL_POLICIES.add(taintsAndTolerations());
     }
 
     /**
@@ -136,7 +137,6 @@ class Policies {
         }
         return new Policy("CapacityConstraint", views);
     }
-
 
     /**
      * Node taints and tolerations

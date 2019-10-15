@@ -31,6 +31,7 @@ create table pod_info
   owner_name varchar(100) not null,
   creation_timestamp varchar(100) not null,
   priority integer not null,
+  schedulerName varchar(50),
   has_node_selector_labels boolean not null,
   has_pod_affinity_requirements boolean not null
 );
@@ -163,10 +164,10 @@ create table node_taints
 create table pod_tolerations
 (
   pod_name varchar(100) not null,
-  tolerations_key varchar(100) not null,
-  tolerations_value varchar(100) null,
-  tolerations_effect varchar(100) not null,
-  tolerations_operator varchar(100) not null,
+  tolerations_key varchar(100),
+  tolerations_value varchar(100),
+  tolerations_effect varchar(100),
+  tolerations_operator varchar(100),
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
@@ -208,7 +209,7 @@ select
   has_node_selector_labels,
   has_pod_affinity_requirements
 from pod_info
-where status = 'Pending' and node_name is null
+where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler'
 order by creation_timestamp;
 
 -- This view is updated dynamically to change the limit. This
@@ -323,7 +324,8 @@ join pod_tolerations
      on pods_to_assign.pod_name = pod_tolerations.pod_name
 join (select *, count(*) over (partition by node_name) as num_taints from node_taints) as A
      on pod_tolerations.tolerations_key = A.taint_key
-     and pod_tolerations.tolerations_effect = A.taint_effect
+     and (pod_tolerations.tolerations_effect = null
+          or pod_tolerations.tolerations_effect = A.taint_effect)
      and (pod_tolerations.tolerations_operator = 'Exists'
           or pod_tolerations.tolerations_value = A.taint_value)
 group by pod_tolerations.pod_name, A.node_name, A.num_taints

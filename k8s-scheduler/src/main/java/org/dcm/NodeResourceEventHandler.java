@@ -5,6 +5,7 @@
 
 package org.dcm;
 
+import com.google.common.base.Preconditions;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.informer.ResourceEventHandler;
 import io.kubernetes.client.models.V1ContainerImage;
@@ -13,13 +14,15 @@ import io.kubernetes.client.models.V1NodeCondition;
 import io.kubernetes.client.models.V1NodeStatus;
 import io.kubernetes.client.models.V1Taint;
 import org.dcm.k8s.generated.Tables;
+import org.dcm.k8s.generated.tables.records.NodeInfoRecord;
 import org.jooq.DSLContext;
-import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
     private static final Logger LOG = LoggerFactory.getLogger(NodeResourceEventHandler.class);
@@ -31,28 +34,64 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
 
     @Override
     public void onAdd(final V1Node node) {
-        LOG.debug("{} node added", node.getMetadata().getName());
-        addNodeInfo(node, conn);
+        final long now = System.nanoTime();
+        final NodeInfoRecord nodeInfoRecord = conn.newRecord(Tables.NODE_INFO);
+        updateNodeRecord(nodeInfoRecord, node);
+        addNodeLabels(conn, node);
+        addNodeTaints(conn, node);
+        addNodeImages(conn, node);
+        LOG.info("{} node added in {}ms", node.getMetadata().getName(), (System.nanoTime() - now));
     }
 
     @Override
     public void onUpdate(final V1Node oldNode, final V1Node newNode) {
-        LOG.debug("{} => {} node updated", oldNode.getMetadata().getName(), newNode.getMetadata().getName());
+        final long now = System.nanoTime();
+        final boolean hasChanged = hasChanged(oldNode, newNode);
+        if (hasChanged) {
+            // TODO: relax this assumption by setting up update cascades for node_info.name FK references
+            Preconditions.checkArgument(newNode.getMetadata().getName().equals(oldNode.getMetadata().getName()));
+            final NodeInfoRecord nodeInfoRecord = conn.selectFrom(Tables.NODE_INFO)
+                                                    .where(Tables.NODE_INFO.NAME.eq(oldNode.getMetadata().getName()))
+                                                    .fetchOne();
+            updateNodeRecord(nodeInfoRecord, newNode);
+
+            if (!Optional.ofNullable(oldNode.getSpec().getTaints())
+                    .equals(Optional.ofNullable(newNode.getSpec().getTaints()))) {
+                conn.deleteFrom(Tables.NODE_TAINTS)
+                    .where(Tables.NODE_TAINTS.NODE_NAME
+                                 .eq(oldNode.getMetadata().getName()))
+                    .execute();
+                addNodeTaints(conn, newNode);
+            }
+            if (!Optional.ofNullable(oldNode.getMetadata().getLabels())
+                    .equals(Optional.ofNullable(newNode.getMetadata().getLabels()))) {
+                conn.deleteFrom(Tables.NODE_LABELS)
+                    .where(Tables.NODE_LABELS.NODE_NAME
+                                 .eq(oldNode.getMetadata().getName()))
+                    .execute();
+                addNodeTaints(conn, newNode);
+            }
+            if (!Optional.ofNullable(oldNode.getStatus().getImages())
+                    .equals(Optional.ofNullable(newNode.getStatus().getImages()))) {
+                conn.deleteFrom(Tables.NODE_IMAGES)
+                    .where(Tables.NODE_IMAGES.NODE_NAME
+                                 .eq(oldNode.getMetadata().getName()))
+                    .execute();
+                addNodeTaints(conn, newNode);
+            }
+        }
+        LOG.info("{} => {} node {} in {}ns", oldNode.getMetadata().getName(), newNode.getMetadata().getName(),
+                hasChanged ? "updated" : "not updated", (System.nanoTime() - now));
     }
 
     @Override
     public void onDelete(final V1Node node, final boolean deletedFinalStateUnknown) {
-        LOG.debug("{} node deleted", node.getMetadata().getName());
+        final long now = System.nanoTime();
         deleteNode(node, conn);
+        LOG.info("{} node deleted in {}ms", node.getMetadata().getName(), (System.nanoTime() - now));
     }
 
-    private void addNodeInfo(final V1Node node, final DSLContext conn) {
-        final boolean exists = conn.fetchExists(conn.selectFrom(Tables.NODE_INFO)
-                                                    .where(Tables.NODE_INFO.NAME.eq(node.getMetadata().getName())));
-        if (exists) {
-            LOG.info("Node {} already exists in NODE_INFO table. Ignoring event.", node.getMetadata().getName());
-            return;
-        }
+    private void updateNodeRecord(final NodeInfoRecord nodeInfoRecord, final V1Node node) {
         final V1NodeStatus status = node.getStatus();
         final Map<String, Quantity> capacity = status.getCapacity();
         final Map<String, Quantity> allocatable = status.getAllocatable();
@@ -89,55 +128,84 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
                     throw new IllegalStateException("Unknown condition type " + condition.getType());
             }
         }
-        conn.insertInto(Tables.NODE_INFO)
-                .values(
-                        node.getMetadata().getName(),
-                        getUnschedulable, outOfDisk, memoryPressure, diskPressure,
-                        pidPressure, ready, networkUnavailable,
-                        capacity.get("cpu").getNumber().multiply(new BigDecimal(1000)), // convert to milli-CPU
-                        Utils.convertUnit(capacity.get("memory"), "memory"),
-                        Utils.convertUnit(capacity.get("ephemeral-storage"), "ephemeral-storage"),
-                        capacity.get("pods").getNumber(),
-                        allocatable.get("cpu").getNumber().multiply(new BigDecimal(1000)), // convert to milli-CPU
-                        Utils.convertUnit(allocatable.get("memory"), "memory"),
-                        Utils.convertUnit(allocatable.get("ephemeral-storage"), "ephmeral-storage"),
-                        allocatable.get("pods").getNumber()
-                ).execute();
+
+        // TODO: test unit conversions
+        final long cpuCapacity = capacity.get("cpu").getNumber()
+                                         .multiply(new BigDecimal(1000)).longValue(); // convert to milli-cpu
+        final long memoryCapacity = (long) Utils.convertUnit(capacity.get("memory"), "memory");
+        final long ephemeralStorageCapacity = (long) Utils.convertUnit(capacity.get("ephemeral-storage"),
+                                                                         "ephemeral-storage");
+        final long podCapacity = capacity.get("pods").getNumber().longValue();
+        final long cpuAllocatable = allocatable.get("cpu").getNumber().multiply(new BigDecimal(1000)).longValue();
+        final long memoryAllocatable = (long) Utils.convertUnit(allocatable.get("memory"), "memory");
+        final long ephemeralStorageAllocatable = (long) Utils.convertUnit(allocatable.get("ephemeral-storage"),
+                                                                         "ephemeral-storage");
+        final long podsAllocatable = allocatable.get("pods").getNumber().longValue();
+        nodeInfoRecord.setName(node.getMetadata().getName());
+        nodeInfoRecord.setUnschedulable(getUnschedulable);
+        nodeInfoRecord.setOutOfDisk(outOfDisk);
+        nodeInfoRecord.setMemoryPressure(memoryPressure);
+        nodeInfoRecord.setDiskPressure(diskPressure);
+        nodeInfoRecord.setPidPressure(pidPressure);
+        nodeInfoRecord.setReady(ready);
+        nodeInfoRecord.setNetworkUnavailable(networkUnavailable);
+        nodeInfoRecord.setCpuCapacity(cpuCapacity);
+        nodeInfoRecord.setMemoryCapacity(memoryCapacity);
+        nodeInfoRecord.setEphemeralStorageCapacity(ephemeralStorageCapacity);
+        nodeInfoRecord.setPodsCapacity(podCapacity);
+        nodeInfoRecord.setCpuAllocatable(cpuAllocatable);
+        nodeInfoRecord.setMemoryAllocatable(memoryAllocatable);
+        nodeInfoRecord.setEphemeralStorageAllocatable(ephemeralStorageAllocatable);
+        nodeInfoRecord.setPodsAllocatable(podsAllocatable);
+        nodeInfoRecord.store();
+    }
+
+    private boolean hasChanged(final V1Node oldNode, final V1Node newNode) {
+        return !oldNode.getSpec().equals(newNode.getSpec())
+           || !oldNode.getStatus().getCapacity().equals(newNode.getStatus().getCapacity())
+           || !oldNode.getStatus().getAllocatable().equals(newNode.getStatus().getAllocatable())
+           || !Optional.ofNullable(oldNode.getSpec().isUnschedulable())
+                .equals(Optional.ofNullable(newNode.getSpec().isUnschedulable()))
+           || haveConditionsChanged(oldNode, newNode);
+    }
+
+    private boolean haveConditionsChanged(final V1Node oldNode, final V1Node newNode) {
+        if (oldNode.getStatus().getConditions().size() != newNode.getStatus().getConditions().size()) {
+            return true;
+        }
+        final List<V1NodeCondition> oldConditions = oldNode.getStatus().getConditions();
+        final List<V1NodeCondition> newConditions = newNode.getStatus().getConditions();
+        for (int i = 0; i < oldNode.getStatus().getConditions().size(); i++) {
+            if (!oldConditions.get(i).getStatus().equals(newConditions.get(i).getStatus())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    private void deleteNode(final V1Node node, final DSLContext conn) {
+        conn.deleteFrom(Tables.NODE_INFO)
+            .where(Tables.NODE_INFO.NAME.eq(node.getMetadata().getName()))
+            .execute();
+        LOG.info("Node {} deleted", node.getMetadata().getName());
+    }
+
+    private void addNodeLabels(final DSLContext conn, final V1Node node) {
         final Map<String, String> labels = node.getMetadata().getLabels();
         labels.forEach(
                 (k, v) -> conn.insertInto(Tables.NODE_LABELS)
                         .values(node.getMetadata().getName(), k, v)
                         .execute()
         );
-        updateNodeTaints(node, conn);
-        updateNodeImages(node, conn);
     }
 
-    private void deleteNode(final V1Node node, final DSLContext conn) {
-        conn.transaction(nested -> {
-            final DSLContext txConn = DSL.using(nested);
-            txConn.deleteFrom(Tables.NODE_LABELS)
-                    .where(Tables.NODE_LABELS.NODE_NAME.eq(node.getMetadata().getName()))
-                    .execute();
-            txConn.deleteFrom(Tables.NODE_TAINTS)
-                    .where(Tables.NODE_TAINTS.NODE_NAME.eq(node.getMetadata().getName()))
-                    .execute();
-            txConn.deleteFrom(Tables.NODE_IMAGES)
-                    .where(Tables.NODE_IMAGES.NODE_NAME.eq(node.getMetadata().getName()))
-                    .execute();
-            txConn.deleteFrom(Tables.NODE_INFO)
-                    .where(Tables.NODE_INFO.NAME.eq(node.getMetadata().getName()))
-                    .execute();
-        });
-        LOG.info("Node {} deleted", node.getMetadata().getName());
-    }
-
-    private void updateNodeTaints(final V1Node node, final DSLContext conn) {
+    private void addNodeTaints(final DSLContext conn, final V1Node node) {
         if (node.getSpec().getTaints() == null) {
             return;
         }
+
         for (final V1Taint taint: node.getSpec().getTaints()) {
-            System.out.println(taint);
             conn.insertInto(Tables.NODE_TAINTS)
                     .values(node.getMetadata().getName(),
                             taint.getKey(),
@@ -146,12 +214,12 @@ class NodeResourceEventHandler implements ResourceEventHandler<V1Node> {
         }
     }
 
-    private void updateNodeImages(final V1Node node, final DSLContext conn) {
+    private void addNodeImages(final DSLContext conn, final V1Node node) {
         for (final V1ContainerImage image: node.getStatus().getImages()) {
             for (final String imageName: image.getNames()) {
                 final int imageSizeInMb = (int) (((float) image.getSizeBytes()) / 1024 / 1024);
                 conn.insertInto(Tables.NODE_IMAGES)
-                        .values(node.getMetadata().getName(), imageName, imageSizeInMb).execute();
+                    .values(node.getMetadata().getName(), imageName, imageSizeInMb).execute();
             }
         }
     }

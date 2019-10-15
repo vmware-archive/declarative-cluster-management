@@ -6,9 +6,21 @@
 
 package org.dcm;
 
+import com.codahale.metrics.Histogram;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
+import io.kubernetes.client.ApiClient;
+import io.kubernetes.client.ApiException;
+import io.kubernetes.client.Configuration;
+import io.kubernetes.client.apis.CoreV1Api;
+import io.kubernetes.client.models.V1Binding;
+import io.kubernetes.client.models.V1ObjectMeta;
+import io.kubernetes.client.models.V1ObjectReference;
+import io.kubernetes.client.util.Config;
 import io.reactivex.Flowable;
 import io.reactivex.disposables.Disposable;
 import org.apache.commons.cli.CommandLine;
@@ -37,10 +49,13 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static com.codahale.metrics.MetricRegistry.name;
 import static org.jooq.impl.DSL.using;
 
 /**
@@ -49,8 +64,18 @@ import static org.jooq.impl.DSL.using;
  */
 public final class Scheduler {
     private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
+
+    // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
+    private final DSLContext conn;
+    private final AtomicInteger batchId = new AtomicInteger(0);
+    private final MetricRegistry metrics = new MetricRegistry();
+    private final Meter solverInvocations = metrics.meter("solverInvocations");
+    private final Histogram podsPerSchedulingEvent =
+            metrics.histogram(name(Scheduler.class, "pods-per-scheduling-attempt"));
+    private final Timer updateDataTimes = metrics.timer(name(Scheduler.class, "updateDataTimes"));
+    private final Timer solveTimes = metrics.timer(name(Scheduler.class, "solveTimes"));
     @Nullable private Disposable subscription;
     private final List<Table<?>> relevantTables = Lists.newArrayList(Tables.PODS_TO_ASSIGN,
                                                                      Tables.POD_NODE_SELECTOR_MATCHES,
@@ -70,24 +95,67 @@ public final class Scheduler {
         }
         conf.setProperty("fzn_flags", fznFlags);
         conf.setProperty("mnz_model_path", "/tmp/");
+        this.conn = conn;
         this.model = createDcmModel(conn, conf, policies, relevantTables);
         LOG.info("Initialized scheduler:: model:{} relevantTables:{}", model, relevantTables);
     }
 
-    void startScheduler(final Flowable<List<PodEvent>> eventStream) {
+    void startScheduler(final Flowable<List<PodEvent>> eventStream, final CoreV1Api v1Api) {
         subscription = eventStream.subscribe(
             podEvents -> {
+                podsPerSchedulingEvent.update(podEvents.size());
                 LOG.info("Received the following events: {}", podEvents);
-                runOneLoop();
+
+                final int batch = batchId.incrementAndGet();
+
+                final long now = System.nanoTime();
+                final Result<? extends Record> podsToAssignUpdated = runOneLoop();
+                final long totalTime = System.nanoTime() - now;
+                solverInvocations.mark();
+
+                // First, locally update the node_name entries for pods
+                podsToAssignUpdated.parallelStream().forEach(r -> {
+                    final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
+                    final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                    LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
+                    conn.update(Tables.POD_INFO)
+                            .set(Tables.POD_INFO.NODE_NAME, nodeName)
+                            .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                            .execute();
+                    LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
+                            podName, batch, totalTime);
+                });
+                LOG.info("Done with updates");
+                // Next, issue bind requests for pod -> node_name
+                podsToAssignUpdated
+                    .forEach((record) -> ForkJoinPool.commonPool().execute(
+                        () -> {
+                            final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
+                            final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
+                            final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                            try {
+                                LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
+                                bindOne(namespace, podName, nodeName, v1Api);
+                            } catch (final ApiException e) {
+                                LOG.error("Could not bind {} to {} due to ApiException:", podName, nodeName, e);
+                            }
+                        }
+                    ));
+                LOG.info("Done with bindings");
             }
         );
     }
 
     Result<? extends Record> runOneLoop() {
+        final Timer.Context updateDataTimer = updateDataTimes.time();
         model.updateData();
-        final Map<String, Result<? extends Record>> podsToAssignUpdated =
-                model.solveModelWithoutTableUpdates(Collections.singleton("PODS_TO_ASSIGN"));
-        return podsToAssignUpdated.get("PODS_TO_ASSIGN");
+        updateDataTimer.stop();
+        final Timer.Context solveTimer = solveTimes.time();
+        final Result<? extends Record> podsToAssignUpdated =
+                model.solveModelWithoutTableUpdates(Collections.singleton("PODS_TO_ASSIGN"))
+                     .get("PODS_TO_ASSIGN");
+        solveTimer.stop();
+        return podsToAssignUpdated;
     }
 
     /**
@@ -98,6 +166,23 @@ public final class Scheduler {
         final File modelFile = new File(conf.getProperty("mnz_model_path") + "/" + "k8s_model.mzn");
         final File dataFile = new File(conf.getProperty("mnz_model_path") + "/" + "k8s_data.dzn");
         return Model.buildModel(conn, tables, policies, modelFile, dataFile, conf);
+    }
+
+    /**
+     * Uses the K8s API to bind a pod to a node.
+     */
+    private void bindOne(final String namespace, final String podName, final String nodeName, final CoreV1Api v1Api)
+                         throws ApiException {
+        final V1Binding body = new V1Binding();
+        final V1ObjectReference target = new V1ObjectReference();
+        final V1ObjectMeta meta = new V1ObjectMeta();
+        target.setKind("Node");
+        target.setApiVersion("v1");
+        target.setName(nodeName);
+        meta.setName(podName);
+        body.setTarget(target);
+        body.setMetadata(meta);
+        v1Api.createNamespacedBinding(namespace, body, null, null, null);
     }
 
     /**
@@ -162,11 +247,17 @@ public final class Scheduler {
                 Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
                 cmd.getOptionValue("fzn-flags"));
         final KubernetesStateSync stateSync = new KubernetesStateSync();
+
+        final ApiClient client = Config.fromUrl(apiServerUrl);
+        client.getHttpClient().setReadTimeout(0, TimeUnit.SECONDS); // infinite timeout
+        Configuration.setDefaultApiClient(client);
+        final CoreV1Api coreV1Api = new CoreV1Api();
+
         final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, apiServerUrl,
+                stateSync.setupInformersAndPodEventStream(conn, coreV1Api,
                                                           Integer.parseInt(cmd.getOptionValue("batch-size")),
                                                           Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
-        scheduler.startScheduler(eventStream);
+        scheduler.startScheduler(eventStream, coreV1Api);
         Thread.currentThread().join();
     }
 }
