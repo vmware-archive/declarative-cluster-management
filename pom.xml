@@ -191,6 +191,7 @@
                     <append>true</append>
                     <excludes>
                         <exclude>**/pb/*.class</exclude>
+                        <exclude>**/generated/**</exclude>
                     </excludes>
                 </configuration>
             </plugin>
