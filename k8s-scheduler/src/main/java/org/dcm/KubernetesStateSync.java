@@ -31,10 +31,8 @@ class KubernetesStateSync {
         this.sharedInformerFactory = client.informers();
     }
 
-    Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn,
-                                                             final KubernetesClient client,
-                                                             final int batchCount, final long batchTimeMs) {
-        sharedInformerFactory = client.informers();
+    Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn, final int batchCount,
+                                                             final long batchTimeMs) {
         final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
         nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(conn));

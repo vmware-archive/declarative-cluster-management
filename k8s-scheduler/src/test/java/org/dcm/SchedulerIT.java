@@ -88,7 +88,7 @@ public class SchedulerIT {
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, fabricClient, 50, 1000);
+                stateSync.setupInformersAndPodEventStream(conn, 50, 1000);
         scheduler.startScheduler(eventStream, coreV1Api);
         stateSync.startProcessingEvents();
 

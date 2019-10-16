@@ -259,7 +259,7 @@ public final class Scheduler {
 
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
         final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, fabricClient,
+                stateSync.setupInformersAndPodEventStream(conn,
                                                           Integer.parseInt(cmd.getOptionValue("batch-size")),
                                                           Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
         scheduler.startScheduler(eventStream, coreV1Api);
