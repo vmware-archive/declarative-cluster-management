@@ -77,7 +77,7 @@ public class SchedulerIT {
     @Timeout(30) // seconds
     public void deleteAllRunningPods() throws Exception {
         fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).delete();
-        waitUntil((n) -> hasDrained(0));
+        waitUntil((n) -> hasDrained());
     }
 
     @Test()
@@ -85,12 +85,12 @@ public class SchedulerIT {
     public void testDeployments() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "CHUFFED", true, "");
-        final KubernetesStateSync stateSync = new KubernetesStateSync();
+        final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         final Flowable<List<PodEvent>> eventStream =
                 stateSync.setupInformersAndPodEventStream(conn, fabricClient, 50, 1000);
         scheduler.startScheduler(eventStream, coreV1Api);
-        stateSync.startProcessingEvents(fabricClient);
+        stateSync.startProcessingEvents();
 
         // Add a new one
         final URL url = getClass().getClassLoader().getResource("no-constraints.yml");
@@ -105,7 +105,7 @@ public class SchedulerIT {
         final List<Pod> items = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
         assertEquals(newPodsToCreate, items.size());
         items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
-        stateSync.shutdown(fabricClient);
+        stateSync.shutdown();
         scheduler.shutdown();
     }
 
@@ -118,13 +118,13 @@ public class SchedulerIT {
         latch.await();
     }
 
-    private boolean hasDrained(final int numPods) {
-        return fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems().size() == numPods;
+    private boolean hasDrained() {
+        return fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems().size() == 0;
     }
 
     private boolean hasNRunningPods(final int numPods) {
         return fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems()
-                           .stream().map(e -> e.getStatus().getPhase().equals("Running"))
+                           .stream().filter(e -> e.getStatus().getPhase().equals("Running"))
                            .count() == numPods;
     }
 

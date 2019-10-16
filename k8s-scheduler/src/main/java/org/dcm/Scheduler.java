@@ -248,7 +248,6 @@ public final class Scheduler {
                 cmd.getOptionValue("mnz-solver"),
                 Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
                 cmd.getOptionValue("fzn-flags"));
-        final KubernetesStateSync stateSync = new KubernetesStateSync();
 
         final ApiClient client = Config.fromUrl(apiServerUrl);
         client.getHttpClient().setReadTimeout(0, TimeUnit.SECONDS); // infinite timeout
@@ -258,11 +257,13 @@ public final class Scheduler {
                 new ConfigBuilder().withMasterUrl(apiServerUrl).build();
         final DefaultKubernetesClient fabricClient = new DefaultKubernetesClient(config);
 
+        final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
         final Flowable<List<PodEvent>> eventStream =
                 stateSync.setupInformersAndPodEventStream(conn, fabricClient,
                                                           Integer.parseInt(cmd.getOptionValue("batch-size")),
                                                           Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
         scheduler.startScheduler(eventStream, coreV1Api);
+        stateSync.startProcessingEvents();
         Thread.currentThread().join();
     }
 }

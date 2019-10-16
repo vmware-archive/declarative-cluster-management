@@ -13,6 +13,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
+import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import io.reactivex.Flowable;
 import io.reactivex.processors.PublishProcessor;
 import org.jooq.DSLContext;
@@ -24,16 +25,22 @@ import java.util.concurrent.TimeUnit;
 
 class KubernetesStateSync {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
+    private SharedInformerFactory sharedInformerFactory;
+
+    KubernetesStateSync(final KubernetesClient client) {
+        this.sharedInformerFactory = client.informers();
+    }
 
     Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn,
                                                              final KubernetesClient client,
                                                              final int batchCount, final long batchTimeMs) {
-        final SharedIndexInformer<Node> nodeSharedIndexInformer = client.informers()
+        sharedInformerFactory = client.informers();
+        final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
         nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(conn));
 
         // Pod informer
-        final SharedIndexInformer<Pod> podInformer = client.informers()
+        final SharedIndexInformer<Pod> podInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Pod.class, PodList.class, 30000);
         final PublishProcessor<PodEvent> podEventPublishProcessor = PublishProcessor.create();
         podInformer.addEventHandler(new PodResourceEventHandler(conn, podEventPublishProcessor));
@@ -51,11 +58,11 @@ class KubernetesStateSync {
                        .filter(podEvents -> !podEvents.isEmpty());
     }
 
-    void startProcessingEvents(final KubernetesClient client) {
-        client.informers().startAllRegisteredInformers();
+    void startProcessingEvents() {
+        sharedInformerFactory.startAllRegisteredInformers();
     }
 
-    void shutdown(final KubernetesClient client) {
-        client.informers().stopAllRegisteredInformers();
+    void shutdown() {
+        sharedInformerFactory.stopAllRegisteredInformers();
     }
 }
