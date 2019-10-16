@@ -11,11 +11,10 @@ import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
-import io.fabric8.kubernetes.client.DefaultKubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.reactivex.Flowable;
 import io.reactivex.processors.PublishProcessor;
-import org.dcm.k8s.generated.Tables;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,9 +26,8 @@ class KubernetesStateSync {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
 
     Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn,
-                                                             final DefaultKubernetesClient client,
+                                                             final KubernetesClient client,
                                                              final int batchCount, final long batchTimeMs) {
-        updateBatchCount(conn, batchCount);
         final SharedIndexInformer<Node> nodeSharedIndexInformer = client.informers()
                 .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
         nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(conn));
@@ -53,15 +51,11 @@ class KubernetesStateSync {
                        .filter(podEvents -> !podEvents.isEmpty());
     }
 
-    void startProcessingEvents(final DefaultKubernetesClient client) {
+    void startProcessingEvents(final KubernetesClient client) {
         client.informers().startAllRegisteredInformers();
     }
 
-    void updateBatchCount(final DSLContext conn, final int batchCount) {
-        conn.insertInto(Tables.BATCH_SIZE).values(batchCount).execute();
-    }
-
-    void shutdown(final DefaultKubernetesClient client) {
+    void shutdown(final KubernetesClient client) {
         client.informers().stopAllRegisteredInformers();
     }
 }
