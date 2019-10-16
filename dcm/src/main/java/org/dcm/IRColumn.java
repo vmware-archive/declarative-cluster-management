@@ -6,6 +6,7 @@
 
 package org.dcm;
 
+import com.google.common.base.Preconditions;
 import org.jooq.Field;
 
 import javax.annotation.Nullable;
@@ -153,20 +154,14 @@ public class IRColumn {
      * @return Returns the IRTable from the jooqField
      */
     public IRTable getIRTable() {
-        if (irTable == null) {
-            throw new UnsupportedOperationException("irTable is null");
-        }
-        return irTable;
+        return Preconditions.checkNotNull(irTable);
     }
 
     /**
      * @return Retuns the original SQL jooqField
      */
     public Field getJooqField() {
-        if (jooqField == null) {
-            throw new UnsupportedOperationException("JooqField is null");
-        }
-        return jooqField;
+        return Preconditions.checkNotNull(jooqField);
     }
 
     /**
@@ -180,19 +175,14 @@ public class IRColumn {
      * Used in the mnz_data.ftl and mnz_model.ftl template files
      */
     public FieldType getType() {
-        if (type == null) {
-                throw new UnsupportedOperationException("JooqField and type is null");
-        }
-        return type;
+        return Preconditions.checkNotNull(type);
     }
 
     /**
      * Sets the foreignKeyParent of this jooqField, if this jooqField is a ForeignKey from another table jooqField
      */
     void setForeignKeyParent(final IRColumn parent) {
-        if (type == null) {
-            throw new UnsupportedOperationException("JooqField and type is null");
-        }
+        Preconditions.checkNotNull(type);
         this.foreignKeyParent = Optional.of(parent);
     }
 
@@ -200,9 +190,7 @@ public class IRColumn {
      * @return Returns this jooqField foreignKeyParent jooqField
      */
     public Optional<IRColumn> getForeignKeyParent() {
-        if (type == null) {
-            throw new UnsupportedOperationException("JooqField and type is null");
-        }
+        Preconditions.checkNotNull(type);
         return foreignKeyParent;
     }
 
@@ -211,9 +199,7 @@ public class IRColumn {
      *         of the foreignKeyParent
      */
     public Optional<IRColumn> getRootForeignKeyParent() {
-        if (type == null) {
-            throw new UnsupportedOperationException("JooqField and type is null");
-        }
+        Preconditions.checkNotNull(type);
         Optional<IRColumn> root = foreignKeyParent;
         // we recursively test if the foreignKeyParent also has a foreignKeyParent
         while (root.isPresent() && root.get().foreignKeyParent.isPresent()) {
@@ -235,9 +221,7 @@ public class IRColumn {
      * @return we get the original values from the correspondent jooqField
      */
     synchronized List<?> getFieldValues() {
-        if (type == null) {
-            throw new UnsupportedOperationException("JooqField and type is null");
-        }
+        Preconditions.checkNotNull(type);
         return fieldValues;
     }
 
@@ -250,9 +234,7 @@ public class IRColumn {
      *               the corresponding jooqField/column.
      */
     synchronized void setValues(final List<?> values) {
-        if (type == null) {
-            throw new UnsupportedOperationException("JooqField and type is null");
-        }
+        Preconditions.checkNotNull(type);
         this.fieldValues = values;
         this.values = new ArrayList<>();
         for (final Object v : values) {
