@@ -105,38 +105,40 @@ public abstract class ViewUpdater {
     }
 
     private void receiveUpdateFromDDlog(final DDlogCommand command) {
-        recordsFromDDLog.computeIfAbsent(command.value.getStructName(), k -> new ArrayList<LocalDDlogCommand>());
-
         final List objects = new ArrayList();
         final DDlogRecord record = command.value;
 
         final String tableName = command.value.getStructName();
-        final IRTable irTable = irTables.get(tableName);
-        final Table<? extends Record> table = irTable.getTable();
+        // we only hold records for tables we have in the DB and none others.
+        if (irTables.containsKey(tableName)) {
+            final IRTable irTable = irTables.get(tableName);
+            final Table<? extends Record> table = irTable.getTable();
 
-        int counter = 0;
-        for (final Field<?> field : table.fields()) {
-            final Class<?> cls = field.getType();
-            final DDlogRecord f = record.getStructField(counter);
-            switch (cls.getName()) {
-                case BOOLEAN_TYPE:
-                    objects.add(f.getBoolean());
-                    break;
-                case INTEGER_TYPE:
-                    objects.add(f.getU128());
-                    break;
-                case LONG_TYPE:
-                    objects.add(f.getLong());
-                    break;
-                case STRING_TYPE:
-                    objects.add(f.getString());
-                    break;
-                default:
-                    throw new RuntimeException("Unexpected datatype: " + cls.getName());
+            int counter = 0;
+            for (final Field<?> field : table.fields()) {
+                final Class<?> cls = field.getType();
+                final DDlogRecord f = record.getStructField(counter);
+                switch (cls.getName()) {
+                    case BOOLEAN_TYPE:
+                        objects.add(f.getBoolean());
+                        break;
+                    case INTEGER_TYPE:
+                        objects.add(f.getU128());
+                        break;
+                    case LONG_TYPE:
+                        objects.add(f.getLong());
+                        break;
+                    case STRING_TYPE:
+                        objects.add(f.getString());
+                        break;
+                    default:
+                        throw new RuntimeException("Unexpected datatype: " + cls.getName());
+                }
+                counter = counter + 1;
             }
-            counter = counter + 1;
+            recordsFromDDLog.computeIfAbsent(command.value.getStructName(), k -> new ArrayList<LocalDDlogCommand>());
+            recordsFromDDLog.get(tableName).add(new LocalDDlogCommand(command.kind.toString(), tableName, objects));
         }
-        recordsFromDDLog.get(tableName).add(new LocalDDlogCommand(command.kind.toString(), tableName, objects));
     }
 
     public void flushUpdates() {
@@ -145,16 +147,15 @@ public abstract class ViewUpdater {
         for (final Map.Entry<String, List<LocalDDlogCommand>> entry: recordsFromDDLog.entrySet()) {
             final String tableName = entry.getKey();
             final List<LocalDDlogCommand> commands = entry.getValue();
-
-            for (final LocalDDlogCommand command : commands) {
-                // check if query is already created and if not, create it
-                if (!preparedQueries.containsKey(tableName) ||
-                        (preparedQueries.containsKey(tableName) &&
-                                !preparedQueries.get(tableName).containsKey(command.command))) {
-                    updatePreparedQueries(tableName, command);
+                for (final LocalDDlogCommand command : commands) {
+                    // check if query is already created and if not, create it
+                    if (!preparedQueries.containsKey(tableName) ||
+                            (preparedQueries.containsKey(tableName) &&
+                                    !preparedQueries.get(tableName).containsKey(command.command))) {
+                        updatePreparedQueries(tableName, command);
+                    }
+                    flush(tableName, command);
                 }
-                flush(tableName, command);
-            }
         }
         recordsFromDDLog.clear();
         mapRecordsFromDB.get(modelName).clear();
@@ -194,9 +195,7 @@ public abstract class ViewUpdater {
 
      private void updatePreparedQueries(final String tableName, final LocalDDlogCommand command) {
         final String commandKind = command.command;
-        if (!preparedQueries.containsKey(tableName)) {
-            preparedQueries.put(tableName, new HashMap<>());
-        }
+        preparedQueries.computeIfAbsent(tableName, t -> new HashMap<>());
         if (!preparedQueries.get(tableName).containsKey(commandKind)) {
             // make prepared statement here
             final String preparedQuery = generatePreparedQueryString(tableName, String.valueOf(command.command));

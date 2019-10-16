@@ -89,7 +89,7 @@ public class DBBenchmark {
             baseTables.add("POD");
             baseTables.add("NODE");
 
-            updater = new H2Updater("test",connection, dbCtx, model.getIRTables(), baseTables);
+            updater = new H2Updater("test", connection, dbCtx, model.getIRTables(), baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
