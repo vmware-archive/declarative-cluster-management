@@ -85,4 +85,8 @@ public class DDlogUpdater {
             throw new RuntimeException("Error executing " + exitCode);
         }
     }
+
+    public void close() {
+        API.stop();
+    }
 }

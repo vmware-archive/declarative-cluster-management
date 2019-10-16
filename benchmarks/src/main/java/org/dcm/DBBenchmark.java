@@ -191,33 +191,29 @@ public class DBBenchmark {
      */
     @TearDown(Level.Invocation)
     public void teardown() throws SQLException {
-        dbCtx.execute("drop table node");
-        dbCtx.execute("drop table pod");
-        dbCtx.execute("drop table sparecapacity");
-        dbCtx.execute("drop schema curr");
-        dbCtx.close();
+        updater.close();
     }
 
     @Benchmark
     public void insertRecords() {
         try {
-        final PreparedStatement nodeStmt = connection.prepareStatement(
-                "insert into node values(?, false, false, false, false, " +
-                        "false, false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)");
-        final PreparedStatement podStmt = connection.prepareStatement(
-                "insert into pod values(?, 'scheduled', ?, 'default', 1, 1, 1, 1, 'owner', 'owner', 1)");
+            final PreparedStatement nodeStmt = connection.prepareStatement(
+                    "insert into node values(?, false, false, false, false, " +
+                            "false, false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)");
+            final PreparedStatement podStmt = connection.prepareStatement(
+                    "insert into pod values(?, 'scheduled', ?, 'default', 1, 1, 1, 1, 'owner', 'owner', 1)");
 
-        for (int i = index; i < (numRecords + index); i++) {
-            final String node = "node" + i;
-            final String pod = "pod" + i;
-            nodeStmt.setString(1, node);
+            for (int i = index; i < (numRecords + index); i++) {
+                final String node = "node" + i;
+                final String pod = "pod" + i;
+                nodeStmt.setString(1, node);
 
-            podStmt.setString(1, pod);
-            podStmt.setString(2, node);
+                podStmt.setString(1, pod);
+                podStmt.setString(2, node);
 
-            nodeStmt.executeUpdate();
-            podStmt.executeUpdate();
-        }
+                nodeStmt.executeUpdate();
+                podStmt.executeUpdate();
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }

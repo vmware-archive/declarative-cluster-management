@@ -206,4 +206,14 @@ public abstract class ViewUpdater {
             }
         }
     }
+
+    public void close() {
+        try {
+            updater.close();
+            connection.close();
+        } catch (final SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
 }
