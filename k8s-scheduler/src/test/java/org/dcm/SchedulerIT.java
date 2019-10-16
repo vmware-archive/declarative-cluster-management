@@ -54,10 +54,11 @@ public class SchedulerIT {
 
     @BeforeAll
     public static void setupConnectionAndCreateNamespace() {
-        // This is configured via the build. See the maven-surefire plugin's configuration
-        // in project root pom.xml.
         final String k8sUrl = System.getProperty(K8S_URL_PROPERTY);
-        assertNotNull(k8sUrl);
+        assertNotNull(k8sUrl,
+           "k8sUrl system property has not been configured. If running this integration test " +
+                    "through maven, please run: " +
+                    "\n $: mvn integration-test -DargLine=\"-Dk8sUrl=http://<hostname>:<port>\"");
         final ApiClient client = Config.fromUrl(k8sUrl);
         client.getHttpClient().setReadTimeout(0, TimeUnit.SECONDS); // infinite timeout
         Configuration.setDefaultApiClient(client);
@@ -87,9 +88,9 @@ public class SchedulerIT {
         final KubernetesStateSync stateSync = new KubernetesStateSync();
 
         final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, coreV1Api, 50, 1000);
+                stateSync.setupInformersAndPodEventStream(conn, fabricClient, 50, 1000);
         scheduler.startScheduler(eventStream, coreV1Api);
-        stateSync.startProcessingEvents();
+        stateSync.startProcessingEvents(fabricClient);
 
         // Add a new one
         final URL url = getClass().getClassLoader().getResource("no-constraints.yml");
@@ -104,8 +105,7 @@ public class SchedulerIT {
         final List<Pod> items = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
         assertEquals(newPodsToCreate, items.size());
         items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
-
-        stateSync.shutdown();
+        stateSync.shutdown(fabricClient);
         scheduler.shutdown();
     }
 

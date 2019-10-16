@@ -13,6 +13,8 @@ import com.codahale.metrics.Timer;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
+import io.fabric8.kubernetes.client.ConfigBuilder;
+import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.kubernetes.client.ApiClient;
 import io.kubernetes.client.ApiException;
 import io.kubernetes.client.Configuration;
@@ -252,9 +254,12 @@ public final class Scheduler {
         client.getHttpClient().setReadTimeout(0, TimeUnit.SECONDS); // infinite timeout
         Configuration.setDefaultApiClient(client);
         final CoreV1Api coreV1Api = new CoreV1Api();
+        final io.fabric8.kubernetes.client.Config config =
+                new ConfigBuilder().withMasterUrl(apiServerUrl).build();
+        final DefaultKubernetesClient fabricClient = new DefaultKubernetesClient(config);
 
         final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, coreV1Api,
+                stateSync.setupInformersAndPodEventStream(conn, fabricClient,
                                                           Integer.parseInt(cmd.getOptionValue("batch-size")),
                                                           Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
         scheduler.startScheduler(eventStream, coreV1Api);

@@ -7,15 +7,12 @@
 
 package org.dcm;
 
-import io.kubernetes.client.ApiException;
-import io.kubernetes.client.apis.CoreV1Api;
-import io.kubernetes.client.informer.SharedIndexInformer;
-import io.kubernetes.client.informer.SharedInformerFactory;
-import io.kubernetes.client.models.V1Node;
-import io.kubernetes.client.models.V1NodeList;
-import io.kubernetes.client.models.V1Pod;
-import io.kubernetes.client.models.V1PodList;
-import io.kubernetes.client.util.CallGeneratorParams;
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeList;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.client.DefaultKubernetesClient;
+import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.reactivex.Flowable;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
@@ -28,34 +25,18 @@ import java.util.concurrent.TimeUnit;
 
 class KubernetesStateSync {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
-    private final SharedInformerFactory factory = new SharedInformerFactory();
 
-    Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn, final CoreV1Api coreV1Api,
+    Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn,
+                                                             final DefaultKubernetesClient client,
                                                              final int batchCount, final long batchTimeMs) {
         updateBatchCount(conn, batchCount);
-
-        // Node informer
-       final SharedIndexInformer<V1Node> nodeInformer = factory.sharedIndexInformerFor(
-                (CallGeneratorParams params) -> {
-                    try {
-                        return coreV1Api.listNodeCall(null, null, null, null, null, null,
-                                params.resourceVersion, params.timeoutSeconds, params.watch, null, null);
-                    } catch (final ApiException e) {
-                        throw new RuntimeException(e);
-                    }
-                }, V1Node.class, V1NodeList.class);
-        nodeInformer.addEventHandler(new NodeResourceEventHandler(conn));
+        final SharedIndexInformer<Node> nodeSharedIndexInformer = client.informers()
+                .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
+        nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(conn));
 
         // Pod informer
-        final SharedIndexInformer<V1Pod> podInformer = factory.sharedIndexInformerFor(
-                (CallGeneratorParams params) -> {
-                    try {
-                        return coreV1Api.listPodForAllNamespacesCall(null, null, null, null, null,
-                                null, params.resourceVersion, params.timeoutSeconds, params.watch, null, null);
-                    } catch (final ApiException e) {
-                        throw new RuntimeException(e);
-                    }
-                }, V1Pod.class, V1PodList.class);
+        final SharedIndexInformer<Pod> podInformer = client.informers()
+                .sharedIndexInformerFor(Pod.class, PodList.class, 30000);
         final PublishProcessor<PodEvent> podEventPublishProcessor = PublishProcessor.create();
         podInformer.addEventHandler(new PodResourceEventHandler(conn, podEventPublishProcessor));
 
@@ -72,15 +53,15 @@ class KubernetesStateSync {
                        .filter(podEvents -> !podEvents.isEmpty());
     }
 
-    void startProcessingEvents() {
-        factory.startAllRegisteredInformers();
+    void startProcessingEvents(final DefaultKubernetesClient client) {
+        client.informers().startAllRegisteredInformers();
     }
 
     void updateBatchCount(final DSLContext conn, final int batchCount) {
         conn.insertInto(Tables.BATCH_SIZE).values(batchCount).execute();
     }
 
-    void shutdown() {
-        factory.stopAllRegisteredInformers();
+    void shutdown(final DefaultKubernetesClient client) {
+        client.informers().stopAllRegisteredInformers();
     }
 }

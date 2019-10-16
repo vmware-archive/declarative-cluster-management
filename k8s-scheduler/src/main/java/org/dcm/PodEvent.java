@@ -1,6 +1,6 @@
 package org.dcm;
 
-import io.kubernetes.client.models.V1Pod;
+import io.fabric8.kubernetes.api.model.Pod;
 
 class PodEvent {
 
@@ -11,9 +11,9 @@ class PodEvent {
     }
 
     private final Action action;
-    private final V1Pod pod;
+    private final Pod pod;
 
-    PodEvent(final Action action, final V1Pod pod) {
+    PodEvent(final Action action, final Pod pod) {
         this.action = action;
         this.pod = pod;
     }
@@ -22,7 +22,7 @@ class PodEvent {
         return action;
     }
 
-    public V1Pod getPod() {
+    public Pod getPod() {
         return pod;
     }
 

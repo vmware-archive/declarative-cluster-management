@@ -7,32 +7,32 @@
 package org.dcm;
 
 import com.google.common.collect.Sets;
-import io.kubernetes.client.custom.Quantity;
-import io.kubernetes.client.models.V1Affinity;
-import io.kubernetes.client.models.V1Container;
-import io.kubernetes.client.models.V1LabelSelector;
-import io.kubernetes.client.models.V1LabelSelectorBuilder;
-import io.kubernetes.client.models.V1LabelSelectorRequirement;
-import io.kubernetes.client.models.V1Node;
-import io.kubernetes.client.models.V1NodeAffinity;
-import io.kubernetes.client.models.V1NodeCondition;
-import io.kubernetes.client.models.V1NodeSelector;
-import io.kubernetes.client.models.V1NodeSelectorBuilder;
-import io.kubernetes.client.models.V1NodeSelectorRequirement;
-import io.kubernetes.client.models.V1NodeSelectorTerm;
-import io.kubernetes.client.models.V1NodeSelectorTermBuilder;
-import io.kubernetes.client.models.V1NodeSpec;
-import io.kubernetes.client.models.V1NodeStatus;
-import io.kubernetes.client.models.V1ObjectMeta;
-import io.kubernetes.client.models.V1Pod;
-import io.kubernetes.client.models.V1PodAffinity;
-import io.kubernetes.client.models.V1PodAffinityTerm;
-import io.kubernetes.client.models.V1PodAffinityTermBuilder;
-import io.kubernetes.client.models.V1PodSpec;
-import io.kubernetes.client.models.V1PodStatus;
-import io.kubernetes.client.models.V1ResourceRequirements;
-import io.kubernetes.client.models.V1Taint;
-import io.kubernetes.client.models.V1Toleration;
+import io.fabric8.kubernetes.api.model.Affinity;
+import io.fabric8.kubernetes.api.model.Container;
+import io.fabric8.kubernetes.api.model.LabelSelector;
+import io.fabric8.kubernetes.api.model.LabelSelectorBuilder;
+import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeAffinity;
+import io.fabric8.kubernetes.api.model.NodeCondition;
+import io.fabric8.kubernetes.api.model.NodeSelector;
+import io.fabric8.kubernetes.api.model.NodeSelectorBuilder;
+import io.fabric8.kubernetes.api.model.NodeSelectorRequirement;
+import io.fabric8.kubernetes.api.model.NodeSelectorTerm;
+import io.fabric8.kubernetes.api.model.NodeSelectorTermBuilder;
+import io.fabric8.kubernetes.api.model.NodeSpec;
+import io.fabric8.kubernetes.api.model.NodeStatus;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodAffinity;
+import io.fabric8.kubernetes.api.model.PodAffinityTerm;
+import io.fabric8.kubernetes.api.model.PodAffinityTermBuilder;
+import io.fabric8.kubernetes.api.model.PodSpec;
+import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.api.model.Quantity;
+import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import io.fabric8.kubernetes.api.model.Taint;
+import io.fabric8.kubernetes.api.model.Toleration;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
 import org.joda.time.DateTime;
@@ -73,7 +73,7 @@ public class SchedulerTest {
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
         final String podName = "p1";
-        final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.singletonMap("k", "v"));
+        final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.singletonMap("k", "v"));
         handler.onAdd(pod);
         assertTrue(conn.fetchExists(Tables.POD_INFO));
         assertTrue(conn.fetchExists(Tables.POD_LABELS));
@@ -112,7 +112,7 @@ public class SchedulerTest {
         // We pick a random node from [0, numNodes) to assign all pods to.
         final int nodeToAssignTo = ThreadLocalRandom.current().nextInt(numNodes);
         for (int i = 0; i < numNodes; i++) {
-            final V1NodeCondition badCondition = new V1NodeCondition();
+            final NodeCondition badCondition = new NodeCondition();
             badCondition.setStatus(status);
             badCondition.setType(type);
             nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
@@ -250,7 +250,7 @@ public class SchedulerTest {
      */
     @ParameterizedTest
     @MethodSource("testNodeAffinity")
-    public void testPodToNodeAffinity(final List<V1NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
+    public void testPodToNodeAffinity(final List<NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
                                       final boolean shouldBeAffineToLabelledNodes,
                                       final boolean shouldBeAffineToRemainingNodes) {
         final DSLContext conn = Scheduler.setupDb();
@@ -270,9 +270,9 @@ public class SchedulerTest {
                                                            .collect(Collectors.toSet());
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
-            final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
             if (podsToAssign.contains(podName)) {
-                final V1NodeSelector selector = new V1NodeSelectorBuilder()
+                final NodeSelector selector = new NodeSelectorBuilder()
                                                             .withNodeSelectorTerms(terms)
                                                             .build();
                 pod.getSpec().getAffinity().getNodeAffinity()
@@ -351,10 +351,10 @@ public class SchedulerTest {
 
     @SuppressWarnings("UnusedMethod")
     private static Stream testNodeAffinity() {
-        final List<V1NodeSelectorTerm> inTerm = List.of(term(nodeExpr("k1", "In", "l1", "l2")));
-        final List<V1NodeSelectorTerm> existsTerm = List.of(term(nodeExpr("k1", "Exists", "l1", "l2")));
-        final List<V1NodeSelectorTerm> notInTerm = List.of(term(nodeExpr("k1", "NotIn", "l1", "l2")));
-        final List<V1NodeSelectorTerm> notExistsTerm = List.of(term(nodeExpr("k1", "DoesNotExist", "l1", "l2")));
+        final List<NodeSelectorTerm> inTerm = List.of(term(nodeExpr("k1", "In", "l1", "l2")));
+        final List<NodeSelectorTerm> existsTerm = List.of(term(nodeExpr("k1", "Exists", "l1", "l2")));
+        final List<NodeSelectorTerm> notInTerm = List.of(term(nodeExpr("k1", "NotIn", "l1", "l2")));
+        final List<NodeSelectorTerm> notExistsTerm = List.of(term(nodeExpr("k1", "DoesNotExist", "l1", "l2")));
         return Stream.of(
                 // First, we test to see if all our operators work on their own
 
@@ -403,7 +403,7 @@ public class SchedulerTest {
      */
     @ParameterizedTest
     @MethodSource("testPodAffinity")
-    public void testPodToPodAffinity(final List<V1PodAffinityTerm> terms, final Map<String, String> podLabelsInput,
+    public void testPodToPodAffinity(final List<PodAffinityTerm> terms, final Map<String, String> podLabelsInput,
                                      final boolean shouldBeAffineToLabelledPods,
                                      final boolean shouldBeAffineToRemainingPods,
                                      final boolean cannotBePlacedAnywhere) {
@@ -426,10 +426,12 @@ public class SchedulerTest {
         // requirements, that means that that pod will not have any candidate nodes to be placed on.
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
-            final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
             if (podsToAssign.contains(podName)) {
-                final V1PodAffinity podAffinity = new V1PodAffinity();
-                terms.forEach(podAffinity::addRequiredDuringSchedulingIgnoredDuringExecutionItem);
+                final PodAffinity podAffinity = new PodAffinity();
+                final List<PodAffinityTerm> podAffinityTerms =
+                        podAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
+                podAffinityTerms.addAll(terms);
                 pod.getMetadata().setLabels(podLabelsInput);
                 pod.getSpec().getAffinity().setPodAffinity(podAffinity);
             } else {
@@ -479,13 +481,13 @@ public class SchedulerTest {
     @SuppressWarnings("UnusedMethod")
     private static Stream testPodAffinity() {
         final String topologyKey = "kubernetes.io/hostname";
-        final List<V1PodAffinityTerm> inTerm = List.of(term(topologyKey,
+        final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
                                                        podExpr("k1", "In", "l1", "l2")));
-        final List<V1PodAffinityTerm> existsTerm = List.of(term(topologyKey,
+        final List<PodAffinityTerm> existsTerm = List.of(term(topologyKey,
                                                                 podExpr("k1", "Exists", "l1", "l2")));
-        final List<V1PodAffinityTerm> notInTerm = List.of(term(topologyKey,
+        final List<PodAffinityTerm> notInTerm = List.of(term(topologyKey,
                                                           podExpr("k1", "NotIn", "l1", "l2")));
-        final List<V1PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
+        final List<PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
                                                                    podExpr("k1", "DoesNotExist", "l1", "l2")));
         return Stream.of(
                 // First, we test to see if all our operators work on their own
@@ -552,7 +554,7 @@ public class SchedulerTest {
         // Add pending pods
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
-            final V1Pod pod;
+            final Pod pod;
 
             final Map<String, Quantity> resourceRequests = new HashMap<>();
             resourceRequests.put("cpu", new Quantity(String.valueOf(cpuRequests.get(i))));
@@ -571,14 +573,14 @@ public class SchedulerTest {
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
-            final V1Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(nodeMemoryCapacities.get(i))));
             nodeResourceEventHandler.onAdd(node);
 
             // Add one system pod per node
             final String podName = "system-pod-" + nodeName;
-            final V1Pod pod;
+            final Pod pod;
             final String status = "Running";
             pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName(nodeName);
@@ -641,8 +643,8 @@ public class SchedulerTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("testTaintsAndTolerationsValues")
-    public void testTaintsAndTolerations(final String displayName, final List<List<V1Toleration>> tolerations,
-                                         final List<List<V1Taint>> taints, final Predicate<List<String>> assertOn,
+    public void testTaintsAndTolerations(final String displayName, final List<List<Toleration>> tolerations,
+                                         final List<List<Taint>> taints, final Predicate<List<String>> assertOn,
                                          final boolean feasible) {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
@@ -656,7 +658,7 @@ public class SchedulerTest {
         // requirements, that means that that pod will not have any candidate nodes to be placed on.
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
-            final V1Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
             if (tolerations.get(i).size() != 0) {
                 pod.getSpec().setTolerations(tolerations.get(i));
             }
@@ -667,7 +669,7 @@ public class SchedulerTest {
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
-            final V1Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             node.getSpec().setTaints(taints.get(i));
             nodeResourceEventHandler.onAdd(node);
         }
@@ -690,47 +692,47 @@ public class SchedulerTest {
 
     @SuppressWarnings("UnusedMethod")
     private static Stream testTaintsAndTolerationsValues() {
-        final V1Toleration tolerateK1EqualsV1 = new V1Toleration();
-        tolerateK1EqualsV1.setKey("k1");
-        tolerateK1EqualsV1.setOperator("Equal");
-        tolerateK1EqualsV1.setValue("v1");
-        tolerateK1EqualsV1.setEffect("NoSchedule");
+        final Toleration tolerateK1Equals = new Toleration();
+        tolerateK1Equals.setKey("k1");
+        tolerateK1Equals.setOperator("Equal");
+        tolerateK1Equals.setValue("v1");
+        tolerateK1Equals.setEffect("NoSchedule");
 
-        final V1Toleration tolerateK2Exists = new V1Toleration();
+        final Toleration tolerateK2Exists = new Toleration();
         tolerateK2Exists.setKey("k2");
         tolerateK2Exists.setOperator("Exists");
         tolerateK2Exists.setEffect("NoSchedule");
 
-        final V1Toleration tolerateK1Exists = new V1Toleration();
+        final Toleration tolerateK1Exists = new Toleration();
         tolerateK1Exists.setKey("k1");
         tolerateK1Exists.setOperator("Exists");
         tolerateK1Exists.setEffect("NoSchedule");
 
-        final V1Toleration tolerateK1ExistsNoExecute = new V1Toleration();
+        final Toleration tolerateK1ExistsNoExecute = new Toleration();
         tolerateK1ExistsNoExecute.setKey("k1");
         tolerateK1ExistsNoExecute.setOperator("Exists");
         tolerateK1ExistsNoExecute.setEffect("NoExecute");
 
-        final V1Taint taintK1V1 = new V1Taint();
-        taintK1V1.setKey("k1");
-        taintK1V1.setValue("v1");
-        taintK1V1.setEffect("NoSchedule");
+        final Taint taintK1 = new Taint();
+        taintK1.setKey("k1");
+        taintK1.setValue("v1");
+        taintK1.setEffect("NoSchedule");
 
-        final V1Taint taintK1NullValue = new V1Taint();
+        final Taint taintK1NullValue = new Taint();
         taintK1NullValue.setKey("k1");
         taintK1NullValue.setEffect("NoSchedule");
 
-        final V1Taint taintK1V1NoExecute = new V1Taint();
-        taintK1V1NoExecute.setKey("k1");
-        taintK1V1NoExecute.setValue("v1");
-        taintK1V1NoExecute.setEffect("NoExecute");
+        final Taint taintK1NoExecute = new Taint();
+        taintK1NoExecute.setKey("k1");
+        taintK1NoExecute.setValue("v1");
+        taintK1NoExecute.setEffect("NoExecute");
 
-        final V1Taint taintK1V2 = new V1Taint();
+        final Taint taintK1V2 = new Taint();
         taintK1V2.setKey("k1");
         taintK1V2.setValue("v2");
         taintK1V2.setEffect("NoSchedule");
 
-        final V1Taint taintK2V4 = new V1Taint();
+        final Taint taintK2V4 = new Taint();
         taintK2V4.setKey("k2");
         taintK2V4.setValue("v4");
         taintK2V4.setEffect("NoSchedule");
@@ -742,11 +744,11 @@ public class SchedulerTest {
                 nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n1");
         return Stream.of(
                 Arguments.of("No toleration => cannot match taint k1:v1",
-                        List.of(List.of()), List.of(List.of(taintK1V1)),
+                        List.of(List.of()), List.of(List.of(taintK1)),
                         null, false),
 
                 Arguments.of("toleration k1=v1 matches taint k1:v1",
-                             List.of(List.of(tolerateK1EqualsV1)), List.of(List.of(taintK1V1)),
+                             List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1)),
                              nodeGoesToN0, true),
 
                 Arguments.of("toleration exists(k1) matches taint k1:v1",
@@ -754,51 +756,51 @@ public class SchedulerTest {
                         nodeGoesToN0, true),
 
                 Arguments.of("toleration k1=v1 does not match taint k1:v2",
-                        List.of(List.of(tolerateK1EqualsV1)), List.of(List.of(taintK1V2)),
+                        List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1V2)),
                         null, false),
 
                 Arguments.of("toleration exists(k1) does not match taint k1:v1",
-                        List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK1V1)),
+                        List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK1)),
                         null, false),
 
                 Arguments.of("toleration k1=v1 does not match taints [k1:v1, k2:v4]",
-                        List.of(List.of(tolerateK1EqualsV1)), List.of(List.of(taintK1V1, taintK2V4)),
+                        List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1, taintK2V4)),
                         null, false),
 
                 Arguments.of("toleration [k1=v1, exists(k2)] matches taints [k1:v1, k1:v2]",
-                        List.of(List.of(tolerateK1EqualsV1, tolerateK2Exists)), List.of(List.of(taintK1V1, taintK2V4)),
+                        List.of(List.of(tolerateK1Equals, tolerateK2Exists)), List.of(List.of(taintK1, taintK2V4)),
                         nodeGoesToN0, true),
 
                 Arguments.of("toleration [k1=v1, exists(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
-                        List.of(List.of(tolerateK1EqualsV1, tolerateK2Exists)),
-                        List.of(List.of(taintK1V1, taintK1V2, taintK2V4)),
+                        List.of(List.of(tolerateK1Equals, tolerateK2Exists)),
+                        List.of(List.of(taintK1, taintK1V2, taintK2V4)),
                         null, false),
 
                 Arguments.of("toleration [exists(k1), exists(k2)] matches taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Exists, tolerateK2Exists)),
-                        List.of(List.of(taintK1V1, taintK1V2, taintK2V4)),
+                        List.of(List.of(taintK1, taintK1V2, taintK2V4)),
                         nodeGoesToN0, true),
 
                 Arguments.of("toleration [exists(k1), exists_noexec(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)),
-                        List.of(List.of(taintK1V1, taintK1V2, taintK2V4)),
+                        List.of(List.of(taintK1, taintK1V2, taintK2V4)),
                         null, false),
 
                 Arguments.of("toleration [exists(k1), exists_noexec(k2)] matches taints [k1:v1]",
-                        List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)), List.of(List.of(taintK1V1)),
+                        List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)), List.of(List.of(taintK1)),
                         nodeGoesToN0, true),
 
                 Arguments.of("Multi node: p0 should go to n1 and p1 to n0.",
-                        List.of(List.of(tolerateK1EqualsV1, tolerateK2Exists),   // pod-0
+                        List.of(List.of(tolerateK1Equals, tolerateK2Exists),   // pod-0
                                 List.of(tolerateK1ExistsNoExecute)),             // pod-1
-                        List.of(List.of(taintK1V1NoExecute),                     // node-0
-                                List.of(taintK1V1)),                             // node-1
+                        List.of(List.of(taintK1NoExecute),                     // node-0
+                                List.of(taintK1)),                             // node-1
                         p0goesToN1andP1GoesToN0, true),
 
                 Arguments.of("Multi node: p0 and p1 cannot tolerate n0 so they go to n1",
                         List.of(List.of(),                                       // pod-0
                                 List.of()),                                      // pod-1
-                        List.of(List.of(taintK1NullValue, taintK1V1),            // node-0
+                        List.of(List.of(taintK1NullValue, taintK1),            // node-0
                                 List.of()),                                      // node-1
                         p0goesToN1andP1GoesToN1, true)
         );
@@ -815,69 +817,69 @@ public class SchedulerTest {
         return ret;
     }
 
-    private static V1NodeSelectorTerm term(final V1NodeSelectorRequirement... requirements) {
-        return new V1NodeSelectorTermBuilder()
-                   .withMatchExpressions(requirements)
-                   .build();
-    }
-
-    private static V1NodeSelectorRequirement nodeExpr(final String key, final String op, final String... values) {
-        final V1NodeSelectorRequirement requirement = new V1NodeSelectorRequirement();
-        requirement.setKey(key);
-        requirement.setOperator(op);
-        requirement.setValues(List.of(values));
-        return requirement;
-    }
-
-    private static V1PodAffinityTerm term(final String topologyKey, final V1LabelSelectorRequirement... requirements) {
-        final V1LabelSelector labelSelector = new V1LabelSelectorBuilder()
+    private static NodeSelectorTerm term(final NodeSelectorRequirement... requirements) {
+        return new NodeSelectorTermBuilder()
                 .withMatchExpressions(requirements)
                 .build();
-        return new V1PodAffinityTermBuilder()
-                      .withLabelSelector(labelSelector)
-                      .withTopologyKey(topologyKey)
-                      .build();
     }
 
-    private static V1LabelSelectorRequirement podExpr(final String key, final String op, final String... values) {
-        final V1LabelSelectorRequirement requirement = new V1LabelSelectorRequirement();
+    private static NodeSelectorRequirement nodeExpr(final String key, final String op, final String... values) {
+        final NodeSelectorRequirement requirement = new NodeSelectorRequirement();
         requirement.setKey(key);
         requirement.setOperator(op);
         requirement.setValues(List.of(values));
         return requirement;
     }
 
-    private V1Pod newPod(final String name) {
+    private static PodAffinityTerm term(final String topologyKey, final LabelSelectorRequirement... requirements) {
+        final LabelSelector labelSelector = new LabelSelectorBuilder()
+                .withMatchExpressions(requirements)
+                .build();
+        return new PodAffinityTermBuilder()
+                .withLabelSelector(labelSelector)
+                .withTopologyKey(topologyKey)
+                .build();
+    }
+
+    private static LabelSelectorRequirement podExpr(final String key, final String op, final String... values) {
+        final LabelSelectorRequirement requirement = new LabelSelectorRequirement();
+        requirement.setKey(key);
+        requirement.setOperator(op);
+        requirement.setValues(List.of(values));
+        return requirement;
+    }
+
+    private Pod newPod(final String name) {
         return newPod(name, "Pending", Collections.emptyMap(), Collections.emptyMap());
     }
 
-    private V1Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
+    private Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
                          final Map<String, String> labels) {
-        final V1Pod pod = new V1Pod();
-        final V1ObjectMeta meta = new V1ObjectMeta();
+        final Pod pod = new Pod();
+        final ObjectMeta meta = new ObjectMeta();
         final DateTime dateTime = new DateTime();
         meta.setName(podName);
         meta.setLabels(labels);
-        meta.setCreationTimestamp(dateTime);
+        meta.setCreationTimestamp(dateTime.toString());
         meta.setNamespace("default");
-        final V1PodSpec spec = new V1PodSpec();
+        final PodSpec spec = new PodSpec();
         spec.setSchedulerName(Scheduler.SCHEDULER_NAME);
         spec.setPriority(0);
-        spec.nodeSelector(selectorLabels);
+        spec.setNodeSelector(selectorLabels);
 
-        final V1Container container = new V1Container();
+        final Container container = new Container();
         container.setName("pause");
 
-        final V1ResourceRequirements resourceRequirements = new V1ResourceRequirements();
+        final ResourceRequirements resourceRequirements = new ResourceRequirements();
         resourceRequirements.setRequests(Collections.emptyMap());
         container.setResources(resourceRequirements);
-        spec.addContainersItem(container);
+        spec.getContainers().add(container);
 
-        final V1Affinity affinity = new V1Affinity();
-        final V1NodeAffinity nodeAffinity = new V1NodeAffinity();
+        final Affinity affinity = new Affinity();
+        final NodeAffinity nodeAffinity = new NodeAffinity();
         affinity.setNodeAffinity(nodeAffinity);
         spec.setAffinity(affinity);
-        final V1PodStatus status = new V1PodStatus();
+        final PodStatus status = new PodStatus();
         status.setPhase(phase);
         pod.setMetadata(meta);
         pod.setSpec(spec);
@@ -885,10 +887,10 @@ public class SchedulerTest {
         return pod;
     }
 
-    private V1Node addNode(final String nodeName, final Map<String, String> labels,
-                           final List<V1NodeCondition> conditions) {
-        final V1Node node = new V1Node();
-        final V1NodeStatus status = new V1NodeStatus();
+    private Node addNode(final String nodeName, final Map<String, String> labels,
+                           final List<NodeCondition> conditions) {
+        final Node node = new Node();
+        final NodeStatus status = new NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();
         quantityMap.put("cpu", new Quantity("10"));
         quantityMap.put("memory", new Quantity("1000"));
@@ -899,11 +901,11 @@ public class SchedulerTest {
         status.setImages(Collections.emptyList());
         node.setStatus(status);
         status.setConditions(conditions);
-        final V1NodeSpec spec = new V1NodeSpec();
+        final NodeSpec spec = new NodeSpec();
         spec.setUnschedulable(false);
         spec.setTaints(Collections.emptyList());
         node.setSpec(spec);
-        final V1ObjectMeta meta = new V1ObjectMeta();
+        final ObjectMeta meta = new ObjectMeta();
         meta.setName(nodeName);
         meta.setLabels(labels);
         node.setMetadata(meta);
