@@ -63,14 +63,9 @@ public class DDlogUpdater {
     }
 
     private DDlogCommand recordToCommand(final LocalDDlogCommand record) {
-        int id;
-        if (tableIDMap.containsKey(record.tableName)) {
-            id = tableIDMap.get(record.tableName);
-        }
-        else  {
-            id = API.getTableId(record.tableName);
-            tableIDMap.put(record.tableName, id);
-        }
+        tableIDMap.computeIfAbsent(record.tableName, r -> API.getTableId(record.tableName));
+        final int id = tableIDMap.get(record.tableName);
+        checkDDlogExitCode(id);
         return new DDlogCommand(DDlogCommand.Kind.Insert, id, toDDlogRecord(record.tableName, record.values));
     }
 

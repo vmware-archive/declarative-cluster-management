@@ -6,4 +6,14 @@
     <Match>
         <Package name="org.dcm.generated"/>
     </Match>
+    <Match>
+        <Class name="org.dcm.viewupdater.ViewUpdater" />
+        <Method name="updatePreparedQueries" />
+        <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.viewupdater.ViewUpdater" />
+        <Method name="updatePreparedQueries" />
+        <Bug pattern="OBL_UNSATISFIED_OBLIGATION" />
+    </Match>
 </FindBugsFilter>

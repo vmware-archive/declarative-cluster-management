@@ -7,6 +7,7 @@ package org.dcm;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
+import org.dcm.viewupdater.H2Updater;
 import org.dcm.viewupdater.HSQLUpdater;
 import org.dcm.viewupdater.ViewUpdater;
 import org.jooq.DSLContext;
@@ -36,7 +37,6 @@ import java.util.List;
 import java.util.Properties;
 
 import static java.sql.DriverManager.getConnection;
-import static org.jooq.impl.DSL.mode;
 import static org.jooq.impl.DSL.using;
 
 @State(Scope.Benchmark)
@@ -44,14 +44,14 @@ public class DBBenchmark {
 
     private DSLContext dbCtx;
     private Connection connection;
-    private HSQLUpdater updater;
+    private ViewUpdater updater;
     private Model model;
     private List<String> baseTables;
 
     @Param({"100", "1000", "10000", "100000"})
     public int numRecords;
 
-    @Param({"HSQLDB"})
+    @Param({"H2"})
     public String db;
 
     private int index = 0;
@@ -63,13 +63,12 @@ public class DBBenchmark {
                 .measurementIterations(5)
                 .mode(Mode.AverageTime)
                 .shouldDoGC(true)
-                .result("profiling-result-using-prepared-stmts-all-data-points.csv").resultFormat(ResultFormatType.CSV)
+                .result("profiling-result-after-refactoring.csv").resultFormat(ResultFormatType.CSV)
                 .forks(1)
                 .build();
 
         new Runner(opts).run();
     }
-
 
     /*
      * Sets up an in-memory H2 database that we use for all tests.
@@ -78,7 +77,6 @@ public class DBBenchmark {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
         try {
-            // Create a fresh database
             final String connectionURL = "jdbc:h2:mem:;create=true";
             connection = getConnection(connectionURL, properties);
             dbCtx = using(connection, SQLDialect.H2);
@@ -91,32 +89,12 @@ public class DBBenchmark {
             baseTables.add("POD");
             baseTables.add("NODE");
 
-
-//            for (final String entry : baseTables) {
-//                final String tableName = entry.toUpperCase(Locale.US);
-//                if (model.getIRTables().containsKey(tableName)) {
-//                    final String triggerName = "TRIGGER_" + tableName;
-//
-//                    final StringBuilder builder = new StringBuilder();
-//                    builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
-//                            "FOR EACH ROW CALL \"" + Updater.class.getName() + "\"");
-//
-//                    final String command = builder.toString();
-//                    dbCtx.execute(command);
-//                }
-//            }
-//
-//            updater = new Updater(connection, dbCtx, baseTables,
-//                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());
-//            ViewUpdater.setIRTables(model.getIRTables());
-            updater = new HSQLUpdater(connection, dbCtx, model.getIRTables(), baseTables);
-//            updater.setIRTables(model.getIRTables());
+            updater = new H2Updater("test",connection, dbCtx, model.getIRTables(), baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
     }
-
 
     /*
      * Sets up an in-memory HSQLDB database that we use for all tests.
@@ -138,24 +116,7 @@ public class DBBenchmark {
             baseTables.add("POD");
             baseTables.add("NODE");
 
-//            for (final String entry : baseTables) {
-//                final String tableName = entry.toUpperCase(Locale.US);
-//                if (model.getIRTables().containsKey(tableName)) {
-//                    final String triggerName = "TRIGGER_" + tableName;
-//
-//                    final StringBuilder builder = new StringBuilder();
-//                    builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
-//                            "FOR EACH ROW CALL \"" + Updater.class.getName() + "\"");
-//
-//                    final String command = builder.toString();
-//                    dbCtx.execute(command);
-//                }
-//            }
-
-            /*updater = new Updater(connection, dbCtx, baseTables,
-                    new DDlogUpdater(r -> updater.receiveUpdateFromDDlog(r)), model.getIRTables());*/
-//            ViewUpdater.setIRTables(model.getIRTables());
-            updater = new HSQLUpdater(connection, dbCtx, model.getIRTables(), baseTables);
+            updater = new HSQLUpdater("test", connection, dbCtx, model.getIRTables(), baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
@@ -239,7 +200,6 @@ public class DBBenchmark {
 
     @Benchmark
     public void insertRecords() {
-
         try {
         final PreparedStatement nodeStmt = connection.prepareStatement(
                 "insert into node values(?, false, false, false, false, " +

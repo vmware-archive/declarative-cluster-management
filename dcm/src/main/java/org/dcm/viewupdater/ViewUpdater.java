@@ -16,9 +16,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * ViewUpdater can be used to help update views held in the DB incrementally, using DDLog. The class receives triggers
+ * based on updates on base tables in the DB. These updates are held in memory until the user calls the function
+ * "flushUpdates". Then, these updates are passed to DDlog, that incrementally computes views on them and returns
+ * updates. Finally, we push these updates back to the DB.
+ */
 public abstract class ViewUpdater {
     String triggerClassName;
+    String modelName;
 
     final Connection connection;
     private final List<String> baseTables;
@@ -33,11 +41,20 @@ public abstract class ViewUpdater {
     private static final String BOOLEAN_TYPE = "java.lang.Boolean";
     private static final String LONG_TYPE = "java.lang.Long";
 
-    static List<LocalDDlogCommand> recordsFromDB;
+    static Map<String, List<LocalDDlogCommand>> mapRecordsFromDB = new ConcurrentHashMap<>();
 
-    public ViewUpdater(final Connection connection, final DSLContext dbCtx,
+    /**
+     * @param modelName: the name of the model this object is associated with
+     *                 This allows us to only utilize records from the DB that are related to our current model.
+     * @param connection: a connection to the DB used to build prepared statements
+     * @param dbCtx: database context, mainly used to create triggers.
+     * @param baseTables: the tables we build triggers for
+     * @param irTables: the datastructure that gives us schema for the "base" and "view" tables
+     */
+    public ViewUpdater(final String modelName, final Connection connection, final DSLContext dbCtx,
                        final List<String> baseTables, final Map<String, IRTable> irTables) {
-        recordsFromDB = new ArrayList<>();
+        this.modelName = modelName.toUpperCase(Locale.US);
+        mapRecordsFromDB.computeIfAbsent(this.modelName, m -> new ArrayList<LocalDDlogCommand>());
 
         this.connection = connection;
         this.irTables = irTables;
@@ -75,14 +92,13 @@ public abstract class ViewUpdater {
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
             if (irTables.containsKey(tableName)) {
-                final String triggerName = "TRIGGER_" + tableName;
+                final String triggerName = modelName + "_TRIGGER_" + tableName;
 
                 final StringBuilder builder = new StringBuilder();
                 builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
                         "FOR EACH ROW CALL \"" + triggerClassName + "\"");
 
                 final String command = builder.toString();
-                System.out.println(command);
                 dbCtx.execute(command);
             }
         }
@@ -124,8 +140,7 @@ public abstract class ViewUpdater {
     }
 
     public void flushUpdates() {
-        updater.sendUpdatesToDDlog(recordsFromDB);
-        System.out.println("Size of received requests: " + recordsFromDDLog.keySet());
+        updater.sendUpdatesToDDlog(mapRecordsFromDB.get(modelName));
 
         for (final Map.Entry<String, List<LocalDDlogCommand>> entry: recordsFromDDLog.entrySet()) {
             final String tableName = entry.getKey();
@@ -142,7 +157,7 @@ public abstract class ViewUpdater {
             }
         }
         recordsFromDDLog.clear();
-        recordsFromDB.clear();
+        mapRecordsFromDB.get(modelName).clear();
     }
 
      private void flush(final String tableName, final LocalDDlogCommand command) {
@@ -184,7 +199,6 @@ public abstract class ViewUpdater {
         }
         if (!preparedQueries.get(tableName).containsKey(commandKind)) {
             // make prepared statement here
-            @SuppressWarnings("SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING")
             final String preparedQuery = generatePreparedQueryString(tableName, String.valueOf(command.command));
             try {
                 preparedQueries.get(tableName).put(commandKind, connection.prepareStatement(preparedQuery));
