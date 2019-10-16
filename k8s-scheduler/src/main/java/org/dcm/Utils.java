@@ -5,8 +5,8 @@
 
 package org.dcm;
 
-import io.kubernetes.client.custom.Quantity;
-import io.kubernetes.client.models.V1ResourceRequirements;
+import io.fabric8.kubernetes.api.model.Quantity;
+import io.fabric8.kubernetes.api.model.ResourceRequirements;
 
 import java.util.List;
 import java.util.regex.Matcher;
@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 class Utils {
 
     // By default, we always assign a request size of 1 milli CPU or 1KB.
-    static double resourceRequirementSum(final List<V1ResourceRequirements> resourceRequirements,
+    static double resourceRequirementSum(final List<ResourceRequirements> resourceRequirements,
                                           final String resourceName) {
         return resourceRequirements.stream().mapToDouble(e -> {
             if (e.getRequests() == null) {
@@ -30,15 +30,14 @@ class Utils {
     }
 
     static double convertUnit(final Quantity quantity, final String resourceName) {
-        final String res = quantity.toSuffixedString().replaceAll("[a-zA-Z]", "");
+        final String res = quantity.getAmount().replaceAll("[a-zA-Z]", "");
         final double baseAmount = Double.parseDouble(res);
         final Pattern p = Pattern.compile("[a-zA-Z]+");
-        final Matcher m = p.matcher(quantity.toSuffixedString());
+        final Matcher m = p.matcher(quantity.getAmount());
         if (m.find()) {
             final String unit = m.group();
             switch (unit) {
                 case "m":
-                    return baseAmount;
                 case "Ki":
                     return baseAmount;
                 case "Mi":

@@ -5,19 +5,19 @@
 
 package org.dcm;
 
-import io.kubernetes.client.informer.ResourceEventHandler;
-import io.kubernetes.client.models.V1Affinity;
-import io.kubernetes.client.models.V1Container;
-import io.kubernetes.client.models.V1ContainerPort;
-import io.kubernetes.client.models.V1LabelSelectorRequirement;
-import io.kubernetes.client.models.V1NodeSelector;
-import io.kubernetes.client.models.V1NodeSelectorRequirement;
-import io.kubernetes.client.models.V1NodeSelectorTerm;
-import io.kubernetes.client.models.V1OwnerReference;
-import io.kubernetes.client.models.V1Pod;
-import io.kubernetes.client.models.V1PodAffinityTerm;
-import io.kubernetes.client.models.V1ResourceRequirements;
-import io.kubernetes.client.models.V1Toleration;
+import io.fabric8.kubernetes.api.model.Affinity;
+import io.fabric8.kubernetes.api.model.Container;
+import io.fabric8.kubernetes.api.model.ContainerPort;
+import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
+import io.fabric8.kubernetes.api.model.NodeSelector;
+import io.fabric8.kubernetes.api.model.NodeSelectorRequirement;
+import io.fabric8.kubernetes.api.model.NodeSelectorTerm;
+import io.fabric8.kubernetes.api.model.OwnerReference;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodAffinityTerm;
+import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import io.fabric8.kubernetes.api.model.Toleration;
+import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
+class PodResourceEventHandler implements ResourceEventHandler<Pod> {
     private static final Logger LOG = LoggerFactory.getLogger(PodResourceEventHandler.class);
 
     private enum Operators {
@@ -48,14 +48,14 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
     }
 
     @Override
-    public void onAdd(final V1Pod pod) {
+    public void onAdd(final Pod pod) {
         LOG.info("{} pod added!", pod.getMetadata().getName());
         addPod(conn, pod);
         flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); //
     }
 
     @Override
-    public void onUpdate(final V1Pod oldPod, final V1Pod newPod) {
+    public void onUpdate(final Pod oldPod, final Pod newPod) {
         final String oldPodScheduler = oldPod.getSpec().getSchedulerName();
         final String newPodScheduler = oldPod.getSpec().getSchedulerName();
         assert oldPodScheduler.equals(newPodScheduler);
@@ -65,13 +65,13 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
     }
 
     @Override
-    public void onDelete(final V1Pod pod, final boolean deletedFinalStateUnknown) {
+    public void onDelete(final Pod pod, final boolean deletedFinalStateUnknown) {
         LOG.debug("{} pod deleted!", pod.getMetadata().getName());
         deletePod(conn, pod);
         flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
     }
 
-    private void addPod(final DSLContext conn, final V1Pod pod) {
+    private void addPod(final DSLContext conn, final Pod pod) {
         final PodInfoRecord newPodInfoRecord = conn.newRecord(Tables.POD_INFO);
         updatePodRecord(newPodInfoRecord, pod);
         updateContainerInfoForPod(pod, conn);
@@ -82,7 +82,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         updatePodAffinity(pod, conn);
     }
 
-    private void deletePod(final DSLContext conn, final V1Pod pod) {
+    private void deletePod(final DSLContext conn, final Pod pod) {
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
         conn.deleteFrom(Tables.POD_INFO)
@@ -91,7 +91,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         LOG.info("Deleted pod {}", pod.getMetadata().getName());
     }
 
-    private void updatePod(final DSLContext conn, final V1Pod pod) {
+    private void updatePod(final DSLContext conn, final Pod pod) {
         final PodInfoRecord existingPodInfoRecord = conn.selectFrom(Tables.POD_INFO)
                 .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
                 .fetchOne();
@@ -100,9 +100,9 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         updatePodRecord(existingPodInfoRecord, pod);
     }
 
-    private void updatePodRecord(final PodInfoRecord podInfoRecord, final V1Pod pod) {
-        final List<V1ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
-                .map(V1Container::getResources)
+    private void updatePodRecord(final PodInfoRecord podInfoRecord, final Pod pod) {
+        final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
+                .map(Container::getResources)
                 .collect(Collectors.toList());
         final long cpuRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "cpu");
         final long memoryRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "memory");
@@ -118,10 +118,10 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         podInfoRecord.setEphemeralStorageRequest(ephemeralStorageRequest);
         podInfoRecord.setPodsRequest(podsRequest);
         // The first owner reference is used to break symmetries.
-        final List<V1OwnerReference> owners = pod.getMetadata().getOwnerReferences();
+        final List<OwnerReference> owners = pod.getMetadata().getOwnerReferences();
         final String ownerName = (owners == null || owners.size() == 0) ? "" : owners.get(0).getName();
         podInfoRecord.setOwnerName(ownerName);
-        podInfoRecord.setCreationTimestamp(pod.getMetadata().getCreationTimestamp().toString());
+        podInfoRecord.setCreationTimestamp(pod.getMetadata().getCreationTimestamp());
 
         final boolean hasNodeSelector = (pod.getSpec().getNodeSelector() != null
                                           && pod.getSpec().getNodeSelector().size() > 0)
@@ -149,12 +149,12 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         podInfoRecord.store(); // upsert
     }
 
-    private void updateContainerInfoForPod(final V1Pod pod, final DSLContext conn) {
-        for (final V1Container container: pod.getSpec().getContainers()) {
-            if (container.getPorts() == null) {
+    private void updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
+        for (final Container container: pod.getSpec().getContainers()) {
+            if (container.getPorts() == null || container.getPorts().isEmpty()) {
                 continue;
             }
-            for (final V1ContainerPort portInfo: container.getPorts()) {
+            for (final ContainerPort portInfo: container.getPorts()) {
                 // This pod has been assigned to a node already. We therefore update the set of host-ports in
                 // use at this node
                 if (pod.getSpec().getNodeName() != null && portInfo.getHostPort() != null) {
@@ -178,7 +178,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         }
     }
 
-    private void updatePodNodeSelectorLabels(final V1Pod pod, final DSLContext conn) {
+    private void updatePodNodeSelectorLabels(final Pod pod, final DSLContext conn) {
         // Update pod_node_selector_labels table
         final Map<String, String> nodeSelector = pod.getSpec().getNodeSelector();
         if (nodeSelector != null) {
@@ -199,7 +199,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         }
     }
 
-    private void updatePodLabels(final DSLContext conn, final V1Pod pod) {
+    private void updatePodLabels(final DSLContext conn, final Pod pod) {
         // Update pod_labels table. This will be used for managing affinities, I think?
         final Map<String, String> labels = pod.getMetadata().getLabels();
         if (labels != null) {
@@ -213,11 +213,11 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         }
     }
 
-    private void updatePodTolerations(final V1Pod pod, final DSLContext conn) {
+    private void updatePodTolerations(final Pod pod, final DSLContext conn) {
         if (pod.getSpec().getTolerations() == null) {
             return;
         }
-        for (final V1Toleration toleration: pod.getSpec().getTolerations()) {
+        for (final Toleration toleration: pod.getSpec().getTolerations()) {
             conn.insertInto(Tables.POD_TOLERATIONS)
                 .values(pod.getMetadata().getName(),
                         toleration.getKey(),
@@ -227,8 +227,8 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         }
     }
 
-    private void updatePodAffinity(final V1Pod pod, final DSLContext conn) {
-        final V1Affinity affinity = pod.getSpec().getAffinity();
+    private void updatePodAffinity(final Pod pod, final DSLContext conn) {
+        final Affinity affinity = pod.getSpec().getAffinity();
         if (affinity == null) {
             return;
         }
@@ -236,13 +236,13 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
         // Node affinity
         if (affinity.getNodeAffinity() != null
             && affinity.getNodeAffinity().getRequiredDuringSchedulingIgnoredDuringExecution() != null) {
-            final V1NodeSelector selector =
+            final NodeSelector selector =
                     affinity.getNodeAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
             int termNumber = 0;
-            for (final V1NodeSelectorTerm term: selector.getNodeSelectorTerms()) {
+            for (final NodeSelectorTerm term: selector.getNodeSelectorTerms()) {
                 int matchExpressionNumber = 0;
                 final int numMatchExpressions = term.getMatchExpressions().size();
-                for (final V1NodeSelectorRequirement expr: term.getMatchExpressions()) {
+                for (final NodeSelectorRequirement expr: term.getMatchExpressions()) {
                     matchExpressionNumber += 1;
                     LOG.info("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, op:{}, values:{}",
                             pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
@@ -266,13 +266,13 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
 
         // Pod affinity
         if (affinity.getPodAffinity() != null) {
-            final List<V1PodAffinityTerm> terms =
+            final List<PodAffinityTerm> terms =
                     affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
             int termNumber = 0;
-            for (final V1PodAffinityTerm term: terms) {
+            for (final PodAffinityTerm term: terms) {
                 int matchExpressionNumber = 0;
                 final int numMatchExpressions =  term.getLabelSelector().getMatchExpressions().size();
-                for (final V1LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
+                for (final LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
                     matchExpressionNumber += 1;
                     for (final String value: expr.getValues()) {
                         conn.insertInto(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
@@ -286,7 +286,7 @@ class PodResourceEventHandler implements ResourceEventHandler<V1Pod> {
 
         // Pod Anti affinity
         if (affinity.getPodAntiAffinity() != null) {
-            final List<V1PodAffinityTerm> requiredDuringSchedulingIgnoredDuringExecution =
+            final List<PodAffinityTerm> requiredDuringSchedulingIgnoredDuringExecution =
                     affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
             requiredDuringSchedulingIgnoredDuringExecution.forEach(
                 term -> term.getLabelSelector().getMatchExpressions().forEach(
