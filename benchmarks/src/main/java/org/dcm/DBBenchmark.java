@@ -3,9 +3,8 @@
  *
  * SPDX-License-Identifier: BSD-2
  */
-package org.dcm;
 
-import com.google.errorprone.annotations.CanIgnoreReturnValue;
+package org.dcm;
 
 import org.dcm.viewupdater.H2Updater;
 import org.dcm.viewupdater.HSQLUpdater;
@@ -56,14 +55,14 @@ public class DBBenchmark {
 
     private int index = 0;
 
-    public static void main(String[] args) throws IOException, RunnerException {
-        Options opts = new OptionsBuilder()
+    public static void main(final String[] args) throws IOException, RunnerException {
+        final Options opts = new OptionsBuilder()
                 .include(".*")
                 .warmupIterations(2)
                 .measurementIterations(5)
                 .mode(Mode.AverageTime)
                 .shouldDoGC(true)
-                .result("profiling-result-after-refactoring.csv").resultFormat(ResultFormatType.CSV)
+                .result("profiling-result-after-refactoring-comments.csv").resultFormat(ResultFormatType.CSV)
                 .forks(1)
                 .build();
 
@@ -88,7 +87,6 @@ public class DBBenchmark {
             baseTables = new ArrayList<>();
             baseTables.add("POD");
             baseTables.add("NODE");
-
             updater = new H2Updater("test", connection, dbCtx, model.getIRTables(), baseTables);
 
         } catch (final SQLException e) {
@@ -107,6 +105,7 @@ public class DBBenchmark {
             final String connectionURL = "jdbc:hsqldb:mem:db";
             connection = getConnection(connectionURL, properties);
             dbCtx = using(connection, SQLDialect.HSQLDB);
+            dbCtx.execute("drop schema if exists curr cascade");
             dbCtx.execute("create schema curr");
             dbCtx.execute("set schema curr");
 
@@ -173,8 +172,8 @@ public class DBBenchmark {
     }
 
     @Setup(Level.Invocation)
-    public void setupDB(){
-        switch(db) {
+    public void setupDB() {
+        switch (db) {
             case "H2":
                 setupH2();
                 break;
@@ -214,32 +213,32 @@ public class DBBenchmark {
                 nodeStmt.executeUpdate();
                 podStmt.executeUpdate();
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
+        } catch (final SQLException e) {
+            throw new RuntimeException(e);
         }
         updater.flushUpdates();
     }
 
     @Benchmark
-    public void insertRecordsWithNoTriggers() {
-        final int largeNumber = 50000;
-        final int start = index + largeNumber;
-        final int end = (start + numRecords * 2);
+    public void insertRecordsWithNoResponsesFromDDlog() {
+        final int end = (index + numRecords * 2);
+        // we multiply the number of records by 2 to ensure that we insert the
+        // same number of records as in the insertRecords test
         final String insertStatement = "insert into node values(?, false, false," +
                 " false, false, false, false, false, false, 1, 1, 1, 1, 1, 1, 1, 1)";
         try {
             final PreparedStatement nodeStmt = connection.prepareStatement(insertStatement);
-            for (int i = start; i < end; i++) {
+            for (int i = index; i < end; i++) {
                 nodeStmt.setString(1, "node" + i);
                 nodeStmt.executeUpdate();
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
+        } catch (final SQLException e) {
+            throw new RuntimeException(e);
         }
+        index = end;
         updater.flushUpdates();
     }
 
-    @CanIgnoreReturnValue
     private Model buildModel(final DSLContext dslCtx, final List<String> views, final String testName) {
         // get model file for the current test
         final File modelFile = new File("src/test/resources/" + testName + ".mzn");

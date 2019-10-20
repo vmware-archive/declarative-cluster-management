@@ -9,6 +9,7 @@ import org.jooq.DSLContext;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,8 +41,9 @@ public class H2Updater extends ViewUpdater {
         @Override
         public void fire(final Connection connection, final Object[] oldRow,
                          final Object[] newRow) throws SQLException {
-            mapRecordsFromDB.computeIfAbsent(modelName, m -> new ArrayList<>());
-            mapRecordsFromDB.get(modelName).add(LocalDDlogCommand.newLocalDDlogCommand(tableName, newRow));
+            mapRecordsFromDB.computeIfAbsent(modelName, m -> new HashMap<>());
+            mapRecordsFromDB.get(modelName).computeIfAbsent(tableName, m -> new ArrayList<>());
+            mapRecordsFromDB.get(modelName).get(tableName).add(newRow);
         }
 
         @Override

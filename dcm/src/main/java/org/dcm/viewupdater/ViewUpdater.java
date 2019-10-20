@@ -12,11 +12,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * ViewUpdater can be used to help update views held in the DB incrementally, using DDLog. The class receives triggers
@@ -41,7 +43,8 @@ public abstract class ViewUpdater {
     private static final String BOOLEAN_TYPE = "java.lang.Boolean";
     private static final String LONG_TYPE = "java.lang.Long";
 
-    static Map<String, List<LocalDDlogCommand>> mapRecordsFromDB = new ConcurrentHashMap<>();
+    static Map<String, Map<String, List<Object[]>>> mapRecordsFromDB = new ConcurrentHashMap<>();
+    // modelName -> <List of DDlogRecords Per Table>
 
     /**
      * @param modelName: the name of the model this object is associated with
@@ -54,7 +57,7 @@ public abstract class ViewUpdater {
     public ViewUpdater(final String modelName, final Connection connection, final DSLContext dbCtx,
                        final List<String> baseTables, final Map<String, IRTable> irTables) {
         this.modelName = modelName.toUpperCase(Locale.US);
-        mapRecordsFromDB.computeIfAbsent(this.modelName, m -> new ArrayList<LocalDDlogCommand>());
+        mapRecordsFromDB.computeIfAbsent(this.modelName, m -> new HashMap<>());
 
         this.connection = connection;
         this.irTables = irTables;
@@ -66,23 +69,18 @@ public abstract class ViewUpdater {
     private String generatePreparedQueryString(final String dataType, final String commandKind) {
         final StringBuilder stringBuilder = new StringBuilder();
         final IRTable irTable = irTables.get(dataType);
-
         final Table<? extends Record> table = irTable.getTable();
         final Field[] fields = table.fields();
         if (commandKind.equals(String.valueOf(DDlogCommand.Kind.Insert))) {
-            stringBuilder.append("insert into ").append(dataType).append(" values ( \n");
-            stringBuilder.append(" ?,".repeat(Math.max(0, fields.length - 1)));
+            stringBuilder.append(String.format("insert into %s values ( %n", dataType));
+            // for the first fields.length values, use a comma after the ?. No need to put a comma after the last ?
+            stringBuilder.append(String.join(" ", "?,".repeat(Math.max(0, fields.length - 1))));
             stringBuilder.append(" ?");
         } else if (commandKind.equals(String.valueOf(DDlogCommand.Kind.DeleteVal))) {
-            stringBuilder.append("delete from ").append(dataType).append(" where ( \n");
-            int counter = 0;
-            for (final Field field : fields) {
-                stringBuilder.append(field.getName()).append(" = ?");
-                if (counter < fields.length - 1) {
-                    stringBuilder.append(" and ");
-                }
-                counter = counter + 1;
-            }
+            stringBuilder.append(String.format("delete from %s values ( %n", dataType));
+            final List<String> fieldNames =
+                    Arrays.stream(fields).map(s -> String.format(" %s = ?", s.getName())).collect(Collectors.toList());
+            stringBuilder.append(String.join(" and ", fieldNames));
         }
         stringBuilder.append("\n)");
         return stringBuilder.toString();
@@ -92,13 +90,9 @@ public abstract class ViewUpdater {
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
             if (irTables.containsKey(tableName)) {
-                final String triggerName = modelName + "_TRIGGER_" + tableName;
-
-                final StringBuilder builder = new StringBuilder();
-                builder.append("CREATE TRIGGER " + triggerName + " " + "BEFORE INSERT ON " + tableName + " " +
-                        "FOR EACH ROW CALL \"" + triggerClassName + "\"");
-
-                final String command = builder.toString();
+                final String triggerName = String.format("%s_TRIGGER_%s", modelName, tableName);
+                final String command = String.format("CREATE TRIGGER %s BEFORE INSERT ON %s FOR EACH ROW CALL " +
+                        " \"%s\"", triggerName, tableName, triggerClassName);
                 dbCtx.execute(command);
             }
         }
@@ -164,7 +158,6 @@ public abstract class ViewUpdater {
      private void flush(final String tableName, final LocalDDlogCommand command) {
         try {
             final PreparedStatement query = preparedQueries.get(tableName).get(command.command);
-
             final IRTable irTable = irTables.get(tableName);
             final Table<? extends Record> table = irTable.getTable();
             final Field[] fields = table.fields();
@@ -186,7 +179,6 @@ public abstract class ViewUpdater {
                         query.setString(index, (String) item);
                 }
             }
-
             query.executeUpdate();
         } catch (final SQLException e) {
             throw new RuntimeException(e);

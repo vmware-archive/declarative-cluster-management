@@ -180,21 +180,6 @@ public class Model {
     /**
      * Builds a Minizinc model out of dslContext and a list of tables.
      *
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static Model buildModel(final DSLContext dslContext, final List<String> views, final File modelFile,
-                                   final File dataFile, final boolean useDDlog, final List<String> baseTables) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf());
-    }
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
      * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
      * @param tables A set of tables for which the Minzinc model will be generated
      * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
