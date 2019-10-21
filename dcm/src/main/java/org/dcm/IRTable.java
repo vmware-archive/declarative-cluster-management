@@ -6,6 +6,7 @@
 
 package org.dcm;
 
+import com.google.common.base.Preconditions;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -81,10 +82,7 @@ public class IRTable {
      * @return the original SQL table associated with this IRTable
      */
     public Table<? extends Record> getTable() {
-        if (jooqTable == null) {
-            throw new UnsupportedOperationException("IRTable with null jooq table");
-        }
-        return jooqTable;
+        return Preconditions.checkNotNull(jooqTable);
     }
 
 
@@ -111,9 +109,7 @@ public class IRTable {
      * We get this by looking at the length of one of the columns
      */
     public int getNumRows() {
-        if (jooqTable == null) {
-            throw new UnsupportedOperationException("IRTable with null jooq table");
-        }
+        Preconditions.checkNotNull(jooqTable);
         // just returns the length of one of the columns
         return irColumns.values().iterator().next().getFieldValues().size();
     }
@@ -146,19 +142,14 @@ public class IRTable {
 
 
     public Optional<IRPrimaryKey> getPrimaryKey() {
-        if (jooqTable == null) {
-            throw new UnsupportedOperationException("IRTable with null jooq table");
-        }
-        return primaryKey;
+        return Objects.requireNonNull(primaryKey);
     }
 
     /**
      * Sets this table primaryKey
      */
     public void setPrimaryKey(final IRPrimaryKey pk) {
-        if (jooqTable == null) {
-            throw new UnsupportedOperationException("IRTable with null jooq table");
-        }
+        Preconditions.checkNotNull(jooqTable);
         primaryKey = Optional.of(pk);
     }
 
@@ -167,9 +158,7 @@ public class IRTable {
      * table foreign key field.
      */
     public List<IRForeignKey> getForeignKeys() {
-        if (jooqTable == null) {
-            throw new UnsupportedOperationException("IRTable with null jooq table");
-        }
+        Preconditions.checkNotNull(jooqTable);
         return foreignKeys;
     }
 
@@ -179,9 +168,7 @@ public class IRTable {
      * @param fk Map between this tables irColumns, with the referenced table irColumns
      */
     void addForeignKey(final IRForeignKey fk) {
-        if (jooqTable == null) {
-            throw new UnsupportedOperationException("IRTable with null jooq table");
-        }
+        Preconditions.checkNotNull(jooqTable);
         this.foreignKeys.add(fk);
     }
 
@@ -189,9 +176,7 @@ public class IRTable {
      * @return Returns the IRColumn based on the SQL field
      */
     IRColumn getField(final Field field) {
-        if (jooqTable == null) {
-            throw new UnsupportedOperationException("IRTable with null jooq table");
-        }
+        Preconditions.checkNotNull(jooqTable);
         return fieldToIRColumn.get(field);
     }
 
@@ -199,9 +184,7 @@ public class IRTable {
      * Updates a table field with a list of values
      */
     void updateValues(final Result<? extends Record> recentData) {
-        if (jooqTable == null) {
-            throw new UnsupportedOperationException("IRTable with null jooq table");
-        }
+        Preconditions.checkNotNull(jooqTable);
         // stores all the values per field for later use in MiniZinc
         for (final Field<?> field : jooqTable.fields()) {
             fieldToIRColumn.get(field).setValues(recentData.getValues(field));

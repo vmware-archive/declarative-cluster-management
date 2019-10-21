@@ -271,3 +271,22 @@ simple cluster manager.
     |vm9 |  10|    10|pm1                           |
     +----+----+------+------------------------------+
   ``` 
+
+
+
+## Information for developers
+
+The entire build including unit tests can be triggered from the root folder with:
+```bash
+$: mvn package 
+```
+
+The Kubernetes scheduler also comes with integration tests that run against a real Kubernetes cluster. 
+*It goes without saying that you should not point to a production cluster as these tests repeatedly delete all 
+running pods and deployments*. To also run these integration-tests, execute the following command:
+
+```bash
+$: mvn integration-test -DargLine="-Dk8sUrl=http://<hostname>:<port>"
+```
+
+
