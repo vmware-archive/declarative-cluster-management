@@ -14,8 +14,8 @@ import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.sql.Connection;
@@ -26,12 +26,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import static junit.framework.TestCase.assertTrue;
 import static org.jooq.impl.DSL.using;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests Weave's use of a constraint solver. Place the mzn files in src/text/java/.../resources folder to
@@ -305,8 +305,7 @@ public class ModelTest {
         assertTrue(results.contains("h3"));
     }
 
-
-    @Test(expected = ModelException.class)
+    @Test
     public void ambiguousFieldsInViewTest() {
         // model and data files will use this as its name
         final String modelName = "ambiguousFieldsInViewTest";
@@ -332,16 +331,7 @@ public class ModelTest {
                 "SELECT * FROM hosts JOIN epochs ON epoch_id = epochs.epoch_id;");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
-
-        conn.execute("insert into epochs values (1)");
-        conn.execute("insert into epochs values (2)");
-        conn.execute("insert into HOSTS values ('h1', 1)");
-        conn.execute("insert into HOSTS values ('h2', 2)");
-        conn.execute("insert into HOSTS values ('h3', 2)");
-
-        model.updateData();
-        model.solveModel();
+        assertThrows(ModelException.class, () -> buildModel(conn, views, modelName));
     }
 
     @Test
@@ -980,8 +970,8 @@ public class ModelTest {
         model.solveModel();
     }
 
-
-    @Test @Ignore
+    @Disabled
+    @Test
     public void testViewAliasGeneration() {
         // model and data files will use this as its name
         final String modelName = "testViewAliasGeneration";

@@ -22,17 +22,28 @@
         <module>dcm</module>
         <module>examples</module>
         <module>benchmarks</module>
+        <module>k8s-scheduler</module>
     </modules>
     <dependencies>
         <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.6</version>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>2.7</version>
         </dependency>
         <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>1.7.25</version>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.7</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j-impl</artifactId>
+            <version>2.7</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.5.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -42,7 +53,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.0</version>
+                <version>3.8.1</version>
                 <configuration>
                     <source>12</source>
                     <target>12</target>
@@ -53,7 +64,7 @@
                         <arg>-Xplugin:ErrorProne
                              -XepAllErrorsAsWarnings
                              -Xep:Finally:OFF
-                             -XepExcludedPaths:.*/annotations/org/dcm/generated/.*
+                             -XepExcludedPaths:(.*/annotations/org/dcm/generated/.*|.*/org/dcm/k8s/generated/.*)
                         </arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
@@ -69,6 +80,25 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0-M3</version>
+                <executions>
+                    <execution>
+                        <id>integration-tests</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <skipTests>false</skipTests>
+                            <includes>
+                                <include>**/*IT.*</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <!-- Findbugs -->
             <plugin>
@@ -161,6 +191,7 @@
                     <append>true</append>
                     <excludes>
                         <exclude>**/pb/*.class</exclude>
+                        <exclude>**/generated/**</exclude>
                     </excludes>
                 </configuration>
             </plugin>

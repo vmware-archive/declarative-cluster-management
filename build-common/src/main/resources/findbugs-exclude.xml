@@ -4,6 +4,10 @@
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
     </Match>
     <Match>
+        <Class name="org.dcm.SchedulerTest" />
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
+    </Match>
+    <Match>
         <Package name="org.dcm.generated"/>
     </Match>
     <Match>
@@ -15,5 +19,11 @@
         <Class name="org.dcm.viewupdater.ViewUpdater" />
         <Method name="updatePreparedQueries" />
         <Bug pattern="OBL_UNSATISFIED_OBLIGATION" />
+    </Match>
+    <Match>
+        <Package name="org.dcm.k8s.generated"/>
+    </Match>
+    <Match>
+        <Package name="org.dcm.k8s.generated.tables"/>
     </Match>
 </FindBugsFilter>

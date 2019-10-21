@@ -7,6 +7,7 @@
 package org.dcm;
 
 import com.facebook.presto.sql.SqlFormatter;
+import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
@@ -75,7 +76,14 @@ public class Model {
         this.dbCtx.settings().withRenderFormatted(true);
         this.backend = new MinizincSolver(modelFile, dataFile, conf);
         final List<CreateView> viewsInPolicy = views.stream().map(
-                view -> (CreateView) PARSER.createStatement(view, options)
+                view -> {
+                    try {
+                        return (CreateView) PARSER.createStatement(view, options);
+                    } catch (final ParsingException e) {
+                        LOG.error("Could not parse view: {}", view, e);
+                        throw e;
+                    }
+                }
         ).collect(Collectors.toList());
 
         /*
@@ -382,10 +390,6 @@ public class Model {
             jooqTableToIRTable.put(table, irTable);
             irTables.put(irTable.getName(), irTable);
         }
-
-        // TODO: Assumes tables do not have foreign key relationships for now and that the user
-        // has to specify them manually using membership constraints
-
 
         // parses foreign keys after initiating the tables
         // because for fks we need to setup relationships between different table fields
