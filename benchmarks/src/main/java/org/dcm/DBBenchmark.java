@@ -26,6 +26,7 @@ import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
@@ -41,10 +42,10 @@ import static org.jooq.impl.DSL.using;
 @State(Scope.Benchmark)
 public class DBBenchmark {
 
-    private DSLContext dbCtx;
-    private Connection connection;
-    private ViewUpdater updater;
-    private Model model;
+    @Nullable private DSLContext dbCtx;
+    @Nullable private Connection connection;
+    @Nullable private ViewUpdater updater;
+    @Nullable private Model model;
     private List<String> baseTables;
 
     @Param({"100", "1000", "10000", "100000"})
@@ -53,7 +54,14 @@ public class DBBenchmark {
     @Param({"H2"})
     public String db;
 
-    private int index = 0;
+    private int index;
+
+    public DBBenchmark() {
+        baseTables = new ArrayList<>();
+        numRecords = 0;
+        db = "H2";
+        index = 0;
+    }
 
     public static void main(final String[] args) throws IOException, RunnerException {
         final Options opts = new OptionsBuilder()

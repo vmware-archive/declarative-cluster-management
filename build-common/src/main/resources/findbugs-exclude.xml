@@ -26,4 +26,20 @@
     <Match>
         <Package name="org.dcm.k8s.generated.tables"/>
     </Match>
+    <Match>
+        <Class name="org.dcm.DDlogTest" />
+        <Bug pattern="OBL_UNSATISFIED_OBLIGATION" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.DDlogTest" />
+        <Bug pattern="ODR_OPEN_DATABASE_RESOURCE" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.DBBenchmark" />
+        <Bug pattern="OBL_UNSATISFIED_OBLIGATION" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.DBBenchmark" />
+        <Bug pattern="ODR_OPEN_DATABASE_RESOURCE" />
+    </Match>
 </FindBugsFilter>
