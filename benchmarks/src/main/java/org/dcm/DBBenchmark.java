@@ -70,7 +70,7 @@ public class DBBenchmark {
                 .measurementIterations(5)
                 .mode(Mode.AverageTime)
                 .shouldDoGC(true)
-                .result("profiling-result-after-refactoring-comments.csv").resultFormat(ResultFormatType.CSV)
+                .result("profiling-result-ddlog0.9.2-oldapi.csv").resultFormat(ResultFormatType.CSV)
                 .forks(1)
                 .build();
 
@@ -249,7 +249,7 @@ public class DBBenchmark {
 
     private Model buildModel(final DSLContext dslCtx, final List<String> views, final String testName) {
         // get model file for the current test
-        final File modelFile = new File("src/test/resources/" + testName + ".mzn");
+        final File modelFile = new File("resources/" + testName + ".mzn");
         // create data file
         final File dataFile = new File("/tmp/" + testName + ".dzn");
         return Model.buildModel(dslCtx, views, modelFile, dataFile);

@@ -5,7 +5,7 @@ cwd=$(pwd)
 
 export JDK_OS=darwin
 export JAVA_HOME=~/.jenv/versions/12.0
-export DDLOG=~/Documents/DCM/ddlog
+export DDLOG=~/Documents/DCM/ddlog-0.9.2
 export DPROG=weave_fewer_queries_cap
 export FLATBUFFERS_JAR_PATH=~/Documents/DCM/flatbuffers-java-1.11.0.jar
 

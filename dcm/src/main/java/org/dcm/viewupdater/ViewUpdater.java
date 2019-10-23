@@ -38,6 +38,7 @@ public abstract class ViewUpdater {
     private final Map<String, IRTable> irTables;
     private final Map<String, List<LocalDDlogCommand>> recordsFromDDLog = new HashMap<>();
 
+    private static final String BIGINT_TYPE = "java.math.BigInteger";
     private static final String INTEGER_TYPE = "java.lang.Integer";
     private static final String STRING_TYPE = "java.lang.String";
     private static final String BOOLEAN_TYPE = "java.lang.Boolean";
@@ -98,11 +99,11 @@ public abstract class ViewUpdater {
         }
     }
 
-    private void receiveUpdateFromDDlog(final DDlogCommand command) {
+    private void receiveUpdateFromDDlog(final DDlogCommand<DDlogRecord> command) {
         final List objects = new ArrayList();
-        final DDlogRecord record = command.value;
+        final DDlogRecord record = command.value();
 
-        final String tableName = command.value.getStructName();
+        final String tableName = record.getStructName();
         // we only hold records for tables we have in the DB and none others.
         if (irTables.containsKey(tableName)) {
             final IRTable irTable = irTables.get(tableName);
@@ -117,10 +118,10 @@ public abstract class ViewUpdater {
                         objects.add(f.getBoolean());
                         break;
                     case INTEGER_TYPE:
-                        objects.add(f.getU128());
+                        objects.add(f.getInt().longValue());
                         break;
                     case LONG_TYPE:
-                        objects.add(f.getLong());
+                        objects.add(f.getInt());
                         break;
                     case STRING_TYPE:
                         objects.add(f.getString());
@@ -130,8 +131,8 @@ public abstract class ViewUpdater {
                 }
                 counter = counter + 1;
             }
-            recordsFromDDLog.computeIfAbsent(command.value.getStructName(), k -> new ArrayList<LocalDDlogCommand>());
-            recordsFromDDLog.get(tableName).add(new LocalDDlogCommand(command.kind.toString(), tableName, objects));
+            recordsFromDDLog.computeIfAbsent(record.getStructName(), k -> new ArrayList<LocalDDlogCommand>());
+            recordsFromDDLog.get(tableName).add(new LocalDDlogCommand(command.kind().toString(), tableName, objects));
         }
     }
 
@@ -167,7 +168,11 @@ public abstract class ViewUpdater {
                 final int index = i + 1;
                 switch (fieldClass.getName()) {
                     case LONG_TYPE:
-                        query.setLong(index, (Long) item);
+                        if (item.getClass().getName().equals(BIGINT_TYPE)) {
+                            query.setInt(index, ((java.math.BigInteger) item).intValue());
+                        } else {
+                            query.setLong(index, (Long) item);
+                        }
                         break;
                     case INTEGER_TYPE:
                         query.setInt(index, (Integer) item);
@@ -206,6 +211,5 @@ public abstract class ViewUpdater {
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
-
     }
 }
