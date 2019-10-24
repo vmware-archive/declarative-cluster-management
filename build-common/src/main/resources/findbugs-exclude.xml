@@ -7,6 +7,16 @@
         <Package name="org.dcm.generated"/>
     </Match>
     <Match>
+        <Class name="org.dcm.viewupdater.ViewUpdater" />
+        <Method name="updatePreparedQueries" />
+        <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.viewupdater.ViewUpdater" />
+        <Method name="updatePreparedQueries" />
+        <Bug pattern="OBL_UNSATISFIED_OBLIGATION" />
+    </Match>
+    <Match>
         <Package name="org.dcm.k8s.generated"/>
     </Match>
     <Match>
@@ -39,5 +49,21 @@
     <Match>
         <Class name="org.dcm.backend.OrToolsSolver$ExprToStrVisitor" />
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.DDlogTest" />
+        <Bug pattern="OBL_UNSATISFIED_OBLIGATION" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.DDlogTest" />
+        <Bug pattern="ODR_OPEN_DATABASE_RESOURCE" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.DBBenchmark" />
+        <Bug pattern="OBL_UNSATISFIED_OBLIGATION" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.DBBenchmark" />
+        <Bug pattern="ODR_OPEN_DATABASE_RESOURCE" />
     </Match>
 </FindBugsFilter>
