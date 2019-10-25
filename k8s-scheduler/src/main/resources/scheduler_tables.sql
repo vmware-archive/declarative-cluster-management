@@ -33,7 +33,8 @@ create table pod_info
   priority integer not null,
   schedulerName varchar(50),
   has_node_selector_labels boolean not null,
-  has_pod_affinity_requirements boolean not null
+  has_pod_affinity_requirements boolean not null,
+  has_pod_anti_affinity_requirements boolean not null
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.
@@ -91,8 +92,11 @@ create table pod_affinity_match_expressions
 create table pod_anti_affinity_match_expressions
 (
   pod_name varchar(100) not null,
+  label_selector integer not null,
+  match_expression integer not null,
+  num_match_expressions integer not null,
   label_key varchar(100) not null,
-  label_operator varchar(12) not null,
+  label_operator varchar(30) not null,
   label_value varchar(36) not null,
   topology_key varchar(100) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
@@ -207,7 +211,8 @@ select
   owner_name,
   creation_timestamp,
   has_node_selector_labels,
-  has_pod_affinity_requirements
+  has_pod_affinity_requirements,
+  has_pod_anti_affinity_requirements
 from pod_info
 where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler'
 order by creation_timestamp;
@@ -301,6 +306,30 @@ select *, count(*) over (partition by pod_name) as num_matches from inter_pod_af
 
 create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_name);
 create index pod_labels_idx on pod_labels (label_key, label_value);
+
+
+-- Inter pod anti-affinity
+-- TODO: the having clause could be simplified: if even a single term matches, we can preclude a node
+create view inter_pod_anti_affinity_matches_inner as
+select pods_to_assign.pod_name as pod_name,
+       pod_labels.pod_name as matches,
+       pod_info.node_name as node_name
+from pods_to_assign
+join pod_anti_affinity_match_expressions
+     on pods_to_assign.pod_name = pod_anti_affinity_match_expressions.pod_name
+join pod_labels
+        on (pod_anti_affinity_match_expressions.label_operator = 'In'
+            and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
+            and pod_anti_affinity_match_expressions.label_value = pod_labels.label_value)
+        or (pod_anti_affinity_match_expressions.label_operator = 'Exists'
+            and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key)
+        or (pod_anti_affinity_match_expressions.label_operator = 'NotIn')
+        or (pod_anti_affinity_match_expressions.label_operator = 'DoesNotExist')
+join pod_info
+        on pod_labels.pod_name = pod_info.pod_name;
+
+create view inter_pod_anti_affinity_matches as
+select *, count(*) over (partition by pod_name) as num_matches from inter_pod_anti_affinity_matches_inner;
 
 
 -- Spare capacity

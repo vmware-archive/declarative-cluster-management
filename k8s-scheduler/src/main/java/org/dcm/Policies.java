@@ -22,6 +22,7 @@ class Policies {
         ALL_POLICIES.add(nodePredicates());
         ALL_POLICIES.add(nodeSelectorPredicate());
         ALL_POLICIES.add(podAffinityPredicate());
+        ALL_POLICIES.add(podAntiAffinityPredicate());
         ALL_POLICIES.add(capacityConstraint(true, true));
         ALL_POLICIES.add(taintsAndTolerations());
     }
@@ -68,9 +69,9 @@ class Policies {
      */
     static Policy podAffinityPredicate() {
         final String constraint = "create view constraint_pod_affinity as " +
-            "select * " +
-            "from pods_to_assign " +
-            "where pods_to_assign.has_pod_affinity_requirements = false or " +
+                                  "select * " +
+                                  "from pods_to_assign " +
+                                  "where pods_to_assign.has_pod_affinity_requirements = false or " +
 
             // Affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are affine to it
             // from inter_pod_affinity_matches. We get this latter set of pending pods by joining
@@ -91,8 +92,42 @@ class Policies {
             "          from inter_pod_affinity_matches " +
             "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
             "          and inter_pod_affinity_matches.node_name != 'null')"; // running pods
-        return new Policy("PodSelectorPredicate", constraint);
+        return new Policy("InterPodAffinity", constraint);
     }
+
+
+    /**
+     * Ensures that the pods_to_assign.constraint_controllable__node_name column is assigned to nodes
+     * that satisfy pod anti0affinity requirements.
+     */
+    static Policy podAntiAffinityPredicate() {
+        final String constraint = "create view constraint_pod_anti_affinity as " +
+            "select * " +
+            "from pods_to_assign " +
+            "where pods_to_assign.has_pod_anti_affinity_requirements = false or " +
+
+            // Affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are affine to it
+            // from inter_pod_affinity_matches. We get this latter set of pending pods by joining
+            // inter_pod_affinity_matches with pods_to_assign (inner).
+            "      (pods_to_assign.controllable__node_name not in " +
+            "         (select b.controllable__node_name" +
+            "          from pods_to_assign as b" +
+            "          join inter_pod_anti_affinity_matches" +
+            "           on inter_pod_anti_affinity_matches.pod_name = pods_to_assign.pod_name" +
+            "           and inter_pod_anti_affinity_matches.matches != pods_to_assign.pod_name" +
+                        // next clause assumes that a pod cannot be anti-affine to itself
+            "           and inter_pod_anti_affinity_matches.matches = b.pod_name" +
+            "           and inter_pod_anti_affinity_matches.node_name = 'null'))" + // pending pods
+
+            // Affinity to running pods...
+            "   or pods_to_assign.controllable__node_name in " +
+            "         (select inter_pod_affinity_matches.node_name " +
+            "          from inter_pod_affinity_matches " +
+            "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
+            "          and inter_pod_affinity_matches.node_name != 'null')"; // running pods
+        return new Policy("InterPodAntiAffinity", constraint);
+    }
+
 
     /**
      * Hard and soft capacity constraints over CPU, memory and the number of pods
@@ -152,6 +187,7 @@ class Policies {
                 "                and A.node_name = pods_to_assign.controllable__node_name) = true";
         return new Policy("NodeTaintsPredicate", constraint);
     }
+
 
     static List<String> getAllPolicies() {
         return from(ALL_POLICIES);

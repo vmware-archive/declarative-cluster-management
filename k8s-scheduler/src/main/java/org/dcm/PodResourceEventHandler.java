@@ -22,6 +22,8 @@ import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.Table;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,25 +51,29 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
     @Override
     public void onAdd(final Pod pod) {
-        LOG.info("{} pod added!", pod.getMetadata().getName());
+        final long now = System.nanoTime();
         addPod(conn, pod);
-        flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); //
+        LOG.info("{} pod added in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
+        flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); // might be better to add pods in a batch
     }
 
     @Override
     public void onUpdate(final Pod oldPod, final Pod newPod) {
+        final long now = System.nanoTime();
         final String oldPodScheduler = oldPod.getSpec().getSchedulerName();
         final String newPodScheduler = oldPod.getSpec().getSchedulerName();
         assert oldPodScheduler.equals(newPodScheduler);
-        LOG.debug("{} => {} pod updated!", oldPod.getMetadata().getName(), newPod.getMetadata().getName());
+        LOG.debug("{} => {} pod updated in {}ns!", oldPod.getMetadata().getName(), newPod.getMetadata().getName(),
+                                                   (System.nanoTime() - now));
         updatePod(conn, newPod);
         flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
     }
 
     @Override
     public void onDelete(final Pod pod, final boolean deletedFinalStateUnknown) {
-        LOG.debug("{} pod deleted!", pod.getMetadata().getName());
+        final long now = System.nanoTime();
         deletePod(conn, pod);
+        LOG.debug("{} pod deleted in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
         flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
     }
 
@@ -137,6 +143,13 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
                                                       .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0);
         } else {
             podInfoRecord.setHasPodAffinityRequirements(false);
+        }
+
+        if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAntiAffinity() != null) {
+            podInfoRecord.setHasPodAntiAffinityRequirements(pod.getSpec().getAffinity().getPodAntiAffinity()
+                    .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0);
+        } else {
+            podInfoRecord.setHasPodAntiAffinityRequirements(false);
         }
 
         // We cap the max priority to 100 to prevent overflow issues in the solver
@@ -266,37 +279,32 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
         // Pod affinity
         if (affinity.getPodAffinity() != null) {
-            final List<PodAffinityTerm> terms =
-                    affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
-            int termNumber = 0;
-            for (final PodAffinityTerm term: terms) {
-                int matchExpressionNumber = 0;
-                final int numMatchExpressions =  term.getLabelSelector().getMatchExpressions().size();
-                for (final LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
-                    matchExpressionNumber += 1;
-                    for (final String value: expr.getValues()) {
-                        conn.insertInto(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
-                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
-                                    expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute();
-                    }
-                }
-                termNumber += 1;
-            }
+            insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod,
+                                   affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution());
         }
 
         // Pod Anti affinity
         if (affinity.getPodAntiAffinity() != null) {
-            final List<PodAffinityTerm> requiredDuringSchedulingIgnoredDuringExecution =
-                    affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
-            requiredDuringSchedulingIgnoredDuringExecution.forEach(
-                term -> term.getLabelSelector().getMatchExpressions().forEach(
-                    expr -> expr.getValues().forEach(
-                            value -> conn.insertInto(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
-                                    .values(pod.getMetadata().getName(),
-                                            expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute()
-                    )
-                )
-            );
+            insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod,
+                                   affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution());
+        }
+    }
+
+    private <T extends Record> void insertPodAffinityTerms(final Table<T> table, final Pod pod,
+                                                           final List<PodAffinityTerm> terms) {
+        int termNumber = 0;
+        for (final PodAffinityTerm term: terms) {
+            int matchExpressionNumber = 0;
+            final int numMatchExpressions =  term.getLabelSelector().getMatchExpressions().size();
+            for (final LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
+                matchExpressionNumber += 1;
+                for (final String value: expr.getValues()) {
+                    conn.insertInto(table)
+                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
+                                    expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute();
+                }
+            }
+            termNumber += 1;
         }
     }
 }
