@@ -27,7 +27,10 @@ import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -35,6 +38,7 @@ import java.util.function.Predicate;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * This class is used to run integration tests in SchedulerIT against a real
@@ -81,7 +85,7 @@ public class SchedulerIT {
     }
 
     @Test()
-    @Timeout(10) // seconds
+    @Timeout(60) // seconds
     public void testDeployments() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "CHUFFED", true, "");
@@ -107,6 +111,51 @@ public class SchedulerIT {
         items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
         stateSync.shutdown();
         scheduler.shutdown();
+    }
+
+
+    @Test()
+    @Timeout(60) // seconds
+    public void testAffinityAntiAffinity() throws Exception {
+        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "CHUFFED", true, "");
+        final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
+
+        final Flowable<List<PodEvent>> eventStream =
+                stateSync.setupInformersAndPodEventStream(conn, 50, 1000);
+        scheduler.startScheduler(eventStream, coreV1Api);
+        stateSync.startProcessingEvents();
+
+        // Add a new one
+        final Deployment cacheExample = launchDeploymentFromFile("cache-example.yml");
+        final Deployment webStoreExample = launchDeploymentFromFile("web-store-example.yml");
+        final int newPodsToCreate = cacheExample.getSpec().getReplicas() + webStoreExample.getSpec().getReplicas();
+        waitUntil((n) -> hasNRunningPods(newPodsToCreate));
+        final List<Pod> items = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
+        assertEquals(newPodsToCreate, items.size());
+        items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
+
+        final Map<String, List<String>> podsByNode = new HashMap<>();
+
+        items.forEach(pod -> podsByNode.computeIfAbsent(pod.getSpec().getNodeName(), k -> new ArrayList<>())
+                                       .add(pod.getMetadata().getName()));
+        podsByNode.forEach((nodeName, pods) -> {
+            assertEquals(2, pods.size());
+            assertTrue(pods.stream().anyMatch(p -> p.contains("web-server")));
+            assertTrue(pods.stream().anyMatch(p -> p.contains("cache")));
+        });
+        stateSync.shutdown();
+        scheduler.shutdown();
+    }
+
+    private Deployment launchDeploymentFromFile(final String resourceName) {
+        final URL url = getClass().getClassLoader().getResource(resourceName);
+        assertNotNull(url);
+        final File file = new File(url.getFile());
+        final Deployment deployment = fabricClient.apps().deployments().load(file).get();
+        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
+                .create(deployment);
+        return deployment;
     }
 
     private void waitUntil(final Predicate<Integer> condition) throws Exception {
