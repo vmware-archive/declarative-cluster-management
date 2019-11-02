@@ -15,6 +15,7 @@ import io.fabric8.kubernetes.api.model.NodeSelectorTerm;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodAffinityTerm;
+import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
@@ -129,14 +130,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
         podInfoRecord.setOwnerName(ownerName);
         podInfoRecord.setCreationTimestamp(pod.getMetadata().getCreationTimestamp());
 
-        final boolean hasNodeSelector = (pod.getSpec().getNodeSelector() != null
-                                          && pod.getSpec().getNodeSelector().size() > 0)
-                                      || (pod.getSpec().getAffinity() != null
-                                          && pod.getSpec().getAffinity().getNodeAffinity()
-                                              .getRequiredDuringSchedulingIgnoredDuringExecution() != null
-                                          && pod.getSpec().getAffinity().getNodeAffinity()
-                                              .getRequiredDuringSchedulingIgnoredDuringExecution()
-                                              .getNodeSelectorTerms().size() > 0);
+        final boolean hasNodeSelector = hasNodeSelector(pod);
         podInfoRecord.setHasNodeSelectorLabels(hasNodeSelector);
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
             podInfoRecord.setHasPodAffinityRequirements(pod.getSpec().getAffinity().getPodAffinity()
@@ -160,6 +154,18 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
         podInfoRecord.setSchedulername(pod.getSpec().getSchedulerName());
 
         podInfoRecord.store(); // upsert
+    }
+
+    private boolean hasNodeSelector(final Pod pod) {
+        final PodSpec podSpec = pod.getSpec();
+        return  (podSpec.getNodeSelector() != null && podSpec.getNodeSelector().size() > 0)
+                || (podSpec.getAffinity() != null
+                    && podSpec.getAffinity().getNodeAffinity() != null
+                    && podSpec.getAffinity().getNodeAffinity()
+                                            .getRequiredDuringSchedulingIgnoredDuringExecution() != null
+                    && podSpec.getAffinity().getNodeAffinity()
+                                            .getRequiredDuringSchedulingIgnoredDuringExecution()
+                                            .getNodeSelectorTerms().size() > 0);
     }
 
     private void updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
