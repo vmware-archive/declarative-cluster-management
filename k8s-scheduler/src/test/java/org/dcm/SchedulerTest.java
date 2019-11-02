@@ -55,6 +55,7 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -267,11 +268,13 @@ public class SchedulerTest {
         final int numPodsToModify = 3;
         final int numNodesToModify = 20;
 
-        // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
-        // node selector
-        final Set<String> podsToAssign = ThreadLocalRandom.current().ints(numPodsToModify, 0, numPods)
-                                                           .mapToObj(i -> "p" + i)
-                                                           .collect(Collectors.toSet());
+        final List<String> allPods = IntStream.range(0, numPods)
+                .mapToObj(i -> "p" + i)
+                .collect(Collectors.toList());
+        Collections.shuffle(allPods);
+        final Set<String> podsToAssign = new HashSet<>(allPods.subList(0, numPodsToModify));
+
+        // Add all pods
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
             final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
@@ -422,11 +425,11 @@ public class SchedulerTest {
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
         emitter.subscribe();
 
-        // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
-        // node selector
-        final Set<String> podsToAssign = ThreadLocalRandom.current().ints(numPodsToModify, 0, numPods)
+        final List<String> allPods = IntStream.range(0, numPods)
                 .mapToObj(i -> "p" + i)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toList());
+        Collections.shuffle(allPods);
+        final Set<String> podsToAssign = new HashSet<>(allPods.subList(0, numPodsToModify));
 
         // If we only get one pod in podsToAssign, then that will be the only labelled pod. In cases of affinity
         // requirements, that means that that pod will not have any candidate nodes to be placed on.
