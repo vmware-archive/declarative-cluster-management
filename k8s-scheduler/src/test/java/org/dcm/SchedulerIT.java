@@ -78,14 +78,14 @@ public class SchedulerIT {
     }
 
     @BeforeEach
-    @Timeout(30) // seconds
+    @Timeout(30 /* seconds */)
     public void deleteAllRunningPods() throws Exception {
         fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).delete();
         waitUntil((n) -> hasDrained());
     }
 
     @Test()
-    @Timeout(60) // seconds
+    @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "CHUFFED", true, "");
@@ -113,9 +113,8 @@ public class SchedulerIT {
         scheduler.shutdown();
     }
 
-
     @Test()
-    @Timeout(60) // seconds
+    @Timeout(60 /* seconds */)
     public void testAffinityAntiAffinity() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "CHUFFED", true, "");
@@ -128,7 +127,10 @@ public class SchedulerIT {
 
         // Add a new one
         final Deployment cacheExample = launchDeploymentFromFile("cache-example.yml");
+        final String cacheName = cacheExample.getMetadata().getName();
         final Deployment webStoreExample = launchDeploymentFromFile("web-store-example.yml");
+        final String webStoreName = webStoreExample.getMetadata().getName();
+
         final int newPodsToCreate = cacheExample.getSpec().getReplicas() + webStoreExample.getSpec().getReplicas();
         waitUntil((n) -> hasNRunningPods(newPodsToCreate));
         final List<Pod> items = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
@@ -141,8 +143,8 @@ public class SchedulerIT {
                                        .add(pod.getMetadata().getName()));
         podsByNode.forEach((nodeName, pods) -> {
             assertEquals(2, pods.size());
-            assertTrue(pods.stream().anyMatch(p -> p.contains("web-server")));
-            assertTrue(pods.stream().anyMatch(p -> p.contains("cache")));
+            assertTrue(pods.stream().anyMatch(p -> p.contains(webStoreName)));
+            assertTrue(pods.stream().anyMatch(p -> p.contains(cacheName)));
         });
         stateSync.shutdown();
         scheduler.shutdown();
