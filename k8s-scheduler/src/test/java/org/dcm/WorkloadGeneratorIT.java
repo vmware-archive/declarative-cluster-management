@@ -30,18 +30,19 @@ public class WorkloadGeneratorIT extends ITBase {
 
         final int newPodsToCreate = cacheExample.getSpec().getReplicas() + webStoreExample.getSpec().getReplicas();
         waitUntil((n) -> hasNRunningPods(newPodsToCreate));
-        final List<Pod> items = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
-        assertEquals(newPodsToCreate, items.size());
-        items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
+        final List<Pod> pods = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
+        assertEquals(newPodsToCreate, pods.size());
+
+        pods.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
 
         final Map<String, List<String>> podsByNode = new HashMap<>();
 
-        items.forEach(pod -> podsByNode.computeIfAbsent(pod.getSpec().getNodeName(), k -> new ArrayList<>())
+        pods.forEach(pod -> podsByNode.computeIfAbsent(pod.getSpec().getNodeName(), k -> new ArrayList<>())
                 .add(pod.getMetadata().getName()));
-        podsByNode.forEach((nodeName, pods) -> {
-            assertEquals(2, pods.size());
-            assertTrue(pods.stream().anyMatch(p -> p.contains(webStoreName)));
-            assertTrue(pods.stream().anyMatch(p -> p.contains(cacheName)));
+        podsByNode.forEach((nodeName, podsAssignedToNode) -> {
+            assertEquals(2, podsAssignedToNode.size());
+            assertTrue(podsAssignedToNode.stream().anyMatch(p -> p.contains(webStoreName)));
+            assertTrue(podsAssignedToNode.stream().anyMatch(p -> p.contains(cacheName)));
         });
     }
 }

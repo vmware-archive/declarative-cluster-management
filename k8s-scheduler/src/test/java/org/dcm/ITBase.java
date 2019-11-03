@@ -30,8 +30,8 @@ import java.util.function.Predicate;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ITBase {
+    private static final String K8S_URL_PROPERTY = "k8sUrl";
     static final String TEST_NAMESPACE = "default"; // make sure that pod-specs use this namespace
-    static final String K8S_URL_PROPERTY = "k8sUrl";
 
     static CoreV1Api coreV1Api;
     static DefaultKubernetesClient fabricClient;
