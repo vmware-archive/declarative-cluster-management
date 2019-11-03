@@ -104,7 +104,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         final boolean getUnschedulable = node.getSpec().getUnschedulable() != null
                 && node.getSpec().getUnschedulable();
         for (final NodeCondition condition : status.getConditions()) {
-            final boolean value = !condition.getStatus().equals("False");
+            final boolean value = condition.getStatus().equals("True");
             switch (condition.getType()) {
                 case "OutOfDisk":
                     outOfDisk = value;
