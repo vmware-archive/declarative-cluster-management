@@ -289,4 +289,12 @@ running pods and deployments*. To also run these integration-tests, execute the 
 $: mvn integration-test -DargLine="-Dk8sUrl=http://<hostname>:<port>"
 ```
 
+To run a specific integration test class (example: `SchedulerIT` from the `k8s-scheduler` module):
+
+```bash
+$: mvn integration-test -DargLine="-Dk8sUrl=http://<hostname>:<port>" -Dtest=SchedulerIT -DfailIfNoTests=false
+```
+
+Note, the `-DfailIfNoTests=false` flag is important, or the build will fail earlier modules that don't have tests
+with the same class name.
 
