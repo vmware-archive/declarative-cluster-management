@@ -224,7 +224,8 @@ public final class Scheduler {
         subscription.dispose();
     }
 
-    public static void main(final String[] args) throws InterruptedException, ParseException {
+    public static void main(final String[] args) throws InterruptedException, ParseException, IOException {
+
         final Options options = new Options();
         options.addRequiredOption("a", "apiServerUrl", true,
                 "URL to connect to the k8s api-server");
@@ -244,6 +245,16 @@ public final class Scheduler {
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}", apiServerUrl);
 
         final DSLContext conn = setupDb();
+
+        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
+        try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
+                Charset.forName("UTF8")))) {
+            final String gitProperties = gitPropertiesFile.lines().collect(Collectors.joining(" "));
+            LOG.info("Starting DCM Kubernetes scheduler. Build info: {}", gitProperties);
+        } catch (final IOException e) {
+            throw e;
+        }
+
         final Scheduler scheduler = new Scheduler(conn,
                 Policies.getDefaultPolicies(),
                 cmd.getOptionValue("mnz-solver"),
