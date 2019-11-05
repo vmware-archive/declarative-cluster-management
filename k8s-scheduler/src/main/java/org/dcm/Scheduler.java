@@ -90,6 +90,16 @@ public final class Scheduler {
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
+
+        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
+        try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
+                Charset.forName("UTF8")))) {
+            final String gitProperties = gitPropertiesFile.lines().collect(Collectors.joining(" "));
+            LOG.info("Starting DCM Kubernetes scheduler. Build info: {}", gitProperties);
+        } catch (final IOException e) {
+            throw new RuntimeException(e);
+        }
+
         final Conf conf = new Conf();
         conf.setProperty("solver", solverToUse);
         LOG.info("Configuring debug mode: {}", debugMode);
@@ -245,16 +255,6 @@ public final class Scheduler {
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}", apiServerUrl);
 
         final DSLContext conn = setupDb();
-
-        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
-        try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
-                Charset.forName("UTF8")))) {
-            final String gitProperties = gitPropertiesFile.lines().collect(Collectors.joining(" "));
-            LOG.info("Starting DCM Kubernetes scheduler. Build info: {}", gitProperties);
-        } catch (final IOException e) {
-            throw e;
-        }
-
         final Scheduler scheduler = new Scheduler(conn,
                 Policies.getDefaultPolicies(),
                 cmd.getOptionValue("mnz-solver"),
