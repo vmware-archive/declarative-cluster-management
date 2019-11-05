@@ -52,30 +52,42 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
     @Override
     public void onAdd(final Pod pod) {
-        final long now = System.nanoTime();
-        addPod(conn, pod);
-        LOG.info("{} pod added in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
-        flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); // might be better to add pods in a batch
+        try {
+            final long now = System.nanoTime();
+            addPod(conn, pod);
+            LOG.info("{} pod added in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
+            flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); // might be better to add pods in a batch
+        } catch (final Exception e) {
+            LOG.error("Exception during onAdd()", e);
+        }
     }
 
     @Override
     public void onUpdate(final Pod oldPod, final Pod newPod) {
-        final long now = System.nanoTime();
-        final String oldPodScheduler = oldPod.getSpec().getSchedulerName();
-        final String newPodScheduler = oldPod.getSpec().getSchedulerName();
-        assert oldPodScheduler.equals(newPodScheduler);
-        LOG.debug("{} => {} pod updated in {}ns!", oldPod.getMetadata().getName(), newPod.getMetadata().getName(),
-                                                   (System.nanoTime() - now));
-        updatePod(conn, newPod);
-        flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
+        try {
+            final long now = System.nanoTime();
+            final String oldPodScheduler = oldPod.getSpec().getSchedulerName();
+            final String newPodScheduler = oldPod.getSpec().getSchedulerName();
+            assert oldPodScheduler.equals(newPodScheduler);
+            LOG.debug("{} => {} pod updated in {}ns!", oldPod.getMetadata().getName(), newPod.getMetadata().getName(),
+                    (System.nanoTime() - now));
+            updatePod(conn, newPod);
+            flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
+        } catch (final Exception e) {
+            LOG.error("Exception during onUpdate()", e);
+        }
     }
 
     @Override
     public void onDelete(final Pod pod, final boolean deletedFinalStateUnknown) {
-        final long now = System.nanoTime();
-        deletePod(conn, pod);
-        LOG.debug("{} pod deleted in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
-        flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
+        try {
+            final long now = System.nanoTime();
+            deletePod(conn, pod);
+            LOG.debug("{} pod deleted in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
+            flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
+        } catch (final Exception e) {
+            LOG.error("Exception during onDelete()", e);
+        }
     }
 
     private void addPod(final DSLContext conn, final Pod pod) {
