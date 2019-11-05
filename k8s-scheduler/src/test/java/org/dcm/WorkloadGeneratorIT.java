@@ -11,15 +11,22 @@ import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -39,6 +46,18 @@ public class WorkloadGeneratorIT extends ITBase {
     @BeforeAll
     public static void setSchedulerFromEnvironment() {
         schedulerName = System.getProperty(SCHEDULER_NAME_PROPERTY);
+    }
+
+    @BeforeEach
+    public void logBuildInfo() {
+        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
+        try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
+                Charset.forName("UTF8")))) {
+            final String gitProperties = gitPropertiesFile.lines().collect(Collectors.joining(" "));
+            LOG.info("Running integration test for the following build: {}", gitProperties);
+        } catch (final IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test
@@ -76,6 +95,7 @@ public class WorkloadGeneratorIT extends ITBase {
             assertTrue(podsAssignedToNode.stream().anyMatch(p -> p.contains(cacheName)));
         });
     }
+
 
     private static final class LoggingPodWatcher implements Watcher<Pod> {
         private final long traceId;

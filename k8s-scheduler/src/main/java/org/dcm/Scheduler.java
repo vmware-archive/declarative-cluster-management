@@ -90,7 +90,6 @@ public final class Scheduler {
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
-
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
                 Charset.forName("UTF8")))) {
