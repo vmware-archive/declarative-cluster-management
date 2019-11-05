@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 class KubernetesStateSync {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
-    private SharedInformerFactory sharedInformerFactory;
+    private final SharedInformerFactory sharedInformerFactory;
 
     KubernetesStateSync(final KubernetesClient client) {
         this.sharedInformerFactory = client.informers();
@@ -33,6 +33,7 @@ class KubernetesStateSync {
 
     Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn, final int batchCount,
                                                              final long batchTimeMs) {
+
         final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
         nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(conn));
@@ -51,7 +52,7 @@ class KubernetesStateSync {
                                && podEvent.getPod().getSpec().getNodeName() == null
                                && podEvent.getPod().getSpec().getSchedulerName().equals(
                                            Scheduler.SCHEDULER_NAME)
-                                      )
+                              )
                        .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
                        .filter(podEvents -> !podEvents.isEmpty());
     }
