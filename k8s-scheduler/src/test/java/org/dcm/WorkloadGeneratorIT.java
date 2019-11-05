@@ -5,8 +5,11 @@
 
 package org.dcm;
 
+import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.Watcher;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -40,6 +43,11 @@ public class WorkloadGeneratorIT extends ITBase {
 
     @Test
     public void testAffinityAntiAffinity() throws Exception {
+        // Trace pod and node arrivals/departure
+        final long traceId = System.currentTimeMillis();
+        fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+        fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
         assertNotNull(schedulerName);
         LOG.info("Running testAffinityAntiAffinity with parameters: MasterUrl:{} SchedulerName:{}",
                  fabricClient.getConfiguration().getMasterUrl(), schedulerName);
@@ -67,5 +75,45 @@ public class WorkloadGeneratorIT extends ITBase {
             assertTrue(podsAssignedToNode.stream().anyMatch(p -> p.contains(webStoreName)));
             assertTrue(podsAssignedToNode.stream().anyMatch(p -> p.contains(cacheName)));
         });
+    }
+
+    private static final class LoggingPodWatcher implements Watcher<Pod> {
+        private final long traceId;
+
+        LoggingPodWatcher(final long traceId) {
+            this.traceId = traceId;
+        }
+
+        @Override
+        public void eventReceived(final Action action, final Pod pod) {
+            LOG.info("Timestamp: {}, Trace: {}, PodName: {}, NodeName: {}, Status: {}, Action: {}",
+                    System.currentTimeMillis(), traceId, pod.getMetadata().getName(), pod.getSpec().getNodeName(),
+                    pod.getStatus().getPhase(), action);
+        }
+
+        @Override
+        public void onClose(final KubernetesClientException cause) {
+            LOG.info("Timestamp: {}, Trace: {}, PodWatcher closed", System.currentTimeMillis(), traceId);
+        }
+    }
+
+
+    private static final class LoggingNodeWatcher implements Watcher<Node> {
+        private final long traceId;
+
+        LoggingNodeWatcher(final long traceId) {
+            this.traceId = traceId;
+        }
+
+        @Override
+        public void eventReceived(final Action action, final Node node) {
+            LOG.info("Timestamp: {}, Trace: {}, NodeName: {}, Action: {}", System.currentTimeMillis(), traceId,
+                    node.getMetadata().getName(), action);
+        }
+
+        @Override
+        public void onClose(final KubernetesClientException cause) {
+            LOG.info("Timestamp: {}, Trace: {}, NodeWatcher closed", System.currentTimeMillis(), traceId);
+        }
     }
 }
