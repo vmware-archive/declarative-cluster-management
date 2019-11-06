@@ -58,10 +58,11 @@ public class ITBase {
     }
 
     @BeforeEach
-    @Timeout(30 /* seconds */)
+    @Timeout(60 /* seconds */)
     public void deleteAllRunningPods() throws Exception {
         fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).delete();
         waitUntil((n) -> hasDrained());
+        Thread.sleep(10000); // wait 10 seconds to rest infrastructure before starting test
     }
 
 
