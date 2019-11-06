@@ -233,7 +233,7 @@ public final class Scheduler {
         subscription.dispose();
     }
 
-    public static void main(final String[] args) throws InterruptedException, ParseException, IOException {
+    public static void main(final String[] args) throws InterruptedException, ParseException {
 
         final Options options = new Options();
         options.addRequiredOption("a", "apiServerUrl", true,
