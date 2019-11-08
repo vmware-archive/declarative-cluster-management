@@ -95,7 +95,7 @@ public class DBBenchmark {
             baseTables = new ArrayList<>();
             baseTables.add("POD");
             baseTables.add("NODE");
-            updater = new H2Updater("test", connection, dbCtx, model.getIRTables(), baseTables);
+            updater = new H2Updater(connection, dbCtx, model.getIRTables(), baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);
@@ -123,7 +123,7 @@ public class DBBenchmark {
             baseTables.add("POD");
             baseTables.add("NODE");
 
-            updater = new HSQLUpdater("test", connection, dbCtx, model.getIRTables(), baseTables);
+            updater = new HSQLUpdater(connection, dbCtx, model.getIRTables(), baseTables);
 
         } catch (final SQLException e) {
             throw new RuntimeException(e);

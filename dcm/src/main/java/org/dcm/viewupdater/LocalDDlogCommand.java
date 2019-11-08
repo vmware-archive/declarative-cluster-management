@@ -1,16 +1,23 @@
 package org.dcm.viewupdater;
 
+import ddlogapi.DDlogCommand;
+
+import java.util.Arrays;
 import java.util.List;
 
 public class LocalDDlogCommand {
-    final String command;
+    final DDlogCommand.Kind command;
     final List<Object> values;
     final String tableName;
 
-    LocalDDlogCommand(final String command, final String tableName, final List<Object> values) {
+    LocalDDlogCommand(final DDlogCommand.Kind command, final String tableName, final List<Object> values) {
         this.command = command;
         this.tableName = tableName;
         this.values = values;
+    }
+
+    LocalDDlogCommand(final DDlogCommand.Kind command, final String tableName, final Object[] values) {
+        this(command, tableName, Arrays.asList(values));
     }
 
     @Override

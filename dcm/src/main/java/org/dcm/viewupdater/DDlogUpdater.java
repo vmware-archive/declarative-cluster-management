@@ -79,14 +79,13 @@ public class DDlogUpdater {
         return record;
     }
 
-    public void sendUpdatesToDDlog(final Map<String, List<Object[]>> commands) {
-        final int counter = commands.values().stream().mapToInt(List::size).sum();
-
-        final DDlogRecCommand[] ddlogCommands = new DDlogRecCommand[counter];
-        int loopCounter = 0;
-        for (final Map.Entry<String, List<Object[]>> entry : commands.entrySet()) {
-            final String tableName = entry.getKey();
-            final List<Object[]> cmds = entry.getValue();
+    public void sendUpdatesToDDlog(final List<LocalDDlogCommand> commands) {
+        final int commandsSize = commands.size();
+        final DDlogRecCommand[] ddlogCommands = new DDlogRecCommand[commandsSize];
+        int commandIndex = 0;
+        for (final LocalDDlogCommand command : commands) {
+            final String tableName = command.tableName;
+            final List<Object> cmd = command.values;
 
             int id;
             if (!tableIDMap.containsKey(tableName)) {
@@ -95,11 +94,9 @@ public class DDlogUpdater {
             }
             id = tableIDMap.get(tableName);
 
-            for (int i = 0; i < cmds.size(); i++) {
-                ddlogCommands[loopCounter] =
-                        new DDlogRecCommand(DDlogCommand.Kind.Insert, id, toDDlogRecord(tableName, cmds.get(i)));
-                loopCounter++;
-            }
+            ddlogCommands[commandIndex] =
+                    new DDlogRecCommand(command.command, id, toDDlogRecord(tableName, cmd.toArray()));
+            commandIndex++;
         }
 
         try {

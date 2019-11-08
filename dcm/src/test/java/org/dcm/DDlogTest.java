@@ -86,7 +86,7 @@ public class DDlogTest {
 
         final Model model = buildModel(dbCtx, new ArrayList<>(), modelName);
 
-        final ViewUpdater updater = new H2Updater(modelName, conn, dbCtx, model.getIRTables(), baseTables);
+        final ViewUpdater updater = new H2Updater(conn, dbCtx, model.getIRTables(), baseTables);
 
         try {
             final PreparedStatement nodeStmt = conn.prepareStatement(
