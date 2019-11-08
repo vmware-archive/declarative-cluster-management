@@ -26,6 +26,7 @@ import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -58,12 +59,24 @@ public class ITBase {
     }
 
     @BeforeEach
-    @Timeout(30 /* seconds */)
+    @Timeout(60 /* seconds */)
     public void deleteAllRunningPods() throws Exception {
-        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).delete();
+        final List<Deployment> deployments = fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
+                                                         .list().getItems();
+        for (final Deployment deployment: deployments) {
+            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).delete(deployment);
+        }
+        final List<Pod> pods = fabricClient.pods().inNamespace(TEST_NAMESPACE)
+                .list().getItems();
+        for (final Pod pod: pods) {
+            fabricClient.pods().inNamespace(TEST_NAMESPACE).delete(pod);
+        }
         waitUntil((n) -> hasDrained());
     }
 
+    public void deleteDeployment(final Deployment deployment) throws Exception {
+        fabricClient.apps().deployments().delete(deployment);
+    }
 
     Deployment launchDeploymentFromFile(final String resourceName) {
         return launchDeploymentFromFile(resourceName, "default-scheduler");
