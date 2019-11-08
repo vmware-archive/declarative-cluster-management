@@ -27,12 +27,15 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.Charset;
-//import java.util.ArrayList;
-//import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 //import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -79,40 +82,40 @@ public class WorkloadGeneratorIT extends ITBase {
                  fabricClient.getConfiguration().getMasterUrl(), schedulerName);
 
 	final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        //ScheduledExecutorService scheduledExecutorService =
-        //	Executors.newScheduledThreadPool(10);	
-        //ArrayList<ScheduledFuture> futureList = new ArrayList<ScheduledFuture>();
-	//ArrayList<Deployment> deploymentList = new ArrayList<Deployment>();
+	final ScheduledExecutorService scheduledExecutorService =
+        	Executors.newScheduledThreadPool(10);
+//	final ArrayList<ScheduledFuture> futureList = new ArrayList<ScheduledFuture>();
+	final ArrayList<Deployment> deploymentList = new ArrayList<Deployment>();
 	final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
-		Charset.forName("UTF8")))) {
+		        Charset.forName("UTF8")))) {
             String line;
-	    int recCount = 0;
+	        int recCount = 0;
             while ((line = reader.readLine()) != null) {
                 final String[] parts = line.split(" ", 7);
-		final int startTime = Integer.parseInt(parts[2]) / 60; 
-		int endTime = Integer.parseInt(parts[3]) / (60 * 100);
-		if (endTime <= startTime) {
-			endTime = startTime + 1;
-		}
-		final float cpu = Float.parseFloat(parts[4]) / 1000;
-		final float mem = Float.parseFloat(parts[5]) / 100;
-		final int count = Integer.parseInt(parts[6]);
-		System.out.println(recCount + " " + startTime + " " + endTime + " " + cpu + " " + 
-			mem + " " + count);
-		final int duration = (endTime - startTime) * 60;
-		System.out.println("dur " + duration);
-	        final URL url = getClass().getClassLoader().getResource("cache-example.yml");
-        	assertNotNull(url);
-        	final File file = new File(url.getFile());
-        	final Deployment deployment = fabricClient.apps().deployments().load(file).get();
-        	deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
-		final String appName = "app" + recCount;
-		deployment.getMetadata().setName(appName);
-		deployment.getSpec().setReplicas(count);
+		        final int startTime = Integer.parseInt(parts[2]) / 60;
+		        int endTime = Integer.parseInt(parts[3]) / (60 * 100);
+		        if (endTime <= startTime) {
+			        endTime = startTime + 1;
+		        }
+		        final float cpu = Float.parseFloat(parts[4]) / 1000;
+		        final float mem = Float.parseFloat(parts[5]) / 100;
+		        final int count = Integer.parseInt(parts[6]);
+		        System.out.println(recCount + " " + startTime + " " + endTime + " " + cpu + " " +
+			            mem + " " + count);
+		        final int duration = (endTime - startTime) * 60;
+		        System.out.println("dur " + duration);
+		        final URL url = getClass().getClassLoader().getResource("cache-example.yml");
+        	    assertNotNull(url);
+        	    final File file = new File(url.getFile());
+        	    final Deployment deployment = fabricClient.apps().deployments().load(file).get();
+        	    deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
+		        final String appName = "app" + recCount;
+		        deployment.getMetadata().setName(appName);
+		        deployment.getSpec().setReplicas(count);
 
-	        final List<Container> containerList = deployment.getSpec().getTemplate().getSpec().getContainers();
-        	for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
+	            final List<Container> containerList = deployment.getSpec().getTemplate().getSpec().getContainers();
+        	    for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
             		final Container container = iter.next();
             		final ResourceRequirements resReq = new ResourceRequirements();
             		final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
@@ -121,18 +124,24 @@ public class WorkloadGeneratorIT extends ITBase {
             		resReq.setRequests(reqs);
             		container.setResources(resReq);
             		iter.set(container);
-       	 	}
-        	deployment.getSpec().getTemplate().getSpec().setContainers(containerList);
-		fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                	.create(deployment);
-//                ScheduledExecutorService scheduledExecutorService =
-//                        Executors.newScheduledThreadPool(1);
-		//deploymentList.add(deployment);
-                //Runnable task = () -> {
-                //        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).i
-					//delete(deploymentList[recCount]);
-                //};	
-		//Callable <String> task = new Callable<String>() {
+       	 	    }
+        	    deployment.getSpec().getTemplate().getSpec().setContainers(containerList);
+		        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
+                	    .create(deployment);
+		        deploymentList.add(deployment);
+		        final int index = recCount;
+		        final Runnable task = () -> {
+                        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
+                                .delete(deploymentList.get(index));
+                };
+                recCount++;
+//                final ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(
+//                                task, 30, TimeUnit.SECONDS);
+                                //duration, TimeUnit.SECONDS);
+                 //futureList.add(scheduledExecutorService.schedule(task, 30, TimeUnit.SECONDS));
+                final ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(task, 30, TimeUnit.SECONDS);
+                System.out.println(scheduledFuture);
+                //Callable <String> task = new Callable<String>() {
 		//	public Integer call() {
 		//		fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).
 						//delete(deploymentList[recCount]);		
@@ -144,7 +153,6 @@ public class WorkloadGeneratorIT extends ITBase {
                                 //duration, TimeUnit.SECONDS);
                 //futureList.add(scheduledExecutorService.schedule(task, 30, TimeUnit.SECONDS));
 		//System.out.println(futureList);
-		recCount++;
 		//System.out.println(scheduledFuture.getDelay(TimeUnit.SECONDS));
                 //scheduledFuture.get();
 		
