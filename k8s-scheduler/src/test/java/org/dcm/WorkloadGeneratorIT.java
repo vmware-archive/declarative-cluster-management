@@ -81,51 +81,20 @@ public class WorkloadGeneratorIT extends ITBase {
         LOG.info("Running testAffinityAntiAffinity with parameters: MasterUrl:{} SchedulerName:{}",
                  fabricClient.getConfiguration().getMasterUrl(), schedulerName);
 
-	final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-	final ScheduledExecutorService scheduledExecutorService =
-        	Executors.newScheduledThreadPool(10);
-//	final ArrayList<ScheduledFuture> futureList = new ArrayList<ScheduledFuture>();
-	final ArrayList<Deployment> deploymentList = new ArrayList<Deployment>();
-	final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
+        final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
+
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
 		        Charset.forName("UTF8")))) {
-            String line;
-	        int recCount = 0;
-            while ((line = reader.readLine()) != null) {
-                final String[] parts = line.split(" ", 7);
-		        final int startTime = Integer.parseInt(parts[2]) / 60;
-		        int endTime = Integer.parseInt(parts[3]) / (60 * 100);
-		        if (endTime <= startTime) {
-			        endTime = startTime + 1;
-		        }
-		        final float cpu = Float.parseFloat(parts[4]) / 1000;
-		        final float mem = Float.parseFloat(parts[5]) / 100;
-		        final int count = Integer.parseInt(parts[6]);
-		        System.out.println(recCount + " " + startTime + " " + endTime + " " + cpu + " " +
-			            mem + " " + count);
-		        final int duration = (endTime - startTime) * 60;
-		        System.out.println("dur " + duration);
-		        final URL url = getClass().getClassLoader().getResource("cache-example.yml");
-        	    assertNotNull(url);
-        	    final File file = new File(url.getFile());
-        	    final Deployment deployment = fabricClient.apps().deployments().load(file).get();
-        	    deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
-		        final String appName = "app" + recCount;
-		        deployment.getMetadata().setName(appName);
-		        deployment.getSpec().setReplicas(count);
+            final ScheduledExecutorService scheduledExecutorService =
+                    Executors.newScheduledThreadPool(10);
+            //	final ArrayList<ScheduledFuture> futureList = new ArrayList<ScheduledFuture>();
+            final ArrayList<Deployment> deploymentList = new ArrayList<Deployment>();
 
-	            final List<Container> containerList = deployment.getSpec().getTemplate().getSpec().getContainers();
-        	    for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
-            		final Container container = iter.next();
-            		final ResourceRequirements resReq = new ResourceRequirements();
-            		final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
-            		reqs.put("cpu", new Quantity(Float.toString(cpu * 1000) + "m"));
-            		reqs.put("memory", new Quantity(Float.toString(mem)));
-            		resReq.setRequests(reqs);
-            		container.setResources(resReq);
-            		iter.set(container);
-       	 	    }
-        	    deployment.getSpec().getTemplate().getSpec().setContainers(containerList);
+            String line;
+            int recCount = 0;
+            while ((line = reader.readLine()) != null) {
+                final Deployment deployment = getDeployment(line, recCount);
 		        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                 	    .create(deployment);
 		        deploymentList.add(deployment);
@@ -139,59 +108,53 @@ public class WorkloadGeneratorIT extends ITBase {
 //                                task, 30, TimeUnit.SECONDS);
                                 //duration, TimeUnit.SECONDS);
                  //futureList.add(scheduledExecutorService.schedule(task, 30, TimeUnit.SECONDS));
-                final ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(task, 30, TimeUnit.SECONDS);
+                final ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(task, 30,
+                        TimeUnit.SECONDS);
                 System.out.println(scheduledFuture);
-                //Callable <String> task = new Callable<String>() {
-		//	public Integer call() {
-		//		fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).
-						//delete(deploymentList[recCount]);		
-		//		return "test";
-		//	}
-		//};
-                //ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(
-                //                runnableTask, 30, TimeUnit.SECONDS);
-                                //duration, TimeUnit.SECONDS);
-                //futureList.add(scheduledExecutorService.schedule(task, 30, TimeUnit.SECONDS));
-		//System.out.println(futureList);
-		//System.out.println(scheduledFuture.getDelay(TimeUnit.SECONDS));
-                //scheduledFuture.get();
-		
-//		scheduleDeletion(deployment);
-		//final int newPodsToCreate = deployment.getSpec().getReplicas();
-		//waitUntil((n) -> hasNRunningPods(newPodsToCreate));
-		//cacheExample.getSpec().getTemplate().getSpec().getContainers();
-            } 
+            }
 
         } catch (final IOException e) {
             throw new RuntimeException(e);
-        } 
-
-/*
-        // Add a new one
-        final Deployment cacheExample = launchDeploymentFromFile("cache-example.yml", schedulerName);
-        final String cacheName = cacheExample.getMetadata().getName();
-        final Deployment webStoreExample = launchDeploymentFromFile("web-store-example.yml",
-                                                                    schedulerName);
-        final String webStoreName = webStoreExample.getMetadata().getName();
-
-        final int newPodsToCreate = cacheExample.getSpec().getReplicas() + webStoreExample.getSpec().getReplicas();
-        waitUntil((n) -> hasNRunningPods(newPodsToCreate));
-        final List<Pod> pods = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
-        assertEquals(newPodsToCreate, pods.size());
-
-        pods.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
-
-        final Map<String, List<String>> podsByNode = new HashMap<>();
-
-        pods.forEach(pod -> podsByNode.computeIfAbsent(pod.getSpec().getNodeName(), k -> new ArrayList<>())
-                .add(pod.getMetadata().getName()));
-        podsByNode.forEach((nodeName, podsAssignedToNode) -> {
-            assertEquals(2, podsAssignedToNode.size());
-            assertTrue(podsAssignedToNode.stream().anyMatch(p -> p.contains(webStoreName)));
-            assertTrue(podsAssignedToNode.stream().anyMatch(p -> p.contains(cacheName)));
-        });*/
+        }
     }
 
+    private Deployment getDeployment(final String line, final int recCount) {
+        final String[] parts = line.split(" ", 7);
+        final int startTime = Integer.parseInt(parts[2]) / 60;
+        int endTime = Integer.parseInt(parts[3]) / (60 * 100);
+        if (endTime <= startTime) {
+            endTime = startTime + 1;
+        }
+        final float cpu = Float.parseFloat(parts[4]) / 1000;
+        final float mem = Float.parseFloat(parts[5]) / 100;
+        final int count = Integer.parseInt(parts[6]);
+        System.out.println(recCount + " " + startTime + " " + endTime + " " + cpu + " " +
+                mem + " " + count);
+        final int duration = (endTime - startTime) * 60;
+        System.out.println("dur " + duration);
+
+        final URL url = getClass().getClassLoader().getResource("cache-example.yml");
+        assertNotNull(url);
+        final File file = new File(url.getFile());
+        final Deployment deployment = fabricClient.apps().deployments().load(file).get();
+        deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
+        final String appName = "app" + recCount;
+        deployment.getMetadata().setName(appName);
+        deployment.getSpec().setReplicas(count);
+
+        final List<Container> containerList = deployment.getSpec().getTemplate().getSpec().getContainers();
+        for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
+            final Container container = iter.next();
+            final ResourceRequirements resReq = new ResourceRequirements();
+            final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
+            reqs.put("cpu", new Quantity(Float.toString(cpu * 1000) + "m"));
+            reqs.put("memory", new Quantity(Float.toString(mem)));
+            resReq.setRequests(reqs);
+            iter.set(container);
+        }
+        deployment.getSpec().getTemplate().getSpec().setContainers(containerList);
+        return deployment;
+    }
 
     private static final class LoggingPodWatcher implements Watcher<Pod> {
         private final long traceId;
