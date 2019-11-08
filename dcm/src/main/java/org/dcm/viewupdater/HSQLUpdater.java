@@ -24,7 +24,7 @@ public class HSQLUpdater extends ViewUpdater {
     }
 
     public static class InnerHSQLUpdater implements Trigger {
-        private String modelName;
+        private String key;
 
         public InnerHSQLUpdater() {
 
@@ -33,22 +33,22 @@ public class HSQLUpdater extends ViewUpdater {
         @Override
         public void fire(final int type, final String triggerName,
                          final String tableName, final Object[] oldRow, final Object[] newRow) {
-            this.modelName = Iterables.get(Splitter.on('_').split(triggerName), 0);
+            this.key = Iterables.get(Splitter.on('_').split(triggerName), 0);
             switch (type) {
                 case Trigger.INSERT_BEFORE_ROW : {
-                    mapRecordsFromDB.get(modelName)
+                    mapRecordsFromDB.get(key)
                             .add(new LocalDDlogCommand(DDlogCommand.Kind.Insert, tableName, newRow));
                     break;
                 }
                 case Trigger.DELETE_BEFORE_ROW : {
-                    mapRecordsFromDB.get(modelName)
+                    mapRecordsFromDB.get(key)
                             .add(new LocalDDlogCommand(DDlogCommand.Kind.DeleteVal, tableName, oldRow));
                     break;
                 }
                 case Trigger.UPDATE_BEFORE_ROW : {
-                    mapRecordsFromDB.get(modelName)
+                    mapRecordsFromDB.get(key)
                             .add(new LocalDDlogCommand(DDlogCommand.Kind.DeleteVal, tableName, oldRow));
-                    mapRecordsFromDB.get(modelName)
+                    mapRecordsFromDB.get(key)
                             .add(new LocalDDlogCommand(DDlogCommand.Kind.Insert, tableName, newRow));
                     break;
                 } default: {

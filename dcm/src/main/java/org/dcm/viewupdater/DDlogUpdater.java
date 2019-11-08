@@ -27,7 +27,7 @@ public class DDlogUpdater {
     static final String LONG_TYPE = "java.lang.Long";
 
     public DDlogUpdater(final Consumer<DDlogCommand<DDlogRecord>> consumer, final Map<String, IRTable> irTables) {
-        final int ddlogWorkerThreads = 1;
+        final int ddlogWorkerThreads = 2;
         final boolean storeDataInDDlogBackgroundProgram = false;
         try {
             API = new DDlogAPI(ddlogWorkerThreads, null, storeDataInDDlogBackgroundProgram);
@@ -45,38 +45,39 @@ public class DDlogUpdater {
         final IRTable irTable = irTables.get(tableName);
         final Table<? extends Record> table = irTable.getTable();
 
-        int counter = 0;
+        int fieldIndex = 0;
         for (final Field<?> field : table.fields()) {
             final Class<?> cls = field.getType();
             try {
                 switch (cls.getName()) {
                     case BOOLEAN_TYPE:
-                        recordsArray[counter] = new DDlogRecord((Boolean) args[counter]);
+                        recordsArray[fieldIndex] = new DDlogRecord((Boolean) args[fieldIndex]);
                         break;
                     case INTEGER_TYPE:
-                        recordsArray[counter] = new DDlogRecord((Integer) args[counter]);
+                        recordsArray[fieldIndex] = new DDlogRecord((Integer) args[fieldIndex]);
                         break;
                     case LONG_TYPE:
-                        recordsArray[counter] = new DDlogRecord((Long) args[counter]);
+                        recordsArray[fieldIndex] = new DDlogRecord((Long) args[fieldIndex]);
                         break;
                     case STRING_TYPE:
-                        recordsArray[counter] = new DDlogRecord(args[counter].toString().trim());
+                        recordsArray[fieldIndex] = new DDlogRecord(args[fieldIndex].toString().trim());
                         break;
                     default:
-                        throw new RuntimeException("Unexpected datatype: " + cls.getName());
+                        throw new RuntimeException(
+                                String.format("Unknown datatype %s of field %s in table %s while sending DB data to " +
+                                        "DDLog", args[fieldIndex].getClass().getName(), field.getName(), tableName));
                 }
             } catch (final DDlogException e) {
                 throw new RuntimeException(e);
             }
-            counter = counter + 1;
+            fieldIndex = fieldIndex + 1;
         }
-        DDlogRecord record = null;
+
         try {
-            record = DDlogRecord.makeStruct(tableName, recordsArray);
+            return DDlogRecord.makeStruct(tableName, recordsArray);
         } catch (final DDlogException e) {
             throw new RuntimeException(e);
         }
-        return record;
     }
 
     public void sendUpdatesToDDlog(final List<LocalDDlogCommand> commands) {

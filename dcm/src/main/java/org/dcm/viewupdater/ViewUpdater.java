@@ -1,5 +1,6 @@
 package org.dcm.viewupdater;
 
+import com.google.common.base.Preconditions;
 import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogRecord;
 import org.dcm.IRTable;
@@ -36,7 +37,8 @@ public abstract class ViewUpdater {
     private final Map<String, Map<DDlogCommand.Kind, PreparedStatement>> preparedQueries = new HashMap<>();
     private final DDlogUpdater updater;
     private final Map<String, IRTable> irTables;
-    private final Map<String, List<LocalDDlogCommand>> recordsFromDDLog = new HashMap<>();
+    private final List<LocalDDlogCommand> recordsFromDDLog = new ArrayList<>();
+    private final Map<String, Integer> recordsReceived = new HashMap<>();
 
     private static final String BIGINT_TYPE = "java.math.BigInteger";
     private static final String INTEGER_TYPE = "java.lang.Integer";
@@ -54,8 +56,13 @@ public abstract class ViewUpdater {
      * @param baseTables: the tables we build triggers for
      * @param irTables: the datastructure that gives us schema for the "base" and "view" tables
      */
+
     public ViewUpdater(final Connection connection, final DSLContext dbCtx,
                        final List<String> baseTables, final Map<String, IRTable> irTables) {
+        final String ddlogModelEnv = "DDLOG_MODEL_ENV";
+        Preconditions.checkNotNull(System.getenv(ddlogModelEnv));
+        System.load(System.getenv(ddlogModelEnv));
+
         this.connection = connection;
         // this key is connection-specific and allows us to separate records received from the DB for different models
         this.key = String.format("KEY%d", connection.hashCode());
@@ -83,7 +90,6 @@ public abstract class ViewUpdater {
                     Arrays.stream(fields).map(s -> String.format(" %s = ?", s.getName())).collect(Collectors.toList());
             stringBuilder.append(String.join(" and ", fieldNames));
         }
-        stringBuilder.append("\n)");
         return stringBuilder.toString();
     }
 
@@ -102,10 +108,10 @@ public abstract class ViewUpdater {
     }
 
     private void receiveUpdateFromDDlog(final DDlogCommand<DDlogRecord> command) {
-        final List objects = new ArrayList();
+        final List<Object> objects = new ArrayList();
         final DDlogRecord record = command.value();
-
         final String tableName = record.getStructName();
+
         // we only hold records for tables we have in the DB and none others.
         if (irTables.containsKey(tableName)) {
             final IRTable irTable = irTables.get(tableName);
@@ -120,74 +126,78 @@ public abstract class ViewUpdater {
                         objects.add(f.getBoolean());
                         break;
                     case INTEGER_TYPE:
-                        objects.add(f.getInt().longValue());
+                        objects.add(f.getInt());
                         break;
                     case LONG_TYPE:
-                        objects.add(f.getInt());
+                        objects.add(f.getInt().longValue());
                         break;
                     case STRING_TYPE:
                         objects.add(f.getString());
                         break;
                     default:
-                        throw new RuntimeException("Unexpected datatype: " + cls.getName());
+                        throw new RuntimeException(
+                                String.format("Unknown datatype %s of field %s in table %s in update received from " +
+                                        "DDLog", f.getClass().getName(), field.getName(), tableName));
                 }
                 fieldIndex = fieldIndex + 1;
             }
-            recordsFromDDLog.computeIfAbsent(record.getStructName(), k -> new ArrayList<LocalDDlogCommand>());
-            recordsFromDDLog.get(tableName).add(new LocalDDlogCommand(command.kind(), tableName, objects));
+            recordsFromDDLog.add(new LocalDDlogCommand(command.kind(), tableName, objects));
         }
     }
 
     public void flushUpdates() {
         updater.sendUpdatesToDDlog(mapRecordsFromDB.get(key));
-         System.out.println("Total Tables: " + recordsFromDDLog.size());
-        for (final Map.Entry<String, List<LocalDDlogCommand>> entry: recordsFromDDLog.entrySet()) {
-            final String tableName = entry.getKey();
-            final List<LocalDDlogCommand> commands = entry.getValue();
-                for (final LocalDDlogCommand command : commands) {
-                    // check if query is already created and if not, create it
-                    if (!preparedQueries.containsKey(tableName) ||
-                            (preparedQueries.containsKey(tableName) &&
-                                    !preparedQueries.get(tableName).containsKey(command.command))) {
-                        updatePreparedQueries(tableName, command);
-                    }
-                    flush(tableName, command);
-                }
+//        System.out.println("Records received: " + recordsFromDDLog.size());
+
+        for (final LocalDDlogCommand command : recordsFromDDLog) {
+//            System.out.println(command.toString());
+            final String tableName = command.tableName;
+
+            // for logging
+            recordsReceived.computeIfAbsent(tableName, k -> 0);
+            recordsReceived.put(tableName, recordsReceived.get(tableName) + 1);
+            // check if query is already created and if not, create it
+            if (!preparedQueries.containsKey(tableName) ||
+                    (preparedQueries.containsKey(tableName) &&
+                            !preparedQueries.get(tableName).containsKey(command.command))) {
+                updatePreparedQueries(tableName, command);
+            }
+            flush(tableName, command);
         }
         recordsFromDDLog.clear();
         mapRecordsFromDB.get(key).clear();
+
+//        recordsReceived.forEach((k, v) -> System.out.println("Key: " + k + " v: " + v));
+        recordsReceived.clear();
     }
 
      private void flush(final String tableName, final LocalDDlogCommand command) {
         try {
             final PreparedStatement query = preparedQueries.get(tableName).get(command.command);
-            final IRTable irTable = irTables.get(tableName);
-            final Table<? extends Record> table = irTable.getTable();
-            final Field[] fields = table.fields();
-            for (int i = 0; i < fields.length; i++) {
-                final Class fieldClass = fields[i].getType();
-                final Object item = command.values.get(i);
-                final int index = i + 1;
-                switch (fieldClass.getName()) {
+            int fieldIndex = 1;
+            for (final Object item: command.values) {
+                switch (item.getClass().getName()) {
+                    case BIGINT_TYPE:
+                        query.setInt(fieldIndex, ((java.math.BigInteger) item).intValue());
+                        break;
                     case LONG_TYPE:
-                        if (item.getClass().getName().equals(BIGINT_TYPE)) {
-                            query.setInt(index, ((java.math.BigInteger) item).intValue());
-                        } else {
-                            query.setLong(index, (Long) item);
-                        }
+                            query.setLong(fieldIndex, (Long) item);
                         break;
                     case INTEGER_TYPE:
-                        query.setInt(index, (Integer) item);
+                        query.setInt(fieldIndex, (Integer) item);
                         break;
                     case BOOLEAN_TYPE:
-                        query.setBoolean(index, (Boolean) item);
+                        query.setBoolean(fieldIndex, (Boolean) item);
                         break;
                     case STRING_TYPE:
-                        query.setString(index, (String) item);
+                        query.setString(fieldIndex, (String) item);
                         break;
                     default:
-                        query.setString(index, (String) item);
+                        throw new RuntimeException(String.format("Unknown datatype %s of field %s in table %s when " +
+                                        "writing data returned from DDlog to DB",
+                                item.getClass().getName(), item.getClass().getName(), tableName));
                 }
+                fieldIndex = fieldIndex + 1;
             }
             query.executeUpdate();
         } catch (final SQLException e) {
