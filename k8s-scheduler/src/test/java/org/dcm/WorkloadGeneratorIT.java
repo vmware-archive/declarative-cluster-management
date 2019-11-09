@@ -41,11 +41,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
+    private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
     @Nullable private static String schedulerName;
 
     @BeforeAll
     public static void setSchedulerFromEnvironment() {
-        schedulerName = System.getProperty(SCHEDULER_NAME_PROPERTY);
+        final String property = System.getProperty(SCHEDULER_NAME_PROPERTY);
+        schedulerName = property == null ? SCHEDULER_NAME_DEFAULT : property;
     }
 
     @BeforeEach

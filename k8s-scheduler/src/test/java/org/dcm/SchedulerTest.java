@@ -36,7 +36,6 @@ import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
-import org.joda.time.DateTime;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -959,10 +958,9 @@ public class SchedulerTest {
                          final Map<String, String> labels) {
         final Pod pod = new Pod();
         final ObjectMeta meta = new ObjectMeta();
-        final DateTime dateTime = new DateTime();
         meta.setName(podName);
         meta.setLabels(labels);
-        meta.setCreationTimestamp(dateTime.toString());
+        meta.setCreationTimestamp("1");
         meta.setNamespace("default");
         final PodSpec spec = new PodSpec();
         spec.setSchedulerName(Scheduler.SCHEDULER_NAME);

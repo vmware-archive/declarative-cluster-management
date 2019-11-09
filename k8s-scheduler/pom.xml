@@ -26,12 +26,7 @@
         <dependency>
             <groupId>io.fabric8</groupId>
             <artifactId>kubernetes-client</artifactId>
-            <version>4.6.1</version>
-        </dependency>
-        <dependency>
-            <groupId>io.kubernetes</groupId>
-            <artifactId>client-java</artifactId>
-            <version>5.0.0</version>
+            <version>4.6.3</version>
         </dependency>
         <dependency>
             <groupId>io.reactivex.rxjava2</groupId>
