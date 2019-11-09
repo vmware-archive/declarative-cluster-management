@@ -283,16 +283,19 @@ $: mvn package
 
 The Kubernetes scheduler also comes with integration tests that run against a real Kubernetes cluster. 
 *It goes without saying that you should not point to a production cluster as these tests repeatedly delete all 
-running pods and deployments*. To also run these integration-tests, execute the following command:
+running pods and deployments*. To also run these integration-tests, make sure you have a valid `KUBECONFIG`
+environment variable that points to a Kubernetes cluster (we recommend setting up a local multi-node cluster and 
+a corresponding `KUBECONFIG` using [kind](https://kind.sigs.k8s.io/docs/user/quick-start/)). You can then execute 
+the following command:
 
 ```bash
-$: mvn integration-test -DargLine="-Dk8sUrl=http://<hostname>:<port>"
+$: mvn integration-test
 ```
 
 To run a specific integration test class (example: `SchedulerIT` from the `k8s-scheduler` module):
 
 ```bash
-$: mvn integration-test -DargLine="-Dk8sUrl=http://<hostname>:<port>" -Dtest=SchedulerIT -DfailIfNoTests=false
+$: mvn integration-test -Dtest=SchedulerIT -DfailIfNoTests=false
 ```
 
 Note, the `-DfailIfNoTests=false` flag is important, or the build will fail earlier modules that don't have tests
