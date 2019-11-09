@@ -28,12 +28,12 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -51,6 +51,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
+    final ScheduledExecutorService scheduledExecutorService =
+            Executors.newScheduledThreadPool(10);
+    final ArrayList<ScheduledFuture> futureList = new ArrayList<ScheduledFuture>();
+    final ArrayList<Deployment> deploymentList = new ArrayList<Deployment>();
+
     @Nullable private static String schedulerName;
 
     @BeforeAll
@@ -81,64 +86,61 @@ public class WorkloadGeneratorIT extends ITBase {
         LOG.info("Running testAffinityAntiAffinity with parameters: MasterUrl:{} SchedulerName:{}",
                  fabricClient.getConfiguration().getMasterUrl(), schedulerName);
 
+        // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
 		        Charset.forName("UTF8")))) {
-            final ScheduledExecutorService scheduledExecutorService =
-                    Executors.newScheduledThreadPool(10);
-            //	final ArrayList<ScheduledFuture> futureList = new ArrayList<ScheduledFuture>();
-            final ArrayList<Deployment> deploymentList = new ArrayList<Deployment>();
-
             String line;
-            int recCount = 0;
+            int taskCount = 0;
             while ((line = reader.readLine()) != null) {
-                final Deployment deployment = getDeployment(line, recCount);
+                // get a deployment based on cpu, mem requirements
+                final Deployment deployment = getDeployment(line, taskCount);
+
+                // get duration based on start and end times
+                final int duration = getDuration(line);
+
+                // create deployment in the k8s cluster
 		        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                 	    .create(deployment);
-		        deploymentList.add(deployment);
-		        final int index = recCount;
-		        final Runnable task = () -> {
-                        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                                .delete(deploymentList.get(index));
-                };
-                recCount++;
-//                final ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(
-//                                task, 30, TimeUnit.SECONDS);
-                                //duration, TimeUnit.SECONDS);
-                 //futureList.add(scheduledExecutorService.schedule(task, 30, TimeUnit.SECONDS));
-                final ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(task, 30,
-                        TimeUnit.SECONDS);
-                System.out.println(scheduledFuture);
+
+		        // Schedule deletion of this deployment based on duration.
+                final ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(
+                        new RunTask(deployment), duration, TimeUnit.SECONDS);
+
+                // Add to a list to enable keeping the test active until deletion
+                futureList.add(scheduledFuture);
+                System.out.println(futureList.toString());
+
+                taskCount++;
             }
 
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
+
+        // Wait until all scheduled deletes are completed
+        for (final ScheduledFuture future: futureList) {
+            future.get();
+        }
     }
 
-    private Deployment getDeployment(final String line, final int recCount) {
+
+    private Deployment getDeployment(final String line, final int taskCount) {
         final String[] parts = line.split(" ", 7);
-        final int startTime = Integer.parseInt(parts[2]) / 60;
-        int endTime = Integer.parseInt(parts[3]) / (60 * 100);
-        if (endTime <= startTime) {
-            endTime = startTime + 1;
-        }
         final float cpu = Float.parseFloat(parts[4]) / 1000;
         final float mem = Float.parseFloat(parts[5]) / 100;
         final int count = Integer.parseInt(parts[6]);
-        System.out.println(recCount + " " + startTime + " " + endTime + " " + cpu + " " +
-                mem + " " + count);
-        final int duration = (endTime - startTime) * 60;
-        System.out.println("dur " + duration);
 
         final URL url = getClass().getClassLoader().getResource("cache-example.yml");
         assertNotNull(url);
         final File file = new File(url.getFile());
+
+        // Load the template file and update its contents to generate a new deployment template
         final Deployment deployment = fabricClient.apps().deployments().load(file).get();
         deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
-        final String appName = "app" + recCount;
+        final String appName = "app" + taskCount;
         deployment.getMetadata().setName(appName);
         deployment.getSpec().setReplicas(count);
 
@@ -150,10 +152,36 @@ public class WorkloadGeneratorIT extends ITBase {
             reqs.put("cpu", new Quantity(Float.toString(cpu * 1000) + "m"));
             reqs.put("memory", new Quantity(Float.toString(mem)));
             resReq.setRequests(reqs);
+            container.setResources(resReq);
             iter.set(container);
         }
         deployment.getSpec().getTemplate().getSpec().setContainers(containerList);
         return deployment;
+    }
+
+    private int getDuration(final String line) {
+        final String[] parts = line.split(" ", 7);
+        final int startTime = Integer.parseInt(parts[2]) / 60;
+        int endTime = Integer.parseInt(parts[3]) / (60 * 100);
+        if (endTime <= startTime) {
+            endTime = startTime + 1;
+        }
+        final int duration = (endTime - startTime) * 60;
+        return duration;
+    }
+
+    private static class RunTask implements Runnable {
+        Deployment deployment;
+
+        RunTask(final Deployment dep) {
+            this.deployment = dep;
+        }
+
+        @Override
+        public void run() {
+            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
+                    .delete(deployment);
+        }
     }
 
     private static final class LoggingPodWatcher implements Watcher<Pod> {
