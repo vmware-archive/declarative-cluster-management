@@ -186,6 +186,7 @@ public class IRTable {
      */
     void updateValues(final Result<? extends Record> recentData) {
         Preconditions.checkNotNull(jooqTable);
+        this.recentData = recentData;
         // stores all the values per field for later use in MiniZinc
         for (final Field<?> field : jooqTable.fields()) {
             fieldToIRColumn.get(field).setValues(recentData.getValues(field));

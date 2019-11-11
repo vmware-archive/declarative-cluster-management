@@ -101,6 +101,10 @@ public class Ops {
         return eq(left, encoder.toLong(right));
     }
 
+    public IntVar eq(final long left, final IntVar right) {
+        return eq(right, left);
+    }
+
     public IntVar eq(final IntVar left, final long right) {
         final IntVar bool = model.newBoolVar("");
         model.addEquality(left, right).onlyEnforceIf(bool);

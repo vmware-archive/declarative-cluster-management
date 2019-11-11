@@ -18,12 +18,12 @@ import com.google.ortools.sat.IntVar;
 import com.google.ortools.util.Domain;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.WildcardTypeName;
-
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
@@ -43,7 +43,6 @@ import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.Qualifier;
 import org.dcm.compiler.monoid.TableRowGenerator;
-
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -272,18 +271,19 @@ public class OrToolsSolver implements ISolverBackend {
             controlFlowsToPop.forEach(s -> output.endControlFlow());
             output.addStatement(printTime("Group-by final view"));
             return;
-        } else if (isSubquery) {
-            if (comprehension.getHead() != null && comprehension.getHead().getSelectExprs().size() == 1 &&
-                    hasAggregate(comprehension.getHead().getSelectExprs().get(0))) {
-                final String intermediateViewName = getTempViewName();
-                buildInnerComprehension(output, intermediateViewName, comprehension, null, isConstraint);
-                final MonoidFunction function = (MonoidFunction) comprehension.getHead().getSelectExprs().get(0);
-                output.addStatement("final Integer $L = o.$LV($L.stream().map(Tuple1::value0)" +
-                                "\n                                 .mapToLong(encoder::toLong).toArray())",
-                                     viewName, function.getFunctionName(), intermediateViewName);
-                return;
-            }
         }
+//        else if (isSubquery) {
+//            if (comprehension.getHead() != null && comprehension.getHead().getSelectExprs().size() == 1 &&
+//                    hasAggregate(comprehension.getHead().getSelectExprs().get(0))) {
+//                final String intermediateViewName = getTempViewName();
+//                buildInnerComprehension(output, intermediateViewName, comprehension, null, isConstraint);
+//                final MonoidFunction function = (MonoidFunction) comprehension.getHead().getSelectExprs().get(0);
+//                output.addStatement("final Integer $L = o.$LV($L.stream().map(Tuple1::value0)" +
+//                                "\n                                 .mapToLong(encoder::toLong).toArray())",
+//                                     viewName, function.getFunctionName(), intermediateViewName);
+//                return;
+//            }
+//        }
         buildInnerComprehension(output, viewName, comprehension, null, isConstraint);
     }
 
@@ -534,10 +534,10 @@ public class OrToolsSolver implements ISolverBackend {
         switch (op) {
             case "in":
                 final String subqueryStr = exprToStr(output, right, true, groupContext);
+                final CodeBlock subQueryCodeBlock = CodeBlock.builder().add(subqueryStr, Collectors.class).build();
                 final String block = "final $T domain = $T.fromValues($L.stream()" +
-                                             "\n                                .map(Tuple1::value0)" +
-                                             "\n                                .mapToLong(encoder::toLong).toArray())";
-                output.addStatement(block, Domain.class, Domain.class, nonConstraintViewName(subqueryStr));
+                                             "\n                        .mapToLong(encoder::toLong).toArray())";
+                output.addStatement(block, Domain.class, Domain.class, subQueryCodeBlock);
                 output.addStatement(String.format("model.addLinearExpressionInDomain(%s, domain)",
                                     maybeWrapped(output, left, groupContext)));
                 return;
@@ -584,7 +584,6 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private String maybeWrapped(final MethodSpec.Builder output, final Expr expr,
                                 @Nullable final GroupContext groupContext) {
-        System.out.println(expr);
         String exprStr = exprToStr(output, expr, true, groupContext);
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
@@ -911,7 +910,7 @@ public class OrToolsSolver implements ISolverBackend {
 
     private String exprToStr(final MethodSpec.Builder output, final Expr expr, final boolean allowControllable,
                              @Nullable final GroupContext currentGroup) {
-        final ExprToStrVisitor visitor = new ExprToStrVisitor(output, allowControllable, currentGroup);
+        final ExprToStrVisitor visitor = new ExprToStrVisitor(output, allowControllable, currentGroup, null);
         return Objects.requireNonNull(visitor.visit(expr, false));
     }
 
@@ -944,17 +943,23 @@ public class OrToolsSolver implements ISolverBackend {
         private final MethodSpec.Builder output;
         private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
+        @Nullable private final SubQueryContext currentSubQueryContext;
+
 
         private ExprToStrVisitor(final MethodSpec.Builder output, final boolean allowControllable,
-                                 @Nullable final GroupContext currentGroupContext) {
+                                 @Nullable final GroupContext currentGroupContext,
+                                 @Nullable final SubQueryContext currentSubQueryContext) {
             this.output = output;
             this.allowControllable = allowControllable;
             this.currentGroupContext = currentGroupContext;
+            this.currentSubQueryContext = currentSubQueryContext;
         }
 
         @Nullable
         @Override
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
+            final String vectorName = currentSubQueryContext == null ? "data" : currentSubQueryContext.subQueryName;
+
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
             final String processedArgument = visit(node.getArgument(), true);
@@ -963,12 +968,15 @@ public class OrToolsSolver implements ISolverBackend {
                 // the assumption here for count functions it that the RewriteArity pass has already been made on
                 // the input comprehensions to rewrite the column being counted with '1'.
                 final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ? "sumV" : "sum";
-                return String.format("o.%s(data.stream()%n      .map(t -> %s)%n      .collect($1T.toList()))",
-                        functionName, processedArgument);
+                return String.format("o.%s(%s.stream()%n      .map(t -> %s)%n      .collect($1T.toList()))",
+                        functionName, vectorName, processedArgument);
             } else if (node.getFunctionName().equalsIgnoreCase("increasing")) {
-                output.addStatement("o.increasing(data.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
-                                    processedArgument, Collectors.class);
+                output.addStatement("o.increasing($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                        vectorName, processedArgument, Collectors.class);
                 return "model.newConstant(1)";
+            } else if (node.getFunctionName().equalsIgnoreCase("max")) {
+                return CodeBlock.builder().add("o.maxV($L.stream().map(t -> $L).mapToLong(encoder::toLong).toArray())",
+                                               vectorName, processedArgument).build().toString();
             }
             throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunctionName());
         }
@@ -977,8 +985,7 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final Boolean context) {
             final String processedArgument = visit(node.getArgument(), context);
-            return String.format("o.exists(%s.stream().map(e -> e.value0()).collect($1T.toList()))",
-                                 processedArgument);
+            return String.format("o.exists(%s)", processedArgument);
         }
 
         @Nullable
@@ -1068,8 +1075,18 @@ public class OrToolsSolver implements ISolverBackend {
                 throw new UnsupportedOperationException("Could not find group-by column " + node);
             }
 
+            // Within a group-by, we refer to values from the intermediate group by table. This involves an
+            // indirection from columns to tuple indices
             if (isFunctionContext && currentGroupContext != null) {
+                assert currentSubQueryContext == null;
                 final String tempTableName = currentGroupContext.groupViewName.toUpperCase(Locale.US);
+                final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
+                return String.format("t.value%s()", fieldIndex);
+            }
+
+            // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
+            if (isFunctionContext && currentSubQueryContext != null) {
+                final String tempTableName = currentSubQueryContext.subQueryName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
                 return String.format("t.value%s()", fieldIndex);
             }
@@ -1099,7 +1116,23 @@ public class OrToolsSolver implements ISolverBackend {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             addView(output, newSubqueryName, node, false, true);
-            return newSubqueryName;
+            Preconditions.checkNotNull(node.getHead());
+            Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
+            final ExprToStrVisitor innerVisitor =
+                    new ExprToStrVisitor(output, allowControllable, currentGroupContext,
+                                         new SubQueryContext(newSubqueryName));
+            Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
+            final Expr headSelectItem = node.getHead().getSelectExprs().get(0);
+
+            // if scalar subquery
+            if (headSelectItem instanceof MonoidFunction) {
+                return innerVisitor.visit(headSelectItem, true);
+            } else {
+                final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), true);
+                // Treat as a vector
+                return CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
+                                     processedHeadItem, Collectors.class).toString();
+            }
         }
     }
 
@@ -1110,6 +1143,14 @@ public class OrToolsSolver implements ISolverBackend {
         private GroupContext(final GroupByQualifier qualifier, final String groupViewName) {
             this.qualifier = qualifier;
             this.groupViewName = groupViewName;
+        }
+    }
+
+    private static class SubQueryContext {
+        private final String subQueryName;
+
+        private SubQueryContext(final String subQueryName) {
+            this.subQueryName = subQueryName;
         }
     }
 
