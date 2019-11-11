@@ -118,4 +118,12 @@ public class Ops {
         model.addDifferent(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
+
+    public IntVar toConst(final boolean expr) {
+        return expr ? model.newConstant(1) : model.newConstant(0);
+    }
+
+    public IntVar toConst(final long expr) {
+        return model.newConstant(expr);
+    }
 }

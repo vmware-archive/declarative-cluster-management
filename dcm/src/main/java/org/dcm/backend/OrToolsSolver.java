@@ -15,6 +15,7 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
+import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
@@ -562,8 +563,9 @@ public class OrToolsSolver implements ISolverBackend {
                                                                           maybeWrapped(output, right, groupContext));
                 break;
             case "\\/":
-                statement = String.format("model.addBoolOr(%s, %s)", maybeWrapped(output, left, groupContext),
-                        maybeWrapped(output, right, groupContext));
+                statement = CodeBlock.of("model.addBoolOr(new $T[]{$L, $L})", Literal.class,
+                                          maybeWrapped(output, left, groupContext),
+                                          maybeWrapped(output, right, groupContext)).toString();
                 break;
             default:
                 throw new UnsupportedOperationException();
@@ -582,7 +584,7 @@ public class OrToolsSolver implements ISolverBackend {
         if (expr instanceof MonoidLiteral && ((MonoidLiteral) expr).getValue() instanceof Boolean) {
             exprStr = (Boolean) ((MonoidLiteral) expr).getValue() ? "1" : "0";
         }
-        return InferType.forExpr(expr).equals("IntVar") ? exprStr : String.format("model.newConstant(%s)", exprStr);
+        return InferType.forExpr(expr).equals("IntVar") ? exprStr : String.format("o.toConst(%s)", exprStr);
     }
 
     /**
