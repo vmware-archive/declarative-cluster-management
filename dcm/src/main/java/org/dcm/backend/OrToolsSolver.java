@@ -112,7 +112,7 @@ public class OrToolsSolver implements ISolverBackend {
         System.loadLibrary("jniortools");
     }
 
-    @Nullable private IGeneratedBackend generatedBackend; // = new ExampleBackend();
+    @Nullable private IGeneratedBackend generatedBackend;
     @Nullable private IRContext context = null;
 
     @Override
@@ -203,8 +203,12 @@ public class OrToolsSolver implements ISolverBackend {
             final String groupByTupleTypeParameters = viewGroupByTupleTypeParameters.get(intermediateView);
             final String headItemsTupleTypeParamters = viewTupleTypeParameters.get(intermediateView);
             assert inner.getHead() != null;
-            final int innerTupleSize = viewToFieldIndex.get(intermediateView.toUpperCase(Locale.US)).size();
 
+            // when duplicates appear for viewToFieldIndex, we increment the fieldIndex counter but do not add a new
+            // entry. This means that the highest fieldIndex (and not the size of the map) is equal to tuple size.
+            // The indices are 0-indexed.
+            final int innerTupleSize = Collections.max(viewToFieldIndex.get(intermediateView.toUpperCase(Locale.US))
+                                                                       .values()) + 1;
             // (1) Create the result set
             output.addCode("\n");
             output.addStatement(printTime("Group-by intermediate view"));
@@ -401,7 +405,7 @@ public class OrToolsSolver implements ISolverBackend {
                 )
                 .toUpperCase(Locale.US);
         viewToFieldIndex.computeIfAbsent(viewName.toUpperCase(Locale.US), (k) -> new HashMap<>())
-                        .computeIfAbsent(fieldName, (k) -> counter.getAndIncrement());
+                        .compute(fieldName, (k, v) -> counter.getAndIncrement());
         return fieldName;
     }
 
@@ -957,14 +961,24 @@ public class OrToolsSolver implements ISolverBackend {
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
             final String processedArgument = visit(node.getArgument(), true);
-            if (node.getFunctionName().equalsIgnoreCase("sum") ||
-                node.getFunctionName().equalsIgnoreCase("count")) {
-                // the assumption here for count functions it that the RewriteArity pass has already been made on
-                // the input comprehensions to rewrite the column being counted with '1'.
-                final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ? "sumV" : "sum";
+            final boolean argumentIsIntVar = InferType.forExpr(node.getArgument()).equals("IntVar");
+            if (node.getFunctionName().equalsIgnoreCase("sum")) {
+                final String functionName = argumentIsIntVar ? "sumV" : "sum";
                 return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
                                     functionName, vectorName, processedArgument, Collectors.class).toString();
-            } else if (node.getFunctionName().equalsIgnoreCase("increasing")) {
+            }
+            else if (node.getFunctionName().equalsIgnoreCase("count")) {
+                final String functionName = argumentIsIntVar ? "sumV" : "sum";
+
+                // In these cases, it is safe to replace count(argument) with sum(1)
+                if ((node.getArgument() instanceof MonoidLiteral || node.getArgument() instanceof ColumnIdentifier)) {
+                    return argumentIsIntVar ? CodeBlock.of("o.toConst($L.size())", vectorName).toString()
+                                            : CodeBlock.of("$L.size()", vectorName).toString();
+                }
+                return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                        functionName, vectorName, processedArgument, Collectors.class).toString();
+            }
+            else if (node.getFunctionName().equalsIgnoreCase("increasing")) {
                 output.addStatement("o.increasing($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
                         vectorName, processedArgument, Collectors.class);
                 return "model.newConstant(1)";
