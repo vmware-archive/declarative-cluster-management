@@ -247,11 +247,7 @@ public class OrToolsSolver implements ISolverBackend {
                 for (final Expr expr : inner.getHead().getSelectExprs()) {
                     final String result =
                             exprToStr(output, expr, true, new GroupContext(groupByQualifier, intermediateView));
-                    if (result.contains("$1T")) {
-                        output.addCode(result, Collectors.class);
-                    } else {
-                        output.addCode(result);
-                    }
+                    output.addCode(result);
 
                     if (numSelectExprs > 1) {
                         numSelectExprs--;
@@ -572,11 +568,7 @@ public class OrToolsSolver implements ISolverBackend {
             default:
                 throw new UnsupportedOperationException();
         }
-        if (statement.contains("$1T")) {
-            output.addStatement(statement, Collectors.class);
-        } else {
-            output.addStatement(statement);
-        }
+        output.addStatement(statement);
     }
 
     /**
@@ -968,8 +960,8 @@ public class OrToolsSolver implements ISolverBackend {
                 // the assumption here for count functions it that the RewriteArity pass has already been made on
                 // the input comprehensions to rewrite the column being counted with '1'.
                 final String functionName = InferType.forExpr(node.getArgument()).equals("IntVar") ? "sumV" : "sum";
-                return String.format("o.%s(%s.stream()%n      .map(t -> %s)%n      .collect($1T.toList()))",
-                        functionName, vectorName, processedArgument);
+                return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                                    functionName, vectorName, processedArgument, Collectors.class).toString();
             } else if (node.getFunctionName().equalsIgnoreCase("increasing")) {
                 output.addStatement("o.increasing($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
                         vectorName, processedArgument, Collectors.class);
