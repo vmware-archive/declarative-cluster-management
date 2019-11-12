@@ -105,8 +105,8 @@ public class WorkloadGeneratorIT extends ITBase {
                 final long currentTime = System.currentTimeMillis();
                 final long timeDiff = currentTime - startTime;
                 final long waitTime = taskStartTime - timeDiff;
-                System.out.println("startTime " + startTime  + " currentTime " + currentTime +
-                        " taskStartTime " + taskStartTime +  " waitTime " + waitTime);
+//                System.out.println("startTime " + startTime  + " currentTime " + currentTime +
+//                        " taskStartTime " + taskStartTime +  " waitTime " + waitTime);
 
                 // create deployment in the k8s cluster at the correct start time
                 final ScheduledFuture scheduledStart = scheduledExecutorService.schedule(
@@ -195,7 +195,8 @@ public class WorkloadGeneratorIT extends ITBase {
 
         @Override
         public void run() {
-            System.out.println("Creating deployment at " + System.currentTimeMillis());
+            System.out.println("Creating deployment " + deployment.getMetadata().getName() +
+                    " at " + System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                     .create(deployment);
         }
@@ -210,7 +211,8 @@ public class WorkloadGeneratorIT extends ITBase {
 
         @Override
         public void run() {
-            System.out.println("Terminating deployment at " + System.currentTimeMillis());
+            System.out.println("Terminating deployment " + deployment.getMetadata().getName() +
+                    " at " + System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                     .delete(deployment);
         }
