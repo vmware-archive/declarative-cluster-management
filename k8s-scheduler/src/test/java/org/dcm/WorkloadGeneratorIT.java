@@ -101,7 +101,7 @@ public class WorkloadGeneratorIT extends ITBase {
                 final Deployment deployment = getDeployment(line, taskCount);
 
                 // get task time info
-                final long taskStartTime = getTaskStartTime(line) * 1000;
+                final long taskStartTime = getTaskStartTime(line) * 1000; // converting to millisec
                 final long currentTime = System.currentTimeMillis();
                 final long timeDiff = currentTime - startTime;
                 final long waitTime = taskStartTime - timeDiff;
@@ -171,8 +171,8 @@ public class WorkloadGeneratorIT extends ITBase {
 
     private int getDuration(final String line) {
         final String[] parts = line.split(" ", 7);
-        final int startTime = Integer.parseInt(parts[2]) / 60;
-        int endTime = Integer.parseInt(parts[3]) / (60 * 100);
+        final int startTime = Integer.parseInt(parts[2]);
+        int endTime = Integer.parseInt(parts[3]) / (100);
         if (endTime <= startTime) {
             endTime = startTime + 5;
         }
@@ -182,7 +182,7 @@ public class WorkloadGeneratorIT extends ITBase {
 
     private long getTaskStartTime(final String line) {
         final String[] parts = line.split(" ", 7);
-        final long startTime = Long.parseLong(parts[2]) / 60;
+        final long startTime = Long.parseLong(parts[2]);
         return startTime;
     }
 
