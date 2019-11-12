@@ -52,7 +52,7 @@ public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     final ScheduledExecutorService scheduledExecutorService =
-            Executors.newScheduledThreadPool(1000);
+            Executors.newScheduledThreadPool(2);
     final ArrayList<ScheduledFuture> startDepList = new ArrayList<ScheduledFuture>();
     final ArrayList<ScheduledFuture> endDepList = new ArrayList<ScheduledFuture>();
 
@@ -88,7 +88,9 @@ public class WorkloadGeneratorIT extends ITBase {
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        final InputStream inStream = classLoader.getResourceAsStream("v1-data-start-time-sorted.txt");
+        //final InputStream inStream = classLoader.getResourceAsStream("v1-data-start-time-sorted.txt");
+	//final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
+	final InputStream inStream = classLoader.getResourceAsStream("v1-cropped.txt");
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
 		        Charset.forName("UTF8")))) {
@@ -170,7 +172,7 @@ public class WorkloadGeneratorIT extends ITBase {
     private int getDuration(final String line) {
         final String[] parts = line.split(" ", 7);
         final int startTime = Integer.parseInt(parts[2]);
-        int endTime = Integer.parseInt(parts[3]) / 100;
+        int endTime = Integer.parseInt(parts[3]);
         if (endTime <= startTime) {
             endTime = startTime + 5;
         }
@@ -212,7 +214,8 @@ public class WorkloadGeneratorIT extends ITBase {
             System.out.println("Terminating deployment " + deployment.getMetadata().getName() +
                     " at " + System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                    .delete(deployment);
+			.delete(deployment);
+	    //Thread.sleep(5000);
         }
     }
 
