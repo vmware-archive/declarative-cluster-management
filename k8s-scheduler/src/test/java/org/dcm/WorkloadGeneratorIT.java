@@ -52,7 +52,7 @@ public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     final ScheduledExecutorService scheduledExecutorService =
-            Executors.newScheduledThreadPool(2);
+            Executors.newScheduledThreadPool(100);
     final ArrayList<ScheduledFuture> startDepList = new ArrayList<ScheduledFuture>();
     final ArrayList<ScheduledFuture> endDepList = new ArrayList<ScheduledFuture>();
 
