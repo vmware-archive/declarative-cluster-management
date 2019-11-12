@@ -97,7 +97,7 @@ public class WorkloadGeneratorIT extends ITBase {
             final long startTime = System.currentTimeMillis();
             System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
-                // create a deployment details based on cpu, mem requirements
+                // generate a deployment's details based on cpu, mem requirements
                 final Deployment deployment = getDeployment(line, taskCount);
 
                 // get task time info
@@ -105,8 +105,6 @@ public class WorkloadGeneratorIT extends ITBase {
                 final long currentTime = System.currentTimeMillis();
                 final long timeDiff = currentTime - startTime;
                 final long waitTime = taskStartTime - timeDiff;
-//                System.out.println("startTime " + startTime  + " currentTime " + currentTime +
-//                        " taskStartTime " + taskStartTime +  " waitTime " + waitTime);
 
                 // create deployment in the k8s cluster at the correct start time
                 final ScheduledFuture scheduledStart = scheduledExecutorService.schedule(
@@ -115,9 +113,9 @@ public class WorkloadGeneratorIT extends ITBase {
                 // get duration based on start and end times
                 final int duration = getDuration(line);
 
-                // Schedule deletion of this deployment based on duration
+                // Schedule deletion of this deployment based on duration + time until start of the dep
                 final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
-                        new EndDeployment(deployment), duration, TimeUnit.SECONDS);
+                        new EndDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
 
                 // Add to a list to enable keeping the test active until deletion
                 startDepList.add(scheduledStart);
@@ -172,7 +170,7 @@ public class WorkloadGeneratorIT extends ITBase {
     private int getDuration(final String line) {
         final String[] parts = line.split(" ", 7);
         final int startTime = Integer.parseInt(parts[2]);
-        int endTime = Integer.parseInt(parts[3]) / (100);
+        int endTime = Integer.parseInt(parts[3]) / 100;
         if (endTime <= startTime) {
             endTime = startTime + 5;
         }
