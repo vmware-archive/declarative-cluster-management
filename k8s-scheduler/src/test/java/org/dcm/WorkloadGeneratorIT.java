@@ -52,9 +52,9 @@ public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     final ScheduledExecutorService scheduledExecutorService =
-            Executors.newScheduledThreadPool(10);
-    final ArrayList<ScheduledFuture> futureList = new ArrayList<ScheduledFuture>();
-    final ArrayList<Deployment> deploymentList = new ArrayList<Deployment>();
+            Executors.newScheduledThreadPool(1000);
+    final ArrayList<ScheduledFuture> startDepList = new ArrayList<ScheduledFuture>();
+    final ArrayList<ScheduledFuture> endDepList = new ArrayList<ScheduledFuture>();
 
     @Nullable private static String schedulerName;
 
@@ -88,30 +88,40 @@ public class WorkloadGeneratorIT extends ITBase {
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
+        final InputStream inStream = classLoader.getResourceAsStream("v1-data-start-time-sorted.txt");
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
 		        Charset.forName("UTF8")))) {
             String line;
             int taskCount = 0;
+            final long startTime = System.currentTimeMillis();
+            System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
-                // get a deployment based on cpu, mem requirements
+                // create a deployment details based on cpu, mem requirements
                 final Deployment deployment = getDeployment(line, taskCount);
+
+                // get task time info
+                final long taskStartTime = getTaskStartTime(line) * 1000;
+                final long currentTime = System.currentTimeMillis();
+                final long timeDiff = currentTime - startTime;
+                final long waitTime = taskStartTime - timeDiff;
+                System.out.println("startTime " + startTime  + " currentTime " + currentTime +
+                        " taskStartTime " + taskStartTime +  " waitTime " + waitTime);
+
+                // create deployment in the k8s cluster at the correct start time
+                final ScheduledFuture scheduledStart = scheduledExecutorService.schedule(
+                        new StartDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
 
                 // get duration based on start and end times
                 final int duration = getDuration(line);
 
-                // create deployment in the k8s cluster
-		        fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                	    .create(deployment);
-
-		        // Schedule deletion of this deployment based on duration.
-                final ScheduledFuture scheduledFuture = scheduledExecutorService.schedule(
-                        new RunTask(deployment), duration, TimeUnit.SECONDS);
+                // Schedule deletion of this deployment based on duration
+                final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
+                        new EndDeployment(deployment), duration, TimeUnit.SECONDS);
 
                 // Add to a list to enable keeping the test active until deletion
-                futureList.add(scheduledFuture);
-                System.out.println(futureList.toString());
+                startDepList.add(scheduledStart);
+                endDepList.add(scheduledEnd);
 
                 taskCount++;
             }
@@ -121,8 +131,8 @@ public class WorkloadGeneratorIT extends ITBase {
         }
 
         // Wait until all scheduled deletes are completed
-        for (final ScheduledFuture future: futureList) {
-            future.get();
+        for (final ScheduledFuture end: endDepList) {
+            end.get();
         }
     }
 
@@ -140,7 +150,7 @@ public class WorkloadGeneratorIT extends ITBase {
         // Load the template file and update its contents to generate a new deployment template
         final Deployment deployment = fabricClient.apps().deployments().load(file).get();
         deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
-        final String appName = "app" + taskCount;
+        final String appName = "app-" + taskCount;
         deployment.getMetadata().setName(appName);
         deployment.getSpec().setReplicas(count);
 
@@ -164,21 +174,43 @@ public class WorkloadGeneratorIT extends ITBase {
         final int startTime = Integer.parseInt(parts[2]) / 60;
         int endTime = Integer.parseInt(parts[3]) / (60 * 100);
         if (endTime <= startTime) {
-            endTime = startTime + 1;
+            endTime = startTime + 5;
         }
-        final int duration = (endTime - startTime) * 60;
+        final int duration = (endTime - startTime);
         return duration;
     }
 
-    private static class RunTask implements Runnable {
+    private long getTaskStartTime(final String line) {
+        final String[] parts = line.split(" ", 7);
+        final long startTime = Long.parseLong(parts[2]) / 60;
+        return startTime;
+    }
+
+    private static class StartDeployment implements Runnable {
         Deployment deployment;
 
-        RunTask(final Deployment dep) {
+        StartDeployment(final Deployment dep) {
             this.deployment = dep;
         }
 
         @Override
         public void run() {
+            System.out.println("Creating deployment at " + System.currentTimeMillis());
+            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
+                    .create(deployment);
+        }
+    }
+
+    private static class EndDeployment implements Runnable {
+        Deployment deployment;
+
+        EndDeployment(final Deployment dep) {
+            this.deployment = dep;
+        }
+
+        @Override
+        public void run() {
+            System.out.println("Terminating deployment at " + System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                     .delete(deployment);
         }
