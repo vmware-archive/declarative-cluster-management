@@ -56,11 +56,14 @@ public class WorkloadGeneratorIT extends ITBase {
     final ArrayList<ScheduledFuture> startDepList = new ArrayList<ScheduledFuture>();
     final ArrayList<ScheduledFuture> endDepList = new ArrayList<ScheduledFuture>();
 
+    private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
+
     @Nullable private static String schedulerName;
 
     @BeforeAll
     public static void setSchedulerFromEnvironment() {
-        schedulerName = System.getProperty(SCHEDULER_NAME_PROPERTY);
+        final String property = System.getProperty(SCHEDULER_NAME_PROPERTY);
+        schedulerName = property == null ? SCHEDULER_NAME_DEFAULT : property;
     }
 
     @BeforeEach
@@ -89,8 +92,8 @@ public class WorkloadGeneratorIT extends ITBase {
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         //final InputStream inStream = classLoader.getResourceAsStream("v1-data-start-time-sorted.txt");
-	//final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
-	final InputStream inStream = classLoader.getResourceAsStream("v1-cropped.txt");
+	      //final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
+	      final InputStream inStream = classLoader.getResourceAsStream("v1-cropped.txt");
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
 		        Charset.forName("UTF8")))) {
@@ -218,6 +221,7 @@ public class WorkloadGeneratorIT extends ITBase {
 	    //Thread.sleep(5000);
         }
     }
+
 
     private static final class LoggingPodWatcher implements Watcher<Pod> {
         private final long traceId;

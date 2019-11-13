@@ -46,7 +46,7 @@ public class SchedulerIT extends ITBase {
 
         final Flowable<List<PodEvent>> eventStream =
                 stateSync.setupInformersAndPodEventStream(conn, 50, 1000);
-        scheduler.startScheduler(eventStream, coreV1Api);
+        scheduler.startScheduler(eventStream, fabricClient);
         stateSync.startProcessingEvents();
 
         // Add a new one
@@ -76,7 +76,7 @@ public class SchedulerIT extends ITBase {
 
         final Flowable<List<PodEvent>> eventStream =
                 stateSync.setupInformersAndPodEventStream(conn, 50, 1000);
-        scheduler.startScheduler(eventStream, coreV1Api);
+        scheduler.startScheduler(eventStream, fabricClient);
         stateSync.startProcessingEvents();
 
         // Add a new one

@@ -74,10 +74,6 @@ public class ITBase {
         waitUntil((n) -> hasDrained());
     }
 
-    public void deleteDeployment(final Deployment deployment) throws Exception {
-        fabricClient.apps().deployments().delete(deployment);
-    }
-
     Deployment launchDeploymentFromFile(final String resourceName) {
         return launchDeploymentFromFile(resourceName, "default-scheduler");
     }
