@@ -177,17 +177,10 @@ create table node_taints
 create table pod_tolerations
 (
   pod_name varchar(100) not null,
-<<<<<<< HEAD
   tolerations_key varchar(100),
   tolerations_value varchar(100),
   tolerations_effect varchar(100),
   tolerations_operator varchar(100),
-=======
-  taint_key varchar(100) not null,
-  taint_value varchar(100) null,
-  taint_effect varchar(100) not null,
-  taint_operator varchar(100) not null,
->>>>>>> d20fac5... Make scheduler testable. Add preliminary tests. Migrate to Junit5.
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
@@ -226,20 +219,11 @@ select
   pods_request,
   owner_name,
   creation_timestamp,
-<<<<<<< HEAD
   has_node_selector_labels,
   has_pod_affinity_requirements,
   has_pod_anti_affinity_requirements
 from pod_info
 where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler'
-=======
-  (CASE
-        when pod_name in (select pod_name from pod_node_selector_labels) then true
-          else false
-        end) as has_node_affinity
-from pod_info
-where status = 'Pending' and node_name is null
->>>>>>> d20fac5... Make scheduler testable. Add preliminary tests. Migrate to Junit5.
 order by creation_timestamp;
 
 -- This view is updated dynamically to change the limit. This
@@ -251,18 +235,8 @@ create table batch_size
 );
 
 create view pods_to_assign as
-<<<<<<< HEAD
 select * from pods_to_assign_no_limit limit 100;
 
-=======
-select * from (
-    select
-         ROW_NUMBER() OVER () AS R,
-         pods_to_assign_no_limit.*
-       from pods_to_assign_no_limit
-    ) as T
-where T.R <= (select sum(pendingPodsLimit) from batch_size);
->>>>>>> d20fac5... Make scheduler testable. Add preliminary tests. Migrate to Junit5.
 
 -- Pods with port requests
 create view pods_with_port_requests as
@@ -272,7 +246,6 @@ select pods_to_assign.controllable__node_name as controllable__node_name,
        pod_ports_request.host_protocol as host_protocol
 from pods_to_assign
 join pod_ports_request
-<<<<<<< HEAD
      on pod_ports_request.pod_name = pods_to_assign.pod_name;
 
 -- Pod node selectors
@@ -398,6 +371,3 @@ having count(*) = A.num_taints;
 
 create view nodes_that_have_tolerations as
 select distinct node_name from node_taints;
-=======
-     on pod_ports_request.pod_name = pods_to_assign.pod_name;
->>>>>>> d20fac5... Make scheduler testable. Add preliminary tests. Migrate to Junit5.
