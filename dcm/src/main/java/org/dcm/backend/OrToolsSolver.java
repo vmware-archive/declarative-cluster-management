@@ -496,26 +496,37 @@ public class OrToolsSolver implements ISolverBackend {
 
     private void addRowConstraint(final MethodSpec.Builder output, final QualifiersByType varQualifiers,
                                   final QualifiersByType nonVarQualifiers) {
-        final List<String> varJoinPredicateStr = varQualifiers.joinPredicates.stream()
-                .map(expr -> exprToStr(output, expr, true, null))
-                .collect(Collectors.toList());
-        // TODO: this should be an implication below
-        Preconditions.checkArgument(varJoinPredicateStr.isEmpty(), varJoinPredicateStr);
-        varQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, null));
-        nonVarQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, null));
+        final String joinPredicateStr;
+        if (varQualifiers.joinPredicates.size() > 0) {
+            final BinaryOperatorPredicate combinedJoinPredicate = varQualifiers.joinPredicates
+                    .stream()
+                    .map(e -> (BinaryOperatorPredicate) e)
+                    .reduce(varQualifiers.joinPredicates.get(0),
+                            (left, right) -> new BinaryOperatorPredicate("/\\", left, right));
+            joinPredicateStr = exprToStr(output, combinedJoinPredicate, true, null);
+        } else {
+            joinPredicateStr = "";
+        }
+        varQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, joinPredicateStr, null));
+        nonVarQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, joinPredicateStr, null));
     }
 
     private void addAggregateConstraint(final MethodSpec.Builder output, final QualifiersByType varQualifiers,
                                         final QualifiersByType nonVarQualifiers, final GroupContext groupContext) {
-        varQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, groupContext));
-        nonVarQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, groupContext));
+        varQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, "", groupContext));
+        nonVarQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, "", groupContext));
     }
 
-    private void topLevelConstraint(final MethodSpec.Builder output, final Expr expr,
+    private void topLevelConstraint(final MethodSpec.Builder output, final Expr expr, final String joinPredicateStr,
                                     @Nullable final GroupContext groupContext) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
         final String statement = maybeWrapped(output, expr, groupContext);
-        output.addStatement("model.addEquality($L, 1)", statement);
+
+        if (joinPredicateStr.isEmpty()) {
+            output.addStatement("model.addEquality($L, 1)", statement);
+        } else {
+            output.addStatement("model.addImplication($L, $L)", joinPredicateStr, statement);
+        }
     }
 
     /**
@@ -623,35 +634,34 @@ public class OrToolsSolver implements ISolverBackend {
             //..5) introduce foreign-key constraints
             table.getForeignKeys().forEach(e -> {
                 if (e.hasConstraint()) {
-                    Preconditions.checkArgument(e.getFields().size() == 1);
-                    final Map.Entry<IRColumn, IRColumn> next = e.getFields().entrySet().iterator().next();
-                    final IRColumn child = next.getKey();
-                    final IRColumn parent = next.getValue();
-                    output.addCode("\n");
-                    output.addComment("Foreign key constraints: $L.$L -> $L.$L",
-                            child.getIRTable().getName(), child.getName(),
-                            parent.getIRTable().getName(), parent.getName());
-                    final String indexVarStr = "index" + intermediateViewCounter.incrementAndGet();
-                    output.addStatement("final IntVar $L = model.newIntVar(0, $L - 1, \"\")",
-                            indexVarStr, tableNumRowsStr(table.getName()));
-                    output.beginControlFlow("for (int i = 0; i < $L; i++)",
-                            tableNumRowsStr(table.getName()));
-                    final String fkChild =
-                            fieldNameStr(next.getKey().getIRTable().getName(), next.getKey().getName());
+                    final AtomicInteger fieldIndex = new AtomicInteger(0);
+                    e.getFields().forEach((child, parent) -> {
+                        if (!child.isControllable()) {
+                            return;
+                        }
+                        output.addCode("\n");
+                        output.addComment("Foreign key constraints: $L.$L -> $L.$L",
+                                child.getIRTable().getName(), child.getName(),
+                                parent.getIRTable().getName(), parent.getName());
+                        output.beginControlFlow("for (int i = 0; i < $L; i++)",
+                                tableNumRowsStr(table.getName()));
+                        final String fkChildStr =
+                                fieldNameStrWithIter(child.getIRTable().getName(), child.getName(), "i");
+                        final String snippet = Joiner.on('\n').join(
+                                "final long[] domain$L = context.getTable($S).getCurrentData()",
+                                "                        .getValues($S, $L.class)",
+                                "                        .stream()",
+                                "                        .mapToLong(encoder::toLong).toArray()"
+                        );
 
-                    final String snippet = Joiner.on('\n').join(
-                         "final long[] domain = context.getTable($S).getCurrentData()",
-                         "                        .getValues($S, $L.class)",
-                         "                        .stream()",
-                         "                        .mapToLong(encoder::toLong).toArray()"
-                    );
-
-                    output.addStatement(snippet,
-                            parent.getIRTable().getName(), parent.getName().toUpperCase(Locale.US),
-                            toJavaClass(next.getValue().getType()));
-                    output.addStatement("model.addLinearExpressionInDomain($L[i], $T.fromValues(domain))",
-                                        fkChild, Domain.class);
-                    output.endControlFlow();
+                        output.addStatement(snippet,
+                               fieldIndex.get(), parent.getIRTable().getName(), parent.getName().toUpperCase(Locale.US),
+                               toJavaClass(parent.getType()));
+                        output.addStatement("model.addLinearExpressionInDomain($L, $T.fromValues(domain$L))",
+                                fkChildStr, Domain.class, fieldIndex.get());
+                        output.endControlFlow();
+                        fieldIndex.incrementAndGet();
+                    });
                 }
             });
         }

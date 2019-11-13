@@ -1753,25 +1753,25 @@ public class ModelTest {
         // non-constraint views
         // TODO: this is the correct view but atm the compiler doesnt support that
         final List<String> views = toListOfViews("create view constraint_retain_old_values_hosts as\n" +
-                "select * from hosts where epoch_id = (select max(epoch_id) from hosts) or\n" +
+                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A) or\n" +
                 "         (controllable__is_layout_server = is_layout_server and\n" +
                 "         controllable__is_sequencer = is_sequencer and\n" +
                 "         controllable__in_segment = in_segment);\n" +
                 "\n" +
                 "create view constraint_minimal_layouts as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts)\n" +
+                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
                 "         having sum(controllable__is_layout_server) >= 2;\n" +
                 "\n" +
                 "create view constraint_minimal_sequencers as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts)\n" +
+                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
                 "         having sum(controllable__is_sequencer) >= 2;\n" +
                 "\n" +
                 "create view constraint_minimal_segments as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts)\n" +
+                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
                 "         having sum(controllable__in_segment) >= 2;\n" +
                 "\n" +
                 "create view constraint_purge_policy as\n" +
-                "select * from hosts where epoch_id = (select max(epoch_id) from hosts) and\n" +
+                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A) and\n" +
                 "         failure_state = 'UNRESPONSIVE' and\n" +
                 "         controllable__is_layout_server = true and\n" +
                 "         controllable__is_sequencer = true and\n" +
