@@ -458,7 +458,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_t1 AS " +
-                "SELECT * FROM t1 where controllable__c2 in (select c1 from t1) and not(controllable__c2 = 1)");
+                "SELECT * FROM t1 where controllable__c2 in (select c1 from t1 as A) and not(controllable__c2 = 1)");
 
         // insert data
         conn.execute("insert into t1 values (1, 1)");
@@ -865,7 +865,7 @@ public class ModelTest {
                 "where status = 'Pending'\n" +
                 "group by node_info.name, node_info.cpu_allocatable;");
 
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 50; i++) {
             conn.execute(String.format("insert into node_info values ('n%s', 100000)", i));
         }
         for (int i = 0; i < 100; i++) {

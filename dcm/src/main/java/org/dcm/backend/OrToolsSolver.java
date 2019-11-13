@@ -547,7 +547,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                                        maybeWrapped(output, right, groupContext));
                 break;
             case "!=":
-                statement = String.format("model.addDifferent((%s, %s)", maybeWrapped(output, left, groupContext),
+                statement = String.format("model.addDifferent(%s, %s)", maybeWrapped(output, left, groupContext),
                                                                          maybeWrapped(output, right, groupContext));
                 break;
             case "<=":
@@ -913,7 +913,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
-        return RewriteArity.apply(comprehension);
+        return RewriteNot.apply(RewriteArity.apply(comprehension));
     }
 
     private <T extends Expr> String generateTupleGenericParameters(final List<T> exprs) {
@@ -1182,6 +1182,12 @@ public class OrToolsSolver implements ISolverBackend {
             } else {
                 throw new IllegalArgumentException();
             }
+        }
+
+        @Override
+        public String toString() {
+            return String.format("{aggregatePredicates: %s, joinPredicates: %s, wherePredicates: %s}",
+                                  aggregatePredicates, joinPredicates, wherePredicates);
         }
     }
 
