@@ -92,8 +92,8 @@ public class WorkloadGeneratorIT extends ITBase {
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         //final InputStream inStream = classLoader.getResourceAsStream("v1-data-start-time-sorted.txt");
-	      //final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
-	      final InputStream inStream = classLoader.getResourceAsStream("v1-cropped.txt");
+	final InputStream inStream = classLoader.getResourceAsStream("test-data-2.txt");
+	//final InputStream inStream = classLoader.getResourceAsStream("v1-cropped.txt");
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
 		        Charset.forName("UTF8")))) {
