@@ -69,13 +69,8 @@ create table pod_node_selector_labels
   match_expression integer not null,
   num_match_expressions integer not null,
   label_key varchar(100) not null,
-<<<<<<< HEAD
   label_operator varchar(12) not null,
   label_value varchar(36) null,
-=======
-  label_value varchar(36) not null,
-  operator varchar(30) not null,
->>>>>>> d20fac5... Make scheduler testable. Add preliminary tests. Migrate to Junit5.
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
@@ -115,10 +110,6 @@ create table pod_labels
   pod_name varchar(100) not null,
   label_key varchar(100) not null,
   label_value varchar(36) not null,
-<<<<<<< HEAD
-=======
-  is_selector boolean not null,
->>>>>>> d20fac5... Make scheduler testable. Add preliminary tests. Migrate to Junit5.
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
