@@ -15,7 +15,6 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
-import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
@@ -36,7 +35,6 @@ import org.dcm.compiler.monoid.ExistsPredicate;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.GroupByQualifier;
-import org.dcm.compiler.monoid.Head;
 import org.dcm.compiler.monoid.JoinPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
@@ -177,12 +175,6 @@ public class OrToolsSolver implements ISolverBackend {
 
     private void addView(final MethodSpec.Builder output, final String viewName,
                          final MonoidComprehension comprehension, final boolean isConstraint) {
-        addView(output, viewName, comprehension, isConstraint, false);
-    }
-
-    private void addView(final MethodSpec.Builder output, final String viewName,
-                         final MonoidComprehension comprehension, final boolean isConstraint,
-                         final boolean isSubquery) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
             final MonoidComprehension inner = groupByComprehension.getComprehension();
@@ -507,7 +499,8 @@ public class OrToolsSolver implements ISolverBackend {
         final List<String> varJoinPredicateStr = varQualifiers.joinPredicates.stream()
                 .map(expr -> exprToStr(output, expr, true, null))
                 .collect(Collectors.toList());
-        Preconditions.checkArgument(varJoinPredicateStr.isEmpty(), varJoinPredicateStr); // TODO: this should be an implication below
+        // TODO: this should be an implication below
+        Preconditions.checkArgument(varJoinPredicateStr.isEmpty(), varJoinPredicateStr);
         varQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, null));
         nonVarQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, null));
     }
@@ -891,7 +884,6 @@ public class OrToolsSolver implements ISolverBackend {
         @Nullable private final GroupContext currentGroupContext;
         @Nullable private final SubQueryContext currentSubQueryContext;
 
-
         private ExprToStrVisitor(final MethodSpec.Builder output, final boolean allowControllable,
                                  @Nullable final GroupContext currentGroupContext,
                                  @Nullable final SubQueryContext currentSubQueryContext) {
@@ -1076,7 +1068,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                   @Nullable final Boolean isFunctionContext) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
-            addView(output, newSubqueryName, node, false, true);
+            addView(output, newSubqueryName, node, false);
             Preconditions.checkNotNull(node.getHead());
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
@@ -1102,7 +1094,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                    @Nullable final Boolean isFunctionContext) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
-            addView(output, newSubqueryName, node, false, true);
+            addView(output, newSubqueryName, node, false);
             Preconditions.checkNotNull(node.getComprehension().getHead());
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
@@ -1175,6 +1167,7 @@ public class OrToolsSolver implements ISolverBackend {
         return String.format("System.out.println(\"%s: we are at \" + (System.nanoTime() - startTime))", event);
     }
 
+    /*
     private static class HasAggregates extends MonoidVisitor<Void, Void> {
         boolean hasAggregate = false;
 
@@ -1198,6 +1191,7 @@ public class OrToolsSolver implements ISolverBackend {
         visitor.visit(expr);
         return visitor.hasAggregate;
     }
+    */
 
     private String getTempViewName() {
         return  "tmp" + intermediateViewCounter.getAndIncrement();

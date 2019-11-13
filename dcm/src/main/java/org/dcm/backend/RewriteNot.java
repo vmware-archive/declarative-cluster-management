@@ -2,9 +2,9 @@
  * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
  * SPDX-License-Identifier: BSD-2
  */
+
 package org.dcm.backend;
 
-import com.google.common.base.Preconditions;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import org.dcm.compiler.monoid.ComprehensionRewriter;
@@ -36,9 +36,8 @@ class RewriteNot {
     private static class NotRewriter extends ComprehensionRewriter<Boolean> {
         @Override
         protected Expr visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean flipOperators) {
-            Preconditions.checkNotNull(flipOperators);
             if (node.getFunctionName().equalsIgnoreCase("not")) {
-                if (flipOperators) {
+                if (flipOperators != null && flipOperators) {
                     return node.getArgument();
                 } else {
                     return Objects.requireNonNull(visit(node.getArgument(), true));
