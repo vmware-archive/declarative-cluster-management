@@ -300,13 +300,13 @@ you initialize a `KUBECONFIG` environment variable to point to that path.
 You can then execute the following command to run integration-tests against the created local cluster:
 
 ```bash
-$: mvn integration-test
+$: KUBECONFIG=~/.kube/kind-config-dcm-it mvn integration-test
 ```
 
 To run a specific integration test class (example: `SchedulerIT` from the `k8s-scheduler` module):
 
 ```bash
-$: mvn integration-test -Dtest=SchedulerIT -DfailIfNoTests=false
+$: KUBECONFIG=~/.kube/kind-config-dcm-it mvn integration-test -Dtest=SchedulerIT -DfailIfNoTests=false
 ```
 
 Note, the `-DfailIfNoTests=false` flag is important, or the build will fail earlier modules that don't have tests
