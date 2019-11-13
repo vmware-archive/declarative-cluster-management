@@ -507,7 +507,7 @@ public class OrToolsSolver implements ISolverBackend {
         final List<String> varJoinPredicateStr = varQualifiers.joinPredicates.stream()
                 .map(expr -> exprToStr(output, expr, true, null))
                 .collect(Collectors.toList());
-        Preconditions.checkArgument(varJoinPredicateStr.isEmpty()); // TODO: this should be an implication below
+        Preconditions.checkArgument(varJoinPredicateStr.isEmpty(), varJoinPredicateStr); // TODO: this should be an implication below
         varQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, null));
         nonVarQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, null));
     }
@@ -521,55 +521,8 @@ public class OrToolsSolver implements ISolverBackend {
     private void topLevelConstraint(final MethodSpec.Builder output, final Expr expr,
                                     @Nullable final GroupContext groupContext) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
-        final BinaryOperatorPredicate predicate = (BinaryOperatorPredicate) expr;
-        final Expr left = predicate.getLeft();
-        final Expr right = predicate.getRight();
-        final String op = predicate.getOperator();
-        // TODO: May not be necessary to wrap the 'right' parameters for the below constraints
-        String statement;
-        switch (op) {
-            case "in":
-                final String subqueryStr = exprToStr(output, right, true, groupContext);
-                final CodeBlock subQueryCodeBlock = CodeBlock.builder().add(subqueryStr, Collectors.class).build();
-                final String block = "final $T domain = $T.fromValues($L.stream()" +
-                                             "\n                        .mapToLong(encoder::toLong).toArray())";
-                output.addStatement(block, Domain.class, Domain.class, subQueryCodeBlock);
-                output.addStatement(String.format("model.addLinearExpressionInDomain(%s, domain)",
-                                    maybeWrapped(output, left, groupContext)));
-                return;
-            case "==":
-                statement = String.format("model.addEquality(%s, %s)", maybeWrapped(output, left, groupContext),
-                                                                       maybeWrapped(output, right, groupContext));
-                break;
-            case "!=":
-                statement = String.format("model.addDifferent(%s, %s)", maybeWrapped(output, left, groupContext),
-                                                                         maybeWrapped(output, right, groupContext));
-                break;
-            case "<=":
-                statement = String.format("model.addLessOrEqual(%s, %s)", maybeWrapped(output, left, groupContext),
-                                                                          maybeWrapped(output, right, groupContext));
-                break;
-            case "<":
-                statement = String.format("model.addLessThan(%s, %s)", maybeWrapped(output, left, groupContext),
-                                                                       maybeWrapped(output, right, groupContext));
-                break;
-            case ">=":
-                statement = String.format("model.addGreaterOrEqual(%s, %s)", maybeWrapped(output, left, groupContext),
-                                                                             maybeWrapped(output, right, groupContext));
-                break;
-            case ">":
-                statement = String.format("model.addGreaterThan(%s, %s)", maybeWrapped(output, left, groupContext),
-                                                                          maybeWrapped(output, right, groupContext));
-                break;
-            case "\\/":
-                statement = CodeBlock.of("model.addBoolOr(new $T[]{$L, $L})", Literal.class,
-                                          maybeWrapped(output, left, groupContext),
-                                          maybeWrapped(output, right, groupContext)).toString();
-                break;
-            default:
-                throw new UnsupportedOperationException();
-        }
-        output.addStatement(statement);
+        final String statement = maybeWrapped(output, expr, groupContext);
+        output.addStatement("model.addEquality($L, 1)", statement);
     }
 
     /**
@@ -1017,7 +970,7 @@ public class OrToolsSolver implements ISolverBackend {
                     case "<=":
                         return String.format("o.leq(%s, %s)", left, right);
                     case "<":
-                        return String.format("o.le(%s, %s)", left, right);
+                        return String.format("o.lt(%s, %s)", left, right);
                     case ">=":
                         return String.format("o.geq(%s, %s)", left, right);
                     case ">":
@@ -1031,7 +984,7 @@ public class OrToolsSolver implements ISolverBackend {
                     case "/":
                         return String.format("o.div(%s, %s)", left, right);
                     case "in":
-                        return String.format("o.in(%s, %s)", left, right);
+                        return String.format("o.in(%s, %s, %s.get(0))", left, right, right);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }

@@ -132,10 +132,158 @@ public class Ops {
         return bool;
     }
 
-    public IntVar in(final IntVar left, final List<String> right) {
+    public IntVar eq(final IntVar left, final boolean right) {
+        return eq(left, model.newConstant(right ? 1 : 0));
+    }
+
+    public boolean ne(final String left, final String right) {
+        return !right.equals(left);
+    }
+
+    public boolean ne(final int left, final int right) {
+        return left != right;
+    }
+
+    public boolean ne(final long left, final long right) {
+        return left != right;
+    }
+
+    public IntVar ne(final String left, final IntVar right) {
+        return ne(right, left);
+    }
+
+    public IntVar ne(final IntVar left, final String right) {
+        return ne(left, encoder.toLong(right));
+    }
+
+    public IntVar ne(final long left, final IntVar right) {
+        return ne(right, left);
+    }
+
+    public IntVar ne(final IntVar left, final long right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addDifferent(left, right).onlyEnforceIf(bool);
+        model.addEquality(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar ne(final IntVar left, final IntVar right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addDifferent(left, right).onlyEnforceIf(bool);
+        model.addEquality(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar ne(final IntVar left, final boolean right) {
+        return ne(left, model.newConstant(right ? 1 : 0));
+    }
+
+    public IntVar lt(final IntVar left, final long right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addLessThan(left, right).onlyEnforceIf(bool);
+        model.addGreaterOrEqual(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar lt(final IntVar left, final IntVar right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addLessThan(left, right).onlyEnforceIf(bool);
+        model.addGreaterOrEqual(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar leq(final IntVar left, final long right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addLessOrEqual(left, right).onlyEnforceIf(bool);
+        model.addGreaterThan(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar leq(final IntVar left, final IntVar right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addLessOrEqual(left, right).onlyEnforceIf(bool);
+        model.addGreaterThan(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+
+    public IntVar gt(final IntVar left, final long right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addGreaterThan(left, right).onlyEnforceIf(bool);
+        model.addLessOrEqual(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar gt(final IntVar left, final IntVar right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addGreaterThan(left, right).onlyEnforceIf(bool);
+        model.addLessOrEqual(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar geq(final IntVar left, final long right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addGreaterOrEqual(left, right).onlyEnforceIf(bool);
+        model.addLessThan(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar geq(final IntVar left, final IntVar right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addGreaterOrEqual(left, right).onlyEnforceIf(bool);
+        model.addLessThan(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar in(final IntVar left, final List<String> right, final String instance) {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain);
+        return bool;
+    }
+
+    public IntVar in(final IntVar left, final List<Long> right, final long instance) {
+        final IntVar bool = model.newBoolVar("");
+        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
+        model.addLinearExpressionInDomain(left, domain);
+        return bool;
+    }
+
+    public IntVar in(final IntVar left, final List<Integer> right, final int instance) {
+        final IntVar bool = model.newBoolVar("");
+        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
+        model.addLinearExpressionInDomain(left, domain);
+        return bool;
+    }
+
+    public IntVar or(final boolean left, final IntVar right) {
+        return or(model.newConstant(left ? 1 : 0), right);
+    }
+
+    public IntVar or(final IntVar left, final boolean right) {
+        return or(right, left);
+    }
+
+    public IntVar or(final IntVar left, final IntVar right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addBoolOr(new Literal[]{left, right}).onlyEnforceIf(bool);
+        model.addBoolAnd(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+
+    public IntVar and(final boolean left, final IntVar right) {
+        return and(model.newConstant(left ? 1 : 0), right);
+    }
+
+    public IntVar and(final IntVar left, final boolean right) {
+        return and(right, left);
+    }
+
+    public IntVar and(final IntVar left, final IntVar right) {
+        final IntVar bool = model.newBoolVar("");
+        model.addBoolAnd(new Literal[]{left, right}).onlyEnforceIf(bool);
+        model.addBoolOr(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
         return bool;
     }
 
