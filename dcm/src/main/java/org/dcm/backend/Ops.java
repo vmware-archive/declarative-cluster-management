@@ -10,6 +10,7 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.Literal;
+import com.google.ortools.util.Domain;
 
 import java.util.Arrays;
 import java.util.List;
@@ -93,6 +94,18 @@ public class Ops {
         return ret;
     }
 
+    public boolean eq(final String left, final String right) {
+        return right.equals(left);
+    }
+
+    public boolean eq(final int left, final int right) {
+        return left == right;
+    }
+
+    public boolean eq(final long left, final long right) {
+        return left == right;
+    }
+
     public IntVar eq(final String left, final IntVar right) {
         return eq(right, left);
     }
@@ -116,6 +129,13 @@ public class Ops {
         final IntVar bool = model.newBoolVar("");
         model.addEquality(left, right).onlyEnforceIf(bool);
         model.addDifferent(left, right).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar in(final IntVar left, final List<String> right) {
+        final IntVar bool = model.newBoolVar("");
+        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
+        model.addLinearExpressionInDomain(left, domain);
         return bool;
     }
 

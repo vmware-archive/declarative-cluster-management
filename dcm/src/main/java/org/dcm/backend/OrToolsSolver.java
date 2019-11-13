@@ -260,6 +260,13 @@ public class OrToolsSolver implements ISolverBackend {
                     }
                 }
                 output.addCode(");\n");
+
+                // Record field name indices for view
+                // TODO: wrap this block into a helper.
+                final AtomicInteger fieldIndex = new AtomicInteger(0);
+                inner.getHead().getSelectExprs().forEach(
+                        e -> updateFieldIndex(viewName, e, fieldIndex)
+                );
                 output.addStatement("$L.add(res)", tableNameStr(viewName));
             }
             else  {
@@ -273,18 +280,6 @@ public class OrToolsSolver implements ISolverBackend {
             output.addStatement(printTime("Group-by final view"));
             return;
         }
-//        else if (isSubquery) {
-//            if (comprehension.getHead() != null && comprehension.getHead().getSelectExprs().size() == 1 &&
-//                    hasAggregate(comprehension.getHead().getSelectExprs().get(0))) {
-//                final String intermediateViewName = getTempViewName();
-//                buildInnerComprehension(output, intermediateViewName, comprehension, null, isConstraint);
-//                final MonoidFunction function = (MonoidFunction) comprehension.getHead().getSelectExprs().get(0);
-//                output.addStatement("final Integer $L = o.$LV($L.stream().map(Tuple1::value0)" +
-//                                "\n                                 .mapToLong(encoder::toLong).toArray())",
-//                                     viewName, function.getFunctionName(), intermediateViewName);
-//                return;
-//            }
-//        }
         buildInnerComprehension(output, viewName, comprehension, null, isConstraint);
     }
 
@@ -1000,8 +995,10 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
                                                       @Nullable final Boolean isFunctionContext) {
-            final String left = visit(node.getLeft(), isFunctionContext);
-            final String right = visit(node.getRight(), isFunctionContext);
+            final String left = Objects.requireNonNull(visit(node.getLeft(), isFunctionContext),
+                                                       "Expr was null: " + node.getLeft());
+            final String right = Objects.requireNonNull(visit(node.getRight(), isFunctionContext),
+                                                        "Expr was null: " + node.getRight());
             final String op = node.getOperator();
             final String leftType = InferType.forExpr(node.getLeft());
             final String rightType = InferType.forExpr(node.getRight());
@@ -1033,17 +1030,19 @@ public class OrToolsSolver implements ISolverBackend {
                         return String.format("o.mult(%s, %s)", left, right);
                     case "/":
                         return String.format("o.div(%s, %s)", left, right);
+                    case "in":
+                        return String.format("o.in(%s, %s)", left, right);
                     default:
-                        throw new UnsupportedOperationException();
+                        throw new UnsupportedOperationException("Operator " + op);
                 }
             }
             else {
                 // Both operands are non-var, so we generate an expression in Java.
                 switch (op) {
                     case "==":
-                        return String.format("(%s.equals(%s))", left, right);
+                        return String.format("(o.eq(%s, %s))", left, right);
                     case "!=":
-                        return String.format("(!%s.equals(%s))", left, right);
+                        return String.format("(!o.eq(%s, %s))", left, right);
                     case "/\\":
                         return String.format("(%s && %s)", left, right);
                     case "\\/":
@@ -1120,7 +1119,8 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Nullable
         @Override
-        protected String visitMonoidComprehension(final MonoidComprehension node, @Nullable final Boolean context) {
+        protected String visitMonoidComprehension(final MonoidComprehension node,
+                                                  @Nullable final Boolean isFunctionContext) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             addView(output, newSubqueryName, node, false, true);
@@ -1140,6 +1140,33 @@ public class OrToolsSolver implements ISolverBackend {
                 // Treat as a vector
                 return CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
                                      processedHeadItem, Collectors.class).toString();
+            }
+        }
+
+        @Nullable
+        @Override
+        protected String visitGroupByComprehension(final GroupByComprehension node,
+                                                   @Nullable final Boolean isFunctionContext) {
+            // We are in a subquery.
+            final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
+            addView(output, newSubqueryName, node, false, true);
+            Preconditions.checkNotNull(node.getComprehension().getHead());
+            Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
+            final ExprToStrVisitor innerVisitor =
+                    new ExprToStrVisitor(output, allowControllable, currentGroupContext,
+                            new SubQueryContext(newSubqueryName));
+            Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
+            final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
+
+            // if scalar subquery
+            if (headSelectItem instanceof MonoidFunction) {
+                return innerVisitor.visit(headSelectItem, true);
+            } else {
+                final String processedHeadItem =
+                        innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0), true);
+                // Treat as a vector
+                return CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
+                        processedHeadItem, Collectors.class).toString();
             }
         }
     }

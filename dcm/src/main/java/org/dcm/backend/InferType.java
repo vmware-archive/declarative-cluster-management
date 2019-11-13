@@ -12,6 +12,7 @@ import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.ColumnIdentifier;
 import org.dcm.compiler.monoid.ExistsPredicate;
 import org.dcm.compiler.monoid.Expr;
+import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
@@ -50,6 +51,12 @@ class InferType extends MonoidVisitor<String, Void> {
             default:
                 throw new UnsupportedOperationException();
         }
+    }
+
+    @Nullable
+    @Override
+    protected String visitGroupByComprehension(final GroupByComprehension node, @Nullable final Void context) {
+        return "SubQuery";
     }
 
     @Nullable
