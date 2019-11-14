@@ -22,6 +22,7 @@ import javax.annotation.Nullable;
 import java.util.Objects;
 
 class InferType extends MonoidVisitor<String, Void> {
+
     @Nullable
     @Override
     protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,

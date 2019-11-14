@@ -214,17 +214,30 @@ public class ModelCompiler {
                 final Expression expression = singleColumn.getExpression();
                 if (createIrTableForView) {
                     if (singleColumn.getAlias().isPresent()) {
-                        final IRColumn column = new IRColumn(viewTable, null, singleColumn.getAlias()
-                                .get().toString());
+                        final IRColumn.FieldType fieldType;
+                        if (expression instanceof Identifier) {
+                            fieldType = irContext.getColumnIfUnique(expression.toString(), tables).getType();
+                        } else if (expression instanceof DereferenceExpression) {
+                            fieldType = getIRColumnFromDereferencedExpression((DereferenceExpression) expression)
+                                              .getType();
+                        } else {
+                            LOG.warn("Guessing FieldType for column {} in non-constraint view {} to be INT",
+                                      singleColumn.getAlias(), viewName);
+                            fieldType = IRColumn.FieldType.INT;
+                        }
+                        final IRColumn column = new IRColumn(viewTable, null, fieldType,
+                                                             singleColumn.getAlias().get().toString());
                         viewTable.addField(column);
                     } else if (expression instanceof Identifier) {
                         final IRColumn columnIfUnique = irContext.getColumnIfUnique(expression.toString(), tables);
-                        final IRColumn newColumn = new IRColumn(viewTable, null, columnIfUnique.getName());
+                        final IRColumn newColumn = new IRColumn(viewTable, null, columnIfUnique.getType(),
+                                                                columnIfUnique.getName());
                         viewTable.addField(newColumn);
                     } else if (expression instanceof DereferenceExpression) {
                         final DereferenceExpression derefExpression = (DereferenceExpression) expression;
                         final IRColumn irColumn = getIRColumnFromDereferencedExpression(derefExpression);
-                        final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getName());
+                        final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getType(),
+                                                                irColumn.getName());
                         viewTable.addField(newColumn);
                     } else {
                         throw new RuntimeException("SelectItem type is not a column but does not have an alias");

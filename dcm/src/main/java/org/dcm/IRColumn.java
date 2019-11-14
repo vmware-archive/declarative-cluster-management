@@ -99,13 +99,14 @@ public class IRColumn {
     }
 
     public IRColumn(final IRTable irTable, final Field jooqField) {
-        this(irTable, jooqField, jooqField.getName());
+        this(irTable, jooqField, FieldType.fromField(jooqField), jooqField.getName());
     }
 
     /**
      * Builds a IRColumn from a SQL jooqField parsing its type and tags
      */
-    public IRColumn(@Nullable final IRTable irTable, @Nullable final Field jooqField, final String fieldNameInitial) {
+    public IRColumn(@Nullable final IRTable irTable, @Nullable final Field jooqField,
+                    final FieldType fieldType, final String fieldNameInitial) {
         this.irTable = irTable;
         this.jooqField = jooqField;
         final String fieldName = fieldNameInitial.toUpperCase(Locale.US);
@@ -144,7 +145,7 @@ public class IRColumn {
 
         this.name = fieldName;
         this.tag = fieldTag;
-        this.type = jooqField == null ? null : FieldType.fromField(jooqField);
+        this.type = fieldType;
         this.values = new ArrayList<>();
         this.fieldValues = new ArrayList<>();
         this.foreignKeyParent = Optional.empty();

@@ -40,7 +40,6 @@ class RewriteArity {
     static MonoidComprehension apply(final MonoidComprehension comprehension) {
         final ArityRewriter rewriter = new ArityRewriter();
         final Expr result = Objects.requireNonNull(rewriter.visit(comprehension));
-        System.out.println("RESULT " + result);
         return comprehension instanceof GroupByComprehension ?
                 (GroupByComprehension) result : (MonoidComprehension) result;
     }
