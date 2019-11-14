@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package org.dcm;
+package org.dcm.backend;
 
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
@@ -14,15 +14,15 @@ import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
 import com.google.ortools.util.Domain;
-import org.dcm.backend.StringEncoding;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 public class OrToolsTest {
+
     static {
-        System.loadLibrary("jniortools");
+        new OrToolsSolver(); // causes or-tools library to be loaded
     }
 
     @Test
