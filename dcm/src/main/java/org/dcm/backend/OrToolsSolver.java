@@ -268,8 +268,6 @@ public class OrToolsSolver implements ISolverBackend {
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
-                System.out.println(varQualifiers);
-//                assert !varQualifiers.aggregatePredicates.isEmpty();
                 addAggregateConstraint(output, varQualifiers, nonVarQualifiers,
                                        new GroupContext(groupByQualifier, intermediateView));
             }
@@ -1189,32 +1187,6 @@ public class OrToolsSolver implements ISolverBackend {
     private String printTime(final String event) {
         return String.format("System.out.println(\"%s: we are at \" + (System.nanoTime() - startTime))", event);
     }
-
-    /*
-    private static class HasAggregates extends MonoidVisitor<Void, Void> {
-        boolean hasAggregate = false;
-
-        @Nullable
-        @Override
-        protected Void visitHead(final Head node, @Nullable final Void context) {
-            node.getSelectExprs().forEach(super::visit);
-            return super.visitHead(node, context);
-        }
-
-        @Nullable
-        @Override
-        protected Void visitMonoidFunction(final MonoidFunction node, @Nullable final Void context) {
-            hasAggregate = true;
-            return super.visitMonoidFunction(node, context);
-        }
-    }
-
-    private boolean hasAggregate(final Expr expr) {
-        final HasAggregates visitor = new HasAggregates();
-        visitor.visit(expr);
-        return visitor.hasAggregate;
-    }
-    */
 
     private String getTempViewName() {
         return  "tmp" + intermediateViewCounter.getAndIncrement();
