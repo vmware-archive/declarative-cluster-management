@@ -11,6 +11,8 @@ import com.google.common.base.CaseFormat;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
@@ -232,7 +234,9 @@ public class OrToolsSolver implements ISolverBackend {
             final QualifiersByType varQualifiers = new QualifiersByType();
             final QualifiersByType nonVarQualifiers = new QualifiersByType();
             populateQualifiersByVarType(inner, varQualifiers, nonVarQualifiers, false);
-            maybeAddNonVarAggregateFilters(output, nonVarQualifiers, controlFlowsToPop);
+
+            final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView);
+            maybeAddNonVarAggregateFilters(output, nonVarQualifiers, controlFlowsToPop, groupContext);
 
             // If this is not a constraint, we simply add a to a result set
             if (!isConstraint) {
@@ -242,8 +246,7 @@ public class OrToolsSolver implements ISolverBackend {
                 output.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
                 int numSelectExprs = inner.getHead().getSelectExprs().size();
                 for (final Expr expr : inner.getHead().getSelectExprs()) {
-                    final String result =
-                            exprToStr(output, expr, true, new GroupContext(groupByQualifier, intermediateView));
+                    final String result = exprToStr(output, expr, true, groupContext);
                     output.addCode(result);
 
                     if (numSelectExprs > 1) {
@@ -263,7 +266,8 @@ public class OrToolsSolver implements ISolverBackend {
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
-                assert !varQualifiers.aggregatePredicates.isEmpty();
+                System.out.println(varQualifiers);
+//                assert !varQualifiers.aggregatePredicates.isEmpty();
                 addAggregateConstraint(output, varQualifiers, nonVarQualifiers,
                                        new GroupContext(groupByQualifier, intermediateView));
             }
@@ -356,7 +360,11 @@ public class OrToolsSolver implements ISolverBackend {
             return columnsAccessed;
         } else {
             Preconditions.checkArgument(comprehension.getHead() != null);
-            return getColumnsAccessed(comprehension.getHead().getSelectExprs());
+            final List<ColumnIdentifier> columnsFromQualifiers  =
+                    getColumnsAccessed(comprehension.getQualifiers());
+            final List<ColumnIdentifier> columnsFromHead =
+                    getColumnsAccessed(comprehension.getHead().getSelectExprs());
+            return Lists.newArrayList(Iterables.concat(columnsFromHead, columnsFromQualifiers));
         }
     }
 
@@ -455,10 +463,11 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private void maybeAddNonVarAggregateFilters(final MethodSpec.Builder output,
-                                       final QualifiersByType nonVarQualifiers,
-                                       final ArrayDeque<String> controlFlowsToPop) {
+                                                final QualifiersByType nonVarQualifiers,
+                                                final ArrayDeque<String> controlFlowsToPop,
+                                                final GroupContext groupContext) {
         final String predicateStr = nonVarQualifiers.aggregatePredicates.stream()
-                .map(expr -> exprToStr(output, expr, false, null))
+                .map(expr -> exprToStr(output, expr, false, groupContext))
                 .collect(Collectors.joining(" \n    && "));
 
         if (!predicateStr.isEmpty()) {
@@ -916,8 +925,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String functionName = argumentIsIntVar ? "sumV" : "sum";
                 return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
                                     functionName, vectorName, processedArgument, Collectors.class).toString();
-            }
-            else if (node.getFunctionName().equalsIgnoreCase("count")) {
+            } else if (node.getFunctionName().equalsIgnoreCase("count")) {
                 final String functionName = argumentIsIntVar ? "sumV" : "sum";
 
                 // In these cases, it is safe to replace count(argument) with sum(1)
@@ -927,14 +935,16 @@ public class OrToolsSolver implements ISolverBackend {
                 }
                 return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
                         functionName, vectorName, processedArgument, Collectors.class).toString();
-            }
-            else if (node.getFunctionName().equalsIgnoreCase("increasing")) {
+            } else if (node.getFunctionName().equalsIgnoreCase("increasing")) {
                 output.addStatement("o.increasing($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
                         vectorName, processedArgument, Collectors.class);
                 return "model.newConstant(1)";
             } else if (node.getFunctionName().equalsIgnoreCase("max")) {
                 return CodeBlock.builder().add("o.maxV($L.stream().map(t -> $L).mapToLong(encoder::toLong).toArray())",
                                                vectorName, processedArgument).build().toString();
+            } else if (node.getFunctionName().equalsIgnoreCase("all_equal")) {
+                return CodeBlock.builder().add("o.allEqual($L.stream().map(t -> $L).collect($T.toList()))",
+                        vectorName, processedArgument, Collectors.class).build().toString();
             }
             throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunctionName());
         }
@@ -998,6 +1008,8 @@ public class OrToolsSolver implements ISolverBackend {
                         return String.format("(o.eq(%s, %s))", left, right);
                     case "!=":
                         return String.format("(!o.eq(%s, %s))", left, right);
+                    case "in":
+                        return String.format("(o.in(%s, %s))", left, right);
                     case "/\\":
                         return String.format("(%s && %s)", left, right);
                     case "\\/":
@@ -1012,7 +1024,7 @@ public class OrToolsSolver implements ISolverBackend {
                     case "/":
                         return String.format("(%s %s %s)", left, op, right);
                     default:
-                        throw new UnsupportedOperationException();
+                        throw new UnsupportedOperationException("Operator " + op);
                 }
             }
         }
@@ -1040,7 +1052,6 @@ public class OrToolsSolver implements ISolverBackend {
             // Within a group-by, we refer to values from the intermediate group by table. This involves an
             // indirection from columns to tuple indices
             if (isFunctionContext && currentGroupContext != null) {
-                assert currentSubQueryContext == null;
                 final String tempTableName = currentGroupContext.groupViewName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
                 return String.format("t.value%s()", fieldIndex);

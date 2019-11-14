@@ -94,6 +94,10 @@ public class Ops {
         return ret;
     }
 
+    public boolean eq(final boolean left, final boolean right) {
+        return right != left;
+    }
+
     public boolean eq(final String left, final String right) {
         return right.equals(left);
     }
@@ -134,6 +138,10 @@ public class Ops {
 
     public IntVar eq(final IntVar left, final boolean right) {
         return eq(left, model.newConstant(right ? 1 : 0));
+    }
+
+    public boolean ne(final boolean left, final boolean right) {
+        return right != left;
     }
 
     public boolean ne(final String left, final String right) {
@@ -235,6 +243,18 @@ public class Ops {
         return bool;
     }
 
+    public boolean in(final String left, final List<String> right) {
+        return right.contains(left);
+    }
+
+    public boolean in(final int left, final List<Integer> right) {
+        return right.contains(left);
+    }
+
+    public boolean in(final long left, final List<Long> right) {
+        return right.contains(left);
+    }
+
     public IntVar in(final IntVar left, final List<String> right, final String instance) {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
@@ -285,6 +305,15 @@ public class Ops {
         model.addBoolAnd(new Literal[]{left, right}).onlyEnforceIf(bool);
         model.addBoolOr(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
         return bool;
+    }
+
+    public <T> boolean allEqual(final List<T> array) {
+        for (int i = 0; i < array.size() - 1; i++) {
+            if (array.get(i) != array.get(i + 1)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public IntVar toConst(final boolean expr) {

@@ -1603,10 +1603,10 @@ public class ModelTest {
                 "where (\n" +
                 "pod_with_affinity_expr.node_name in (\n" +
                 "select pod_with_labels.node_name as node_name\n" +
-                "from pod_with_labels join pod_with_affinity_expr on \n" +
-                "pod_with_affinity_expr.match_key = pod_with_labels.label_key and \n" +
-                "pod_with_affinity_expr.match_value = pod_with_labels.label_value and\n" +
-                "pod_with_affinity_expr.pod_name != pod_with_labels.pod_name \n" +
+                "from pod_with_labels as A join pod_with_affinity_expr as B on \n" +
+                "B.match_key = A.label_key and \n" +
+                "B.match_value = A.label_value and\n" +
+                "B.pod_name != A.pod_name \n" +
                 "where " +
                 "pod_with_affinity_expr.match_key = pod_with_labels.label_key and \n" +
                 "pod_with_affinity_expr.match_value = pod_with_labels.label_value and\n" +

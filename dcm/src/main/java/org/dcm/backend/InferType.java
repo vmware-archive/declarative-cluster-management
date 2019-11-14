@@ -38,6 +38,7 @@ class InferType extends MonoidVisitor<String, Void> {
             case "!=":
             case "/\\":
             case "\\/":
+            case "in":
             case "<=":
             case "<":
             case ">=":
