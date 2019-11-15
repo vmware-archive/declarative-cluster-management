@@ -559,7 +559,7 @@ public class OrToolsSolver implements ISolverBackend {
         if (expr instanceof MonoidLiteral && ((MonoidLiteral) expr).getValue() instanceof Boolean) {
             exprStr = (Boolean) ((MonoidLiteral) expr).getValue() ? "1" : "0";
         }
-        return InferType.forExpr(expr).equals("IntVar") ? exprStr : String.format("o.toConst(%s)", exprStr);
+        return inferType(expr).equals("IntVar") ? exprStr : String.format("o.toConst(%s)", exprStr);
     }
 
     /**
@@ -892,7 +892,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private String generateTupleGenericParameters(final Expr expr) {
-        return InferType.forExpr(expr);
+        return inferType(expr);
     }
 
     private void populateQualifiersByVarType(final MonoidComprehension comprehension, final QualifiersByType var,
@@ -930,7 +930,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
             final String processedArgument = visit(node.getArgument(), true);
-            final boolean argumentIsIntVar = InferType.forExpr(node.getArgument()).equals("IntVar");
+            final boolean argumentIsIntVar = inferType(node.getArgument()).equals("IntVar");
             if (node.getFunctionName().equalsIgnoreCase("sum")) {
                 final String functionName = argumentIsIntVar ? "sumV" : "sum";
                 return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
@@ -980,8 +980,8 @@ public class OrToolsSolver implements ISolverBackend {
             final String right = Objects.requireNonNull(visit(node.getRight(), isFunctionContext),
                                                         "Expr was null: " + node.getRight());
             final String op = node.getOperator();
-            final String leftType = InferType.forExpr(node.getLeft());
-            final String rightType = InferType.forExpr(node.getRight());
+            final String leftType = inferType(node.getLeft());
+            final String rightType = inferType(node.getRight());
 
             if (leftType.equals("IntVar") || rightType.equals("IntVar")) {
                 // We need to generate an IntVar.
@@ -1220,6 +1220,10 @@ public class OrToolsSolver implements ISolverBackend {
 
     private String printTime(final String event) {
         return String.format("System.out.println(\"%s: we are at \" + (System.nanoTime() - startTime))", event);
+    }
+
+    private String inferType(final Expr expr) {
+        return InferType.forExpr(expr, viewTupleTypeParameters);
     }
 
     private String getTempViewName() {

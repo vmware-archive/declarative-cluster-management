@@ -6,6 +6,7 @@
 
 package org.dcm.backend;
 
+import com.google.common.base.CaseFormat;
 import com.google.common.base.Preconditions;
 import org.dcm.IRColumn;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
@@ -17,11 +18,20 @@ import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+import java.util.Map;
 import java.util.Objects;
 
 class InferType extends MonoidVisitor<String, Void> {
+    private static final Logger LOG = LoggerFactory.getLogger(InferType.class);
+    private final Map<String, String> viewTupleTypeParameters;
+
+    InferType(final Map<String, String> viewTupleTypeParameters) {
+        this.viewTupleTypeParameters = viewTupleTypeParameters;
+    }
 
     @Nullable
     @Override
@@ -100,8 +110,14 @@ class InferType extends MonoidVisitor<String, Void> {
         return super.visitMonoidLiteral(node, context);
     }
 
-    private static String typeStringFromColumn(final ColumnIdentifier node) {
+    private  String typeStringFromColumn(final ColumnIdentifier node) {
         if (node.getField().isControllable()) {
+            return "IntVar";
+        }
+        final String convertedName = CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, node.getTableName());
+        if (viewTupleTypeParameters.containsKey(convertedName) &&
+                viewTupleTypeParameters.get(convertedName).contains("IntVar")) {
+            LOG.warn("Inferring type for column {} as IntVar", node);
             return "IntVar";
         }
         return typeStringFromColumn(node.getField());
@@ -122,8 +138,9 @@ class InferType extends MonoidVisitor<String, Void> {
         }
     }
 
-    static String forExpr(final Expr expr) {
-        final InferType visitor = new InferType();
+    // TODO: passing viewTupleTypeParameters makes this class tightly coupled with OrToolsSolver.
+    static String forExpr(final Expr expr, final Map<String, String> viewTupleTypeParameters) {
+        final InferType visitor = new InferType(viewTupleTypeParameters);
         final String result =
             Objects.requireNonNull(visitor.visit(expr), "Result of type inference for expr was null: " + expr);
         assert !result.isEmpty();
