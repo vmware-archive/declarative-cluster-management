@@ -159,6 +159,16 @@ public class OrToolsSolver implements ISolverBackend {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     addView(output, name, rewrittenComprehension, true);
                 });
+        objectiveFunctions
+                .forEach((name, comprehension) -> {
+                    final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
+                    final String s = exprToStr(output, rewrittenComprehension);
+                    output.addStatement("final $T $L = $L", IntVar.class, name, s);
+                });
+        if (!objectiveFunctions.isEmpty()) {
+            final String objectiveFunctionSum = String.join(", ", objectiveFunctions.keySet());
+            output.addStatement("model.maximize(o.sumV($T.of($L)))", List.class, objectiveFunctionSum);
+        }
 
         addSolvePhase(output, context);
         final MethodSpec solveMethod = output.build();
@@ -940,8 +950,13 @@ public class OrToolsSolver implements ISolverBackend {
                         vectorName, processedArgument, Collectors.class);
                 return "model.newConstant(1)";
             } else if (node.getFunctionName().equalsIgnoreCase("max")) {
-                return CodeBlock.builder().add("o.maxV($L.stream().map(t -> $L).mapToLong(encoder::toLong).toArray())",
-                                               vectorName, processedArgument).build().toString();
+                final CodeBlock inner = CodeBlock.of("$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())",
+                                                     vectorName, processedArgument, Collectors.class);
+                return String.format("o.maxV(%s, %s.get(0))", inner, inner);
+            } else if (node.getFunctionName().equalsIgnoreCase("min")) {
+                final CodeBlock inner = CodeBlock.of("$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())",
+                        vectorName, processedArgument, Collectors.class);
+                return String.format("o.minV(%s, %s.get(0))", inner, inner);
             } else if (node.getFunctionName().equalsIgnoreCase("all_equal")) {
                 return CodeBlock.builder().add("o.allEqual($L.stream().map(t -> $L).collect($T.toList()))",
                         vectorName, processedArgument, Collectors.class).build().toString();
@@ -1098,12 +1113,16 @@ public class OrToolsSolver implements ISolverBackend {
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getHead().getSelectExprs().get(0);
 
-            // if scalar subquery
-            if (headSelectItem instanceof MonoidFunction) {
+            final ContainsMonoidFunction visitor = new ContainsMonoidFunction();
+            visitor.visit(headSelectItem);
+            final boolean headSelectItemContainsMonoidFunction = visitor.getFound();
+
+            // If the head contains a function, then this is a scalar subquery
+            if (headSelectItemContainsMonoidFunction) {
                 return innerVisitor.visit(headSelectItem, true);
             } else {
+                // Else, treat the result as a vector
                 final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), true);
-                // Treat as a vector
                 return CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
                                      processedHeadItem, Collectors.class).toString();
             }
@@ -1134,6 +1153,21 @@ public class OrToolsSolver implements ISolverBackend {
                 return CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
                         processedHeadItem, Collectors.class).toString();
             }
+        }
+    }
+
+    private static class ContainsMonoidFunction extends MonoidVisitor<Boolean, Void> {
+        boolean found = false;
+
+        @Nullable
+        @Override
+        protected Boolean visitMonoidFunction(final MonoidFunction node, @Nullable final Void context) {
+            found = true;
+            return super.visitMonoidFunction(node, context);
+        }
+
+        boolean getFound() {
+            return found;
         }
     }
 

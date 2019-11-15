@@ -12,7 +12,7 @@ import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
 
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 public class Ops {
@@ -52,9 +52,32 @@ public class Ops {
         return bool;
     }
 
+    public int maxV(final List<Integer> data, final int ignored) {
+        return Collections.max(data);
+    }
 
-    public int maxV(final long[] data) {
-        return (int) Arrays.stream(data).max().getAsLong();
+    public long maxV(final List<Long> data, final long ignored) {
+        return Collections.max(data);
+    }
+
+    public IntVar maxV(final List<IntVar> data, final IntVar ignored) {
+        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        model.addMaxEquality(ret, data.toArray(new IntVar[0]));
+        return ret;
+    }
+
+    public int minV(final List<Integer> data, final int ignored) {
+        return Collections.min(data);
+    }
+
+    public long minV(final List<Long> data, final long ignored) {
+        return Collections.min(data);
+    }
+
+    public IntVar minV(final List<IntVar> data, final IntVar ignored) {
+        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        model.addMinEquality(ret, data.toArray(new IntVar[0]));
+        return ret;
     }
 
     public int countV(final long[] data) {
