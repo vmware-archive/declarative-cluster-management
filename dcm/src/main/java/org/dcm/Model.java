@@ -13,11 +13,9 @@ import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
-
 import org.dcm.backend.ISolverBackend;
-import org.dcm.compiler.ModelCompiler;
 import org.dcm.backend.OrToolsSolver;
-
+import org.dcm.compiler.ModelCompiler;
 import org.jooq.Constraint;
 import org.jooq.DSLContext;
 import org.jooq.Field;

@@ -14,6 +14,7 @@ import org.dcm.compiler.monoid.ColumnIdentifier;
 import org.dcm.compiler.monoid.ExistsPredicate;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
+import org.dcm.compiler.monoid.Head;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
@@ -68,13 +69,25 @@ class InferType extends MonoidVisitor<String, Void> {
     @Nullable
     @Override
     protected String visitGroupByComprehension(final GroupByComprehension node, @Nullable final Void context) {
-        return "SubQuery";
+        final Head head = node.getComprehension().getHead();
+        if (head != null && head.getSelectExprs().size() == 1) {
+            final String type = visit(head.getSelectExprs().get(0), context);
+            LOG.warn("Returning type of sub-query {} as {}", node, type);
+            return type;
+        }
+        throw new UnsupportedOperationException("Do not know type of subquery");
     }
 
     @Nullable
     @Override
     protected String visitMonoidComprehension(final MonoidComprehension node, @Nullable final Void context) {
-        return "SubQuery";
+        final Head head = node.getHead();
+        if (head != null && head.getSelectExprs().size() == 1) {
+            final String type = visit(head.getSelectExprs().get(0), context);
+            LOG.warn("Returning type of sub-query {} as {}", node, type);
+            return type;
+        }
+        throw new UnsupportedOperationException("Do not know type of subquery");
     }
 
     @Nullable

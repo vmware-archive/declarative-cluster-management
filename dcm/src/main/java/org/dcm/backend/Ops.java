@@ -118,7 +118,7 @@ public class Ops {
     }
 
     public boolean eq(final boolean left, final boolean right) {
-        return right != left;
+        return right == left;
     }
 
     public boolean eq(final String left, final String right) {
@@ -278,24 +278,24 @@ public class Ops {
         return right.contains(left);
     }
 
-    public IntVar in(final IntVar left, final List<String> right, final String instance) {
+    public IntVar inString(final IntVar left, final List<String> right) {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain);
+        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
         return bool;
     }
 
-    public IntVar in(final IntVar left, final List<Long> right, final long instance) {
+    public IntVar inLong(final IntVar left, final List<Long> right) {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain);
+        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
         return bool;
     }
 
-    public IntVar in(final IntVar left, final List<Integer> right, final int instance) {
+    public IntVar inInteger(final IntVar left, final List<Integer> right) {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain);
+        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
         return bool;
     }
 

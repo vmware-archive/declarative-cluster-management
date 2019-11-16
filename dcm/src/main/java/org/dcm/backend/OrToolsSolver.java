@@ -1011,7 +1011,7 @@ public class OrToolsSolver implements ISolverBackend {
                     case "/":
                         return String.format("o.div(%s, %s)", left, right);
                     case "in":
-                        return String.format("o.in(%s, %s, %s.get(0))", left, right, right);
+                        return String.format("o.in%s(%s, %s)", rightType, left, right);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
