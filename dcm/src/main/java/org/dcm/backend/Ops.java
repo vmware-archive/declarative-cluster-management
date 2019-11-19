@@ -85,7 +85,7 @@ public class Ops {
     }
 
     public IntVar minus(final int left, final IntVar right) {
-        return minus(right, left);
+        return minus(model.newConstant(left), right);
     }
 
     public IntVar minus(final IntVar left, final int right) {
@@ -99,7 +99,6 @@ public class Ops {
         model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{left, right}, new int[]{1, -1}));
         return ret;
     }
-
 
     public IntVar mult(final int left, final IntVar right) {
         return mult(right, left);
@@ -163,6 +162,10 @@ public class Ops {
         return eq(left, model.newConstant(right ? 1 : 0));
     }
 
+    public IntVar eq(final boolean left, final IntVar right) {
+        return eq(right, left);
+    }
+
     public boolean ne(final boolean left, final boolean right) {
         return right != left;
     }
@@ -203,6 +206,10 @@ public class Ops {
         model.addDifferent(left, right).onlyEnforceIf(bool);
         model.addEquality(left, right).onlyEnforceIf(bool.not());
         return bool;
+    }
+
+    public IntVar ne(final boolean left, final IntVar right) {
+        return ne(right, left);
     }
 
     public IntVar ne(final IntVar left, final boolean right) {
@@ -282,6 +289,7 @@ public class Ops {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
+        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
         return bool;
     }
 
@@ -289,6 +297,7 @@ public class Ops {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
+        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
         return bool;
     }
 
@@ -296,6 +305,61 @@ public class Ops {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
+        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar inIntVar(final IntVar left, final List<IntVar> right) {
+        final IntVar bool = model.newBoolVar("");
+        final Literal[] literals = new Literal[right.size()];
+        for (int i = 0; i < right.size(); i++) {
+            literals[i] = eq(left, right.get(i));
+        }
+        model.addBoolOr(literals).onlyEnforceIf(bool);
+
+        for (int i = 0; i < right.size(); i++) {
+            literals[i] = literals[i].not();
+        }
+        model.addBoolAnd(literals).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar notInString(final IntVar left, final List<String> right) {
+        final IntVar bool = model.newBoolVar("");
+        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
+        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool);
+        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar notInLong(final IntVar left, final List<Long> right) {
+        final IntVar bool = model.newBoolVar("");
+        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
+        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool);
+        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar notInInteger(final IntVar left, final List<Integer> right) {
+        final IntVar bool = model.newBoolVar("");
+        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
+        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool);
+        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
+    public IntVar notInIntVar(final IntVar left, final List<IntVar> right) {
+        final IntVar bool = model.newBoolVar("");
+        final Literal[] literals = new Literal[right.size()];
+        for (int i = 0; i < right.size(); i++) {
+            literals[i] = eq(left, right.get(i));
+        }
+        model.addBoolOr(literals).onlyEnforceIf(bool.not());
+
+        for (int i = 0; i < right.size(); i++) {
+            literals[i] = literals[i].not();
+        }
+        model.addBoolAnd(literals).onlyEnforceIf(bool);
         return bool;
     }
 

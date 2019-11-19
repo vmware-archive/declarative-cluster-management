@@ -1012,6 +1012,8 @@ public class OrToolsSolver implements ISolverBackend {
                         return String.format("o.div(%s, %s)", left, right);
                     case "in":
                         return String.format("o.in%s(%s, %s)", rightType, left, right);
+                    case "notIn":
+                        return String.format("o.notIn%s(%s, %s)", rightType, left, right);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1025,6 +1027,8 @@ public class OrToolsSolver implements ISolverBackend {
                         return String.format("(!o.eq(%s, %s))", left, right);
                     case "in":
                         return String.format("(o.in(%s, %s))", left, right);
+                    case "notIn":
+                        return String.format("(!o.in(%s, %s))", left, right);
                     case "/\\":
                         return String.format("(%s && %s)", left, right);
                     case "\\/":

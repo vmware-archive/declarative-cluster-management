@@ -78,6 +78,9 @@ class RewriteNot {
                     case ">":
                         ret = new BinaryOperatorPredicate("<=", maybeFlippedLeft, maybeFlippedRight);
                         break;
+                    case "in":
+                        ret = new BinaryOperatorPredicate("notIn", maybeFlippedLeft, maybeFlippedRight);
+                        break;
                     default:
                         throw new IllegalArgumentException("Unexpected operator " + node.getOperator());
                 }
