@@ -114,13 +114,13 @@ class ExpressionTraverser extends DefaultTraversalVisitor<Void, Void> {
     }
 
     @Override
-    protected Void visitIsNullPredicate(final IsNullPredicate node, Void context) {
+    protected Void visitIsNullPredicate(final IsNullPredicate node, final Void context) {
         stack.push(node);
         return super.visitIsNullPredicate(node, context);
     }
 
     @Override
-    protected Void visitIsNotNullPredicate(final IsNotNullPredicate node, Void context) {
+    protected Void visitIsNotNullPredicate(final IsNotNullPredicate node, final Void context) {
         stack.push(node);
         return super.visitIsNotNullPredicate(node, context);
     }

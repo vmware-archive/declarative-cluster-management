@@ -17,6 +17,7 @@ import org.dcm.compiler.monoid.IsNotNullPredicate;
 import org.dcm.compiler.monoid.IsNullPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
+import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.Qualifier;
 import org.dcm.compiler.monoid.TableRowGenerator;
@@ -80,6 +81,17 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
     @Override
     protected QualifiersList visitMonoidFunction(final MonoidFunction node,
                                                  @Nullable final QualifiersList context) {
+        // TODO: revisit the sub-types of Qualifiers. Not every qualifier needs to be a binary operator.
+        if (node.getFunctionName().equalsIgnoreCase("not")) {
+            final BinaryOperatorPredicate rewritten =
+                    new BinaryOperatorPredicate("==", node.getArgument(),
+                                                new MonoidLiteral<>(false, Boolean.class));
+            if (isControllableField(node.getArgument())) {
+                return Objects.requireNonNull(context).withVarQualifier(rewritten);
+            } else {
+                return Objects.requireNonNull(context).withNonVarQualifier(rewritten);
+            }
+        }
         return context;
     }
 

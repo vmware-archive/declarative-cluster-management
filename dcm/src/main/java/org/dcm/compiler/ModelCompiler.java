@@ -120,7 +120,6 @@ public class ModelCompiler {
         //
         // Code generation begins here.
         //
-        System.out.println(constraintForAlls);
         return backend.generateModelCode(irContext, nonConstraintForAlls, constraintForAlls, objFunctionForAlls);
     }
 
@@ -295,7 +294,6 @@ public class ModelCompiler {
     private ImmutableList<Qualifier> processWhereExpression(final Expression expression,
                                                             final Set<IRTable> tablesReferencedInView,
                                                             final boolean isAggregate) {
-        System.out.println("!!!!!! " + expression);
         final ExpressionTraverser traverser = new ExpressionTraverser();
         traverser.process(expression);
         final ArrayDeque<Node> stack = traverser.getExpressionStack();

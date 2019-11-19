@@ -324,45 +324,6 @@ public class Ops {
         return bool;
     }
 
-    public IntVar notInString(final IntVar left, final List<String> right) {
-        final IntVar bool = model.newBoolVar("");
-        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool.not());
-        return bool;
-    }
-
-    public IntVar notInLong(final IntVar left, final List<Long> right) {
-        final IntVar bool = model.newBoolVar("");
-        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool.not());
-        return bool;
-    }
-
-    public IntVar notInInteger(final IntVar left, final List<Integer> right) {
-        final IntVar bool = model.newBoolVar("");
-        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool.not());
-        return bool;
-    }
-
-    public IntVar notInIntVar(final IntVar left, final List<IntVar> right) {
-        final IntVar bool = model.newBoolVar("");
-        final Literal[] literals = new Literal[right.size()];
-        for (int i = 0; i < right.size(); i++) {
-            literals[i] = eq(left, right.get(i));
-        }
-        model.addBoolOr(literals).onlyEnforceIf(bool.not());
-
-        for (int i = 0; i < right.size(); i++) {
-            literals[i] = literals[i].not();
-        }
-        model.addBoolAnd(literals).onlyEnforceIf(bool);
-        return bool;
-    }
-
     public IntVar or(final boolean left, final IntVar right) {
         return or(model.newConstant(left ? 1 : 0), right);
     }
@@ -392,6 +353,14 @@ public class Ops {
         model.addBoolAnd(new Literal[]{left, right}).onlyEnforceIf(bool);
         model.addBoolOr(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
         return bool;
+    }
+
+    public IntVar not(final IntVar var) {
+        return eq(var, 0L);
+    }
+
+    public boolean not(final boolean var) {
+        return !var;
     }
 
     public <T> boolean allEqual(final List<T> array) {

@@ -885,7 +885,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
-        return RewriteNot.apply(RewriteArity.apply(comprehension));
+        return RewriteArity.apply(comprehension);
     }
 
     private <T extends Expr> String generateTupleGenericParameters(final List<T> exprs) {
@@ -928,6 +928,10 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
             final String vectorName = currentSubQueryContext == null ? "data" : currentSubQueryContext.subQueryName;
+
+            if (node.getFunctionName().equalsIgnoreCase("not")) {
+                return String.format("o.not(%s)", visit(node.getArgument(), isFunctionContext));
+            }
 
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
@@ -1032,8 +1036,6 @@ public class OrToolsSolver implements ISolverBackend {
                         return String.format("o.div(%s, %s)", left, right);
                     case "in":
                         return String.format("o.in%s(%s, %s)", rightType, left, right);
-                    case "notIn":
-                        return String.format("o.notIn%s(%s, %s)", rightType, left, right);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1047,8 +1049,6 @@ public class OrToolsSolver implements ISolverBackend {
                         return String.format("(!o.eq(%s, %s))", left, right);
                     case "in":
                         return String.format("(o.in(%s, %s))", left, right);
-                    case "notIn":
-                        return String.format("(!o.in(%s, %s))", left, right);
                     case "/\\":
                         return String.format("(%s && %s)", left, right);
                     case "\\/":
