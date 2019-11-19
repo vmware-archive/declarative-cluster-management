@@ -20,6 +20,8 @@ import com.facebook.presto.sql.tree.GroupBy;
 import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.InPredicate;
+import com.facebook.presto.sql.tree.IsNotNullPredicate;
+import com.facebook.presto.sql.tree.IsNullPredicate;
 import com.facebook.presto.sql.tree.Literal;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
 import com.facebook.presto.sql.tree.LongLiteral;
@@ -118,6 +120,7 @@ public class ModelCompiler {
         //
         // Code generation begins here.
         //
+        System.out.println(constraintForAlls);
         return backend.generateModelCode(irContext, nonConstraintForAlls, constraintForAlls, objFunctionForAlls);
     }
 
@@ -292,6 +295,7 @@ public class ModelCompiler {
     private ImmutableList<Qualifier> processWhereExpression(final Expression expression,
                                                             final Set<IRTable> tablesReferencedInView,
                                                             final boolean isAggregate) {
+        System.out.println("!!!!!! " + expression);
         final ExpressionTraverser traverser = new ExpressionTraverser();
         traverser.process(expression);
         final ArrayDeque<Node> stack = traverser.getExpressionStack();
@@ -422,11 +426,21 @@ public class ModelCompiler {
                 final ArithmeticUnaryExpression.Sign sign = ((ArithmeticUnaryExpression) node).getSign();
                 if (sign.equals(ArithmeticUnaryExpression.Sign.MINUS)) {
                     final BinaryOperatorPredicate operatorPredicate =
-                        new BinaryOperatorPredicate("*", new MonoidLiteral<>(-1L, Long.class), innerExpr);
+                            new BinaryOperatorPredicate("*", new MonoidLiteral<>(-1L, Long.class), innerExpr);
                     operands.push(operatorPredicate);
                 }
+            } else if (node instanceof IsNullPredicate) {
+                final Expr innerExpr = operands.pop();
+                final org.dcm.compiler.monoid.IsNullPredicate isNullPredicate =
+                        new org.dcm.compiler.monoid.IsNullPredicate(innerExpr);
+                operands.push(isNullPredicate);
+            } else if (node instanceof IsNotNullPredicate) {
+                final Expr innerExpr = operands.pop();
+                final org.dcm.compiler.monoid.IsNotNullPredicate isNotNullPredicate =
+                        new org.dcm.compiler.monoid.IsNotNullPredicate(innerExpr);
+                operands.push(isNotNullPredicate);
             } else {
-                throw new IllegalArgumentException("Unknown type stack");
+                throw new IllegalArgumentException("Unknown type stack " + node);
             }
         }
         return operands;

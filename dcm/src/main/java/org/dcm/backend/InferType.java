@@ -15,6 +15,8 @@ import org.dcm.compiler.monoid.ExistsPredicate;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.Head;
+import org.dcm.compiler.monoid.IsNotNullPredicate;
+import org.dcm.compiler.monoid.IsNullPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
@@ -105,7 +107,20 @@ class InferType extends MonoidVisitor<String, Void> {
     @Nullable
     @Override
     protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final Void context) {
+        // TODO: This is incomplete. It can be boolean if node.getArgument() is const.
         return "IntVar";
+    }
+
+    @Nullable
+    @Override
+    protected String visitIsNullPredicate(final IsNullPredicate node, @Nullable final Void context) {
+        return Objects.requireNonNull(visit(node.getArgument(), context)).equals("IntVar") ? "IntVar" : "Boolean";
+    }
+
+    @Nullable
+    @Override
+    protected String visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final Void context) {
+        return Objects.requireNonNull(visit(node.getArgument(), context)).equals("IntVar") ? "IntVar" : "Boolean";
     }
 
     @Nullable

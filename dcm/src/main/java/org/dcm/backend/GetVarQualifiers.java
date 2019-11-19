@@ -13,6 +13,8 @@ import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.GroupByQualifier;
+import org.dcm.compiler.monoid.IsNotNullPredicate;
+import org.dcm.compiler.monoid.IsNullPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidVisitor;
@@ -78,6 +80,19 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
     @Override
     protected QualifiersList visitMonoidFunction(final MonoidFunction node,
                                                  @Nullable final QualifiersList context) {
+        return context;
+    }
+
+    @Nullable
+    @Override
+    protected QualifiersList visitIsNotNullPredicate(final IsNotNullPredicate node,
+                                                     @Nullable final QualifiersList context) {
+        return context;
+    }
+
+    @Nullable
+    @Override
+    protected QualifiersList visitIsNullPredicate(final IsNullPredicate node, @Nullable final QualifiersList context) {
         return context;
     }
 

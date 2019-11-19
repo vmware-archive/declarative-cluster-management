@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,6 +64,41 @@ public class ModelTest {
         assertEquals(4, fetch.size());
     }
 
+    @Test
+    public void nullTest() {
+        final String modelName = "nullConstraints";
+
+        final DSLContext conn = setup();
+        conn.execute("create table t1(c1 integer, c2 integer, controllable__c3 integer, primary key (c1))");
+
+        // wrong sql with ambiguous field
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW constraint_for_c2_null AS " +
+                "SELECT * FROM t1 " +
+                "where c2 is not null OR controllable__c3 = 1;" +
+
+                "CREATE VIEW constraint_for_c2_not_null AS " +
+                "SELECT * FROM t1 " +
+                "where c2 is null OR controllable__c3 = 2;"
+        );
+
+        final Model model = buildModel(conn, views, modelName);
+
+        conn.execute("insert into t1 values (1, null, 19)");
+        conn.execute("insert into t1 values (2, null, 19)");
+        conn.execute("insert into t1 values (3, 3, 19)");
+        conn.execute("insert into t1 values (4, 4, 19)");
+
+        model.updateData();
+        final Result<? extends Record> fetch = model.solveModelWithoutTableUpdates(Set.of("T1"))
+                                                    .get("T1");
+        System.out.println(fetch);
+        assertEquals(4, fetch.size());
+        assertEquals(1, fetch.get(0).get("CONTROLLABLE__C3"));
+        assertEquals(1, fetch.get(1).get("CONTROLLABLE__C3"));
+        assertEquals(2, fetch.get(2).get("CONTROLLABLE__C3"));
+        assertEquals(2, fetch.get(3).get("CONTROLLABLE__C3"));
+    }
 
     @Test
     public void controllableTest() {
@@ -105,8 +141,8 @@ public class ModelTest {
 
 
     @Test
-    public void nullTest() {
-        final String modelName = "nullConstraint";
+    public void noConstraintTest() {
+        final String modelName = "noConstraint";
 
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId varchar(100))");

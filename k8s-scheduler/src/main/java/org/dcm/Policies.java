@@ -84,14 +84,14 @@ class Policies {
             "           and inter_pod_affinity_matches.matches = b.pod_name" +
                         // If the pod is affine only to itself and no others, it can be placed anywhere
             "           and (num_matches = 1 or inter_pod_affinity_matches.matches != pods_to_assign.pod_name)" +
-            "           and inter_pod_affinity_matches.node_name = 'null'))" + // pending pods
+            "           and inter_pod_affinity_matches.node_name is null))" + // pending pods
 
             // Affinity to running pods...
             "   or pods_to_assign.controllable__node_name in " +
             "         (select inter_pod_affinity_matches.node_name " +
             "          from inter_pod_affinity_matches " +
             "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
-            "          and inter_pod_affinity_matches.node_name != 'null')"; // running pods
+            "          and inter_pod_affinity_matches.node_name is not null)"; // running pods
         return new Policy("InterPodAffinity", constraint);
     }
 
@@ -117,14 +117,14 @@ class Policies {
             "           and inter_pod_anti_affinity_matches.matches != pods_to_assign.pod_name" +
                         // next clause assumes that a pod cannot be anti-affine to itself
             "           and inter_pod_anti_affinity_matches.matches = b.pod_name" +
-            "           and inter_pod_anti_affinity_matches.node_name = 'null'))" + // pending pods
+            "           and inter_pod_anti_affinity_matches.node_name is null))" + // pending pods
 
             // Affinity to running pods...
             "   or pods_to_assign.controllable__node_name in " +
             "         (select inter_pod_affinity_matches.node_name " +
             "          from inter_pod_affinity_matches " +
             "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
-            "          and inter_pod_affinity_matches.node_name != 'null')"; // running pods
+            "          and inter_pod_affinity_matches.node_name is not null)"; // running pods
         return new Policy("InterPodAntiAffinity", constraint);
     }
 

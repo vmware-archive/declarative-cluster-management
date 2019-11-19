@@ -37,6 +37,8 @@ import org.dcm.compiler.monoid.ExistsPredicate;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.GroupByQualifier;
+import org.dcm.compiler.monoid.IsNotNullPredicate;
+import org.dcm.compiler.monoid.IsNullPredicate;
 import org.dcm.compiler.monoid.JoinPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
@@ -969,6 +971,24 @@ public class OrToolsSolver implements ISolverBackend {
         protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final Boolean context) {
             final String processedArgument = visit(node.getArgument(), context);
             return String.format("o.exists(%s)", processedArgument);
+        }
+
+        @Nullable
+        @Override
+        protected String visitIsNullPredicate(final IsNullPredicate node, @Nullable final Boolean context) {
+            final String type = inferType(node.getArgument());
+            final String processedArgument = visit(node.getArgument(), context);
+            Preconditions.checkArgument(!type.equals("IntVar"));
+            return String.format("%s == null", processedArgument);
+        }
+
+        @Nullable
+        @Override
+        protected String visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final Boolean context) {
+            final String type = inferType(node.getArgument());
+            final String processedArgument = visit(node.getArgument(), context);
+            Preconditions.checkArgument(!type.equals("IntVar"));
+            return String.format("%s != null", processedArgument);
         }
 
         @Nullable
