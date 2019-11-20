@@ -14,6 +14,7 @@ import com.facebook.presto.sql.tree.CreateView;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import org.dcm.backend.ISolverBackend;
+import org.dcm.backend.MinizincSolver;
 import org.dcm.backend.OrToolsSolver;
 import org.dcm.compiler.ModelCompiler;
 import org.jooq.Constraint;
@@ -31,6 +32,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +41,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.jooq.impl.DSL.bitAnd;
 import static org.jooq.impl.DSL.row;
 import static org.jooq.impl.DSL.values;
 
@@ -67,13 +70,13 @@ public class Model {
 
 
     @SuppressWarnings("unused")
-    private Model(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
-                  final File modelFile, final File dataFile, final Conf conf) {
+    private Model(final DSLContext dbCtx, final ISolverBackend backend,
+                  final List<Table<?>> tables, final List<String> views,
+                  final Conf conf) {
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
-//        this.backend = new MinizincSolver(modelFile, dataFile, conf);
-        this.backend = new OrToolsSolver();
+        this.backend = backend;
         final List<CreateView> viewsInPolicy = views.stream().map(
                 view -> {
                     try {
@@ -199,7 +202,38 @@ public class Model {
     public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
                                                 final List<String> views, final File modelFile,
                                                 final File dataFile, final Conf conf) {
-        return new Model(dslContext, tables, views, modelFile, dataFile, conf);
+        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, conf), tables, views, conf);
+    }
+
+    /**
+     * Builds a Minizinc model out of dslContext and a list of tables.
+     *
+     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
+     * @param solverBackend A solver implementation. See the ISolverBackend class.
+     * @param tables A set of tables for which the Minzinc model will be generated
+     * @param conf configuration object
+     * @return An initialized Model instance with a populated modelFile
+     */
+    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
+    public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
+                                                final List<Table<?>> tables, final List<String> views, final Conf conf) {
+        return new Model(dslContext, solverBackend, tables, views, conf);
+    }
+
+
+    /**
+     * Builds a Minizinc model out of dslContext and a list of tables.
+     *
+     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
+     * @param solverBackend A solver implementation. See the ISolverBackend class.
+     * @param conf configuration object
+     * @return An initialized Model instance with a populated modelFile
+     */
+    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
+    public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
+                                                final List<String> views, final Conf conf) {
+        final List<Table<?>> tables = getTablesFromContext(dslContext);
+        return buildModel(dslContext, solverBackend, tables, views, conf);
     }
 
     /**

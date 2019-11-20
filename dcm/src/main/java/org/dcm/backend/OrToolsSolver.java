@@ -89,7 +89,7 @@ import java.util.stream.Stream;
  * which can be invoked to run the solver.
  */
 public class OrToolsSolver implements ISolverBackend {
-    private static final String OR_TOOLS_LIB_ENV = "OR_TOOLS_LIB";
+    public static final String OR_TOOLS_LIB_ENV = "OR_TOOLS_LIB";
     private static final String GENERATED_BACKEND_CLASS_FILE_PATH = "/tmp";
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
