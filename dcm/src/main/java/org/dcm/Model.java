@@ -15,7 +15,6 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import org.dcm.backend.ISolverBackend;
 import org.dcm.backend.MinizincSolver;
-import org.dcm.backend.OrToolsSolver;
 import org.dcm.compiler.ModelCompiler;
 import org.jooq.Constraint;
 import org.jooq.DSLContext;
@@ -32,7 +31,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -41,7 +39,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static org.jooq.impl.DSL.bitAnd;
 import static org.jooq.impl.DSL.row;
 import static org.jooq.impl.DSL.values;
 
@@ -216,7 +213,8 @@ public class Model {
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
     public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
-                                                final List<Table<?>> tables, final List<String> views, final Conf conf) {
+                                                final List<Table<?>> tables, final List<String> views,
+                                                final Conf conf) {
         return new Model(dslContext, solverBackend, tables, views, conf);
     }
 

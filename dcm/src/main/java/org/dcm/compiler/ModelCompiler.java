@@ -422,11 +422,9 @@ public class ModelCompiler {
             } else if (node instanceof ArithmeticUnaryExpression) {
                 final Expr innerExpr = operands.pop();
                 final ArithmeticUnaryExpression.Sign sign = ((ArithmeticUnaryExpression) node).getSign();
-                if (sign.equals(ArithmeticUnaryExpression.Sign.MINUS)) {
-                    final BinaryOperatorPredicate operatorPredicate =
-                            new BinaryOperatorPredicate("*", new MonoidLiteral<>(-1L, Long.class), innerExpr);
-                    operands.push(operatorPredicate);
-                }
+                final String signStr = sign.equals(ArithmeticUnaryExpression.Sign.MINUS) ? "-" : "";
+                final MonoidFunction operatorPredicate = new MonoidFunction(signStr, innerExpr);
+                operands.push(operatorPredicate);
             } else if (node instanceof IsNullPredicate) {
                 final Expr innerExpr = operands.pop();
                 final org.dcm.compiler.monoid.IsNullPredicate isNullPredicate =

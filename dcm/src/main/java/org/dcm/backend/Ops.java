@@ -100,6 +100,10 @@ public class Ops {
         return ret;
     }
 
+    public int mult(final int left, final int right) {
+        return left * right;
+    }
+
     public IntVar mult(final int left, final IntVar right) {
         return mult(right, left);
     }

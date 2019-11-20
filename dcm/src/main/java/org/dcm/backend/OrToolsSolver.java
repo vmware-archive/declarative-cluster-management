@@ -931,7 +931,10 @@ public class OrToolsSolver implements ISolverBackend {
 
             if (node.getFunctionName().equalsIgnoreCase("not")) {
                 return String.format("o.not(%s)", visit(node.getArgument(), isFunctionContext));
+            } else if (node.getFunctionName().equalsIgnoreCase("-")) {
+                return String.format("o.mult(-1, %s)", visit(node.getArgument(), isFunctionContext));
             }
+
 
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.

@@ -9,7 +9,6 @@ package org.dcm;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import org.dcm.backend.ISolverBackend;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.backend.OrToolsSolver;
 import org.jooq.DSLContext;
@@ -18,9 +17,7 @@ import org.jooq.Result;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.File;
@@ -52,7 +49,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void noopTest(final ISolverBackend solver) {
+    public void noopTest(final SolverConfig solver) {
         final String modelName = "noopConstraints";
 
         final DSLContext conn = setup();
@@ -74,7 +71,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void nullTest(final ISolverBackend solver) {
+    public void nullTest(final SolverConfig solver) {
         final String modelName = "nullConstraints";
 
         final DSLContext conn = setup();
@@ -111,27 +108,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void controllableTest(final ISolverBackend solver) {
-        final String modelName = "controllableTest";
-
-        final DSLContext conn = setup();
-        conn.execute("create table placement(groupId integer, controllable__hostId varchar(36))");
-
-        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
-
-        conn.execute("insert into placement values (1, 'h1')");
-        conn.execute("insert into placement values (2, 'h2')");
-        conn.execute("insert into placement values (3, 'h3')");
-        conn.execute("insert into placement values (4, 'h4')");
-
-        model.updateData();
-        model.solveModel();
-    }
-
-
-    @ParameterizedTest
-    @MethodSource("solvers")
-    public void solveModelWithUpdateTest(final ISolverBackend solver) {
+    public void solveModelWithUpdateTest(final SolverConfig solver) {
         final String modelName = "noopConstraints";
 
         final DSLContext conn = setup();
@@ -153,7 +130,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void noConstraintTest(final ISolverBackend solver) {
+    public void noConstraintTest(final SolverConfig solver) {
         final String modelName = "noConstraint";
 
         final DSLContext conn = setup();
@@ -173,7 +150,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void longSolverTest(final ISolverBackend solver) {
+    public void longSolverTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "longSolverTest";
 
@@ -218,7 +195,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void stringInForeignKey(final ISolverBackend solver) {
+    public void stringInForeignKey(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "stringInForeignKey";
 
@@ -276,7 +253,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void innerCountTest(final ISolverBackend solver) {
+    public void innerCountTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "innerCountTest";
 
@@ -332,7 +309,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void innerSubqueryCountTest(final ISolverBackend solver) {
+    public void innerSubqueryCountTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "innerSubqueryCountTest";
 
@@ -384,7 +361,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void ambiguousFieldsInViewTest(final ISolverBackend solver) {
+    public void ambiguousFieldsInViewTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "ambiguousFieldsInViewTest";
 
@@ -414,7 +391,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void twoTableJoinInViewTest(final ISolverBackend solver) {
+    public void twoTableJoinInViewTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "twoTableJoinInViewTest";
 
@@ -458,7 +435,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void tableWithSubqueryInViewTest(final ISolverBackend solver) {
+    public void tableWithSubqueryInViewTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "tableWithSubqueryInViewTest";
 
@@ -499,7 +476,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testUnaryOperator(final ISolverBackend solver) {
+    public void testUnaryOperator(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testUnaryOperator";
 
@@ -536,7 +513,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testAggregateWithMultiplePredicates(final ISolverBackend solver) {
+    public void testAggregateWithMultiplePredicates(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testAggregateWithMultiplePredicates";
 
@@ -573,7 +550,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testAggregateKubernetesBug(final ISolverBackend solver) {
+    public void testAggregateKubernetesBug(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testAggregateWithMultiplePredicates";
 
@@ -646,7 +623,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void viewOfViewWithoutControllableShouldNotBeVar(final ISolverBackend solver) {
+    public void viewOfViewWithoutControllableShouldNotBeVar(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "viewOfViewWithoutControllableShouldNotBeVar";
 
@@ -680,7 +657,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void negativeValueOfSelectedItem(final ISolverBackend solver) {
+    public void negativeValueOfSelectedItem(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "negativeValueOfSelectedItem";
 
@@ -712,7 +689,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testExistsOperator(final ISolverBackend solver) {
+    public void testExistsOperator(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testExistsOperator";
 
@@ -750,7 +727,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void createsOptVariable(final ISolverBackend solver) {
+    public void createsOptVariable(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "createsOptVariable";
 
@@ -780,7 +757,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testControllableInHead(final ISolverBackend solver) {
+    public void testControllableInHead(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testControllableInHead";
 
@@ -830,7 +807,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testControllableInJoin(final ISolverBackend solver) {
+    public void testControllableInJoin(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testControllableInJoin";
 
@@ -870,7 +847,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testForAllWithJoin(final ISolverBackend solver) {
+    public void testForAllWithJoin(final SolverConfig solver) {
         final String modelName = "testForAllWithJoin";
         final DSLContext conn = setup();
         conn.execute("create table t1\n" +
@@ -890,7 +867,7 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, 1)");
         conn.execute("insert into t2 values (1)");
         conn.execute("insert into t2 values (2)");
-        final Model model = buildModel(conn, Collections.singletonList(pod_info_constant), modelName);
+        final Model model = buildModel(conn, solver, Collections.singletonList(pod_info_constant), modelName);
         model.updateData();
         model.solveModel();
         final Result<Record> t1 = conn.selectFrom("t1").fetch();
@@ -902,7 +879,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testControllableInJoinLarge(final ISolverBackend solver) {
+    public void testControllableInJoinLarge(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testControllableInJoinLarge";
 
@@ -946,7 +923,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void singleTableView(final ISolverBackend solver) {
+    public void singleTableView(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "singleTableView";
 
@@ -977,7 +954,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void subqueryDifferentContexts(final ISolverBackend solver) {
+    public void subqueryDifferentContexts(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "subqueryDifferentContexts";
 
@@ -1022,7 +999,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testTableAliasGeneration(final ISolverBackend solver) {
+    public void testTableAliasGeneration(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testTableAliasGeneration";
 
@@ -1067,7 +1044,7 @@ public class ModelTest {
     @Disabled
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testViewAliasGeneration(final ISolverBackend solver) {
+    public void testViewAliasGeneration(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testViewAliasGeneration";
 
@@ -1119,7 +1096,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testViewReference(final ISolverBackend solver) {
+    public void testViewReference(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testViewReference";
 
@@ -1165,7 +1142,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testStringLiteralInModelButNotInData(final ISolverBackend solver) {
+    public void testStringLiteralInModelButNotInData(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testStringLiteralInModelButNotInData";
 
@@ -1190,7 +1167,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testNegativeNumber(final ISolverBackend solver) {
+    public void testNegativeNumber(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testNegativeNumber";
 
@@ -1218,7 +1195,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testGroupByGeneration(final ISolverBackend solver) {
+    public void testGroupByGeneration(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testGroupByGeneration";
 
@@ -1261,14 +1238,15 @@ public class ModelTest {
         final Map<String, Result<? extends Record>> podInfo =
                 model.solveModelWithoutTableUpdates(Collections.singleton("POD_INFO"));
         podInfo.get("POD_INFO").forEach(
-                e -> assertEquals("n1", e.get("CONTROLLABLE__NODE_NAME"))
+                e -> assertTrue(e.get("CONTROLLABLE__NODE_NAME").equals("n1") ||
+                                e.get("CONTROLLABLE__NODE_NAME").equals("n2"))
         );
     }
 
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testAggregateGeneration(final ISolverBackend solver) {
+    public void testAggregateGeneration(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testAggregateGeneration";
 
@@ -1311,7 +1289,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testMembership(final ISolverBackend solver) {
+    public void testMembership(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testMembership";
 
@@ -1353,7 +1331,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testSelectExpression(final ISolverBackend solver) {
+    public void testSelectExpression(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testSelectExpression";
 
@@ -1402,7 +1380,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testMultiColumnGroupBy(final ISolverBackend solver) {
+    public void testMultiColumnGroupBy(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testMultiColumnGroupBy";
 
@@ -1454,7 +1432,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testHavingClause(final ISolverBackend solver) {
+    public void testHavingClause(final SolverConfig solver) {
         final String modelName = "testHavingClause";
         // create database
         final DSLContext conn = setup();
@@ -1513,7 +1491,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void testAllQueries(final ISolverBackend solver) {
+    public void testAllQueries(final SolverConfig solver) {
         final String modelName = "testAllQueries";
         final DSLContext conn = setup();
         conn.execute("create table pod_info\n" +
@@ -1775,7 +1753,7 @@ public class ModelTest {
 
     @ParameterizedTest
     @MethodSource("solvers")
-    public void corfuModel(final ISolverBackend solver) {
+    public void corfuModel(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "corfuModel";
 
@@ -1883,18 +1861,22 @@ public class ModelTest {
      * @return built Model
      */
     @CanIgnoreReturnValue
-    private Model buildModel(final DSLContext conn, final List<String> views, final String testName) {
+    private Model buildModel(final DSLContext conn, final SolverConfig solverBackend, final List<String> views,
+                             final String testName) {
         // get model file for the current test
         final File modelFile = new File("src/test/resources/" + testName + ".mzn");
         // create data file
         final File dataFile = new File("/tmp/" + testName + ".dzn");
-        return Model.buildModel(conn, views, modelFile, dataFile);
-    }
-
-    @CanIgnoreReturnValue
-    private Model buildModel(final DSLContext conn, final ISolverBackend solverBackend, final List<String> views,
-                             final String testName) {
-        return Model.buildModel(conn, solverBackend, views, new Conf());
+        switch (solverBackend) {
+            case MinizincSolver:
+                final MinizincSolver minizincSolver = new MinizincSolver(modelFile, dataFile, new Conf());
+                return Model.buildModel(conn, minizincSolver, views, new Conf());
+            case OrToolsSolver:
+                final OrToolsSolver orToolsSolver = new OrToolsSolver();
+                return Model.buildModel(conn, orToolsSolver, views, new Conf());
+            default:
+                throw new IllegalArgumentException(solverBackend.toString());
+        }
     }
 
     /*
@@ -1921,17 +1903,16 @@ public class ModelTest {
         return DriverManager.getConnection(url, properties);
     }
 
-
-    public static Stream solvers() {
-        // get model file for the current test
-        final File modelFile = new File("src/test/resources/test.mzn");
-        // create data file
-        final File dataFile = new File("/tmp/test.dzn");
+    static Stream solvers() {
         if (System.getenv().get(OrToolsSolver.OR_TOOLS_LIB_ENV) != null) {
-            return Stream.of(new OrToolsSolver(),
-                             new MinizincSolver(modelFile, dataFile, new Conf()));
+            return Stream.of(SolverConfig.OrToolsSolver, SolverConfig.MinizincSolver);
         } else {
-            return Stream.of(new MinizincSolver(modelFile, dataFile, new Conf()));
+            return Stream.of(SolverConfig.MinizincSolver);
         }
+    }
+
+    enum SolverConfig {
+        MinizincSolver,
+        OrToolsSolver
     }
 }
