@@ -84,4 +84,16 @@ public class MonoidVisitor<T, C> {
         node.getArgument().acceptVisitor(this, context);
         return null;
     }
+
+    @Nullable
+    protected T visitIsNullPredicate(final IsNullPredicate node, @Nullable final C context) {
+        node.getArgument().acceptVisitor(this, context);
+        return null;
+    }
+
+    @Nullable
+    protected T visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final C context) {
+        node.getArgument().acceptVisitor(this, context);
+        return null;
+    }
 }

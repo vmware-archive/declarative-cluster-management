@@ -36,7 +36,8 @@ class RewriteCountFunction {
                 if (!(function.getArgument() instanceof ColumnIdentifier)) {
                     throw new IllegalStateException("RewriteCountFunction is only safe to use on column identifiers");
                 }
-                final MonoidFunction newFunction = new MonoidFunction("sum", new MonoidLiteral<>(1));
+                final MonoidFunction newFunction = new MonoidFunction("sum",
+                                                                      new MonoidLiteral<>(1L, Long.class));
                 function.getAlias().ifPresent(newFunction::setAlias);
                 return newFunction;
             }
