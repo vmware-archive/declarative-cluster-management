@@ -9,6 +9,7 @@ package org.dcm.compiler;
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
+import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.DereferenceExpression;
@@ -19,8 +20,11 @@ import com.facebook.presto.sql.tree.GroupBy;
 import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.InPredicate;
+import com.facebook.presto.sql.tree.IsNotNullPredicate;
+import com.facebook.presto.sql.tree.IsNullPredicate;
 import com.facebook.presto.sql.tree.Literal;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
+import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.NotExpression;
 import com.facebook.presto.sql.tree.Query;
@@ -212,17 +216,30 @@ public class ModelCompiler {
                 final Expression expression = singleColumn.getExpression();
                 if (createIrTableForView) {
                     if (singleColumn.getAlias().isPresent()) {
-                        final IRColumn column = new IRColumn(viewTable, null, singleColumn.getAlias()
-                                .get().toString());
+                        final IRColumn.FieldType fieldType;
+                        if (expression instanceof Identifier) {
+                            fieldType = irContext.getColumnIfUnique(expression.toString(), tables).getType();
+                        } else if (expression instanceof DereferenceExpression) {
+                            fieldType = getIRColumnFromDereferencedExpression((DereferenceExpression) expression)
+                                              .getType();
+                        } else {
+                            LOG.warn("Guessing FieldType for column {} in non-constraint view {} to be INT",
+                                      singleColumn.getAlias(), viewName);
+                            fieldType = IRColumn.FieldType.INT;
+                        }
+                        final IRColumn column = new IRColumn(viewTable, null, fieldType,
+                                                             singleColumn.getAlias().get().toString());
                         viewTable.addField(column);
                     } else if (expression instanceof Identifier) {
                         final IRColumn columnIfUnique = irContext.getColumnIfUnique(expression.toString(), tables);
-                        final IRColumn newColumn = new IRColumn(viewTable, null, columnIfUnique.getName());
+                        final IRColumn newColumn = new IRColumn(viewTable, null, columnIfUnique.getType(),
+                                                                columnIfUnique.getName());
                         viewTable.addField(newColumn);
                     } else if (expression instanceof DereferenceExpression) {
                         final DereferenceExpression derefExpression = (DereferenceExpression) expression;
                         final IRColumn irColumn = getIRColumnFromDereferencedExpression(derefExpression);
-                        final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getName());
+                        final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getType(),
+                                                                irColumn.getName());
                         viewTable.addField(newColumn);
                     } else {
                         throw new RuntimeException("SelectItem type is not a column but does not have an alias");
@@ -357,9 +374,17 @@ public class ModelCompiler {
                 final ColumnIdentifier identifier = getColumnIdentifierFromField(node, tablesReferencedInView);
                 operands.push(identifier);
             } else if (isLiteral(node)) {
-                final MonoidLiteral literal = node instanceof StringLiteral
-                                           ? new MonoidLiteral<>("\'" + ((StringLiteral) node).getValue() + "\'")
-                                           : new MonoidLiteral<>(node.toString());
+                final MonoidLiteral literal;
+                if (node instanceof StringLiteral) {
+                    literal = new MonoidLiteral<>("\'" + ((StringLiteral) node).getValue() + "\'",
+                            String.class);
+                } else if (node instanceof LongLiteral) {
+                    literal = new MonoidLiteral<>(Long.valueOf(node.toString()), Long.class);
+                } else if (node instanceof BooleanLiteral) {
+                    literal = new MonoidLiteral<>(Boolean.valueOf(node.toString()), Boolean.class);
+                } else {
+                    throw new UnsupportedOperationException("I don't know how to handle this literal " + node);
+                }
                 operands.push(literal);
             } else if (node instanceof ArithmeticBinaryExpression) {
                 assert operands.size() >= 2;
@@ -400,8 +425,18 @@ public class ModelCompiler {
                 final String signStr = sign.equals(ArithmeticUnaryExpression.Sign.MINUS) ? "-" : "";
                 final MonoidFunction operatorPredicate = new MonoidFunction(signStr, innerExpr);
                 operands.push(operatorPredicate);
+            } else if (node instanceof IsNullPredicate) {
+                final Expr innerExpr = operands.pop();
+                final org.dcm.compiler.monoid.IsNullPredicate isNullPredicate =
+                        new org.dcm.compiler.monoid.IsNullPredicate(innerExpr);
+                operands.push(isNullPredicate);
+            } else if (node instanceof IsNotNullPredicate) {
+                final Expr innerExpr = operands.pop();
+                final org.dcm.compiler.monoid.IsNotNullPredicate isNotNullPredicate =
+                        new org.dcm.compiler.monoid.IsNotNullPredicate(innerExpr);
+                operands.push(isNotNullPredicate);
             } else {
-                throw new IllegalArgumentException("Unknown type stack");
+                throw new IllegalArgumentException("Unknown type stack " + node);
             }
         }
         return operands;

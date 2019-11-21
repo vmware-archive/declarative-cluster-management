@@ -9,13 +9,16 @@ package org.dcm;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import org.dcm.backend.MinizincSolver;
+import org.dcm.backend.OrToolsSolver;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.File;
 import java.sql.Connection;
@@ -25,6 +28,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,15 +43,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * access them with classLoader.getResource().
  */
 public class ModelTest {
+    static {
+        System.getProperties().setProperty("org.jooq.no-logo", "true");
+    }
 
-    @Test
-    public void noopTest() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void noopTest(final SolverConfig solver) {
         final String modelName = "noopConstraints";
 
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId integer, hostId varchar(36))");
 
-        final Model model = buildModel(conn, Collections.emptyList(), modelName);
+        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
 
         conn.execute("insert into placement values (1, 'h1')");
         conn.execute("insert into placement values (2, 'h2')");
@@ -60,14 +69,52 @@ public class ModelTest {
         assertEquals(4, fetch.size());
     }
 
-    @Test
-    public void solveModelWithUpdateTest() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void nullTest(final SolverConfig solver) {
+        final String modelName = "nullConstraints";
+
+        final DSLContext conn = setup();
+        conn.execute("create table t1(c1 integer, c2 integer, controllable__c3 integer, primary key (c1))");
+
+        // wrong sql with ambiguous field
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW constraint_for_c2_null AS " +
+                "SELECT * FROM t1 " +
+                "where c2 is not null OR controllable__c3 = 1;" +
+
+                "CREATE VIEW constraint_for_c2_not_null AS " +
+                "SELECT * FROM t1 " +
+                "where c2 is null OR controllable__c3 = 2;"
+        );
+
+        final Model model = buildModel(conn, solver, views, modelName);
+
+        conn.execute("insert into t1 values (1, null, 19)");
+        conn.execute("insert into t1 values (2, null, 19)");
+        conn.execute("insert into t1 values (3, 3, 19)");
+        conn.execute("insert into t1 values (4, 4, 19)");
+
+        model.updateData();
+        final Result<? extends Record> fetch = model.solveModelWithoutTableUpdates(Set.of("T1"))
+                                                    .get("T1");
+        System.out.println(fetch);
+        assertEquals(4, fetch.size());
+        assertEquals(1, fetch.get(0).get("CONTROLLABLE__C3"));
+        assertEquals(1, fetch.get(1).get("CONTROLLABLE__C3"));
+        assertEquals(2, fetch.get(2).get("CONTROLLABLE__C3"));
+        assertEquals(2, fetch.get(3).get("CONTROLLABLE__C3"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void solveModelWithUpdateTest(final SolverConfig solver) {
         final String modelName = "noopConstraints";
 
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId integer, hostId varchar(36))");
 
-        final Model model = buildModel(conn, Collections.emptyList(), modelName);
+        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
 
         conn.execute("insert into placement values (1, 'h1')");
         conn.execute("insert into placement values (2, 'h2')");
@@ -81,14 +128,15 @@ public class ModelTest {
     }
 
 
-    @Test
-    public void nullTest() {
-        final String modelName = "nullConstraint";
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void noConstraintTest(final SolverConfig solver) {
+        final String modelName = "noConstraint";
 
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId varchar(100))");
 
-        final Model model = buildModel(conn, Collections.emptyList(), modelName);
+        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
 
         conn.insertInto(DSL.table("placement"))
             .values(Collections.singletonList(null)).execute();
@@ -100,8 +148,9 @@ public class ModelTest {
         assertEquals(1, fetch.size());
     }
 
-    @Test
-    public void longSolverTest() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void longSolverTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "longSolverTest";
 
@@ -120,7 +169,7 @@ public class ModelTest {
                 ")");
 
         // build model - fails when building for the first time
-        final Model model = buildModel(conn, Collections.emptyList(), modelName);
+        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
 
         final int NUM_HOSTS = 20;
         final int NUM_STRIPES = 4;
@@ -144,8 +193,9 @@ public class ModelTest {
         // TODO: missing the assert. What to expect when the solver can return multiple results?
     }
 
-    @Test
-    public void stringInForeignKey() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void stringInForeignKey(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "stringInForeignKey";
 
@@ -175,7 +225,7 @@ public class ModelTest {
                 "having count(hosts.host_id) <= 2;\n"
         );
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
 
         // insert hosts
         conn.execute("insert into HOSTS values ('h1', true)");
@@ -201,8 +251,9 @@ public class ModelTest {
     }
 
 
-    @Test
-    public void innerCountTest() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void innerCountTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "innerCountTest";
 
@@ -223,12 +274,12 @@ public class ModelTest {
         // wrong sql with ambiguous field
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_exclude_non_data_nodes2 AS " +
-                "SELECT count(*) FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
+                "SELECT * FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
                 "group by hosts.host_id " +
                 "having count(hosts.host_id) <= 2;\n"
         );
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
 
         // insert hosts
         conn.execute("insert into HOSTS values ('h1', true)");
@@ -236,11 +287,11 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', true)");
         // insert stripes which do not use all the hosts (in this case h3)
         conn.execute("insert into STRIPES values (1,'h1')");
-        conn.execute("insert into STRIPES values (1,'h2')");
+        conn.execute("insert into STRIPES values (1,'h3')");
         conn.execute("insert into STRIPES values (2,'h1')");
-        conn.execute("insert into STRIPES values (2,'h2')");
+        conn.execute("insert into STRIPES values (2,'h3')");
         conn.execute("insert into STRIPES values (3,'h1')");
-        conn.execute("insert into STRIPES values (3,'h2')");
+        conn.execute("insert into STRIPES values (3,'h3')");
 
         // update and solve
         model.updateData();
@@ -250,12 +301,15 @@ public class ModelTest {
                 .fetch("CONTROLLABLE__HOST_ID");
 
         // check the size of the stripes
+        assertTrue(results.contains("h1"));
+        assertTrue(results.contains("h2"));
         assertTrue(results.contains("h3"));
     }
 
 
-    @Test
-    public void innerSubqueryCountTest() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void innerSubqueryCountTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "innerSubqueryCountTest";
 
@@ -277,10 +331,10 @@ public class ModelTest {
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_x AS " +
                 "SELECT * FROM hosts " +
-                "where (select count(hosts.host_id) from stripes) >= 2;\n"
+                "where (select count(stripes.stripe_id) from stripes) >= 2;\n"
         );
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
 
         // insert hosts
         conn.execute("insert into HOSTS values ('h1', true)");
@@ -302,11 +356,12 @@ public class ModelTest {
                 .fetch("CONTROLLABLE__HOST_ID");
 
         // check the size of the stripes
-        assertTrue(results.contains("h3"));
+        assertTrue(results.contains("h1") || results.contains("h2") || results.contains("h3"));
     }
 
-    @Test
-    public void ambiguousFieldsInViewTest() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void ambiguousFieldsInViewTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "ambiguousFieldsInViewTest";
 
@@ -331,11 +386,12 @@ public class ModelTest {
                 "SELECT * FROM hosts JOIN epochs ON epoch_id = epochs.epoch_id;");
 
         // build model
-        assertThrows(ModelException.class, () -> buildModel(conn, views, modelName));
+        assertThrows(ModelException.class, () -> buildModel(conn, solver, views, modelName));
     }
 
-    @Test
-    public void twoTableJoinInViewTest() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void twoTableJoinInViewTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "twoTableJoinInViewTest";
 
@@ -372,13 +428,14 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 3)");
 
         // build model - fails when building for the first time
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
-    @Test
-    public void tableWithSubqueryInViewTest() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void tableWithSubqueryInViewTest(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "tableWithSubqueryInViewTest";
 
@@ -411,14 +468,15 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void testUnaryOperator() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testUnaryOperator(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testUnaryOperator";
 
@@ -433,7 +491,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_t1 AS " +
-                "SELECT * FROM t1 where controllable__c2 in (select c1 from t1) and not(controllable__c2 = 1)");
+                "SELECT * FROM t1 where controllable__c2 in (select c1 from t1 as A) and not(controllable__c2 = 1)");
 
         // insert data
         conn.execute("insert into t1 values (1, 1)");
@@ -441,7 +499,7 @@ public class ModelTest {
         conn.execute("insert into t1 values (2, 1)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
 
@@ -453,8 +511,9 @@ public class ModelTest {
     }
 
 
-    @Test
-    public void testAggregateWithMultiplePredicates() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testAggregateWithMultiplePredicates(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testAggregateWithMultiplePredicates";
 
@@ -477,7 +536,7 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, 5)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
 
@@ -489,8 +548,9 @@ public class ModelTest {
     }
 
 
-    @Test
-    public void testAggregateKubernetesBug() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testAggregateKubernetesBug(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testAggregateWithMultiplePredicates";
 
@@ -558,11 +618,12 @@ public class ModelTest {
                 "   having count(node_labels.label_key) = (select count(*) from labels_to_check_for_presence));");
 
         // build model
-        buildModel(conn, views, modelName);
+        buildModel(conn, solver, views, modelName);
     }
 
-    @Test
-    public void viewOfViewWithoutControllableShouldNotBeVar() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void viewOfViewWithoutControllableShouldNotBeVar(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "viewOfViewWithoutControllableShouldNotBeVar";
 
@@ -588,14 +649,15 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // Should not be opt
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void negativeValueOfSelectedItem() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void negativeValueOfSelectedItem(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "negativeValueOfSelectedItem";
 
@@ -619,14 +681,15 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // Should not be opt
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void testExistsOperator() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testExistsOperator(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testExistsOperator";
 
@@ -651,7 +714,7 @@ public class ModelTest {
         conn.execute("insert into t2 values (3)");
 
         // Should not be opt
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
 
@@ -662,8 +725,9 @@ public class ModelTest {
 
 
 
-    @Test
-    public void createsOptVariable() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void createsOptVariable(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "createsOptVariable";
 
@@ -686,13 +750,14 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // Should not be opt
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
-    @Test
-    public void testControllableInHead() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testControllableInHead(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testControllableInHead";
 
@@ -734,14 +799,15 @@ public class ModelTest {
         conn.execute("insert into pod_ports_request values ('p1', '127.0.0.1', 1841, 'tcp')");
 
         // Should not be opt
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void testControllableInJoin() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testControllableInJoin(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testControllableInJoin";
 
@@ -750,14 +816,14 @@ public class ModelTest {
 
         conn.execute("create table node_info\n" +
                 "(\n" +
-                "  name varchar(36) not null primary key,\n" +
+                "  name integer not null primary key,\n" +
                 "  cpu_allocatable integer not null\n" +
                 ")\n");
         conn.execute("create table pod_info\n" +
                 "(\n" +
                 "  pod_name varchar(100) not null primary key,\n" +
                 "  status varchar(36) not null,\n" +
-                "  controllable__node_name varchar(36) not null,\n" +
+                "  controllable__node_name integer not null,\n" +
                 "  cpu_request integer not null,\n" +
                 "  foreign key(controllable__node_name) references node_info(name)\n" +
                 ")\n");
@@ -770,17 +836,18 @@ public class ModelTest {
                 "where status = 'Pending'\n" +
                 "group by node_info.name, node_info.cpu_allocatable;");
 
-        conn.execute("insert into node_info values ('n1', 10)");
-        conn.execute("insert into pod_info values ('p1', 'Pending', 'n1', 5)");
+        conn.execute("insert into node_info values (1, 10)");
+        conn.execute("insert into pod_info values ('p1', 'Pending', 1, 5)");
 
         // Should not be opt
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
-    @Test
-    public void testForAllWithJoin() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testForAllWithJoin(final SolverConfig solver) {
         final String modelName = "testForAllWithJoin";
         final DSLContext conn = setup();
         conn.execute("create table t1\n" +
@@ -800,7 +867,7 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, 1)");
         conn.execute("insert into t2 values (1)");
         conn.execute("insert into t2 values (2)");
-        final Model model = buildModel(conn, Collections.singletonList(pod_info_constant), modelName);
+        final Model model = buildModel(conn, solver, Collections.singletonList(pod_info_constant), modelName);
         model.updateData();
         model.solveModel();
         final Result<Record> t1 = conn.selectFrom("t1").fetch();
@@ -810,8 +877,9 @@ public class ModelTest {
     }
 
 
-    @Test
-    public void testControllableInJoinLarge() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testControllableInJoinLarge(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testControllableInJoinLarge";
 
@@ -841,20 +909,21 @@ public class ModelTest {
                 "group by node_info.name, node_info.cpu_allocatable;");
 
         for (int i = 0; i < 50; i++) {
-            conn.execute(String.format("insert into node_info values ('n%s', 10)", i));
+            conn.execute(String.format("insert into node_info values ('n%s', 100000)", i));
         }
         for (int i = 0; i < 100; i++) {
             conn.execute(String.format("insert into pod_info values ('p%s', 'Pending', 'n1', 5)", i));
         }
         // Should not be opt
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void singleTableView() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void singleTableView(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "singleTableView";
 
@@ -878,13 +947,14 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
-    @Test
-    public void subqueryDifferentContexts() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void subqueryDifferentContexts(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "subqueryDifferentContexts";
 
@@ -921,14 +991,15 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void testTableAliasGeneration() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testTableAliasGeneration(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testTableAliasGeneration";
 
@@ -965,14 +1036,15 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 'ACTIVE', 3)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
     @Disabled
-    @Test
-    public void testViewAliasGeneration() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testViewAliasGeneration(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testViewAliasGeneration";
 
@@ -1016,14 +1088,15 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 'ACTIVE', 3)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void testViewReference() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testViewReference(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testViewReference";
 
@@ -1059,14 +1132,17 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 'ACTIVE', 3)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
+
+        // Should not be unsat.
     }
 
 
-    @Test
-    public void testStringLiteralInModelButNotInData() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testStringLiteralInModelButNotInData(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testStringLiteralInModelButNotInData";
 
@@ -1083,14 +1159,15 @@ public class ModelTest {
         conn.execute("insert into t1 values ('some-other-string')");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void testNegativeNumber() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testNegativeNumber(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testNegativeNumber";
 
@@ -1107,7 +1184,7 @@ public class ModelTest {
         conn.execute("insert into t1 values (1)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
 
@@ -1116,9 +1193,60 @@ public class ModelTest {
         assertEquals(-10, fetch.get(0).intValue());
     }
 
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testGroupByGeneration(final SolverConfig solver) {
+        // model and data files will use this as its name
+        final String modelName = "testGroupByGeneration";
 
-    @Test
-    public void testAggregateGeneration() {
+        // create database
+        final DSLContext conn = setup();
+        conn.execute("create table node_info\n" +
+                "(\n" +
+                "  name varchar(36) not null primary key,\n" +
+                "  cpu_allocatable bigint not null,\n" +
+                "  memory_allocatable bigint not null\n" +
+                ")"
+        );
+        conn.execute("create table pod_info\n" +
+                "(\n" +
+                "  pod_name varchar(36) not null primary key,\n" +
+                "  controllable__node_name varchar(36) not null,\n" +
+                "  cpu_request bigint not null,\n" +
+                "  memory_request bigint not null,\n" +
+                "  foreign key(controllable__node_name) references node_info(name)\n" +
+                ")"
+        );
+
+        final List<String> views = toListOfViews(
+                "create view least_requested_sums as\n" +
+                        "select sum(pod_info.cpu_request) as cpu_load\n" +
+                        "       from pod_info join node_info on pod_info.cpu_request = node_info.cpu_allocatable " +
+                        " group by node_info.name;"
+        );
+
+        conn.execute("insert into node_info values ('n1', 1, 1)");
+        conn.execute("insert into node_info values ('n2', 10, 10)");
+        conn.execute("insert into pod_info values ('p1', 'n1', 1, 2)");
+        conn.execute("insert into pod_info values ('p2', 'n1', 1, 2)");
+        conn.execute("insert into pod_info values ('p3', 'n2', 1, 2)");
+        conn.execute("insert into pod_info values ('p4', 'n2', 2, 2)");
+
+        // build model
+        final Model model = buildModel(conn, solver, views, modelName);
+        model.updateData();
+        final Map<String, Result<? extends Record>> podInfo =
+                model.solveModelWithoutTableUpdates(Collections.singleton("POD_INFO"));
+        podInfo.get("POD_INFO").forEach(
+                e -> assertTrue(e.get("CONTROLLABLE__NODE_NAME").equals("n1") ||
+                                e.get("CONTROLLABLE__NODE_NAME").equals("n2"))
+        );
+    }
+
+
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testAggregateGeneration(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testAggregateGeneration";
 
@@ -1153,14 +1281,15 @@ public class ModelTest {
         conn.execute("insert into pod_info values ('p1', 'n1', 2, 2)");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
     }
 
 
-    @Test
-    public void testMembership() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testMembership(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testMembership";
 
@@ -1190,14 +1319,19 @@ public class ModelTest {
         conn.execute("insert into pod_info values ('p1', 'blah')");
 
         // build model
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solveModel();
+        final Result<Record> podInfo = conn.selectFrom("POD_INFO").fetch();
+        assertEquals(1, podInfo.size());
+        assertTrue(podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n1") ||
+                            podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n2"));
     }
 
 
-    @Test
-    public void testSelectExpression() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testSelectExpression(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testSelectExpression";
 
@@ -1206,20 +1340,8 @@ public class ModelTest {
         conn.execute("create table node_info\n" +
                 "(\n" +
                 "  name varchar(36) not null primary key,\n" +
-                "  unschedulable boolean not null,\n" +
-                "  out_of_disk boolean not null,\n" +
-                "  memory_pressure boolean not null,\n" +
-                "  disk_pressure boolean not null,\n" +
-                "  pid_pressure boolean not null,\n" +
-                "  ready boolean not null,\n" +
-                "  cpu_capacity bigint not null,\n" +
-                "  memory_capacity bigint not null,\n" +
-                "  ephemeral_storage_capacity bigint not null,\n" +
-                "  pods_capacity bigint not null,\n" +
                 "  cpu_allocatable bigint not null,\n" +
-                "  memory_allocatable bigint not null,\n" +
-                "  ephemeral_storage_allocatable bigint not null,\n" +
-                "  pods_allocatable bigint not null\n" +
+                "  memory_allocatable bigint not null\n" +
                 ")"
         );
         conn.execute("create table pod_info\n" +
@@ -1228,12 +1350,9 @@ public class ModelTest {
                 "  controllable__node_name varchar(36) not null,\n" +
                 "  cpu_request bigint not null,\n" +
                 "  memory_request bigint not null,\n" +
-                "  ephemeral_storage_request bigint not null,\n" +
-                "  pods_request bigint not null,\n" +
                 "  foreign key(controllable__node_name) references node_info(name)\n" +
                 ")"
         );
-
 
         final List<String> views = toListOfViews(
                 "create view least_requested as\n" +
@@ -1244,11 +1363,24 @@ public class ModelTest {
                     "            on pod_info.controllable__node_name = node_info.name\n" +
                     "       group by node_info.name;");
 
-        buildModel(conn, views, modelName);
+
+        for (int i = 0; i < 1; i++) {
+            conn.execute(String.format("insert into node_info values ('n%s', 1000, 2000)", i));
+        }
+        for (int i = 0; i < 10; i++) {
+            conn.execute(String.format("insert into pod_info values ('p%s', 'n0', 5, 10)", i));
+        }
+
+        final Model model = buildModel(conn, solver, views, modelName);
+        model.updateData();
+        final Map<String, Result<? extends Record>> results
+                = model.solveModelWithoutTableUpdates(Collections.singleton("LEAST_REQUESTED"));
+        assertEquals(0, results.size());
     }
 
-    @Test
-    public void testMultiColumnGroupBy() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testMultiColumnGroupBy(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "testMultiColumnGroupBy";
 
@@ -1294,12 +1426,13 @@ public class ModelTest {
                         "    having increasing(controllable__node_name) = true;"
         );
 
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
     }
 
-    @Test
-    public void testHavingClause() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testHavingClause(final SolverConfig solver) {
         final String modelName = "testHavingClause";
         // create database
         final DSLContext conn = setup();
@@ -1341,23 +1474,24 @@ public class ModelTest {
                 ")");
 
         final List<String> views = toListOfViews("create view constraint_capacity as\n" +
-                "select\n" +
-                "  node_info.name as name\n" +
-                "from\n" +
-                "  node_info\n" +
-                "  join pod_info on pod_info.controllable__node_name = node_info.name\n" +
-                "group by\n" +
-                "  node_info.name\n" +
-                "having\n" +
-                "  sum(pod_info.cpu_request) < node_info.cpu_allocatable and\n" +
-                "  sum(pod_info.memory_request) < node_info.memory_allocatable and\n" +
-                "  sum(pod_info.pods_request) < node_info.pods_allocatable;");
+            "select\n" +
+            "  node_info.name as name\n" +
+            "from\n" +
+            "  node_info\n" +
+            "  join pod_info on pod_info.controllable__node_name = node_info.name\n" +
+            "group by\n" +
+            "  node_info.name, node_info.cpu_allocatable, node_info.memory_allocatable, node_info.pods_allocatable\n" +
+            "having\n" +
+            "  sum(pod_info.cpu_request) < node_info.cpu_allocatable and\n" +
+            "  sum(pod_info.memory_request) < node_info.memory_allocatable and\n" +
+            "  sum(pod_info.pods_request) < node_info.pods_allocatable;");
 
-        buildModel(conn, views, modelName);
+        buildModel(conn, solver, views, modelName);
     }
 
-    @Test
-    public void testAllQueries() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testAllQueries(final SolverConfig solver) {
         final String modelName = "testAllQueries";
         final DSLContext conn = setup();
         conn.execute("create table pod_info\n" +
@@ -1527,10 +1661,10 @@ public class ModelTest {
                 "where (\n" +
                 "pod_with_affinity_expr.node_name in (\n" +
                 "select pod_with_labels.node_name as node_name\n" +
-                "from pod_with_labels join pod_with_affinity_expr on \n" +
-                "pod_with_affinity_expr.match_key = pod_with_labels.label_key and \n" +
-                "pod_with_affinity_expr.match_value = pod_with_labels.label_value and\n" +
-                "pod_with_affinity_expr.pod_name != pod_with_labels.pod_name \n" +
+                "from pod_with_labels as A join pod_with_affinity_expr as B on \n" +
+                "B.match_key = A.label_key and \n" +
+                "B.match_value = A.label_value and\n" +
+                "B.pod_name != A.pod_name \n" +
                 "where " +
                 "pod_with_affinity_expr.match_key = pod_with_labels.label_key and \n" +
                 "pod_with_affinity_expr.match_value = pod_with_labels.label_value and\n" +
@@ -1570,7 +1704,7 @@ public class ModelTest {
                         constraint_service_affinity_labels
         );
         final List<String> views = toListOfViews(stringBuilder.toString());
-        final Model model = buildModel(conn, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         assertThrows(ModelException.class, model::solveModel);
     }
@@ -1617,8 +1751,9 @@ public class ModelTest {
     }
 
 
-    @Test
-    public void corfuModel() {
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void corfuModel(final SolverConfig solver) {
         // model and data files will use this as its name
         final String modelName = "corfuModel";
 
@@ -1677,32 +1812,32 @@ public class ModelTest {
         // non-constraint views
         // TODO: this is the correct view but atm the compiler doesnt support that
         final List<String> views = toListOfViews("create view constraint_retain_old_values_hosts as\n" +
-                "select * from hosts where epoch_id = (select max(epoch_id) from hosts) or\n" +
+                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A) or\n" +
                 "         (controllable__is_layout_server = is_layout_server and\n" +
                 "         controllable__is_sequencer = is_sequencer and\n" +
                 "         controllable__in_segment = in_segment);\n" +
                 "\n" +
                 "create view constraint_minimal_layouts as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts)\n" +
+                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
                 "         having sum(controllable__is_layout_server) >= 2;\n" +
                 "\n" +
                 "create view constraint_minimal_sequencers as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts)\n" +
+                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
                 "         having sum(controllable__is_sequencer) >= 2;\n" +
                 "\n" +
                 "create view constraint_minimal_segments as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts)\n" +
+                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
                 "         having sum(controllable__in_segment) >= 2;\n" +
                 "\n" +
                 "create view constraint_purge_policy as\n" +
-                "select * from hosts where epoch_id = (select max(epoch_id) from hosts) and\n" +
+                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A) and\n" +
                 "         failure_state = 'UNRESPONSIVE' and\n" +
                 "         controllable__is_layout_server = true and\n" +
                 "         controllable__is_sequencer = true and\n" +
                 "         controllable__in_segment = true");
 
         // build model
-        buildModel(conn, views, modelName);
+        buildModel(conn, solver, views, modelName);
     }
 
     /**
@@ -1726,12 +1861,22 @@ public class ModelTest {
      * @return built Model
      */
     @CanIgnoreReturnValue
-    private Model buildModel(final DSLContext conn, final List<String> views, final String testName) {
+    private Model buildModel(final DSLContext conn, final SolverConfig solverBackend, final List<String> views,
+                             final String testName) {
         // get model file for the current test
         final File modelFile = new File("src/test/resources/" + testName + ".mzn");
         // create data file
         final File dataFile = new File("/tmp/" + testName + ".dzn");
-        return Model.buildModel(conn, views, modelFile, dataFile);
+        switch (solverBackend) {
+            case MinizincSolver:
+                final MinizincSolver minizincSolver = new MinizincSolver(modelFile, dataFile, new Conf());
+                return Model.buildModel(conn, minizincSolver, views, new Conf());
+            case OrToolsSolver:
+                final OrToolsSolver orToolsSolver = new OrToolsSolver();
+                return Model.buildModel(conn, orToolsSolver, views, new Conf());
+            default:
+                throw new IllegalArgumentException(solverBackend.toString());
+        }
     }
 
     /*
@@ -1756,5 +1901,18 @@ public class ModelTest {
     @CanIgnoreReturnValue
     private Connection getConnection(final String url, final Properties properties) throws SQLException {
         return DriverManager.getConnection(url, properties);
+    }
+
+    static Stream solvers() {
+        if (System.getenv().get(OrToolsSolver.OR_TOOLS_LIB_ENV) != null) {
+            return Stream.of(SolverConfig.OrToolsSolver, SolverConfig.MinizincSolver);
+        } else {
+            return Stream.of(SolverConfig.MinizincSolver);
+        }
+    }
+
+    enum SolverConfig {
+        MinizincSolver,
+        OrToolsSolver
     }
 }

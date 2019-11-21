@@ -54,7 +54,8 @@ class FromExtractor extends DefaultTraversalVisitor<Void, Void> {
         for (final Map.Entry<String, IRColumn> entry: irTable.getIRColumns().entrySet()) {
             final IRColumn irColumn = entry.getValue();
             final IRColumn aliasIRColumn = irTable.isViewTable()
-                                            ? new IRColumn(tableAlias, null, irColumn.getName())
+                                            ? new IRColumn(tableAlias, null, irColumn.getType(),
+                                                           irColumn.getName())
                                             : new IRColumn(tableAlias, irColumn.getJooqField());
             tableAlias.addField(aliasIRColumn);
         }

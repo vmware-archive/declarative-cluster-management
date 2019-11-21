@@ -90,4 +90,18 @@ public class ComprehensionRewriter<T> extends MonoidVisitor<Expr, T> {
         final Expr argument = this.visit(node.getArgument());
         return new ExistsPredicate(argument);
     }
+
+    @Nullable
+    @Override
+    protected Expr visitIsNullPredicate(final IsNullPredicate node, @Nullable final T context) {
+        final Expr argument = this.visit(node.getArgument(), context);
+        return new IsNullPredicate(argument);
+    }
+
+    @Nullable
+    @Override
+    protected Expr visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final T context) {
+        final Expr argument = this.visit(node.getArgument(), context);
+        return new IsNotNullPredicate(argument);
+    }
 }

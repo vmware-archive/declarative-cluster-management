@@ -7,7 +7,9 @@
 package org.dcm.backend;
 
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import org.apache.commons.text.StringEscapeUtils;
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRForeignKey;
@@ -29,7 +31,6 @@ import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.Qualifier;
 import org.dcm.compiler.monoid.TableRowGenerator;
-import org.apache.commons.text.StringEscapeUtils;
 
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
@@ -329,8 +330,20 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                 final String joinExpression = joinQualifiers.isEmpty() ? "" :
                         " where " + String.join(" /\\ ", evaluateWhereExpressions(joinQualifiers));
                 final String rangeExpression = String.join(",", rangeQualifiers);
-                ret.add(String.format("%s(%s %s)(%s)", outerPredicate, rangeExpression, joinExpression,
-                                                       whereExpression));
+                // TODO: this special case is a sign that it is not safe to ignore headItems
+                if (outerPredicate.equalsIgnoreCase("exists")) {
+                    Preconditions.checkArgument(headItems.size() == 1);
+                    Preconditions.checkArgument(headItems.get(0) instanceof BinaryOperatorPredicate);
+                    final List<BinaryOperatorPredicate> exprs = new ArrayList<>();
+                    exprs.add((BinaryOperatorPredicate) headItems.get(0));
+                    exprs.addAll(whereQualifiers);
+                    final String inner = String.join(" /\\ ", evaluateWhereExpressions(exprs));
+                    ret.add(String.format("%s(%s %s)(%s)", outerPredicate, rangeExpression, joinExpression,
+                            inner));
+                } else {
+                    ret.add(String.format("%s(%s %s)(%s)", outerPredicate, rangeExpression, joinExpression,
+                            whereExpression));
+                }
             } else {
                 // Here, we write out the having clause with the required generator expression
                 // applied to the columns on which the aggregate functions are applied
