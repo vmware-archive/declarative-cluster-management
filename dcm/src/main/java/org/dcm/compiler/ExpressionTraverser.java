@@ -16,6 +16,8 @@ import com.facebook.presto.sql.tree.ExistsPredicate;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.InPredicate;
+import com.facebook.presto.sql.tree.IsNotNullPredicate;
+import com.facebook.presto.sql.tree.IsNullPredicate;
 import com.facebook.presto.sql.tree.Literal;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
 import com.facebook.presto.sql.tree.Node;
@@ -109,6 +111,18 @@ class ExpressionTraverser extends DefaultTraversalVisitor<Void, Void> {
     protected Void visitNotExpression(final NotExpression node, final Void context) {
         stack.push(node);
         return super.visitNotExpression(node, context);
+    }
+
+    @Override
+    protected Void visitIsNullPredicate(final IsNullPredicate node, final Void context) {
+        stack.push(node);
+        return super.visitIsNullPredicate(node, context);
+    }
+
+    @Override
+    protected Void visitIsNotNullPredicate(final IsNotNullPredicate node, final Void context) {
+        stack.push(node);
+        return super.visitIsNotNullPredicate(node, context);
     }
 
     ArrayDeque<Node> getExpressionStack() {

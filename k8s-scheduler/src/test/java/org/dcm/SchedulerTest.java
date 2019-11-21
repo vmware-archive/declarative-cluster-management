@@ -636,7 +636,7 @@ public class SchedulerTest {
     /*
      * Capacity constraints
      */
-    @ParameterizedTest(name = "{0} => feasible:{6}")
+    @ParameterizedTest(name = "{0} => feasible:{8}")
     @MethodSource("spareCapacityValues")
     public void testSpareCapacity(final String displayName, final List<Integer> cpuRequests,
                                   final List<Integer> memoryRequests, final List<Integer> nodeCpuCapacities,

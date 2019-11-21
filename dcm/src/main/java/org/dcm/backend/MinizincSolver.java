@@ -6,6 +6,7 @@
 
 package org.dcm.backend;
 
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
@@ -58,7 +59,7 @@ public class MinizincSolver implements ISolverBackend {
     private static final String CONF_SOLVER_KEY = "solver";
     private static final String CONF_DEBUG_MODE = "debug_mode";
     private static final String CONF_FZN_FLAGS = "fzn_flags";
-    private static final int MNZ_SOLVER_TIMEOUT_MS = 300000;
+    private static final int MNZ_SOLVER_TIMEOUT_MS = 1000000;
     private final SolverBackend solverToUse;
     private final boolean debugMode;
     private final String fznFlags;
@@ -122,6 +123,8 @@ public class MinizincSolver implements ISolverBackend {
         constraintViews.forEach((k, v) -> search.visit(v));
         objectiveFunctions.forEach((k, v) -> search.visit(v));
         stringLiteralsInModel.addAll(search.getStringLiterals());
+        Preconditions.checkArgument(!stringLiteralsInModel.contains("'null'"));
+        stringLiteralsInModel.add("'null'"); // Used instead of null
     }
 
     @Override
@@ -219,7 +222,7 @@ public class MinizincSolver implements ISolverBackend {
                                         stringLiterals.add(replacedString);
                                         return replacedString;
                                     } else {
-                                        return v;
+                                        return v == null || v.equalsIgnoreCase("null") ? "'null'" : v;
                                     }
                                 })
                                 .collect(Collectors.joining(" , "))
@@ -238,6 +241,7 @@ public class MinizincSolver implements ISolverBackend {
         // (1) Split into multiple comprehensions, one per head
         // (2) Rewrite count functions to use sums instead
         // (3) Rewrite to use fixed arity constraints
+        // (4) Rewrite IsNull/IsNotNull expressions to use 'null' strings
         final List<MonoidComprehension> comprehensions = SplitIntoSingleHeadComprehensions.apply(comprehension); // (1)
         return (isConstraint
                  ? Collections.singletonList(comprehensions.get(0)) // We only need one head item for constraints
@@ -245,6 +249,7 @@ public class MinizincSolver implements ISolverBackend {
                 .stream()
                 .map(RewriteCountFunction::apply) // (2)
                 .map(RewriteArity::apply) // (3)
+                .map(RewriteNullPredicates::apply) // (4)
                 .collect(Collectors.toList());
     }
 

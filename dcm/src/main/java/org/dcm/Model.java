@@ -66,12 +66,14 @@ public class Model {
     private final ISolverBackend backend;
 
 
-    private Model(final DSLContext dbCtx, final List<Table<?>> tables, final List<String> views,
-                  final File modelFile, final File dataFile, final Conf conf) {
+    @SuppressWarnings("unused")
+    private Model(final DSLContext dbCtx, final ISolverBackend backend,
+                  final List<Table<?>> tables, final List<String> views,
+                  final Conf conf) {
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
-        this.backend = new MinizincSolver(modelFile, dataFile, conf);
+        this.backend = backend;
         final List<CreateView> viewsInPolicy = views.stream().map(
                 view -> {
                     try {
@@ -97,8 +99,7 @@ public class Model {
             final String s = SqlFormatter.formatSql(view, Optional.empty());
             dbCtx.execute(s);
         });
-        final Set<String> createdViewNames = groupByViewsToCreate.stream().map(view -> view.getName()
-                                                                                           .toString()
+        final Set<String> createdViewNames = groupByViewsToCreate.stream().map(view -> view.getName().toString()
                                                                                      .toUpperCase(Locale.getDefault()))
                                                                           .collect(Collectors.toSet());
         final List<Table<?>> augmentedTableList = new ArrayList<>(tables);
@@ -198,7 +199,39 @@ public class Model {
     public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
                                                 final List<String> views, final File modelFile,
                                                 final File dataFile, final Conf conf) {
-        return new Model(dslContext, tables, views, modelFile, dataFile, conf);
+        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, conf), tables, views, conf);
+    }
+
+    /**
+     * Builds a Minizinc model out of dslContext and a list of tables.
+     *
+     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
+     * @param solverBackend A solver implementation. See the ISolverBackend class.
+     * @param tables A set of tables for which the Minzinc model will be generated
+     * @param conf configuration object
+     * @return An initialized Model instance with a populated modelFile
+     */
+    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
+    public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
+                                                final List<Table<?>> tables, final List<String> views,
+                                                final Conf conf) {
+        return new Model(dslContext, solverBackend, tables, views, conf);
+    }
+
+
+    /**
+     * Builds a Minizinc model out of dslContext and a list of tables.
+     *
+     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
+     * @param solverBackend A solver implementation. See the ISolverBackend class.
+     * @param conf configuration object
+     * @return An initialized Model instance with a populated modelFile
+     */
+    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
+    public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
+                                                final List<String> views, final Conf conf) {
+        final List<Table<?>> tables = getTablesFromContext(dslContext);
+        return buildModel(dslContext, solverBackend, tables, views, conf);
     }
 
     /**
