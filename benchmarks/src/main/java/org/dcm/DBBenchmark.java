@@ -889,7 +889,7 @@ public class DBBenchmark {
     private void printSQLResult(final String viewName) {
         final Result<? extends Record> results =
                 dbCtx.resultQuery("select * from " + viewName).fetch();
-            System.out.println(results.format());
+        System.out.println(String.format("%s: rows: %d", viewName, results.size()));
     }
 
     private void getResults() {
