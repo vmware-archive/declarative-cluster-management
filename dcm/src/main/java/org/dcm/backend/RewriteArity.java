@@ -8,6 +8,7 @@ package org.dcm.backend;
 
 
 import com.google.common.base.Preconditions;
+import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import org.dcm.compiler.monoid.ComprehensionRewriter;
 import org.dcm.compiler.monoid.ExistsPredicate;
@@ -175,7 +176,8 @@ class RewriteArity {
                 final Expr oldSumArg = node.getFunctionName().equalsIgnoreCase("count")
                         ? new MonoidLiteral<>(1, Integer.class) : node.getArgument();
                 final BinaryOperatorPredicateWithAggregate newArgument
-                        = new BinaryOperatorPredicateWithAggregate("*", oldSumArg, qualifier);
+                        = new BinaryOperatorPredicateWithAggregate(BinaryOperatorPredicate.Operator.MULTIPLY,
+                                                                   oldSumArg, qualifier);
                 didRewrite = true;
                 if (node.getAlias().isPresent()) {
                     return new MonoidFunction(node.getFunctionName(), newArgument, node.getAlias().get());

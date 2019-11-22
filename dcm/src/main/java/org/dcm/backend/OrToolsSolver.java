@@ -523,7 +523,7 @@ public class OrToolsSolver implements ISolverBackend {
                     .stream()
                     .map(e -> (BinaryOperatorPredicate) e)
                     .reduce(varQualifiers.joinPredicates.get(0),
-                            (left, right) -> new BinaryOperatorPredicate("/\\", left, right));
+                       (left, right) -> new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.AND, left, right));
             joinPredicateStr = exprToStr(output, combinedJoinPredicate, true, null);
         } else {
             joinPredicateStr = "";
@@ -1006,38 +1006,38 @@ public class OrToolsSolver implements ISolverBackend {
                                                        "Expr was null: " + node.getLeft());
             final String right = Objects.requireNonNull(visit(node.getRight(), isFunctionContext),
                                                         "Expr was null: " + node.getRight());
-            final String op = node.getOperator();
+            final BinaryOperatorPredicate.Operator op = node.getOperator();
             final String leftType = inferType(node.getLeft());
             final String rightType = inferType(node.getRight());
 
             if (leftType.equals("IntVar") || rightType.equals("IntVar")) {
                 // We need to generate an IntVar.
                 switch (op) {
-                    case "==":
+                    case EQUAL:
                         return String.format("o.eq(%s, %s)", left, right);
-                    case "!=":
+                    case NOT_EQUAL:
                         return String.format("o.ne(%s, %s)", left, right);
-                    case "/\\":
+                    case AND:
                         return String.format("o.and(%s, %s)", left, right);
-                    case "\\/":
+                    case OR:
                         return String.format("o.or(%s, %s)", left, right);
-                    case "<=":
+                    case LESS_THAN_OR_EQUAL:
                         return String.format("o.leq(%s, %s)", left, right);
-                    case "<":
+                    case LESS_THAN:
                         return String.format("o.lt(%s, %s)", left, right);
-                    case ">=":
+                    case GREATER_THAN_OR_EQUAL:
                         return String.format("o.geq(%s, %s)", left, right);
-                    case ">":
+                    case GREATER_THAN:
                         return String.format("o.gt(%s, %s)", left, right);
-                    case "+":
+                    case ADD:
                         return String.format("o.plus(%s, %s)", left, right);
-                    case "-":
+                    case SUBTRACT:
                         return String.format("o.minus(%s, %s)", left, right);
-                    case "*":
+                    case MULTIPLY:
                         return String.format("o.mult(%s, %s)", left, right);
-                    case "/":
+                    case DIVIDE:
                         return String.format("o.div(%s, %s)", left, right);
-                    case "in":
+                    case IN:
                         return String.format("o.in%s(%s, %s)", rightType, left, right);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
@@ -1046,25 +1046,32 @@ public class OrToolsSolver implements ISolverBackend {
             else {
                 // Both operands are non-var, so we generate an expression in Java.
                 switch (op) {
-                    case "==":
+                    case EQUAL:
                         return String.format("(o.eq(%s, %s))", left, right);
-                    case "!=":
+                    case NOT_EQUAL:
                         return String.format("(!o.eq(%s, %s))", left, right);
-                    case "in":
-                        return String.format("(o.in(%s, %s))", left, right);
-                    case "/\\":
+                    case AND:
                         return String.format("(%s && %s)", left, right);
-                    case "\\/":
+                    case OR:
                         return String.format("(%s || %s)", left, right);
-                    case "<=":
-                    case "<":
-                    case ">=":
-                    case ">":
-                    case "+":
-                    case "-":
-                    case "*":
-                    case "/":
-                        return String.format("(%s %s %s)", left, op, right);
+                    case IN:
+                        return String.format("(o.in(%s, %s))", left, right);
+                    case LESS_THAN_OR_EQUAL:
+                        return String.format("(%s <= %s)", left, right);
+                    case LESS_THAN:
+                        return String.format("(%s < %s)", left, right);
+                    case GREATER_THAN_OR_EQUAL:
+                        return String.format("(%s >= %s)", left, right);
+                    case GREATER_THAN:
+                        return String.format("(%s > %s)", left, right);
+                    case ADD:
+                        return String.format("(%s + %s)", left, right);
+                    case SUBTRACT:
+                        return String.format("(%s - %s)", left, right);
+                    case MULTIPLY:
+                        return String.format("(%s * %s)", left, right);
+                    case DIVIDE:
+                        return String.format("(%s / %s)", left, right);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }

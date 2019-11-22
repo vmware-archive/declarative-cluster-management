@@ -84,7 +84,7 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
         // TODO: revisit the sub-types of Qualifiers. Not every qualifier needs to be a binary operator.
         if (node.getFunctionName().equalsIgnoreCase("not")) {
             final BinaryOperatorPredicate rewritten =
-                    new BinaryOperatorPredicate("==", node.getArgument(),
+                    new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node.getArgument(),
                                                 new MonoidLiteral<>(false, Boolean.class));
             if (isControllableField(node.getArgument())) {
                 return Objects.requireNonNull(context).withVarQualifier(rewritten);
@@ -112,14 +112,14 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
     protected QualifiersList visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
                                                           final QualifiersList context) {
         switch (node.getOperator()) {
-            case "==":
-            case "<":
-            case ">":
-            case "<=":
-            case ">=":
-            case "!=":
-            case "in":
-            case "\\/": {
+            case EQUAL:
+            case NOT_EQUAL:
+            case LESS_THAN:
+            case LESS_THAN_OR_EQUAL:
+            case GREATER_THAN:
+            case GREATER_THAN_OR_EQUAL:
+            case IN:
+            case OR: {
                 // function expressions do not necessarily affect the arity of an outer expression.
                 // We err on the conservative side for now.
                 if ((isControllableField(node.getLeft()) || isControllableField(node.getRight()))
@@ -128,7 +128,7 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
                 }
                 return context.withNonVarQualifier(checkForAggregate(node));
             }
-            case "/\\": {
+            case AND: {
                 final QualifiersList left = Objects.requireNonNull(visit(node.getLeft(), context));
                 final QualifiersList right = Objects.requireNonNull(visit(node.getRight(), context));
                 return left.withQualifiersList(right);
