@@ -45,10 +45,16 @@ public abstract class ViewUpdater {
     private static final String STRING_TYPE = "java.lang.String";
     private static final String BOOLEAN_TYPE = "java.lang.Boolean";
     private static final String LONG_TYPE = "java.lang.Long";
+    private static final String DDLOG_MODEL_ENV = "DDLOG_MODEL_ENV";
 
     // connection prefix (per model) -> <List of DDlogRecords per table, per model>
     // correct use requires that a new connection is used for every model
     static Map<String, List<LocalDDlogCommand>> mapRecordsFromDB = new ConcurrentHashMap<>();
+
+    static {
+        Preconditions.checkNotNull(System.getenv(DDLOG_MODEL_ENV));
+        System.load(System.getenv(DDLOG_MODEL_ENV));
+    }
 
     /**
      * @param connection: a connection to the DB used to build prepared statements
@@ -59,9 +65,6 @@ public abstract class ViewUpdater {
 
     public ViewUpdater(final Connection connection, final DSLContext dbCtx,
                        final List<String> baseTables, final Map<String, IRTable> irTables) {
-        final String ddlogModelEnv = "DDLOG_MODEL_ENV";
-        Preconditions.checkNotNull(System.getenv(ddlogModelEnv));
-        System.load(System.getenv(ddlogModelEnv));
 
         this.connection = connection;
         // this key is connection-specific and allows us to separate records received from the DB for different models
@@ -147,15 +150,14 @@ public abstract class ViewUpdater {
 
     public void flushUpdates() {
         updater.sendUpdatesToDDlog(mapRecordsFromDB.get(key));
-//        System.out.println("Records received: " + recordsFromDDLog.size());
 
         for (final LocalDDlogCommand command : recordsFromDDLog) {
-//            System.out.println(command.toString());
             final String tableName = command.tableName;
 
             // for logging
             recordsReceived.computeIfAbsent(tableName, k -> 0);
             recordsReceived.put(tableName, recordsReceived.get(tableName) + 1);
+
             // check if query is already created and if not, create it
             if (!preparedQueries.containsKey(tableName) ||
                     (preparedQueries.containsKey(tableName) &&
@@ -167,7 +169,7 @@ public abstract class ViewUpdater {
         recordsFromDDLog.clear();
         mapRecordsFromDB.get(key).clear();
 
-//        recordsReceived.forEach((k, v) -> System.out.println("Key: " + k + " v: " + v));
+        recordsReceived.forEach((k, v) -> System.out.println("Key: " + k + " v: " + v));
         recordsReceived.clear();
     }
 

@@ -83,10 +83,10 @@ public class DBBenchmark {
     public double pendingPods;
 
     // order: in, exists, notIn, doesNotExists
-    @Param({"25 25 25 25", "50 50 0 0"})
+    @Param({"25 25 25 25", "50 50 0 0", "50 0 50 0"})
     public String labelProportions;
 
-    @Param({"1", "3", "5"})
+    @Param({"1", "3", "5", "7"})
     public double iterations;
 
     @Param({"true", "false"})
@@ -114,7 +114,7 @@ public class DBBenchmark {
                 .measurementIterations(5)
                 .mode(Mode.AverageTime)
                 .shouldDoGC(true)
-                .result("profiling-result-ddlog-0.10-3-debug.csv").resultFormat(ResultFormatType.CSV)
+                .result("profiling-result-index.csv").resultFormat(ResultFormatType.CSV)
                 .forks(1)
                 .build();
 
@@ -154,7 +154,6 @@ public class DBBenchmark {
      * Sets up an in-memory H2 database that we use for all tests.
      */
     private void setupH2() {
-        ranges = new double[4];
 
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
@@ -174,6 +173,8 @@ public class DBBenchmark {
             } else {
                 updater = null;
             }
+            createPreparedQueries();
+            createNodes();
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
@@ -183,7 +184,6 @@ public class DBBenchmark {
      * Sets up an in-memory HSQLDB database that we use for all tests.
      */
     public void setupHSQLDB() {
-        ranges = new double[4];
 
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
@@ -204,10 +204,12 @@ public class DBBenchmark {
             model = buildModel(dbCtx, new ArrayList<>(), "testModel");
 
             if (useDDlog) {
-                updater = new H2Updater(connection, dbCtx, model.getIRTables(), baseTables);
+                updater = new HSQLUpdater(connection, dbCtx, model.getIRTables(), baseTables);
             } else {
                 updater = null;
             }
+            createPreparedQueries();
+            createNodes();
         } catch (final SQLException e) {
             throw new RuntimeException(e);
         }
@@ -352,7 +354,7 @@ public class DBBenchmark {
                 "  tolerations_key varchar(100),\n" +
                 "  tolerations_value varchar(100),\n" +
                 "  tolerations_effect varchar(100),\n" +
-                "  tolerations_operator varchar(100),\n" +
+                "  tolerations_operator varchar(100)\n" +
                 ")");
 
         dbCtx.execute("create table NODEIMAGES\n" +
@@ -640,6 +642,11 @@ public class DBBenchmark {
                 "(\n" +
                 " node_name varchar(100) not null\n)"
         );
+
+        dbCtx.execute("create index INTERPODAFFINITYMATCHES_idx on " +
+                "INTERPODAFFINITYMATCHES (pod_name, matches, node_name, num_matches)");
+        dbCtx.execute("create index INTERPODANTIAFFINITYMATCHES_idx on " +
+                "INTERPODANTIAFFINITYMATCHES (pod_name, matches, node_name, num_matches)");
     }
 
     private void init() {
@@ -679,8 +686,6 @@ public class DBBenchmark {
         createBaseTables(dbCtx);
         createIndices(dbCtx);
         createViews(dbCtx);
-        createPreparedQueries();
-        createNodes();
     }
 
     private void createPreparedQueries() {
@@ -754,8 +759,8 @@ public class DBBenchmark {
                 nodeLabelsStmt.executeUpdate();
                 nodeTaintsStmt.executeUpdate();
                 nodeImagesStmt.executeUpdate();
-
             }
+
             if (useDDlog) {
                 updater.flushUpdates();
             }
@@ -765,7 +770,7 @@ public class DBBenchmark {
     }
 
 
-    private String getLabel(final String[] labels, final double[] ranges, final double prop) {
+    private String getLabelOperator(final String[] labels, final double[] ranges, final double prop) {
         for (int i = 0; i < ranges.length; i++) {
             if (i > 0 && (prop > ranges[i - 1] && prop < ranges[i])) {
                 return labels[i];
@@ -779,14 +784,15 @@ public class DBBenchmark {
     @Benchmark
     public void insertRecordsIntoMultipleViews() {
         for (int i = 0; i < iterations; i++) {
-            final int start = index + numRecords * i;
+            final int start = index + numRecords * (i + 1);
             final int end = start + numRecords;
 
             final int scheduledPodsRange = start + (int) (numRecords * (pendingPods / 100));
 
             try {
                 for (int j = start; j < end; j++) {
-                    final String labelOperator = getLabel(labels, ranges, ((double) (j - start)) / numRecords);
+                    final String labelOperator =
+                            getLabelOperator(labels, ranges, ((double) (j - start)) / numRecords);
                     final String node = "node" + (j % numNodes);
                     final String pod = "pod" + j;
 
