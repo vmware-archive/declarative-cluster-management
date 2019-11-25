@@ -41,7 +41,7 @@ public class SchedulerIT extends ITBase {
     @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
-        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, "");
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         final Flowable<List<PodEvent>> eventStream =
@@ -71,7 +71,7 @@ public class SchedulerIT extends ITBase {
     @Timeout(60 /* seconds */)
     public void testAffinityAntiAffinity() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
-        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, "");
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         final Flowable<List<PodEvent>> eventStream =
