@@ -37,13 +37,15 @@ public class RewriteNullPredicates {
         @Nullable
         @Override
         protected Expr visitIsNullPredicate(final IsNullPredicate node, @Nullable final Void context) {
-            return new BinaryOperatorPredicate("==", node, new MonoidLiteral<>("'null'", String.class));
+            return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node,
+                                               new MonoidLiteral<>("'null'", String.class));
         }
 
         @Nullable
         @Override
         protected Expr visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final Void context) {
-            return new BinaryOperatorPredicate("!=", node, new MonoidLiteral<>("'null'", String.class));
+            return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.NOT_EQUAL, node,
+                                               new MonoidLiteral<>("'null'", String.class));
         }
     }
 }

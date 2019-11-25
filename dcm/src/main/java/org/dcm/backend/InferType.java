@@ -48,20 +48,21 @@ class InferType extends MonoidVisitor<String, Void> {
             return "IntVar";
         }
         switch (node.getOperator()) {
-            case "==":
-            case "!=":
-            case "/\\":
-            case "\\/":
-            case "in":
-            case "<=":
-            case "<":
-            case ">=":
-            case ">":
+            case EQUAL:
+            case NOT_EQUAL:
+            case LESS_THAN:
+            case LESS_THAN_OR_EQUAL:
+            case GREATER_THAN:
+            case GREATER_THAN_OR_EQUAL:
+            case IN:
+            case OR:
+            case AND:
                 return "Boolean";
-            case "+":
-            case "-":
-            case "*":
-            case "/":
+            case ADD:
+            case SUBTRACT:
+            case MULTIPLY:
+            case DIVIDE:
+            case MODULUS:
                 return "Integer";
             default:
                 throw new UnsupportedOperationException();
