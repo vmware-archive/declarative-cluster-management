@@ -71,29 +71,43 @@ import java.util.stream.Collectors;
 
 public class ModelCompiler {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
-    private static final Map<ArithmeticBinaryExpression.Operator, String> ARITHMETIC_OP_TABLE =
+    private static final Map<ArithmeticBinaryExpression.Operator,
+                             BinaryOperatorPredicate.Operator> ARITHMETIC_OP_TABLE =
             new EnumMap<>(ArithmeticBinaryExpression.Operator.class);
-    private static final Map<ComparisonExpression.Operator, String> COMPARISON_OP_TABLE =
+    private static final Map<ComparisonExpression.Operator,
+                             BinaryOperatorPredicate.Operator> COMPARISON_OP_TABLE =
             new EnumMap<>(ComparisonExpression.Operator.class);
-    private static final Map<LogicalBinaryExpression.Operator, String> LOGICAL_OP_TABLE =
+    private static final Map<LogicalBinaryExpression.Operator,
+                             BinaryOperatorPredicate.Operator> LOGICAL_OP_TABLE =
             new EnumMap<>(LogicalBinaryExpression.Operator.class);
 
     static {
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.ADD, "+");
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.SUBTRACT, "-");
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.MULTIPLY, "*");
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.DIVIDE, "/");
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.MODULUS, "mod");
+        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.ADD,
+                                BinaryOperatorPredicate.Operator.ADD);
+        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.SUBTRACT,
+                                BinaryOperatorPredicate.Operator.SUBTRACT);
+        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.MULTIPLY,
+                                BinaryOperatorPredicate.Operator.MULTIPLY);
+        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.DIVIDE,
+                                BinaryOperatorPredicate.Operator.DIVIDE);
+        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.MODULUS,
+                                BinaryOperatorPredicate.Operator.MODULUS);
 
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.EQUAL, "==");
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.LESS_THAN, "<");
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.GREATER_THAN, ">");
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.LESS_THAN_OR_EQUAL, "<=");
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL, ">=");
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.NOT_EQUAL, "!=");
+        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.EQUAL,
+                                BinaryOperatorPredicate.Operator.EQUAL);
+        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.LESS_THAN,
+                                BinaryOperatorPredicate.Operator.LESS_THAN);
+        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.GREATER_THAN,
+                                BinaryOperatorPredicate.Operator.GREATER_THAN);
+        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.LESS_THAN_OR_EQUAL,
+                                BinaryOperatorPredicate.Operator.LESS_THAN_OR_EQUAL);
+        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL,
+                                BinaryOperatorPredicate.Operator.GREATER_THAN_OR_EQUAL);
+        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.NOT_EQUAL,
+                                BinaryOperatorPredicate.Operator.NOT_EQUAL);
 
-        LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.AND, "/\\");
-        LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.OR, "\\/");
+        LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.AND, BinaryOperatorPredicate.Operator.AND);
+        LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.OR, BinaryOperatorPredicate.Operator.OR);
     }
 
     private final IRContext irContext;
@@ -390,25 +404,28 @@ public class ModelCompiler {
                 assert operands.size() >= 2;
                 final Expr left = operands.pop();
                 final Expr right = operands.pop();
-                final String operatorMnz = operatorTranslator(((ArithmeticBinaryExpression) node).getOperator());
+                final BinaryOperatorPredicate.Operator operatorMnz =
+                        operatorTranslator(((ArithmeticBinaryExpression) node).getOperator());
                 operands.push(createOperatorPredicate(operatorMnz, left, right, isAggregate));
             } else if (node instanceof ComparisonExpression) {
                 assert operands.size() >= 2;
                 final Expr left = operands.pop();
                 final Expr right = operands.pop();
-                final String operatorMnz = operatorTranslator(((ComparisonExpression) node).getOperator());
+                final BinaryOperatorPredicate.Operator operatorMnz =
+                        operatorTranslator(((ComparisonExpression) node).getOperator());
                 operands.push(createOperatorPredicate(operatorMnz, left, right, isAggregate));
             } else if (node instanceof LogicalBinaryExpression) {
                 assert operands.size() >= 2;
                 final Expr left = operands.pop();
                 final Expr right = operands.pop();
-                final String operatorMnz = operatorTranslator(((LogicalBinaryExpression) node).getOperator());
+                final BinaryOperatorPredicate.Operator operatorMnz =
+                        operatorTranslator(((LogicalBinaryExpression) node).getOperator());
                 operands.push(createOperatorPredicate(operatorMnz, left, right, isAggregate));
             } else if (node instanceof InPredicate) {
                 final Expr left = operands.pop();
                 final Expr right = operands.pop();
                 final BinaryOperatorPredicate operatorPredicate =
-                        new BinaryOperatorPredicate("in", left, right);
+                        new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.IN, left, right);
                 operands.push(operatorPredicate);
             } else if (node instanceof ExistsPredicate) {
                 final Expr innerExpr = operands.pop();
@@ -442,8 +459,9 @@ public class ModelCompiler {
         return operands;
     }
 
-    private BinaryOperatorPredicate createOperatorPredicate(final String operatorMnz, final Expr left,
-                                                            final Expr right, final boolean isAggregate) {
+    private BinaryOperatorPredicate createOperatorPredicate(final BinaryOperatorPredicate.Operator operatorMnz,
+                                                            final Expr left, final Expr right,
+                                                            final boolean isAggregate) {
         return isAggregate
                 ? new BinaryOperatorPredicateWithAggregate(operatorMnz, left, right)
                 : new BinaryOperatorPredicate(operatorMnz, left, right);
@@ -481,15 +499,15 @@ public class ModelCompiler {
         return irContext.getColumn(tableName, fieldName);
     }
 
-    private static String operatorTranslator(final ArithmeticBinaryExpression.Operator op) {
+    private static BinaryOperatorPredicate.Operator operatorTranslator(final ArithmeticBinaryExpression.Operator op) {
         return ARITHMETIC_OP_TABLE.get(op);
     }
 
-    private static String operatorTranslator(final LogicalBinaryExpression.Operator op) {
+    private static BinaryOperatorPredicate.Operator operatorTranslator(final LogicalBinaryExpression.Operator op) {
         return LOGICAL_OP_TABLE.get(op);
     }
 
-    private static String operatorTranslator(final ComparisonExpression.Operator op) {
+    private static BinaryOperatorPredicate.Operator operatorTranslator(final ComparisonExpression.Operator op) {
         return COMPARISON_OP_TABLE.get(op);
     }
 

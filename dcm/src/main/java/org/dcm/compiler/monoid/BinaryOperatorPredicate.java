@@ -9,11 +9,11 @@ package org.dcm.compiler.monoid;
 import javax.annotation.Nullable;
 
 public class BinaryOperatorPredicate extends Qualifier {
-    private final String operator;
+    private final Operator operator;
     private final Expr left;
     private final Expr right;
 
-    public BinaryOperatorPredicate(final String operator, final Expr left, final Expr right) {
+    public BinaryOperatorPredicate(final Operator operator, final Expr left, final Expr right) {
         this.operator = operator;
         this.left = left;
         this.right = right;
@@ -33,11 +33,28 @@ public class BinaryOperatorPredicate extends Qualifier {
         return left;
     }
 
-    public String getOperator() {
+    public Operator getOperator() {
         return operator;
     }
 
     public Expr getRight() {
         return right;
+    }
+
+    public enum Operator {
+        ADD,
+        SUBTRACT,
+        MULTIPLY,
+        DIVIDE,
+        MODULUS,
+        EQUAL,
+        NOT_EQUAL,
+        AND,
+        OR,
+        LESS_THAN,
+        LESS_THAN_OR_EQUAL,
+        GREATER_THAN,
+        GREATER_THAN_OR_EQUAL,
+        IN
     }
 }

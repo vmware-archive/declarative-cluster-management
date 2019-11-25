@@ -155,10 +155,10 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
 
         // Minizinc 'in' operators only work against sets. We replace it instead with the global
         // constraint member(<array of type T>, instance of T);
-        if (node.getOperator().equals("in")) {
+        if (node.getOperator().equals(BinaryOperatorPredicate.Operator.IN)) {
             return String.format("member(%s, %s)", rightString, leftString);
         }
-        return String.format("(%s) %s (%s)", leftString, node.getOperator(), rightString);
+        return String.format("(%s) %s (%s)", leftString, operatorToString(node.getOperator()), rightString);
     }
 
     List<String> generateArrayDeclarations(final IRContext context) {
@@ -564,7 +564,7 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                 final String op1 = operands.pop();
                 final String op2 = operands.pop();
                 final BinaryOperatorPredicate operator = (BinaryOperatorPredicate) expr;
-                operands.push(String.format("(%s) %s (%s)", op1, operator.getOperator(), op2));
+                operands.push(String.format("(%s) %s (%s)", op1, operatorToString(operator.getOperator()), op2));
             } else {
                 throw new RuntimeException("Unexpected expr type: " + expr);
             }
@@ -645,8 +645,8 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
             } else if (expr instanceof BinaryOperatorPredicate) {
                 final String left = operands.pop();
                 final String right = operands.pop();
-                final BinaryOperatorPredicate operator = (BinaryOperatorPredicate) expr;
-                operands.push(String.format("(%s) %s (%s)", left, operator.getOperator(), right));
+                final BinaryOperatorPredicate.Operator operator = ((BinaryOperatorPredicate) expr).getOperator();
+                operands.push(String.format("(%s) %s (%s)", left, operatorToString(operator), right));
             } else if (expr instanceof ColumnIdentifier) {
                 operands.push(MinizincString.groupColumnNameWithIteration(viewName, (ColumnIdentifier) expr));
             } else if (expr instanceof MonoidLiteral) {
@@ -827,5 +827,38 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
             return v1;
         }
         return v2;
+    }
+
+    private String operatorToString(final BinaryOperatorPredicate.Operator operator) {
+        switch (operator) {
+            case EQUAL:
+                return "==";
+            case NOT_EQUAL:
+                return "!=";
+            case AND:
+                return "/\\";
+            case OR:
+                return "\\/";
+            case IN:
+                return "in";
+            case LESS_THAN_OR_EQUAL:
+                return "<=";
+            case LESS_THAN:
+                return "<";
+            case GREATER_THAN_OR_EQUAL:
+                return ">=";
+            case GREATER_THAN:
+                return ">";
+            case ADD:
+                return "+";
+            case SUBTRACT:
+                return "-";
+            case MULTIPLY:
+                return "*";
+            case DIVIDE:
+                return "/";
+            default:
+                throw new UnsupportedOperationException("Operator " + operator);
+        }
     }
 }

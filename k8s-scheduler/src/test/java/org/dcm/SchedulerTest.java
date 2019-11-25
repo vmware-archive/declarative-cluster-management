@@ -128,7 +128,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
@@ -222,7 +222,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -344,7 +344,7 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
@@ -470,7 +470,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
@@ -690,7 +690,7 @@ public class SchedulerTest {
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
@@ -776,7 +776,7 @@ public class SchedulerTest {
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(conn, policies, "CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
 
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();

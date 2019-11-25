@@ -25,6 +25,8 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.dcm.backend.MinizincSolver;
+import org.dcm.backend.OrToolsSolver;
 import org.dcm.k8s.generated.Tables;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -60,6 +62,7 @@ import static org.jooq.impl.DSL.using;
  */
 public final class Scheduler {
     private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
+    private static final String MINIZINC_MODEL_PATH = "/tmp";
 
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
@@ -93,17 +96,8 @@ public final class Scheduler {
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
-
-        final Conf conf = new Conf();
-        conf.setProperty("solver", solverToUse);
-        LOG.info("Configuring debug mode: {}", debugMode);
-        if (debugMode) {
-            conf.setProperty("debug_mode", "true");
-        }
-        conf.setProperty("fzn_flags", fznFlags);
-        conf.setProperty("mnz_model_path", "/tmp/");
         this.conn = conn;
-        this.model = createDcmModel(conn, conf, policies, relevantTables);
+        this.model = createDcmModel(conn, solverToUse, policies, relevantTables);
         LOG.info("Initialized scheduler:: model:{} relevantTables:{}", model, relevantTables);
     }
 
@@ -164,11 +158,20 @@ public final class Scheduler {
     /**
      * Instantiates a DCM model based on the configured policies.
      */
-    private Model createDcmModel(final DSLContext conn, final Conf conf, final List<String> policies,
+    private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies,
                                  final List<Table<?>> tables) {
-        final File modelFile = new File(conf.getProperty("mnz_model_path") + "/" + "k8s_model.mzn");
-        final File dataFile = new File(conf.getProperty("mnz_model_path") + "/" + "k8s_data.dzn");
-        return Model.buildModel(conn, tables, policies, modelFile, dataFile, conf);
+        switch (solverToUse) {
+            case "MNZ-CHUFFED":
+                final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
+                final File dataFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_data.dzn");
+                final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
+                return Model.buildModel(conn, solver, tables, policies, new Conf());
+            case "ORTOOLS":
+                final OrToolsSolver orToolsSolver = new OrToolsSolver();
+                return Model.buildModel(conn, orToolsSolver, tables, policies, new Conf());
+            default:
+                throw new IllegalArgumentException(solverToUse);
+        }
     }
 
     /**
@@ -231,19 +234,15 @@ public final class Scheduler {
                 "Scheduler batch size count");
         options.addRequiredOption("bi", "batch-interval-ms", true,
                 "Scheduler batch interval");
-        options.addRequiredOption("m", "mnz-solver", true,
-                "Minizinc solver to use: GECODE, CHUFFED, ORTOOLS");
-        options.addOption("d", "debug-mode", true,
-                "Minizinc debug mode");
-        options.addOption("f", "fzn-flags", true,
-                "Flatzinc flags");
+        options.addRequiredOption("m", "solver", true,
+                "Solver to use: MNZ-CHUFFED, ORTOOLS");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
 
         final DSLContext conn = setupDb();
         final Scheduler scheduler = new Scheduler(conn,
                 Policies.getDefaultPolicies(),
-                cmd.getOptionValue("mnz-solver"),
+                cmd.getOptionValue("solver"),
                 Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
                 cmd.getOptionValue("fzn-flags"));
 

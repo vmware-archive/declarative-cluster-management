@@ -7,7 +7,7 @@
 package org.dcm.compiler.monoid;
 
 public class BinaryOperatorPredicateWithAggregate extends BinaryOperatorPredicate {
-    public BinaryOperatorPredicateWithAggregate(final String operator, final Expr left, final Expr right) {
+    public BinaryOperatorPredicateWithAggregate(final Operator operator, final Expr left, final Expr right) {
         super(operator, left, right);
     }
 
