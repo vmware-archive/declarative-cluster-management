@@ -1,0 +1,383 @@
+import intern
+
+input relation NODE(name: IString, unschedulable: bool,
+	out_of_disk: bool, memory_pressure: bool,
+	disk_pressure: bool, pid_pressure: bool,
+	ready: bool, network_unavailable: bool,
+	cpu_capacity: signed<64>, memory_capacity: signed<64>,
+	ephemeral_storage_capacity: signed<64>, pods_capacity: signed<64>,
+	cpu_allocatable: signed<64>, memory_allocatable: signed<64>,
+	ephemeral_storage_allocatable: signed<64>, pods_allocatable: signed<64>
+	)
+
+input relation POD(pod_name: IString, status: IString,
+	node_name: IString, namespace: IString,
+	cpu_request: signed<64>, memory_request: signed<64>,
+	ephemeral_storage_request: signed<64>, pods_request: signed<64>,
+	owner_name: IString, creation_timestamp: IString,
+	priority: signed<64>, schedularName: IString,
+	has_node_selector_labels: bool, has_pod_affinity_requirements: bool,
+	has_pod_anti_affinity_requirements: bool
+)
+
+input relation PODPORTSREQUEST(pod_name: IString, host_ip:IString,
+    host_port: signed<64>, host_protocol: IString
+)
+
+input relation CONTAINERHOSTPORTS(pod_name:IString, node_name:IString,
+    host_ip:IString, host_port:signed<64>,
+    host_protocol:IString
+)
+
+input relation PODNODESELECTORLABELS(pod_name:IString, term: signed<64>,
+    match_expression: signed<64>, num_match_expressions: signed<64>,
+    label_key:IString, label_operator:IString,
+    label_value:IString
+)
+
+input relation PODAFFINITYMATCHEXPRESSIONS(pod_name:IString, label_selector: signed<64>,
+                                                match_expression: signed<64>, num_match_expressions: signed<64>,
+                                                label_key:IString, label_operator:IString,
+                                                label_value:IString, topology_key: IString)
+
+input relation PODANTIAFFINITYMATCHEXPRESSIONS(pod_name:IString, label_selector: signed<64>,
+                                                   match_expression: signed<64>, num_match_expressions: signed<64>,
+                                                   label_key:IString, label_operator:IString,
+                                                   label_value:IString, topology_key: IString)
+
+input relation PODLABELS(pod_name:IString, label_key:IString, label_value:IString)
+
+input relation NODELABELS(node_name:IString, label_key:IString, label_value:IString)
+
+input relation VOLUMELABELS(volume_name:IString, pod_name: IString, label_key:IString, label_value:IString)
+
+input relation PODBYSERVICE(pod_name:IString, service_name:IString)
+
+input relation SERVICEAFFINITYLABELS(label_key:IString)
+
+input relation LABELSTOCHECKFORPRESENCE(label_key:IString, present:bool)
+
+input relation NODETAINTS(node_name:IString, taint_key:IString, taint_value:IString, taint_effect:IString)
+
+input relation PODTOLERATIONS(pod_name:IString, tolerations_key:IString,
+    tolerations_value:IString, tolerations_effect:IString,
+    tolerations_operator:IString
+)
+
+input relation NODEIMAGES(node_name:IString, image_name:IString, image_size:signed<64>)
+
+input relation PODIMAGES(pod_name:IString, image_name:IString)
+
+input relation BATCHSIZE(pending_pods_limit: signed<64>)
+
+/**Need to be sorted**/
+output relation PODSTOASSIGNNOLIMIT(pod_name:IString, status:IString,
+    node_name:IString, namespace:IString,
+    cpu_request:signed<64>, memory_request:signed<64>,
+    ephemeral_storage_request:signed<64>, pods_request:signed<64>,
+    owner_name:IString, creation_timestamp:IString,
+    has_node_selector_labels: bool, has_pod_affinity_requirements: bool,
+    has_pod_anti_affinity_requirements: bool
+)
+
+/**We are supposed to only pick a few but going with all of them for now**/
+output relation PODSTOASSIGN(pod_name:IString, status:IString,
+    controllable__node_name:IString, namespace:IString,
+    cpu_request:signed<64>, memory_request:signed<64>,
+    ephemeral_storage_request:signed<64>, pods_request:signed<64>,
+    owner_name:IString, creation_timestamp:IString,
+    has_node_selector_labels: bool, has_pod_affinity_requirements: bool,
+    has_pod_anti_affinity_requirements: bool
+)
+
+output relation PODSWITHPORTREQUESTS(controllable__node_name: IString, host_ip: IString,
+    host_port: signed<64>, host_protocol: IString
+)
+
+relation CPUUSEDPERNODE(name: IString, cpu: signed<64>)
+
+relation MEMORYUSEDPERNODE(name: IString, memory: signed<64>)
+
+relation PODSUSEDPERNODE(name:IString, pods: signed<64>)
+
+output relation SPARECAPACITY(name:IString, cpu_remaining: signed<64>,
+    memory_remaining: signed<64>, pods_remaining: signed<64>
+)
+
+output relation PODNODESELECTORMATCHES(pod_name:IString, node_name:IString)
+
+relation PODNODESELECTORMATCHESEXISTS(pod_name:IString, node_name:IString)
+
+relation PODNODESELECTORMATCHESIN(pod_name:IString, node_name:IString)
+
+relation PODNODESELECTORMATCHESNOT(pod_name:IString, node_name:IString)
+
+output relation PODSTHATTOLERATENODETAINTS(pod_name:IString, node_name:IString)
+
+output relation INTERPODAFFINITYMATCHESINNER(pod_name:IString, matches: IString, node_name:IString)
+
+output relation INTERPODAFFINITYMATCHES(pod_name:IString, matches: IString, node_name:IString, num_matches:bit<64>)
+
+relation INTERPODAFFINITYMATCHESGROUPBY(pod_name:IString, num_matches:bit<64>)
+
+output relation INTERPODANTIAFFINITYMATCHESINNER(pod_name:IString, matches: IString, node_name:IString)
+
+output relation INTERPODANTIAFFINITYMATCHES(pod_name:IString, matches: IString, node_name:IString, num_matches:bit<64>)
+
+relation INTERPODANTIAFFINITYMATCHESGROUPBY(pod_name:IString, num_matches:bit<64>)
+
+relation NODETAINTSGROUP(node_name:IString, num_taints: bit<64>)
+
+/**assumption -- because underlying datastructures are sets, values will be unique**/
+output relation NODESTHATHAVETOLERATIONS(node_name:IString)
+
+function sum(g: Group<(signed<64>)>): (signed<64>) =
+{
+    var sum: signed<64> = 0;
+    for (resource in g) {
+        sum = resource + sum
+    };
+    sum
+}
+
+function count_uniq(g: Group<(signed<64>)>): (bit<64>) =
+{
+    var set: Set<signed<64>> = set_empty();
+    for (item in g) {
+        set_insert(set, item)
+    };
+    var count: bit<64> = set_size(set);
+    count
+}
+
+function cast_bit64_to_bigint(x: bit<64>): bigint = { x as bigint }
+function cast_bit64_to_signedbit64(x: bit<64>): signed<64> = { x as signed<64> }
+
+CPUUSEDPERNODE(node_name, cpu) :-
+	POD(.node_name = node_name, .cpu_request = cpu_request),
+	var cpu = Aggregate((node_name), sum(cpu_request)).
+	
+MEMORYUSEDPERNODE(node_name, memory) :-
+	POD(.node_name = node_name, .memory_request = memory_request),
+	var memory = Aggregate((node_name), sum(memory_request)).
+
+PODSUSEDPERNODE(node_name, pods):-
+	POD(.node_name = node_name, .pods_request = pods_request),
+	var pods = Aggregate((node_name), sum(pods_request)).
+
+SPARECAPACITY(node_name, cpu_remaining, memory_remaining, pods_remaining) :-
+	POD(.node_name = node_name),
+	(istring_str(node_name) != "null"),
+	CPUUSEDPERNODE(node_name, cpu),
+	MEMORYUSEDPERNODE(node_name, memory),
+	PODSUSEDPERNODE(node_name, pods),
+	NODE(.name = node_name, .cpu_allocatable = cpu_allocatable, .memory_allocatable = memory_allocatable, .pods_allocatable = pods_allocatable),
+	var cpu_remaining = cpu_allocatable-cpu,
+	var memory_remaining =  memory_allocatable-memory,
+	var pods_remaining = pods_allocatable-pods.
+
+PODSTOASSIGNNOLIMIT(pod_name, status, node_name, namespace, cpu_request, memory_request, ephemeral_storage_request, pods_request, owner_name, creation_timestamp, has_node_selector_labels, has_pod_affinity_requirements, has_pod_anti_affinity_requirements):-
+	POD(pod_name, status, node_name, namespace, cpu_request, memory_request, ephemeral_storage_request, pods_request, owner_name, creation_timestamp, priority, schedulerName, has_node_selector_labels, has_pod_affinity_requirements, has_pod_anti_affinity_requirements),
+	(istring_str(status) == "Pending"),
+	(istring_str(node_name) == "null"),
+	(istring_str(schedulerName) == "dcm-scheduler").
+
+PODSTOASSIGN(pod_name, status, node_name, namespace, cpu_request, memory_request, ephemeral_storage_request, pods_request, owner_name, creation_timestamp, has_node_selector_labels, has_pod_affinity_requirements, has_pod_anti_affinity_requirements):-
+	PODSTOASSIGNNOLIMIT(pod_name, status, node_name, namespace, cpu_request, memory_request, ephemeral_storage_request, pods_request, owner_name, creation_timestamp, has_node_selector_labels, has_pod_affinity_requirements, has_pod_anti_affinity_requirements).
+
+PODSWITHPORTREQUESTS(controllable__node_name, host_ip, host_port, host_protocol):-
+    PODSTOASSIGN(.pod_name = pod_name, .controllable__node_name = controllable__node_name),
+    PODPORTSREQUEST(.pod_name = pod_name, .host_ip = host_ip, .host_port = host_port, .host_protocol = host_protocol).
+
+PODNODESELECTORMATCHESEXISTS(pod_name, node_name):-
+    PODNODESELECTORLABELS(.pod_name = pod_name, .term = term, .match_expression = match_expression, .num_match_expressions = num_match_expressions, .label_key = label_key, .label_operator = label_operator, .label_value = label_value),
+    (istring_str(label_operator) == "Exists"),
+    NODELABELS(.node_name = node_name, .label_key = label_key),
+    PODSTOASSIGN(.pod_name = pod_name),
+    var distinct_match_expression = Aggregate((pod_name, node_name, term, label_operator, num_match_expressions), count_uniq(match_expression)),
+    (num_match_expressions == cast_bit64_to_signedbit64(distinct_match_expression)).
+
+PODNODESELECTORMATCHESIN(pod_name, node_name):-
+    PODNODESELECTORLABELS(.pod_name = pod_name, .term = term, .match_expression = match_expression, .num_match_expressions = num_match_expressions, .label_key = label_key, .label_operator = label_operator, .label_value = label_value),
+    (istring_str(label_operator) == "In"),
+    NODELABELS(.node_name = node_name, .label_key = label_key, .label_value = label_value),
+    PODSTOASSIGN(.pod_name = pod_name),
+    var distinct_match_expression = Aggregate((pod_name, node_name, term, label_operator, num_match_expressions), count_uniq(match_expression)),
+    (num_match_expressions == cast_bit64_to_signedbit64(distinct_match_expression)).
+
+PODNODESELECTORMATCHESNOT(pod_name, node_name):-
+    PODSTOASSIGN(.pod_name = pod_name),
+    NODELABELS(.node_name = node_name, .label_key = label_key_node, .label_value = label_value_node),
+    PODNODESELECTORLABELS(.pod_name = pod_name, .label_operator = label_operator, .label_key = label_key_pod, .label_value = label_value_pod),
+    ((istring_str(label_operator) == "DoesNotExist") or (istring_str(label_operator) == "NotIn")),
+    not ((istring_str(label_operator) == "DoesNotExist" and label_key_node == label_key_pod) or
+        (istring_str(label_operator) == "NotIn" and label_key_node == label_key_pod and label_value_node == label_value_pod)).
+
+PODNODESELECTORMATCHES(pod_name, node_name):-
+    PODNODESELECTORMATCHESIN(.pod_name = pod_name, .node_name = node_name).
+
+PODNODESELECTORMATCHES(pod_name, node_name):-
+    PODNODESELECTORMATCHESEXISTS(.pod_name = pod_name, .node_name = node_name).
+
+PODNODESELECTORMATCHES(pod_name, node_name):-
+    PODNODESELECTORMATCHESNOT(pod_name, node_name).
+
+/* Each entry in this relation describes a single label selector defined for a pod,
+ * consisting of a vector of match expressions.  Each expression is modeled as an
+ * (operator, key, Set<value>) tuple. */
+relation PodLabelSelector(
+    pod_name: IString,
+    expressions: Vec<(IString, IString, Set<IString>)>)
+
+relation PodAntiAffinityLabelSelector(
+    pod_name: IString,
+    expressions: Vec<(IString, IString, Set<IString>)>)
+
+PodLabelSelector(pod_name, expressions) :-
+    PODSTOASSIGN(.pod_name = pod_name),
+    PODAFFINITYMATCHEXPRESSIONS(
+        .pod_name = pod_name,
+        .label_selector = label_selector,
+        .match_expression = match_expression,
+        .label_key = label_key,
+        .label_operator = label_operator,
+        .label_value = label_value
+        ),
+    var expressions =
+        Aggregate((pod_name, label_selector),
+                  group2expressions((match_expression, label_operator, label_key, label_value))).
+
+PodAntiAffinityLabelSelector(pod_name, expressions) :-
+    PODSTOASSIGN(.pod_name = pod_name),
+    PODANTIAFFINITYMATCHEXPRESSIONS(
+        .pod_name = pod_name,
+        .label_selector = label_selector,
+        .match_expression = match_expression,
+        .label_key = label_key,
+        .label_operator = label_operator,
+        .label_value = label_value
+        ),
+    var expressions =
+        Aggregate((pod_name, label_selector),
+                  group2expressions((match_expression, label_operator, label_key, label_value))).
+
+
+/* Convert a group of (match_expression, operator, key, value) tuples into a
+ * vector of match expressions. */
+function group2expressions(g: Group<(signed<64>, IString, IString, IString)>): Vec<(IString, IString, Set<IString>)> =
+{
+    var expressions: Map<signed<64>, (IString, IString, Set<IString>)> = map_empty();
+    for (e in g) {
+        match (map_get(expressions, e.0)) {
+            None -> {
+                map_insert(expressions, e.0, (e.1, e.2, set_singleton(e.3)))
+            },
+            Some{(op, k, vals)} -> {
+                map_insert(expressions, e.0, (op, k, set_insert_imm(vals, e.3)))
+            }
+        }
+    };
+
+    /* Extract values in the map into a vector (because we're missing the `map_values()`
+     * function in `std`). */
+    var expression_vec: Vec<(IString, IString, Set<IString>)> = vec_empty();
+    for (e in expressions) {
+        vec_push(expression_vec, e.1)
+    };
+    expression_vec
+}
+
+/* Relation that aggregates all labels assigned to each pod. */
+relation PodAllLabels(pod_name: IString, node_name: IString, labels: Map<IString, IString>)
+
+PodAllLabels(pod_name, node_name, labels) :-
+    POD(.pod_name = pod_name, .node_name = node_name),
+    PODLABELS(.pod_name = pod_name, .label_key = label_key, .label_value = label_value),
+    var labels = Aggregate((pod_name, node_name), group2map((label_key, label_value))).
+
+INTERPODAFFINITYMATCHESINNER(pod_name, matching_pod, node_name):-
+    PodLabelSelector(pod_name, expressions),
+    PodAllLabels(matching_pod, node_name, labels),
+    pod_matches_label_selector(expressions, labels).
+
+/*TODO: double-check having clause (Statement about anti-affinity rules do not seem to apply to NotIn or DoesNotExist*/
+INTERPODANTIAFFINITYMATCHESINNER(pod_name, matching_pod, node_name):-
+    PodAntiAffinityLabelSelector(pod_name, expressions),
+    PodAllLabels(matching_pod, node_name, labels),
+    pod_matches_label_selector(expressions, labels).
+
+/* Matches pod against a label selector.  The selector is specified as a vector
+ * of expressions that must all be satisfied for the pod to match the selector. */
+function pod_matches_label_selector(
+    expressions: Vec<(IString, IString, Set<IString>)>,
+    labels: Map<IString, IString>): bool =
+{
+    var matches = true;
+    for (e in expressions) {
+        if matches {
+            matches = pod_matches_expression(e.0, e.1, e.2, labels)
+        }
+    };
+    matches
+}
+
+/* Matches a pod against a match expression.  The match expression is given by
+ * its operator, key, and set of values. */
+function pod_matches_expression(
+    operator: IString,
+    expr_key: IString,
+    expr_vals: Set<IString>,
+    labels: Map<IString, IString>): bool =
+{
+    /* XXX: this code would be more efficient if an enum was used for operators
+     * instead of interned strings. */
+    if (operator == string_intern("Exists")) {
+        is_some(map_get(labels, expr_key))
+    } else if (operator == string_intern("In")) {
+        match (map_get(labels, expr_key)) {
+            None -> false,
+            Some{val} -> set_contains(expr_vals, val)
+        }
+    } else if (operator == string_intern("DoesNotExist")) {
+        is_none(map_get(labels, expr_key))
+    } else if (operator == string_intern("NotIn")) {
+        match (map_get(labels, expr_key)) {
+            None -> true,
+            Some{val} -> not set_contains(expr_vals, val)
+        }
+    } else {
+        false
+    }
+}
+
+INTERPODAFFINITYMATCHESGROUPBY(pod_name, num_matches):-
+    INTERPODAFFINITYMATCHESINNER(pod_name, matches, node_name),
+    var num_matches = Aggregate((pod_name), group_count(())).
+
+INTERPODAFFINITYMATCHES(pod_name, matches, node_name, num_matches):-
+    INTERPODAFFINITYMATCHESGROUPBY(pod_name, num_matches),
+    INTERPODAFFINITYMATCHESINNER(pod_name, matches, node_name).
+
+INTERPODANTIAFFINITYMATCHESGROUPBY(pod_name, num_matches):-
+    INTERPODANTIAFFINITYMATCHESINNER(pod_name, matches, node_name),
+    var num_matches = Aggregate((pod_name), group_count(())).
+
+INTERPODANTIAFFINITYMATCHES(pod_name, matches, node_name, num_matches):-
+    INTERPODANTIAFFINITYMATCHESGROUPBY(pod_name, num_matches),
+    INTERPODANTIAFFINITYMATCHESINNER(pod_name, matches, node_name).
+
+NODETAINTSGROUP(node_name, num_taints):-
+    NODETAINTS(node_name, taint_key, taint_value, taint_effect),
+    var num_taints =  Aggregate((node_name), group_count(())).
+
+PODSTHATTOLERATENODETAINTS(pod_name, node_name):-
+        PODSTOASSIGN(.pod_name = pod_name),
+        NODETAINTS(node_name, taint_key, taint_value, taint_effect),
+        NODETAINTSGROUP(node_name, num_taints),
+        PODTOLERATIONS(.pod_name = pod_name, .tolerations_key = taint_key, .tolerations_value = tolerations_value, .tolerations_effect = tolerations_effect, .tolerations_operator = tolerations_operator),
+        ((istring_str(tolerations_effect) == "null" or tolerations_effect == taint_effect) and (istring_str(tolerations_operator) == "Exists" or tolerations_value == taint_value)),
+        var groupsize = Aggregate((pod_name, node_name, num_taints), group_count(())),
+        (groupsize == num_taints).
+
+NODESTHATHAVETOLERATIONS(node_name):-
+    NODETAINTS(.node_name = node_name).

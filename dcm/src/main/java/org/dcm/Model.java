@@ -458,4 +458,8 @@ public class Model {
         compiler.updateData(irContext, backend);
         LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
     }
+
+    public Map<String, IRTable> getIRTables() {
+        return irTables;
+    }
 }
