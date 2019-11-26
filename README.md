@@ -5,11 +5,16 @@
 
 ## Overview
 
-A tool that enables programmers to specify cluster management policies in a
-high-level declarative language, and compute policy-compliant configurations
-automatically and efficiently. DCM allows constraints and policies, the
-essence of a cluster manager, to be easily added, removed and modified
-over time, using a language familiar to developers (SQL).
+Modern cluster management systems like Kubernetes routinely grapple
+with hard combinatorial optimization problems: load balancing,
+placement, scheduling, and configuration. Implementing application-specific algorithms to
+solve these problems is notoriously hard to do, making it challenging to evolve the system over time 
+and add new features. DCM is tool to overcome this challenge. It enables programmers to build schedulers 
+and cluster managers using a high-level declarative language (SQL). 
+
+With DCM, building a scheduler involves representing cluster state in an SQL database, and writing constraints
+and policies that should apply on that state using SQL. Behind-the-scenes, the DCM compiler and runtime generates an 
+encoding of the constraints into an optimization model, which it solves using an off-the-shelf solver. 
 
 ### References
 
