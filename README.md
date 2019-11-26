@@ -26,17 +26,40 @@ To learn more about DCM, we suggest going through the following research papers:
 
 ### Pre-requisites
 
-1. We currently support only the MiniZinc solver backend. You can download it from: [https://www.minizinc.org/software.html](https://www.minizinc.org/software.html)
+1. Maven and JDK 12 for building.
 
-   Make sure you are able to invoke the `minizinc` binary from your commandline.
+2. We test regularly on OSX and Ubuntu 18.04.
 
-2. Maven and JDK 12 for building.
+3. We currently support two solver backends. Make sure to install both of them to run the build: 
 
-3. We test regularly on OSX and Ubuntu 18.04.
+   * **MiniZinc (version 2.3.2)**. You can download it from: [https://www.minizinc.org/software.html](https://www.minizinc.org/software.html)
+
+     Make sure you are able to invoke the `minizinc` binary from your commandline.
+
+   * **Google OR-tools CP-SAT (version 7.4)**. To install, download the binary package for your platform from: [https://github.com/google/or-tools/releases/tag/v7.4](https://github.com/google/or-tools/releases/tag/v7.4)
+
+     Untar the downloaded bundle and run the following command in the `<or-tools>/lib/` folder to install the or-tools jar file:
+
+     ```
+      $: mvn install:install-file -Dfile=com.google.ortools.jar -DgroupId=com.google -DartifactId=ortools -Dversion=7.4 -Dpackaging=jar
+     ```
+
+     Next, set up the following environment variable to point to the or-tools shared library:
+
+     On OSX:
+     ```
+      export OR_TOOLS_LIB=<or-tools>/lib/libjniortools.jnilib
+     ```
+
+     On Linux:
+     ```
+      export OR_TOOLS_LIB=<or-tools>/lib/libjniortools.so
+     
+     ```
 
 ### Building
 
-We use maven as our build system.
+We use maven as our build system. You can run the following command once you've set up the solvers as listed above:
 
 ```
  $: mvn package
@@ -52,7 +75,7 @@ simple cluster manager.
   
 - The first step to using DCM is to set up a database connection, and instantiate a model using
   `Model.buildModel()`. The `setup()` method returns a [JOOQ](https://github.com/jooq/) connection to an 
-  initialized, in-memory Apache Derby database for our example. In a few steps, we will see what kind 
+  initialized, in-memory database for our example. In a few steps, we will see what kind 
   of constraints we can pass to the model: 
 
    ```java
