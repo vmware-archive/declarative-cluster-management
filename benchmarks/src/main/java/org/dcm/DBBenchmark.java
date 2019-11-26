@@ -82,7 +82,7 @@ public class DBBenchmark {
     @Param({"25", "50"})
     public double pendingPods;
 
-    // order: in, exists, notIn, doesNotExists
+    // order: "In", "NotIn", "Exists", "DoesNotExist"
     @Param({"25 25 25 25", "50 50 0 0", "50 0 50 0"})
     public String labelProportions;
 
@@ -410,6 +410,8 @@ public class DBBenchmark {
                 "from podstoassign\n" +
                 "join podportsrequest\n" +
                 "     on podportsrequest.pod_name = podstoassign.pod_name\n");
+
+
 
         dbCtx.execute("create view podnodeselectormatches as\n" +
                 "select podstoassign.pod_name as pod_name,\n" +
@@ -739,8 +741,8 @@ public class DBBenchmark {
         try {
             for (int i = 0; i < numNodes; i++) {
                 final String node = "node" + i;
-                final String labelKey = "label" + i;
-                final String labelValue = "label" + i;
+                final String labelKey = "label_key" + i;
+                final String labelValue = "label_value" + i;
                 final String taintKey = "taint" + i;
                 final String taintValue = "taint" + i;
                 nodeStmt.setString(1, node);
@@ -893,7 +895,7 @@ public class DBBenchmark {
     }
 
     private void printSQLResult(final String viewName) {
-        final Result<? extends Record> results =
+        Result<? extends Record> results =
                 dbCtx.resultQuery("select * from " + viewName).fetch();
         System.out.println(String.format("%s: rows: %d", viewName, results.size()));
     }
