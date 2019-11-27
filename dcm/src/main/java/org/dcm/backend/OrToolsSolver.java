@@ -46,6 +46,7 @@ import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.Qualifier;
 import org.dcm.compiler.monoid.TableRowGenerator;
+import org.dcm.compiler.monoid.UnaryOperator;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -929,12 +930,8 @@ public class OrToolsSolver implements ISolverBackend {
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
             final String vectorName = currentSubQueryContext == null ? "data" : currentSubQueryContext.subQueryName;
 
-            if (node.getFunctionName().equalsIgnoreCase("not")) {
-                return String.format("o.not(%s)", visit(node.getArgument(), isFunctionContext));
-            } else if (node.getFunctionName().equalsIgnoreCase("-")) {
-                return String.format("o.mult(-1, %s)", visit(node.getArgument(), isFunctionContext));
-            }
-
+            Preconditions.checkArgument(!node.getFunctionName().equals("not") &&
+                                        !node.getFunctionName().equals("-"));
 
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
@@ -996,6 +993,21 @@ public class OrToolsSolver implements ISolverBackend {
             final String processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(!type.equals("IntVar"));
             return String.format("%s != null", processedArgument);
+        }
+
+        @Nullable
+        @Override
+        protected String visitUnaryOperator(final UnaryOperator node, @Nullable final Boolean isFunctionContext) {
+            switch (node.getOperator()) {
+                case NOT:
+                    return String.format("o.not(%s)", visit(node.getArgument(), isFunctionContext));
+                case MINUS:
+                    return String.format("o.mult(-1, %s)", visit(node.getArgument(), isFunctionContext));
+                case PLUS:
+                    return visit(node.getArgument(), isFunctionContext);
+                default:
+                    throw new IllegalArgumentException(node.toString());
+            }
         }
 
         @Nullable

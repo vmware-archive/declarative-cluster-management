@@ -6,6 +6,8 @@
 
 package org.dcm.compiler.monoid;
 
+import com.google.common.base.Preconditions;
+
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -30,6 +32,14 @@ public class ComprehensionRewriter<T> extends MonoidVisitor<Expr, T> {
                                                   .map(q -> (Qualifier) this.visit(q, context))
                                                   .collect(Collectors.toList());
         return new MonoidComprehension(newHead, newQualifiers);
+    }
+
+    @Nullable
+    @Override
+    protected Expr visitUnaryOperator(final UnaryOperator node, @Nullable final T context) {
+        final Expr argument = this.visit(node.getArgument(), context);
+        Preconditions.checkArgument(argument != null);
+        return new UnaryOperator(node.getOperator(), argument);
     }
 
     @Override

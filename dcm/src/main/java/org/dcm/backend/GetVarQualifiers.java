@@ -21,6 +21,7 @@ import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.Qualifier;
 import org.dcm.compiler.monoid.TableRowGenerator;
+import org.dcm.compiler.monoid.UnaryOperator;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -78,20 +79,26 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
         return context.withNonVarQualifier(node);
     }
 
+    @Nullable
     @Override
-    protected QualifiersList visitMonoidFunction(final MonoidFunction node,
-                                                 @Nullable final QualifiersList context) {
+    protected QualifiersList visitUnaryOperator(final UnaryOperator node, @Nullable final QualifiersList context) {
         // TODO: revisit the sub-types of Qualifiers. Not every qualifier needs to be a binary operator.
-        if (node.getFunctionName().equalsIgnoreCase("not")) {
+        if (node.getOperator().equals(UnaryOperator.Operator.NOT)) {
             final BinaryOperatorPredicate rewritten =
                     new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node.getArgument(),
-                                                new MonoidLiteral<>(false, Boolean.class));
+                            new MonoidLiteral<>(false, Boolean.class));
             if (isControllableField(node.getArgument())) {
                 return Objects.requireNonNull(context).withVarQualifier(rewritten);
             } else {
                 return Objects.requireNonNull(context).withNonVarQualifier(rewritten);
             }
         }
+        return context;
+    }
+
+    @Override
+    protected QualifiersList visitMonoidFunction(final MonoidFunction node,
+                                                 @Nullable final QualifiersList context) {
         return context;
     }
 

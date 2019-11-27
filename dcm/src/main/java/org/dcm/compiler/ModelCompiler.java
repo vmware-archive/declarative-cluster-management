@@ -55,6 +55,7 @@ import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.Qualifier;
 import org.dcm.compiler.monoid.TableRowGenerator;
+import org.dcm.compiler.monoid.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -434,13 +435,14 @@ public class ModelCompiler {
                 operands.push(operatorPredicate);
             } else if (node instanceof NotExpression) {
                 final Expr innerExpr = operands.pop();
-                final MonoidFunction operatorPredicate = new MonoidFunction("not", innerExpr);
+                final UnaryOperator operatorPredicate = new UnaryOperator(UnaryOperator.Operator.NOT, innerExpr);
                 operands.push(operatorPredicate);
             } else if (node instanceof ArithmeticUnaryExpression) {
                 final Expr innerExpr = operands.pop();
                 final ArithmeticUnaryExpression.Sign sign = ((ArithmeticUnaryExpression) node).getSign();
-                final String signStr = sign.equals(ArithmeticUnaryExpression.Sign.MINUS) ? "-" : "";
-                final MonoidFunction operatorPredicate = new MonoidFunction(signStr, innerExpr);
+                final UnaryOperator.Operator signStr = sign.equals(ArithmeticUnaryExpression.Sign.MINUS) ?
+                        UnaryOperator.Operator.MINUS : UnaryOperator.Operator.PLUS;
+                final UnaryOperator operatorPredicate = new UnaryOperator(signStr, innerExpr);
                 operands.push(operatorPredicate);
             } else if (node instanceof IsNullPredicate) {
                 final Expr innerExpr = operands.pop();

@@ -70,6 +70,12 @@ public class MonoidVisitor<T, C> {
     }
 
     @Nullable
+    protected T visitUnaryOperator(final UnaryOperator node, @Nullable final C context) {
+        node.getArgument().acceptVisitor(this, context);
+        return null;
+    }
+
+    @Nullable
     protected T visitQualifier(final Qualifier node, @Nullable final C context) {
         return null;
     }

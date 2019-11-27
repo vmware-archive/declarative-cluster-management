@@ -21,6 +21,7 @@ import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
+import org.dcm.compiler.monoid.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -122,6 +123,21 @@ class InferType extends MonoidVisitor<String, Void> {
     @Override
     protected String visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final Void context) {
         return Objects.requireNonNull(visit(node.getArgument(), context)).equals("IntVar") ? "IntVar" : "Boolean";
+    }
+
+    @Nullable
+    @Override
+    protected String visitUnaryOperator(final UnaryOperator node, @Nullable final Void context) {
+        final String type = Objects.requireNonNull(visit(node.getArgument(), context));
+        switch (node.getOperator()) {
+            case NOT:
+                return type.equals("IntVar") ? "IntVar" : "Boolean";
+            case MINUS:
+            case PLUS:
+                return type.equals("IntVar") ? "IntVar" : "Integer";
+            default:
+                throw new IllegalArgumentException(node.toString());
+        }
     }
 
     @Nullable

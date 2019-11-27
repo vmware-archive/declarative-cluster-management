@@ -31,6 +31,7 @@ import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.Qualifier;
 import org.dcm.compiler.monoid.TableRowGenerator;
+import org.dcm.compiler.monoid.UnaryOperator;
 
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
@@ -116,6 +117,13 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
     protected Void visitGroupByComprehension(final GroupByComprehension node, final Void context) {
         groupByQualifier = node.getGroupByQualifier();
         visit(node.getComprehension());
+        return null;
+    }
+
+    @Nullable
+    @Override
+    protected Void visitUnaryOperator(final UnaryOperator node, @Nullable final Void context) {
+        literals.add(node);
         return null;
     }
 
@@ -397,7 +405,11 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
             final String body = String.format("%s %s %s", rangeExpression,
                                               whereExpression.isEmpty() ? "" : "where",
                                               whereExpression);
-            if (headItem instanceof MonoidFunction) {
+            // TODO: this a sign that we need to improve how functions are represented. They should not be head items.
+            //  within the inner comprehensions
+            if (headItem instanceof MonoidFunction ||
+                (headItem instanceof UnaryOperator &&
+                    ((UnaryOperator) headItem).getArgument() instanceof MonoidFunction)) {
                 return evaluateHeadItem(headItem, body);
             }
             else {
@@ -537,11 +549,10 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                             arg,
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
-                }
-                else if (function.getArgument() instanceof MonoidLiteral) {
+                } else if (function.getArgument() instanceof MonoidLiteral) {
                     final String op = String.format("%s([%s | %s])", functionName,
-                                                                    ((MonoidLiteral) function.getArgument()).getValue(),
-                                                                    groupByInnerComprehensionQualifier);
+                            ((MonoidLiteral) function.getArgument()).getValue(),
+                            groupByInnerComprehensionQualifier);
                     operands.push(op);
                 } else {
                     // We're usually here because of unary operators like -(count(col1)) in select expressions.
@@ -565,6 +576,22 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                 final String op2 = operands.pop();
                 final BinaryOperatorPredicate operator = (BinaryOperatorPredicate) expr;
                 operands.push(String.format("(%s) %s (%s)", op1, operatorToString(operator.getOperator()), op2));
+            } else if (expr instanceof UnaryOperator) {
+                final UnaryOperator unaryOperator = (UnaryOperator) expr;
+                final String operator;
+                switch (unaryOperator.getOperator()) {
+                    case MINUS:
+                        operator = "-";
+                        break;
+                    case NOT:
+                        operator = "not";
+                        break;
+                    default:
+                        throw new IllegalArgumentException(unaryOperator.toString());
+                }
+                final String exprStr = evaluateHeadItem(unaryOperator.getArgument(),
+                                                        groupByInnerComprehensionQualifier);
+                operands.push(String.format("%s(%s)", operator, exprStr));
             } else {
                 throw new RuntimeException("Unexpected expr type: " + expr);
             }
@@ -592,6 +619,23 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                     cg.visit(function.getArgument());
                     return ImmutableList.of(String.format("%s(%s)", function.getFunctionName(),
                                                                              cg.evaluateExpression().get(0)));
+                }
+                else if (literals.get(0) instanceof UnaryOperator) {
+                    final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
+                    final UnaryOperator operator = (UnaryOperator) literals.get(0);
+                    cg.visit(operator.getArgument());
+                    final String opStr;
+                    switch (operator.getOperator()) {
+                        case NOT:
+                            opStr = "not";
+                            break;
+                        case MINUS:
+                            opStr = "-";
+                            break;
+                        default:
+                            throw new IllegalArgumentException(operator.toString());
+                    }
+                    return ImmutableList.of(String.format("%s(%s)", opStr, cg.evaluateExpression().get(0)));
                 }
                 else if (literals.get(0) instanceof ExistsPredicate) {
                     final ExistsPredicate predicate = (ExistsPredicate) literals.get(0);
@@ -727,6 +771,13 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
 
         @Override
         protected Void visitMonoidFunction(final MonoidFunction node, final Void context) {
+            stack.push(node);
+            return null;
+        }
+
+        @Nullable
+        @Override
+        protected Void visitUnaryOperator(final UnaryOperator node, @Nullable final Void context) {
             stack.push(node);
             return null;
         }
