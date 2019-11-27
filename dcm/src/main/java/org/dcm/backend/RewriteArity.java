@@ -171,23 +171,19 @@ class RewriteArity {
         @Override
         protected Expr visitMonoidFunction(final MonoidFunction node, @Nullable final Qualifier qualifier) {
             assert qualifier != null;
-            if (node.getFunctionName().equalsIgnoreCase("sum") ||
-                    node.getFunctionName().equalsIgnoreCase("count")) {
-                final Expr oldSumArg = node.getFunctionName().equalsIgnoreCase("count")
+            if (node.getFunction().equals(MonoidFunction.Function.SUM) ||
+                    node.getFunction().equals(MonoidFunction.Function.COUNT)) {
+                final Expr oldSumArg = node.getFunction().equals(MonoidFunction.Function.COUNT)
                         ? new MonoidLiteral<>(1, Integer.class) : node.getArgument();
                 final BinaryOperatorPredicateWithAggregate newArgument
                         = new BinaryOperatorPredicateWithAggregate(BinaryOperatorPredicate.Operator.MULTIPLY,
                                                                    oldSumArg, qualifier);
                 didRewrite = true;
                 if (node.getAlias().isPresent()) {
-                    return new MonoidFunction(node.getFunctionName(), newArgument, node.getAlias().get());
+                    return new MonoidFunction(node.getFunction(), newArgument, node.getAlias().get());
                 } else {
-                    return new MonoidFunction(node.getFunctionName(), newArgument);
+                    return new MonoidFunction(node.getFunction(), newArgument);
                 }
-            }
-            if (node.getFunctionName().equalsIgnoreCase("-")) {
-                final Expr ret = this.visit(node.getArgument(), qualifier);
-                return new MonoidFunction("-", Objects.requireNonNull(ret));
             }
             return node;
         }

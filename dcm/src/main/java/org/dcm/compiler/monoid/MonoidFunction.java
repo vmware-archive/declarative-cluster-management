@@ -9,16 +9,16 @@ package org.dcm.compiler.monoid;
 import javax.annotation.Nullable;
 
 public class MonoidFunction extends Expr {
-    private final String functionName;
+    private final Function function;
     private final Expr argument;
 
-    public MonoidFunction(final String functionName, final Expr argument) {
-        this.functionName = functionName;
+    public MonoidFunction(final Function function, final Expr argument) {
+        this.function = function;
         this.argument = argument;
     }
 
-    public MonoidFunction(final String functionName, final Expr argument, final String alias) {
-        this.functionName = functionName;
+    public MonoidFunction(final Function function, final Expr argument, final String alias) {
+        this.function = function;
         this.argument = argument;
         setAlias(alias);
     }
@@ -27,14 +27,14 @@ public class MonoidFunction extends Expr {
         return argument;
     }
 
-    public String getFunctionName() {
-        return functionName;
+    public Function getFunction() {
+        return function;
     }
 
     @Override
     public String toString() {
         return "MonoidFunction{" +
-                "functionName='" + functionName + '\'' +
+                "functionName='" + function + '\'' +
                 ", argument=" + argument +
                 '}';
     }
@@ -42,5 +42,15 @@ public class MonoidFunction extends Expr {
     @Override
     <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
         return visitor.visitMonoidFunction(this, context);
+    }
+
+    public enum Function {
+        COUNT,
+        SUM,
+        MIN,
+        MAX,
+        ALL_DIFFERENT,
+        ALL_EQUAL,
+        INCREASING
     }
 }

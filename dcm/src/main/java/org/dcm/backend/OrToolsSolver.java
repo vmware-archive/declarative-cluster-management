@@ -930,44 +930,46 @@ public class OrToolsSolver implements ISolverBackend {
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
             final String vectorName = currentSubQueryContext == null ? "data" : currentSubQueryContext.subQueryName;
 
-            Preconditions.checkArgument(!node.getFunctionName().equals("not") &&
-                                        !node.getFunctionName().equals("-"));
-
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
             final String processedArgument = visit(node.getArgument(), true);
             final boolean argumentIsIntVar = inferType(node.getArgument()).equals("IntVar");
-            if (node.getFunctionName().equalsIgnoreCase("sum")) {
-                final String functionName = argumentIsIntVar ? "sumV" : "sum";
-                return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
-                                    functionName, vectorName, processedArgument, Collectors.class).toString();
-            } else if (node.getFunctionName().equalsIgnoreCase("count")) {
-                final String functionName = argumentIsIntVar ? "sumV" : "sum";
 
-                // In these cases, it is safe to replace count(argument) with sum(1)
-                if ((node.getArgument() instanceof MonoidLiteral || node.getArgument() instanceof ColumnIdentifier)) {
-                    return argumentIsIntVar ? CodeBlock.of("o.toConst($L.size())", vectorName).toString()
-                                            : CodeBlock.of("$L.size()", vectorName).toString();
-                }
-                return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
-                        functionName, vectorName, processedArgument, Collectors.class).toString();
-            } else if (node.getFunctionName().equalsIgnoreCase("increasing")) {
-                output.addStatement("o.increasing($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
-                        vectorName, processedArgument, Collectors.class);
-                return "model.newConstant(1)";
-            } else if (node.getFunctionName().equalsIgnoreCase("max")) {
-                final CodeBlock inner = CodeBlock.of("$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())",
-                                                     vectorName, processedArgument, Collectors.class);
-                return String.format("o.maxV(%s, %s.get(0))", inner, inner);
-            } else if (node.getFunctionName().equalsIgnoreCase("min")) {
-                final CodeBlock inner = CodeBlock.of("$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())",
-                        vectorName, processedArgument, Collectors.class);
-                return String.format("o.minV(%s, %s.get(0))", inner, inner);
-            } else if (node.getFunctionName().equalsIgnoreCase("all_equal")) {
-                return CodeBlock.builder().add("o.allEqual($L.stream().map(t -> $L).collect($T.toList()))",
-                        vectorName, processedArgument, Collectors.class).build().toString();
+            switch (node.getFunction()) {
+                case SUM:
+                    final String sumFunction = argumentIsIntVar ? "sumV" : "sum";
+                    return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                            sumFunction, vectorName, processedArgument, Collectors.class).toString();
+                case COUNT:
+                    final String countFunction = argumentIsIntVar ? "sumV" : "sum";
+
+                    // In these cases, it is safe to replace count(argument) with sum(1)
+                    if ((node.getArgument() instanceof MonoidLiteral ||
+                         node.getArgument() instanceof ColumnIdentifier)) {
+                        return argumentIsIntVar ? CodeBlock.of("o.toConst($L.size())", vectorName).toString()
+                                : CodeBlock.of("$L.size()", vectorName).toString();
+                    }
+                    return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                            countFunction , vectorName, processedArgument, Collectors.class).toString();
+                case MAX:
+                    final CodeBlock maxArg = CodeBlock.of("$L.stream()\n      .map(t -> $L)\n    .collect($T.toList())",
+                            vectorName, processedArgument, Collectors.class);
+                    return String.format("o.maxV(%s, %s.get(0))", maxArg, maxArg);
+                case MIN:
+                    final CodeBlock minArg = CodeBlock.of("$L.stream()\n      .map(t -> $L)\n    .collect($T.toList())",
+                            vectorName, processedArgument, Collectors.class);
+                    return String.format("o.minV(%s, %s.get(0))", minArg, minArg);
+                case ALL_EQUAL:
+                    return CodeBlock.builder().add("o.allEqual($L.stream().map(t -> $L).collect($T.toList()))",
+                            vectorName, processedArgument, Collectors.class).build().toString();
+                case INCREASING:
+                    output.addStatement("o.increasing($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                            vectorName, processedArgument, Collectors.class);
+                    return "model.newConstant(1)";
+                case ALL_DIFFERENT:
+                default:
+                    throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
             }
-            throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunctionName());
         }
 
         @Nullable

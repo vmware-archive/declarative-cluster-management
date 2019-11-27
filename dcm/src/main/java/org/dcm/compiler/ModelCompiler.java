@@ -356,7 +356,8 @@ public class ModelCompiler {
                 // Only having clauses will have function calls in the expression.
                 final FunctionCall functionCall = (FunctionCall) node;
                 final Expr function;
-                final String mnzFunctionName = functionCall.getName().toString().toLowerCase(Locale.US);
+                final String functionNameStr = functionCall.getName().toString().toUpperCase(Locale.US);
+                final MonoidFunction.Function functionType = MonoidFunction.Function.valueOf(functionNameStr);
                 if (functionCall.getArguments().size() == 1) {
                     final List<Expr> arithmeticExpression =
                             processArithmeticExpression(functionCall.getArguments().get(0),
@@ -364,7 +365,7 @@ public class ModelCompiler {
                                                         isAggregate);
                     assert arithmeticExpression.size() == 1;
                     final Expr argument = arithmeticExpression.get(0);
-                    function = new MonoidFunction(mnzFunctionName, argument);
+                    function = new MonoidFunction(functionType, argument);
                 } else if (functionCall.getArguments().isEmpty() &&
                             "count".equalsIgnoreCase(functionCall.getName().getSuffix())) {
                     // The presto parser does not consider count(*) as a function with a single
@@ -377,7 +378,7 @@ public class ModelCompiler {
                     final IRTable table = tablesReferencedInView.iterator().next();
                     final IRColumn field = table.getIRColumns().entrySet().iterator().next().getValue();
                     final ColumnIdentifier column = new ColumnIdentifier(table.getName(), field, false);
-                    function = new MonoidFunction(mnzFunctionName, column);
+                    function = new MonoidFunction(functionType, column);
                 } else {
                     throw new RuntimeException("I don't know what to do with this function call type: " + functionCall);
                 }

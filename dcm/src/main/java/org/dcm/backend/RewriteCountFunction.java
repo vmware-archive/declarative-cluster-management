@@ -32,11 +32,11 @@ class RewriteCountFunction {
     static class CountRewriter extends ComprehensionRewriter<Void> {
         @Override
         protected Expr visitMonoidFunction(final MonoidFunction function, @Nullable final Void context) {
-            if (function.getFunctionName().equalsIgnoreCase("count")) {
+            if (function.getFunction().equals(MonoidFunction.Function.COUNT)) {
                 if (!(function.getArgument() instanceof ColumnIdentifier)) {
                     throw new IllegalStateException("RewriteCountFunction is only safe to use on column identifiers");
                 }
-                final MonoidFunction newFunction = new MonoidFunction("sum",
+                final MonoidFunction newFunction = new MonoidFunction(MonoidFunction.Function.SUM,
                                                                       new MonoidLiteral<>(1L, Long.class));
                 function.getAlias().ifPresent(newFunction::setAlias);
                 return newFunction;

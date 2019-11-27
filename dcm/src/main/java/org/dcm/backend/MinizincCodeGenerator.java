@@ -48,6 +48,8 @@ import java.util.stream.Collectors;
 public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
     private static final String GROUP_KEY = "GROUP__KEY";
     private static final EnumMap<VarType, String> VAR_TYPE_STRING = new EnumMap<>(VarType.class);
+    private static final Map<MonoidFunction.Function, String> FUNCTION_STRING_MAP =
+            new EnumMap<>(MonoidFunction.Function.class);
 
     private final List<Expr> headItems;
     private final List<BinaryOperatorPredicate> whereQualifiers;
@@ -59,6 +61,12 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
     private final List<Expr> literals;
     private final List<Expr> completeExpression;
     private final String viewName;
+
+    static {
+        for (final MonoidFunction.Function f: MonoidFunction.Function.values()) {
+            FUNCTION_STRING_MAP.put(f, f.toString().toLowerCase(Locale.US));
+        }
+    }
 
     MinizincCodeGenerator() {
         this("");
@@ -532,7 +540,8 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
             final Expr expr = stack.pop();
             if (expr instanceof MonoidFunction) {
                 final MonoidFunction function = (MonoidFunction) expr;
-                final String functionName = function.getFunctionName();
+                final String functionName = FUNCTION_STRING_MAP.get(function.getFunction());
+
                 if (function.getArgument() instanceof ColumnIdentifier) {
                     final ColumnIdentifier argument = (ColumnIdentifier) function.getArgument();
                     // Minizinc does not have a 'count' function. It therefore requires us to replace
@@ -617,7 +626,7 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                     final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
                     final MonoidFunction function = (MonoidFunction) literals.get(0);
                     cg.visit(function.getArgument());
-                    return ImmutableList.of(String.format("%s(%s)", function.getFunctionName(),
+                    return ImmutableList.of(String.format("%s(%s)", function.getFunction(),
                                                                              cg.evaluateExpression().get(0)));
                 }
                 else if (literals.get(0) instanceof UnaryOperator) {
