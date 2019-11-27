@@ -18,9 +18,9 @@ import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.net.URL;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Predicate;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -42,11 +42,15 @@ public class ITBase {
     @BeforeEach
     @Timeout(60 /* seconds */)
     public void deleteAllRunningPods() throws Exception {
-        final List<Deployment> deployments = fabricClient.apps().deployments()
-                                                         .inNamespace(TEST_NAMESPACE).list().getItems();
+        final List<Deployment> deployments = fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
+                .list().getItems();
         for (final Deployment deployment: deployments) {
-            fabricClient.apps().deployments()
-                        .inNamespace(TEST_NAMESPACE).delete(deployment);
+            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).delete(deployment);
+        }
+        final List<Pod> pods = fabricClient.pods().inNamespace(TEST_NAMESPACE)
+                .list().getItems();
+        for (final Pod pod: pods) {
+            fabricClient.pods().inNamespace(TEST_NAMESPACE).delete(pod);
         }
         waitUntil((n) -> hasDrained());
     }
