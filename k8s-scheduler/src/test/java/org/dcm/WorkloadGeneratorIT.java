@@ -51,10 +51,10 @@ public class WorkloadGeneratorIT extends ITBase {
     private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
     @Nullable private static String schedulerName;
 
-    final ScheduledExecutorService scheduledExecutorService =
+    private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);
-    final ArrayList<ScheduledFuture> startDepList = new ArrayList<ScheduledFuture>();
-    final ArrayList<ScheduledFuture> endDepList = new ArrayList<ScheduledFuture>();
+    private final List<ScheduledFuture> startDepList = new ArrayList<>();
+    private final List<ScheduledFuture> endDepList = new ArrayList<>();
 
     @BeforeAll
     public static void setSchedulerFromEnvironment() {
@@ -257,7 +257,6 @@ public class WorkloadGeneratorIT extends ITBase {
                     " at " + System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                     .delete(deployment);
-            //Thread.sleep(5000);
         }
     }
 
