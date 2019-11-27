@@ -934,11 +934,11 @@ public class OrToolsSolver implements ISolverBackend {
             // the computed inner expression within a function to avoid creating too many intermediate variables.
             final String processedArgument = visit(node.getArgument(), true);
             final boolean argumentIsIntVar = inferType(node.getArgument()).equals("IntVar");
-
+            final String formatStr = "$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())";
             switch (node.getFunction()) {
                 case SUM:
                     final String sumFunction = argumentIsIntVar ? "sumV" : "sum";
-                    return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                    return CodeBlock.of("o.$L(" + formatStr + ")",
                             sumFunction, vectorName, processedArgument, Collectors.class).toString();
                 case COUNT:
                     final String countFunction = argumentIsIntVar ? "sumV" : "sum";
@@ -949,21 +949,19 @@ public class OrToolsSolver implements ISolverBackend {
                         return argumentIsIntVar ? CodeBlock.of("o.toConst($L.size())", vectorName).toString()
                                 : CodeBlock.of("$L.size()", vectorName).toString();
                     }
-                    return CodeBlock.of("o.$L($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                    return CodeBlock.of("o.$L(" + formatStr + ")",
                             countFunction , vectorName, processedArgument, Collectors.class).toString();
                 case MAX:
-                    final CodeBlock maxArg = CodeBlock.of("$L.stream()\n      .map(t -> $L)\n    .collect($T.toList())",
-                            vectorName, processedArgument, Collectors.class);
+                    final CodeBlock maxArg = CodeBlock.of(formatStr, vectorName, processedArgument, Collectors.class);
                     return String.format("o.maxV(%s, %s.get(0))", maxArg, maxArg);
                 case MIN:
-                    final CodeBlock minArg = CodeBlock.of("$L.stream()\n      .map(t -> $L)\n    .collect($T.toList())",
-                            vectorName, processedArgument, Collectors.class);
+                    final CodeBlock minArg = CodeBlock.of(formatStr, vectorName, processedArgument, Collectors.class);
                     return String.format("o.minV(%s, %s.get(0))", minArg, minArg);
                 case ALL_EQUAL:
-                    return CodeBlock.builder().add("o.allEqual($L.stream().map(t -> $L).collect($T.toList()))",
-                            vectorName, processedArgument, Collectors.class).build().toString();
+                    return CodeBlock.of("o.allEqual(" + formatStr + ")",
+                            vectorName, processedArgument, Collectors.class).toString();
                 case INCREASING:
-                    output.addStatement("o.increasing($L.stream()\n      .map(t -> $L)\n      .collect($T.toList()))",
+                    output.addStatement("o.increasing(" + formatStr + ")",
                             vectorName, processedArgument, Collectors.class);
                     return "model.newConstant(1)";
                 case ALL_DIFFERENT:
