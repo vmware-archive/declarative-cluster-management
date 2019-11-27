@@ -38,10 +38,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-// import static org.junit.jupiter.api.Assertions.assertEquals;
-// import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-// import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * To run these specific tests, pass a `schedulerName` property to maven, for example:
@@ -78,7 +75,60 @@ public class WorkloadGeneratorIT extends ITBase {
     }
 
     @Test
-    public void testAffinityAntiAffinity() throws Exception {
+    public void testSmallTrace() throws Exception {
+        if (getClass().getClassLoader().getResource("test-data.txt") != null) {
+            System.out.println("Running small trace");
+            runTrace("test-data.txt");
+        } else {
+            System.out.println("test file not found");
+        }
+    }
+
+    @Test
+    public void testAzureV1Complete() throws Exception {
+        if (getClass().getClassLoader().getResource("v1-data.txt") != null) {
+            System.out.println("Running Azure v1 complete trace");
+            runTrace("v1-data.txt");
+        } else {
+            System.out.println("Azure v1 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
+                    " workload-generator to generate the required traces.");
+        }
+    }
+
+    @Test
+    public void testAzureV1Cropped() throws Exception {
+        if (getClass().getClassLoader().getResource("v1-cropped.txt") != null) {
+            System.out.println("Running Azure v1 cropped trace");
+            runTrace("v1-cropped.txt");
+        } else {
+            System.out.println("Azure v1 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
+                    " workload-generator to generate the required traces.");
+        }
+    }
+
+    @Test
+    public void testAzureV2Complete() throws Exception {
+        if (getClass().getClassLoader().getResource("v2-data.txt") != null) {
+            System.out.println("Running Azure v2 complete trace");
+            runTrace("v2-data.txt");
+        } else {
+            System.out.println("Azure v2 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
+                    " workload-generator to generate the required traces.");
+        }
+    }
+
+    @Test
+    public void testAzureV2Cropped() throws Exception {
+        if (getClass().getClassLoader().getResource("v2-cropped.txt") != null) {
+            System.out.println("Running Azure v2 cropped trace");
+            runTrace("v2-cropped.txt");
+        } else {
+            System.out.println("Azure v2 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
+                    " workload-generator to generate the required traces.");
+        }
+    }
+
+    public void runTrace(final String fileName) throws Exception {
         // Trace pod and node arrivals/departure
         final long traceId = System.currentTimeMillis();
         fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
@@ -90,9 +140,7 @@ public class WorkloadGeneratorIT extends ITBase {
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        //final InputStream inStream = classLoader.getResourceAsStream("v1-data-start-time-sorted.txt");
-        final InputStream inStream = classLoader.getResourceAsStream("test-data.txt");
-        //final InputStream inStream = classLoader.getResourceAsStream("v1-cropped.txt");
+        final InputStream inStream = classLoader.getResourceAsStream(fileName);
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
@@ -101,11 +149,18 @@ public class WorkloadGeneratorIT extends ITBase {
             final long startTime = System.currentTimeMillis();
             System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
+                final String[] parts = line.split(" ", 7);
+                final Integer start = Integer.parseInt(parts[2]);
+                final Integer end = Integer.parseInt(parts[3]);
+                final Float cpu = Float.parseFloat(parts[4]);
+                final Float mem = Float.parseFloat(parts[5]);
+                final Integer vmCount = Integer.parseInt(parts[6]);
+
                 // generate a deployment's details based on cpu, mem requirements
-                final Deployment deployment = getDeployment(line, taskCount);
+                final Deployment deployment = getDeployment(cpu, mem, vmCount, taskCount);
 
                 // get task time info
-                final long taskStartTime = getTaskStartTime(line) * 1000; // converting to millisec
+                final long taskStartTime = (long) start * 1000; // converting to millisec
                 final long currentTime = System.currentTimeMillis();
                 final long timeDiff = currentTime - startTime;
                 final long waitTime = taskStartTime - timeDiff;
@@ -115,7 +170,7 @@ public class WorkloadGeneratorIT extends ITBase {
                         new StartDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
 
                 // get duration based on start and end times
-                final int duration = getDuration(line);
+                final int duration = getDuration(start, end);
 
                 // Schedule deletion of this deployment based on duration + time until start of the dep
                 final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
@@ -138,12 +193,7 @@ public class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    private Deployment getDeployment(final String line, final int taskCount) {
-        final String[] parts = line.split(" ", 7);
-        final float cpu = Float.parseFloat(parts[4]) / 1000;
-        final float mem = Float.parseFloat(parts[5]) / 100;
-        final int count = Integer.parseInt(parts[6]);
-
+    private Deployment getDeployment(final float cpu, final float mem, final int count, final int taskCount) {
         final URL url = getClass().getClassLoader().getResource("cache-example.yml");
         assertNotNull(url);
         final File file = new File(url.getFile());
@@ -170,21 +220,12 @@ public class WorkloadGeneratorIT extends ITBase {
         return deployment;
     }
 
-    private int getDuration(final String line) {
-        final String[] parts = line.split(" ", 7);
-        final int startTime = Integer.parseInt(parts[2]);
-        int endTime = Integer.parseInt(parts[3]);
+    private int getDuration(final int startTime, int endTime) {
         if (endTime <= startTime) {
             endTime = startTime + 5;
         }
         final int duration = (endTime - startTime);
         return duration;
-    }
-
-    private long getTaskStartTime(final String line) {
-        final String[] parts = line.split(" ", 7);
-        final long startTime = Long.parseLong(parts[2]);
-        return startTime;
     }
 
     private static class StartDeployment implements Runnable {
