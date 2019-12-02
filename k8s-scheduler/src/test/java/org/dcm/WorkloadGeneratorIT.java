@@ -49,7 +49,10 @@ public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
+    private static final String TRACE_SCALE_PROPERTY = "traceScale";
+    private static final int TRACE_SCALE_DEFAULT = 1;
     @Nullable private static String schedulerName;
+    private static int traceScale = 1;
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);
@@ -58,8 +61,11 @@ public class WorkloadGeneratorIT extends ITBase {
 
     @BeforeAll
     public static void setSchedulerFromEnvironment() {
-        final String property = System.getProperty(SCHEDULER_NAME_PROPERTY);
-        schedulerName = property == null ? SCHEDULER_NAME_DEFAULT : property;
+        final String schedulerNameProperty = System.getProperty(SCHEDULER_NAME_PROPERTY);
+        schedulerName = schedulerNameProperty == null ? SCHEDULER_NAME_DEFAULT : schedulerNameProperty;
+
+        final String traceScaleProperty = System.getProperty(TRACE_SCALE_PROPERTY);
+        traceScale = traceScaleProperty == null ? TRACE_SCALE_DEFAULT : Integer.parseInt(traceScaleProperty);
     }
 
     @BeforeEach
@@ -150,8 +156,8 @@ public class WorkloadGeneratorIT extends ITBase {
             System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
                 final String[] parts = line.split(" ", 7);
-                final Integer start = Integer.parseInt(parts[2]);
-                final Integer end = Integer.parseInt(parts[3]);
+                final Integer start = Integer.parseInt(parts[2]) / traceScale;
+                final Integer end = Integer.parseInt(parts[3]) / traceScale;
                 final Float cpu = Float.parseFloat(parts[4]);
                 final Float mem = Float.parseFloat(parts[5]);
                 final Integer vmCount = Integer.parseInt(parts[6]);
@@ -210,8 +216,8 @@ public class WorkloadGeneratorIT extends ITBase {
             final Container container = iter.next();
             final ResourceRequirements resReq = new ResourceRequirements();
             final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
-            reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
-            reqs.put("memory", new Quantity(Float.toString(mem)));
+            reqs.put("cpu", new Quantity(Math.min(cpu, 4) * 1000 + "m"));
+            reqs.put("memory", new Quantity(Float.toString(Math.min(mem, 4))));
             resReq.setRequests(reqs);
             container.setResources(resReq);
             iter.set(container);
