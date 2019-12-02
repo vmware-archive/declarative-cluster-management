@@ -59,7 +59,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
             LOG.info("{} pod added in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
             flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); // might be better to add pods in a batch
         } catch (final Exception e) {
-            LOG.error("Exception during onAdd()", e);
+            LOG.error("Exception during onAdd() for pod:{}", pod.getMetadata().getName(), e);
         }
     }
 
@@ -75,7 +75,8 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
             updatePod(conn, newPod);
             flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
         } catch (final Exception e) {
-            LOG.error("Exception during onUpdate()", e);
+            LOG.error("Exception during onUpdate() for oldPod:{} newPod:{}", oldPod.getMetadata().getName(),
+                       newPod.getMetadata().getName(), e);
         }
     }
 
@@ -87,7 +88,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
             LOG.debug("{} pod deleted in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
             flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
         } catch (final Exception e) {
-            LOG.error("Exception during onDelete()", e);
+            LOG.error("Exception during onDelete() for pod:{}", pod.getMetadata().getName(), e);
         }
     }
 
@@ -115,7 +116,10 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
         final PodInfoRecord existingPodInfoRecord = conn.selectFrom(Tables.POD_INFO)
                 .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
                 .fetchOne();
-        assert existingPodInfoRecord != null;
+        if (existingPodInfoRecord == null) {
+            LOG.trace("Pod {} does not exist. Skipping", pod.getMetadata().getName());
+            return;
+        }
         LOG.trace("Updating info about pod {}", pod.getMetadata().getName());
         updatePodRecord(existingPodInfoRecord, pod);
     }

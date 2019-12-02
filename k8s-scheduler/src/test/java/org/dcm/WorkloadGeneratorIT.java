@@ -49,13 +49,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
-    private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
+    private static final String SCHEDULER_NAME_DEFAULT = "dcm-scheduler";
     private static final String CPU_SCALE_DOWN_PROPERTY = "cpuScaleDown";
-    private static final int CPU_SCALE_DOWN_DEFAULT = 1;
+    private static final int CPU_SCALE_DOWN_DEFAULT = 20;
     private static final String MEM_SCALE_DOWN_PROPERTY = "memScaleDown";
-    private static final int MEM_SCALE_DOWN_DEFAULT = 1;
+    private static final int MEM_SCALE_DOWN_DEFAULT = 50;
     private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
-    private static final int TIME_SCALE_DOWN_DEFAULT = 1;
+    private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
     private static int cpuScaleDown = 1;
     private static int memScaleDown = 1;
     private static int timeScaleDown = 1;
@@ -261,8 +261,9 @@ public class WorkloadGeneratorIT extends ITBase {
 
         @Override
         public void run() {
-            System.out.println("Creating deployment " + deployment.getMetadata().getName() +
-                    " at " + System.currentTimeMillis());
+            LOG.info("Creating deployment (name:{}, schedulerName:{}) at {}",
+                    deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
+                    System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                     .create(deployment);
         }
@@ -277,8 +278,9 @@ public class WorkloadGeneratorIT extends ITBase {
 
         @Override
         public void run() {
-            System.out.println("Terminating deployment " + deployment.getMetadata().getName() +
-                    " at " + System.currentTimeMillis());
+            LOG.info("Terminating deployment (name:{}, schedulerName:{}) at {}",
+                    deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
+                    System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                     .delete(deployment);
         }
