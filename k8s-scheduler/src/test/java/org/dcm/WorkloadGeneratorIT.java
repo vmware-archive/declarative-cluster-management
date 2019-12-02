@@ -5,6 +5,7 @@
 
 package org.dcm;
 
+import com.google.common.base.Preconditions;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -49,10 +50,16 @@ public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
-    private static final String TRACE_SCALE_PROPERTY = "traceScale";
-    private static final int TRACE_SCALE_DEFAULT = 1;
+    private static final String CPU_SCALE_DOWN_PROPERTY = "cpuScaleDown";
+    private static final int CPU_SCALE_DOWN_DEFAULT = 1;
+    private static final String MEM_SCALE_DOWN_PROPERTY = "memScaleDown";
+    private static final int MEM_SCALE_DOWN_DEFAULT = 1;
+    private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
+    private static final int TIME_SCALE_DOWN_DEFAULT = 1;
+    private static int cpuScaleDown = 1;
+    private static int memScaleDown = 1;
+    private static int timeScaleDown = 1;
     @Nullable private static String schedulerName;
-    private static int traceScale = 1;
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);
@@ -64,8 +71,14 @@ public class WorkloadGeneratorIT extends ITBase {
         final String schedulerNameProperty = System.getProperty(SCHEDULER_NAME_PROPERTY);
         schedulerName = schedulerNameProperty == null ? SCHEDULER_NAME_DEFAULT : schedulerNameProperty;
 
-        final String traceScaleProperty = System.getProperty(TRACE_SCALE_PROPERTY);
-        traceScale = traceScaleProperty == null ? TRACE_SCALE_DEFAULT : Integer.parseInt(traceScaleProperty);
+        final String cpuScaleProperty = System.getProperty(CPU_SCALE_DOWN_PROPERTY);
+        cpuScaleDown = cpuScaleProperty == null ? CPU_SCALE_DOWN_DEFAULT : Integer.parseInt(cpuScaleProperty);
+
+        final String memScaleProperty = System.getProperty(MEM_SCALE_DOWN_PROPERTY);
+        memScaleDown = memScaleProperty == null ? MEM_SCALE_DOWN_DEFAULT : Integer.parseInt(memScaleProperty);
+
+        final String timeScaleProperty = System.getProperty(TIME_SCALE_DOWN_PROPERTY);
+        timeScaleDown = timeScaleProperty == null ? TIME_SCALE_DOWN_DEFAULT : Integer.parseInt(timeScaleProperty);
     }
 
     @BeforeEach
@@ -134,19 +147,21 @@ public class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    public void runTrace(final String fileName) throws Exception {
+    void runTrace(final String fileName) throws Exception {
         // Trace pod and node arrivals/departure
         final long traceId = System.currentTimeMillis();
         fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
         fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
 
         assertNotNull(schedulerName);
-        LOG.info("Running testAffinityAntiAffinity with parameters: MasterUrl:{} SchedulerName:{}",
-                fabricClient.getConfiguration().getMasterUrl(), schedulerName);
+        LOG.info("Running testAffinityAntiAffinity with parameters: MasterUrl:{} SchedulerName:{} CpuScaleDown:{}" +
+                 " MemScaleDown:{} TimeScaleDown:{}", fabricClient.getConfiguration().getMasterUrl(), schedulerName,
+                 cpuScaleDown, memScaleDown, timeScaleDown);
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream(fileName);
+        Preconditions.checkNotNull(inStream);
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
@@ -156,11 +171,11 @@ public class WorkloadGeneratorIT extends ITBase {
             System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
                 final String[] parts = line.split(" ", 7);
-                final Integer start = Integer.parseInt(parts[2]) / traceScale;
-                final Integer end = Integer.parseInt(parts[3]) / traceScale;
-                final Float cpu = Float.parseFloat(parts[4]);
-                final Float mem = Float.parseFloat(parts[5]);
-                final Integer vmCount = Integer.parseInt(parts[6]);
+                final int start = Integer.parseInt(parts[2]) / timeScaleDown;
+                final int end = Integer.parseInt(parts[3]) / timeScaleDown;
+                final float cpu = Float.parseFloat(parts[4]) / cpuScaleDown;
+                final float mem = Float.parseFloat(parts[5]) / memScaleDown;
+                final int vmCount = Integer.parseInt(parts[6]);
 
                 // generate a deployment's details based on cpu, mem requirements
                 final Deployment deployment = getDeployment(cpu, mem, vmCount, taskCount);
@@ -216,8 +231,8 @@ public class WorkloadGeneratorIT extends ITBase {
             final Container container = iter.next();
             final ResourceRequirements resReq = new ResourceRequirements();
             final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
-            reqs.put("cpu", new Quantity(Math.min(cpu, 2) * 1000 + "m"));
-            reqs.put("memory", new Quantity(Float.toString(Math.min(mem, 2))));
+            reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
+            reqs.put("memory", new Quantity(Float.toString(mem)));
             resReq.setRequests(reqs);
             container.setResources(resReq);
             iter.set(container);
@@ -230,8 +245,7 @@ public class WorkloadGeneratorIT extends ITBase {
         if (endTime <= startTime) {
             endTime = startTime + 5;
         }
-        final int duration = (endTime - startTime);
-        return duration;
+        return (endTime - startTime);
     }
 
     private static class StartDeployment implements Runnable {
