@@ -162,6 +162,7 @@ public class WorkloadGeneratorIT extends ITBase {
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream(fileName);
         Preconditions.checkNotNull(inStream);
+        int limit = 100;
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
@@ -170,6 +171,9 @@ public class WorkloadGeneratorIT extends ITBase {
             final long startTime = System.currentTimeMillis();
             System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
+                if (limit-- == 0) {
+                    break;
+                }
                 final String[] parts = line.split(" ", 7);
                 final int start = Integer.parseInt(parts[2]) / timeScaleDown;
                 final int end = Integer.parseInt(parts[3]) / timeScaleDown;
