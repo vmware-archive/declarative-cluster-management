@@ -194,7 +194,7 @@ public class WorkloadGeneratorIT extends ITBase {
     }
 
     private Deployment getDeployment(final float cpu, final float mem, final int count, final int taskCount) {
-        final URL url = getClass().getClassLoader().getResource("cache-example.yml");
+        final URL url = getClass().getClassLoader().getResource("app-no-constraints.yml");
         assertNotNull(url);
         final File file = new File(url.getFile());
 
@@ -210,7 +210,7 @@ public class WorkloadGeneratorIT extends ITBase {
             final Container container = iter.next();
             final ResourceRequirements resReq = new ResourceRequirements();
             final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
-            reqs.put("cpu", new Quantity(Float.toString(cpu * 1000) + "m"));
+            reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
             reqs.put("memory", new Quantity(Float.toString(mem)));
             resReq.setRequests(reqs);
             container.setResources(resReq);
