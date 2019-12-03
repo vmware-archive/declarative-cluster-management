@@ -40,7 +40,7 @@ public class ITBase {
     }
 
     @BeforeEach
-    @Timeout(60 /* seconds */)
+    @Timeout(300 /* seconds */)
     public void deleteAllRunningPods() throws Exception {
         final List<Deployment> deployments = fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
                 .list().getItems();
@@ -53,11 +53,6 @@ public class ITBase {
             fabricClient.pods().inNamespace(TEST_NAMESPACE).delete(pod);
         }
         waitUntil((n) -> hasDrained());
-    }
-
-
-    Deployment launchDeploymentFromFile(final String resourceName) {
-        return launchDeploymentFromFile(resourceName, "default-scheduler");
     }
 
     Deployment launchDeploymentFromFile(final String resourceName, final String schedulerName) {

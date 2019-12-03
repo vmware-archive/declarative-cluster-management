@@ -164,7 +164,8 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
         }
 
         // We cap the max priority to 100 to prevent overflow issues in the solver
-        podInfoRecord.setPriority(Math.min(pod.getSpec().getPriority(), 100));
+        podInfoRecord.setPriority(Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(),
+                                           100));
 
         // This field is important because while we injest info about all pods, we only make scheduling decisions
         // for pods that have dcm-scheduler as their name

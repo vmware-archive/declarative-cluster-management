@@ -101,11 +101,11 @@ public final class Scheduler {
         LOG.info("Initialized scheduler:: model:{} relevantTables:{}", model, relevantTables);
     }
 
-    void startScheduler(final Flowable<List<PodEvent>> eventStream, final KubernetesClient client) {
+    void startScheduler(final Flowable<List<PodEvent>> eventStream, final IPodToNodeBinder binder) {
         subscription = eventStream.subscribe(
             podEvents -> {
                 podsPerSchedulingEvent.update(podEvents.size());
-                LOG.info("Received the following events: {}", podEvents);
+                LOG.info("Received the following {} events: {}", podEvents.size(), podEvents);
 
                 final int batch = batchId.incrementAndGet();
 
@@ -135,7 +135,7 @@ public final class Scheduler {
                             final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
                             final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
                             LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
-                            bindOne(namespace, podName, nodeName, client);
+                            binder.bindOne(namespace, podName, nodeName);
                         }
                     ));
                 LOG.info("Done with bindings");
@@ -172,23 +172,6 @@ public final class Scheduler {
             default:
                 throw new IllegalArgumentException(solverToUse);
         }
-    }
-
-    /**
-     * Uses the K8s API to bind a pod to a node.
-     */
-    private void bindOne(final String namespace, final String podName, final String nodeName,
-                         final KubernetesClient client) {
-        final Binding binding = new Binding();
-        final ObjectReference target = new ObjectReference();
-        final ObjectMeta meta = new ObjectMeta();
-        target.setKind("Node");
-        target.setApiVersion("v1");
-        target.setName(nodeName);
-        meta.setName(podName);
-        binding.setTarget(target);
-        binding.setMetadata(meta);
-        client.bindings().inNamespace(namespace).create(binding);
     }
 
     /**
@@ -255,7 +238,8 @@ public final class Scheduler {
                 stateSync.setupInformersAndPodEventStream(conn,
                                                           Integer.parseInt(cmd.getOptionValue("batch-size")),
                                                           Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
-        scheduler.startScheduler(eventStream, kubernetesClient);
+        final KubernetesBindImpl binder = new KubernetesBindImpl(kubernetesClient);
+        scheduler.startScheduler(eventStream, binder);
         stateSync.startProcessingEvents();
         Thread.currentThread().join();
     }

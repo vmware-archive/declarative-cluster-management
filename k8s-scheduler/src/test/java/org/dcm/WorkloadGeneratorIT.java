@@ -49,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 public class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
-    private static final String SCHEDULER_NAME_DEFAULT = "dcm-scheduler";
+    private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
     private static final String CPU_SCALE_DOWN_PROPERTY = "cpuScaleDown";
     private static final int CPU_SCALE_DOWN_DEFAULT = 20;
     private static final String MEM_SCALE_DOWN_PROPERTY = "memScaleDown";
@@ -59,12 +59,19 @@ public class WorkloadGeneratorIT extends ITBase {
     private static int cpuScaleDown = 1;
     private static int memScaleDown = 1;
     private static int timeScaleDown = 1;
-    @Nullable private static String schedulerName;
+    @Nullable static String schedulerName;
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);
     private final List<ScheduledFuture> startDepList = new ArrayList<>();
     private final List<ScheduledFuture> endDepList = new ArrayList<>();
+
+    public WorkloadGeneratorIT(final String name, final int cpuScale, final int memScale, final int timeScale) {
+        schedulerName = name;
+        cpuScaleDown = cpuScale;
+        memScaleDown = memScale;
+        timeScaleDown = timeScale;
+    }
 
     @BeforeAll
     public static void setSchedulerFromEnvironment() {
@@ -97,7 +104,12 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testSmallTrace() throws Exception {
         if (getClass().getClassLoader().getResource("test-data.txt") != null) {
             System.out.println("Running small trace");
-            runTrace("test-data.txt");
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("test-data.txt", deployer);
         } else {
             System.out.println("test file not found");
         }
@@ -107,7 +119,12 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testAzureV1Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v1-data.txt") != null) {
             System.out.println("Running Azure v1 complete trace");
-            runTrace("v1-data.txt");
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("v1-data.txt", deployer);
         } else {
             System.out.println("Azure v1 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
                     " workload-generator to generate the required traces.");
@@ -118,7 +135,12 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testAzureV1Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v1-cropped.txt") != null) {
             System.out.println("Running Azure v1 cropped trace");
-            runTrace("v1-cropped.txt");
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("v1-cropped.txt", deployer);
         } else {
             System.out.println("Azure v1 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
                     " workload-generator to generate the required traces.");
@@ -129,7 +151,12 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testAzureV2Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v2-data.txt") != null) {
             System.out.println("Running Azure v2 complete trace");
-            runTrace("v2-data.txt");
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("v2-data.txt", deployer);
         } else {
             System.out.println("Azure v2 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
                     " workload-generator to generate the required traces.");
@@ -140,29 +167,29 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testAzureV2Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v2-cropped.txt") != null) {
             System.out.println("Running Azure v2 cropped trace");
-            runTrace("v2-cropped.txt");
+            // Trace pod and node arrivals/departure
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("v2-cropped.txt", deployer);
         } else {
             System.out.println("Azure v2 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
                     " workload-generator to generate the required traces.");
         }
     }
 
-    void runTrace(final String fileName) throws Exception {
-        // Trace pod and node arrivals/departure
-        final long traceId = System.currentTimeMillis();
-        fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
-        fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
-
+    void runTrace(final String fileName, final IDeployer deployer) throws Exception {
         assertNotNull(schedulerName);
-        LOG.info("Running testAffinityAntiAffinity with parameters: MasterUrl:{} SchedulerName:{} CpuScaleDown:{}" +
-                 " MemScaleDown:{} TimeScaleDown:{}", fabricClient.getConfiguration().getMasterUrl(), schedulerName,
-                 cpuScaleDown, memScaleDown, timeScaleDown);
+        LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
+                 " MemScaleDown:{} TimeScaleDown:{}", schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream(fileName);
         Preconditions.checkNotNull(inStream);
-        int limit = 100;
+        int limit = 1000;
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
@@ -192,14 +219,14 @@ public class WorkloadGeneratorIT extends ITBase {
 
                 // create deployment in the k8s cluster at the correct start time
                 final ScheduledFuture scheduledStart = scheduledExecutorService.schedule(
-                        new StartDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
+                        deployer.startDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
 
                 // get duration based on start and end times
                 final int duration = getDuration(start, end);
 
                 // Schedule deletion of this deployment based on duration + time until start of the dep
                 final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
-                        new EndDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
+                        deployer.endDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
 
                 // Add to a list to enable keeping the test active until deletion
                 startDepList.add(scheduledStart);
@@ -251,41 +278,6 @@ public class WorkloadGeneratorIT extends ITBase {
         }
         return (endTime - startTime);
     }
-
-    private static class StartDeployment implements Runnable {
-        Deployment deployment;
-
-        StartDeployment(final Deployment dep) {
-            this.deployment = dep;
-        }
-
-        @Override
-        public void run() {
-            LOG.info("Creating deployment (name:{}, schedulerName:{}) at {}",
-                    deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    System.currentTimeMillis());
-            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                    .create(deployment);
-        }
-    }
-
-    private static class EndDeployment implements Runnable {
-        Deployment deployment;
-
-        EndDeployment(final Deployment dep) {
-            this.deployment = dep;
-        }
-
-        @Override
-        public void run() {
-            LOG.info("Terminating deployment (name:{}, schedulerName:{}) at {}",
-                    deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    System.currentTimeMillis());
-            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                    .delete(deployment);
-        }
-    }
-
 
     private static final class LoggingPodWatcher implements Watcher<Pod> {
         private final long traceId;

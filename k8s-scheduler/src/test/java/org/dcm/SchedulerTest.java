@@ -128,7 +128,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
@@ -222,7 +222,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -344,7 +344,7 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
@@ -470,7 +470,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
@@ -690,7 +690,7 @@ public class SchedulerTest {
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
@@ -776,7 +776,7 @@ public class SchedulerTest {
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
 
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
@@ -906,6 +906,39 @@ public class SchedulerTest {
                         p0goesToN1andP1GoesToN1, true)
         );
     }
+
+    /*
+     * Evaluates the node predicates policy. One randomly chosen node is free of any node conditions, so all pod
+     * assignments must go to that node.
+     */
+    @Test
+    public void testNoConstraintPods() {
+        final DSLContext conn = Scheduler.setupDb();
+        final List<String> policies = Policies.getDefaultPolicies();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final int numNodes = 5;
+        final int numPods = 10;
+        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
+        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
+        emitter.subscribe();
+
+        // We pick a random node from [0, numNodes) to assign all pods to.
+        for (int i = 0; i < numNodes; i++) {
+            nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
+                                                   Collections.emptyList()));
+            handler.onAdd(newPod("system-pod-" + i));
+        }
+
+        for (int i = 0; i < numPods; i++) {
+            handler.onAdd(newPod("p" + i));
+        }
+
+        // All pod additions have completed
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Result<? extends Record> results = scheduler.runOneLoop();
+    }
+
 
     private static Map<String, String> map(final String k1, final String v1) {
         return Collections.singletonMap(k1, v1);
