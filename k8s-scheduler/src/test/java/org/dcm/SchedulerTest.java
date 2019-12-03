@@ -605,7 +605,6 @@ public class SchedulerTest {
                 argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
                 argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
                 argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
-
     );
     }
 
