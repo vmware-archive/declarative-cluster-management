@@ -136,6 +136,15 @@ public final class Scheduler {
                         }
                     ));
                 LOG.info("Done with bindings");
+            },
+            e -> {
+                System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN)
+                        .fetch());
+                System.out.println(conn.selectFrom(Tables.POD_INFO)
+                        .where(Tables.POD_INFO.NAMESPACE.ne("kube-system"))
+                        .fetch());
+                System.out.println(conn.selectFrom(Tables.SPARE_CAPACITY_PER_NODE).fetch());
+                LOG.error("Received exception", e);
             }
         );
     }
@@ -143,6 +152,10 @@ public final class Scheduler {
     Result<? extends Record> runOneLoop() {
         final Timer.Context updateDataTimer = updateDataTimes.time();
         model.updateData();
+        if (conn.fetchCount(Tables.PODS_TO_ASSIGN) == 0) {
+            LOG.error("");
+            throw new RuntimeException("Solver invoked when there were no new pods to schedule");
+        }
         updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated =

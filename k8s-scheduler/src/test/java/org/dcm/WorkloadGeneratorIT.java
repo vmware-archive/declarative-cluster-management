@@ -14,13 +14,11 @@ import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -56,30 +54,11 @@ class WorkloadGeneratorIT extends ITBase {
     private static final int MEM_SCALE_DOWN_DEFAULT = 50;
     private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
     private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
-    private static int cpuScaleDown = 1;
-    private static int memScaleDown = 1;
-    private static int timeScaleDown = 1;
-    @Nullable private static String schedulerName;
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);
     private final List<ScheduledFuture> startDepList = new ArrayList<>();
     private final List<ScheduledFuture> endDepList = new ArrayList<>();
-
-    @BeforeAll
-    public static void setSchedulerFromEnvironment() {
-        final String schedulerNameProperty = System.getProperty(SCHEDULER_NAME_PROPERTY);
-        schedulerName = schedulerNameProperty == null ? SCHEDULER_NAME_DEFAULT : schedulerNameProperty;
-
-        final String cpuScaleProperty = System.getProperty(CPU_SCALE_DOWN_PROPERTY);
-        cpuScaleDown = cpuScaleProperty == null ? CPU_SCALE_DOWN_DEFAULT : Integer.parseInt(cpuScaleProperty);
-
-        final String memScaleProperty = System.getProperty(MEM_SCALE_DOWN_PROPERTY);
-        memScaleDown = memScaleProperty == null ? MEM_SCALE_DOWN_DEFAULT : Integer.parseInt(memScaleProperty);
-
-        final String timeScaleProperty = System.getProperty(TIME_SCALE_DOWN_PROPERTY);
-        timeScaleDown = timeScaleProperty == null ? TIME_SCALE_DOWN_DEFAULT : Integer.parseInt(timeScaleProperty);
-    }
 
     @BeforeEach
     public void logBuildInfo() {
@@ -174,7 +153,18 @@ class WorkloadGeneratorIT extends ITBase {
     }
 
     private void runTrace(final String fileName, final IDeployer deployer) throws Exception {
-        Preconditions.checkNotNull(schedulerName);
+        final String schedulerNameProperty = System.getProperty(SCHEDULER_NAME_PROPERTY);
+        final String schedulerName = schedulerNameProperty == null ? SCHEDULER_NAME_DEFAULT : schedulerNameProperty;
+
+        final String cpuScaleProperty = System.getProperty(CPU_SCALE_DOWN_PROPERTY);
+        final int cpuScaleDown = cpuScaleProperty == null ? CPU_SCALE_DOWN_DEFAULT : Integer.parseInt(cpuScaleProperty);
+
+        final String memScaleProperty = System.getProperty(MEM_SCALE_DOWN_PROPERTY);
+        final int memScaleDown = memScaleProperty == null ? MEM_SCALE_DOWN_DEFAULT : Integer.parseInt(memScaleProperty);
+
+        final String timeScaleProperty = System.getProperty(TIME_SCALE_DOWN_PROPERTY);
+        final int timeScaleDown = timeScaleProperty == null ? TIME_SCALE_DOWN_DEFAULT :
+                                        Integer.parseInt(timeScaleProperty);
         runTrace(fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
     }
 
@@ -208,7 +198,7 @@ class WorkloadGeneratorIT extends ITBase {
                 final int vmCount = Integer.parseInt(parts[6]);
 
                 // generate a deployment's details based on cpu, mem requirements
-                final Deployment deployment = getDeployment(cpu, mem, vmCount, taskCount);
+                final Deployment deployment = getDeployment(schedulerName, cpu, mem, vmCount, taskCount);
 
                 // get task time info
                 final long taskStartTime = (long) start * 1000; // converting to millisec
@@ -243,7 +233,8 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    private Deployment getDeployment(final float cpu, final float mem, final int count, final int taskCount) {
+    private Deployment getDeployment(final String schedulerName, final float cpu, final float mem, final int count,
+                                     final int taskCount) {
         final URL url = getClass().getClassLoader().getResource("app-no-constraints.yml");
         assertNotNull(url);
         final File file = new File(url.getFile());
@@ -262,6 +253,7 @@ class WorkloadGeneratorIT extends ITBase {
             final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
             reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
             reqs.put("memory", new Quantity(Float.toString(mem)));
+            reqs.put("pods", new Quantity("1"));
             resReq.setRequests(reqs);
             container.setResources(resReq);
             iter.set(container);

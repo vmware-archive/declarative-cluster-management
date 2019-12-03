@@ -45,13 +45,21 @@ class EmulatedClusterTest extends ITBase {
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu", new Quantity("8"));
+            node.getStatus().getCapacity().put("memory", new Quantity("6000"));
+            node.getStatus().getCapacity().put("pods", new Quantity("110"));
             nodeResourceEventHandler.onAdd(node);
 
             // Add one system pod per node
             final String podName = "system-pod-" + nodeName;
-            final Pod pod;
             final String status = "Running";
-            pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+            final Map<String, Quantity> resourceRequests = new HashMap<>();
+            resourceRequests.put("cpu", new Quantity("100m"));
+            resourceRequests.put("memory", new Quantity("1"));
+            resourceRequests.put("pods", new Quantity("1"));
+            pod.getMetadata().setNamespace("kube-system");
+            pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
             pod.getSpec().setNodeName(nodeName);
             podResourceEventHandler.onAdd(pod);
         }

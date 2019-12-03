@@ -916,7 +916,7 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
             case MULTIPLY:
                 return "*";
             case DIVIDE:
-                return "/";
+                return "div";
             default:
                 throw new UnsupportedOperationException("Operator " + operator);
         }
