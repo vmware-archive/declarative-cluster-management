@@ -591,20 +591,20 @@ public class SchedulerTest {
                 argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
 
                 // NotIn
-                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, false, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, false, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, false, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, false, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
 
                 // DoesNotExist
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, false, false)
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
 
     );
     }
