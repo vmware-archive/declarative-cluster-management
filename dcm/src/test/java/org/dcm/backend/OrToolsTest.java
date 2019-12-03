@@ -17,6 +17,8 @@ import com.google.ortools.util.Domain;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
@@ -72,7 +74,7 @@ public class OrToolsTest {
 
         // Create the variables.
         final int numPods = 100;
-        final int numNodes = 1000;
+        final int numNodes = 50;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
         final int[] podsDemands = new int[numPods];
 
@@ -80,7 +82,7 @@ public class OrToolsTest {
             podsControllableNodes[i] = model.newIntVar(0, numNodes - 1, "");
         }
         for (int i = 0; i < numPods; i++) {
-            podsDemands[i] = 5;
+            podsDemands[i] = ThreadLocalRandom.current().nextInt(0, 100);
         }
 
         // 1. Symmetry breaking
@@ -121,6 +123,71 @@ public class OrToolsTest {
         System.out.println("Done: " + (System.currentTimeMillis() - now));
     }
 
+    @Test
+    public void testSlack() {
+        final long now = System.currentTimeMillis();
+        // Create the model.
+        final CpModel model = new CpModel();
+
+        // Create the variables.
+        final int numPods = 100;
+        final int numNodes = 50;
+        final IntVar[] podsControllableNodes = new IntVar[numPods];
+        final int[] podsDemands = new int[numPods];
+        final int[] nodeCapacities = new int[numNodes];
+
+        for (int i = 0; i < numPods; i++) {
+            podsControllableNodes[i] = model.newIntVar(0, numNodes - 1, "");
+        }
+        for (int i = 0; i < numPods; i++) {
+            podsDemands[i] = 1;
+        }
+        for (int i = 0; i < numNodes; i++) {
+            nodeCapacities[i] = 500;
+        }
+
+        // 1. Symmetry breaking
+        for (int i = 0; i < numPods - 1; i++) {
+            model.addLessOrEqual(podsControllableNodes[i], podsControllableNodes[i + 1]);
+        }
+
+        // 2. Capacity constraint
+        final IntVar[] slacks = new IntVar[numNodes];
+        for (int node = 0; node < numNodes; node++) {
+            final IntVar[] bools = new IntVar[numPods];
+            for (int i = 0; i < numPods; i++) {
+                final IntVar bVar = model.newBoolVar("");
+                model.addEquality(podsControllableNodes[i], node).onlyEnforceIf(bVar);
+                model.addDifferent(podsControllableNodes[i], node).onlyEnforceIf(bVar.not());
+                bools[i] = bVar;
+            }
+            final IntVar load = model.newIntVar(0, 10000000, "");
+            model.addEquality(load, LinearExpr.scalProd(bools, podsDemands));
+
+            final IntVar slack = model.newIntVar(0, 10000000, "");
+            model.addEquality(slack, LinearExpr.scalProd(new IntVar[]{model.newConstant(nodeCapacities[node]), load},
+                                                                      new int[]{1, -1}));
+
+            slacks[node] = slack;
+            model.addGreaterOrEqual(slack, 0);
+        }
+        final IntVar min = model.newIntVar(0, 1000000000, "");
+        model.addMinEquality(min, slacks);
+        model.maximize(min);
+
+        System.out.println("Model creation: " + (System.currentTimeMillis() - now));
+
+        // Create a solver and solve the model.
+        final CpSolver solver = new CpSolver();
+        solver.getParameters().setNumSearchWorkers(4);
+        solver.getParameters().setLogSearchProgress(true);
+        solver.getParameters().setCpModelProbingLevel(0);
+        final CpSolverStatus status = solver.solve(model);
+        if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
+            System.out.println(solver.value(min));
+        }
+        System.out.println("Done: " + (System.currentTimeMillis() - now));
+    }
 
     @Test
     public void test2Ineff() {

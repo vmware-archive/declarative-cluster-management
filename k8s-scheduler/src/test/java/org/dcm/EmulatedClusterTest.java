@@ -2,6 +2,7 @@
  * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
  * SPDX-License-Identifier: BSD-2
  */
+
 package org.dcm;
 
 import io.fabric8.kubernetes.api.model.Affinity;
@@ -28,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-public class EmulatedClusterTest extends ITBase {
+class EmulatedClusterTest extends ITBase {
 
     @Test
     public void runTraceLocally() throws Exception {
@@ -68,9 +69,9 @@ public class EmulatedClusterTest extends ITBase {
 
         scheduler.startScheduler(flowable, new EmulatedBinder(conn));
 
-        final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT("dcm-scheduler", 20, 50, 1000);
+        final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
         final IDeployer deployer = new EmulatedDeployer(podResourceEventHandler, "default");
-        workloadGeneratorIT.runTrace("v1-cropped.txt", deployer);
+        workloadGeneratorIT.runTrace("v1-cropped.txt", deployer, "dcm-scheduler", 20, 50, 1000);
     }
 
     private Node addNode(final String nodeName, final Map<String, String> labels,
@@ -78,9 +79,9 @@ public class EmulatedClusterTest extends ITBase {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();
-        quantityMap.put("cpu", new Quantity("10"));
-        quantityMap.put("memory", new Quantity("1000"));
-        quantityMap.put("ephemeral-storage", new Quantity("1000"));
+        quantityMap.put("cpu", new Quantity("10000"));
+        quantityMap.put("memory", new Quantity("10000"));
+        quantityMap.put("ephemeral-storage", new Quantity("10000"));
         quantityMap.put("pods", new Quantity("100"));
         status.setCapacity(quantityMap);
         status.setAllocatable(quantityMap);

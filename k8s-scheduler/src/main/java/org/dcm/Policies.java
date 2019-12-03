@@ -141,9 +141,12 @@ class Policies {
         // Kubernetes, because there always some system pods running on each node.
         final List<String> views = new ArrayList<>();
         final String intermediateView = "create view pods_slack_per_node as " +
-            "select (spare_capacity_per_node.cpu_remaining - sum(pods_to_assign.cpu_request)) as cpu_slack," +
-            "  (spare_capacity_per_node.memory_remaining - sum(pods_to_assign.memory_request)) as memory_slack," +
-            "  (spare_capacity_per_node.pods_remaining - sum(pods_to_assign.pods_request)) as pods_slack " +
+            "select ((spare_capacity_per_node.cpu_remaining - sum(pods_to_assign.cpu_request)) * 100) " +
+                "     / spare_capacity_per_node.cpu_remaining as cpu_slack," +
+            "  ((spare_capacity_per_node.memory_remaining - sum(pods_to_assign.memory_request)) * 100) " +
+                "     / spare_capacity_per_node.memory_remaining as memory_slack," +
+            "  ((spare_capacity_per_node.pods_remaining - sum(pods_to_assign.pods_request)) * 100) " +
+                "     / spare_capacity_per_node.pods_remaining as pods_slack " +
             "from spare_capacity_per_node " +
             "join pods_to_assign " +
             "     on pods_to_assign.controllable__node_name = spare_capacity_per_node.name " +

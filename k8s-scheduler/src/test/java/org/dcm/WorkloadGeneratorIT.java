@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *
  *  mvn integrate-test -DargLine="-Dk8sUrl=<hostname>:<port> -DschedulerName=dcm-scheduler"
  */
-public class WorkloadGeneratorIT extends ITBase {
+class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
@@ -59,19 +59,12 @@ public class WorkloadGeneratorIT extends ITBase {
     private static int cpuScaleDown = 1;
     private static int memScaleDown = 1;
     private static int timeScaleDown = 1;
-    @Nullable static String schedulerName;
+    @Nullable private static String schedulerName;
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);
     private final List<ScheduledFuture> startDepList = new ArrayList<>();
     private final List<ScheduledFuture> endDepList = new ArrayList<>();
-
-    public WorkloadGeneratorIT(final String name, final int cpuScale, final int memScale, final int timeScale) {
-        schedulerName = name;
-        cpuScaleDown = cpuScale;
-        memScaleDown = memScale;
-        timeScaleDown = timeScale;
-    }
 
     @BeforeAll
     public static void setSchedulerFromEnvironment() {
@@ -180,7 +173,13 @@ public class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    void runTrace(final String fileName, final IDeployer deployer) throws Exception {
+    private void runTrace(final String fileName, final IDeployer deployer) throws Exception {
+        Preconditions.checkNotNull(schedulerName);
+        runTrace(fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
+    }
+
+    void runTrace(final String fileName, final IDeployer deployer, final String schedulerName,
+                  final int cpuScaleDown, final int memScaleDown, final int timeScaleDown) throws Exception {
         assertNotNull(schedulerName);
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
                  " MemScaleDown:{} TimeScaleDown:{}", schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
@@ -220,6 +219,7 @@ public class WorkloadGeneratorIT extends ITBase {
                 // create deployment in the k8s cluster at the correct start time
                 final ScheduledFuture scheduledStart = scheduledExecutorService.schedule(
                         deployer.startDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
+                startDepList.add(scheduledStart);
 
                 // get duration based on start and end times
                 final int duration = getDuration(start, end);
@@ -229,12 +229,10 @@ public class WorkloadGeneratorIT extends ITBase {
                         deployer.endDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
 
                 // Add to a list to enable keeping the test active until deletion
-                startDepList.add(scheduledStart);
                 endDepList.add(scheduledEnd);
 
                 taskCount++;
             }
-
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }

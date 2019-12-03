@@ -2,6 +2,7 @@
  * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
  * SPDX-License-Identifier: BSD-2
  */
+
 package org.dcm;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -52,7 +53,7 @@ public class EmulatedDeployer implements IDeployer {
                     deploymentName, deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
                     System.currentTimeMillis());
 
-            for (int i = 0; i < deployment.getSpec().getReplicas(); i++ ) {
+            for (int i = 0; i < deployment.getSpec().getReplicas(); i++) {
                 final Pod pod = new Pod();
                 final ObjectMeta meta = new ObjectMeta();
                 meta.setName(deploymentName + "-" + i);

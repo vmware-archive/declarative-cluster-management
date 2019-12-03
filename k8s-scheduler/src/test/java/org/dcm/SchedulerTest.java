@@ -916,8 +916,8 @@ public class SchedulerTest {
         final DSLContext conn = Scheduler.setupDb();
         final List<String> policies = Policies.getDefaultPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
-        final int numNodes = 5;
-        final int numPods = 10;
+        final int numNodes = 50;
+        final int numPods = 100;
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
@@ -925,18 +925,35 @@ public class SchedulerTest {
 
         // We pick a random node from [0, numNodes) to assign all pods to.
         for (int i = 0; i < numNodes; i++) {
-            nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
-                                                   Collections.emptyList()));
-            handler.onAdd(newPod("system-pod-" + i));
+            final Node node = addNode("n" + i, Collections.emptyMap(), Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu", new Quantity("8"));
+            node.getStatus().getCapacity().put("memory", new Quantity("6000"));
+            node.getStatus().getCapacity().put("pods", new Quantity("110"));
+            nodeResourceEventHandler.onAdd(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod;
+            final String status = "Running";
+            pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAdd(pod);
         }
 
         for (int i = 0; i < numPods; i++) {
-            handler.onAdd(newPod("p" + i));
+            final Pod pod = newPod("p" + i);
+            final Map<String, Quantity> resourceRequests = new HashMap<>();
+            resourceRequests.put("cpu", new Quantity("100m"));
+            resourceRequests.put("memory", new Quantity("100"));
+            resourceRequests.put("pods", new Quantity("1"));
+            pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+            handler.onAdd(pod);
         }
 
         // All pod additions have completed
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
+        System.out.println(results);
     }
 
 

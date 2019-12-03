@@ -8,7 +8,10 @@
     <Loggers>
         <Logger name="org.jooq.Constants" additivity="false" level="OFF">
         </Logger>
-        <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="debug">
+        <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="off">
+            <AppenderRef ref="console" />
+        </Logger>
+        <Logger name="org.dcm.EmulatedDeployer" additivity="false" level="off">
             <AppenderRef ref="console" />
         </Logger>
         <Root level="info" additivity="false">

@@ -732,6 +732,7 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement(printTime("Model creation"))
                .addStatement("final $1T solver = new $1T()", CpSolver.class)
                .addStatement("solver.getParameters().setLogSearchProgress(true)")
+               .addStatement("solver.getParameters().setCpModelProbingLevel(0)")
                .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
                .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
                .addStatement("final Map<IRTable, Result<? extends Record>> result = new $T<>()", HashMap.class)

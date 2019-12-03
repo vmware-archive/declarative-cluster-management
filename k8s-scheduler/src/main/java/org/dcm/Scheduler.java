@@ -13,9 +13,6 @@ import com.codahale.metrics.Timer;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
-import io.fabric8.kubernetes.api.model.Binding;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.reactivex.Flowable;
@@ -238,7 +235,7 @@ public final class Scheduler {
                 stateSync.setupInformersAndPodEventStream(conn,
                                                           Integer.parseInt(cmd.getOptionValue("batch-size")),
                                                           Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
-        final KubernetesBindImpl binder = new KubernetesBindImpl(kubernetesClient);
+        final KubernetesBinder binder = new KubernetesBinder(kubernetesClient);
         scheduler.startScheduler(eventStream, binder);
         stateSync.startProcessingEvents();
         Thread.currentThread().join();
