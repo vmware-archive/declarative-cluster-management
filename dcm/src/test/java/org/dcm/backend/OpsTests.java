@@ -131,7 +131,7 @@ public class OpsTests {
                                              model.newIntVar(0, 10, ""),
                                              model.newIntVar(0, 10, ""),
                                              model.newIntVar(0, 10, ""));
-        final IntVar maxV = ops.maxV(entries, entries.get(0));
+        final IntVar maxV = ops.maxVIntVar(entries);
         model.addEquality(maxV, 9);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
@@ -147,7 +147,7 @@ public class OpsTests {
                                              model.newIntVar(0, 1, ""),
                                              model.newIntVar(0, 1, ""),
                                              model.newIntVar(0, 1, ""));
-        final IntVar maxV = ops.maxV(entries, entries.get(0));
+        final IntVar maxV = ops.maxVIntVar(entries);
         model.addDifferent(maxV, 1);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
@@ -161,10 +161,10 @@ public class OpsTests {
     @Test
     public void maxVPrimitives() {
         final List<Integer> entries = List.of(1, 2, 4, 3);
-        assertEquals(4, ops.maxV(entries, entries.get(0)));
+        assertEquals(4, ops.maxVInteger(entries));
 
         final List<Long> entriesLong = List.of(1L, 2L, 4L, 3L);
-        assertEquals(4L, ops.maxV(entriesLong, entries.get(0)));
+        assertEquals(4L, ops.maxVLong(entriesLong));
     }
 
     @Test
@@ -173,7 +173,7 @@ public class OpsTests {
                                              model.newIntVar(0, 10, ""),
                                              model.newIntVar(0, 10, ""),
                                              model.newIntVar(0, 10, ""));
-        final IntVar minV = ops.minV(entries, entries.get(0));
+        final IntVar minV = ops.minVIntVar(entries);
         model.addEquality(minV, 9);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
@@ -189,7 +189,7 @@ public class OpsTests {
                                              model.newIntVar(0, 1, ""),
                                              model.newIntVar(0, 1, ""),
                                              model.newIntVar(0, 1, ""));
-        final IntVar minV = ops.minV(entries, entries.get(0));
+        final IntVar minV = ops.minVIntVar(entries);
         model.addDifferent(minV, 0);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
@@ -202,10 +202,10 @@ public class OpsTests {
     @Test
     public void minVPrimitives() {
         final List<Integer> entries = List.of(1, 2, 4, 3);
-        assertEquals(1, ops.minV(entries, entries.get(0)));
+        assertEquals(1, ops.minVInteger(entries));
 
         final List<Long> entriesLong = List.of(1L, 2L, 4L, 3L);
-        assertEquals(1L, ops.minV(entriesLong, entries.get(0)));
+        assertEquals(1L, ops.minVLong(entriesLong));
     }
 
     @Test

@@ -953,10 +953,12 @@ public class OrToolsSolver implements ISolverBackend {
                             countFunction , vectorName, processedArgument, Collectors.class).toString();
                 case MAX:
                     final CodeBlock maxArg = CodeBlock.of(formatStr, vectorName, processedArgument, Collectors.class);
-                    return String.format("o.maxV(%s, %s.get(0))", maxArg, maxArg);
+                    final String maxArgType = inferType(node.getArgument());
+                    return String.format("o.maxV%s(%s)", maxArgType, maxArg);
                 case MIN:
                     final CodeBlock minArg = CodeBlock.of(formatStr, vectorName, processedArgument, Collectors.class);
-                    return String.format("o.minV(%s, %s.get(0))", minArg, minArg);
+                    final String minArgType = inferType(node.getArgument());
+                    return String.format("o.minV%s(%s)", minArgType, minArg);
                 case ALL_EQUAL:
                     return CodeBlock.of("o.allEqual(" + formatStr + ")",
                             vectorName, processedArgument, Collectors.class).toString();

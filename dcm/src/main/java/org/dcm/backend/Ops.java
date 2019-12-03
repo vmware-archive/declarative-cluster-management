@@ -52,29 +52,29 @@ public class Ops {
         return bool;
     }
 
-    public int maxV(final List<Integer> data, final int ignored) {
+    public int maxVInteger(final List<Integer> data) {
         return Collections.max(data);
     }
 
-    public long maxV(final List<Long> data, final long ignored) {
+    public long maxVLong(final List<Long> data) {
         return Collections.max(data);
     }
 
-    public IntVar maxV(final List<IntVar> data, final IntVar ignored) {
+    public IntVar maxVIntVar(final List<IntVar> data) {
         final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
         model.addMaxEquality(ret, data.toArray(new IntVar[0]));
         return ret;
     }
 
-    public int minV(final List<Integer> data, final int ignored) {
+    public int minVInteger(final List<Integer> data) {
         return Collections.min(data);
     }
 
-    public long minV(final List<Long> data, final long ignored) {
+    public long minVLong(final List<Long> data) {
         return Collections.min(data);
     }
 
-    public IntVar minV(final List<IntVar> data, final IntVar ignored) {
+    public IntVar minVIntVar(final List<IntVar> data) {
         final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
         model.addMinEquality(ret, data.toArray(new IntVar[0]));
         return ret;
