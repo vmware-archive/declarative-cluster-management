@@ -323,8 +323,11 @@ join pod_labels
             and pod_anti_affinity_match_expressions.label_value = pod_labels.label_value)
         or (pod_anti_affinity_match_expressions.label_operator = 'Exists'
             and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key)
-        or (pod_anti_affinity_match_expressions.label_operator = 'NotIn')
-        or (pod_anti_affinity_match_expressions.label_operator = 'DoesNotExist')
+        or (pod_anti_affinity_match_expressions.label_operator = 'NotIn'
+        and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
+            and pod_anti_affinity_match_expressions.label_value = pod_labels.label_value)
+        or (pod_anti_affinity_match_expressions.label_operator = 'DoesNotExist'
+            and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key)
 join pod_info
         on pod_labels.pod_name = pod_info.pod_name;
 

@@ -416,9 +416,9 @@ public class SchedulerTest {
                                                    final boolean conditionToRemainingPods,
                                                    final boolean cannotBePlacedAnywhere) {
         final DSLContext conn = Scheduler.setupDb();
-        final int numPods = 10;
+        final int numPods = 4;
         final int numPodsToModify = 3;
-        final int numNodes = 10;
+        final int numNodes = 3;
 
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
@@ -591,21 +591,22 @@ public class SchedulerTest {
                 argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
 
                 // NotIn
-                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, false, false),
                 argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, false, false),
                 argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, false),
 
                 // DoesNotExist
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
-        );
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, false, false)
+
+    );
     }
 
     private static Arguments argGen(final String scenario, final List<PodAffinityTerm> terms,
