@@ -253,7 +253,6 @@ class WorkloadGeneratorIT extends ITBase {
             final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
             reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
             reqs.put("memory", new Quantity(Float.toString(mem)));
-            reqs.put("pods", new Quantity("1"));
             resReq.setRequests(reqs);
             container.setResources(resReq);
             iter.set(container);
