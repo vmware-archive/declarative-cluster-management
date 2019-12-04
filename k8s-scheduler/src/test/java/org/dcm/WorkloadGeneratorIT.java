@@ -182,8 +182,8 @@ class WorkloadGeneratorIT extends ITBase {
         Preconditions.checkNotNull(inStream);
         int limit = 2000;
 
-        float maxStart = 0;
-        float maxEnd = 0;
+        long maxStart = 0;
+        long maxEnd = 0;
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
             String line;
@@ -257,7 +257,7 @@ class WorkloadGeneratorIT extends ITBase {
         for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
             final Container container = iter.next();
             final ResourceRequirements resReq = new ResourceRequirements();
-            final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
+            final Map<String, Quantity> reqs = new HashMap<>();
             reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
             reqs.put("memory", new Quantity(Float.toString(mem)));
             resReq.setRequests(reqs);
