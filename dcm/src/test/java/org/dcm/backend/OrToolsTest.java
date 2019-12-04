@@ -133,17 +133,26 @@ public class OrToolsTest {
         final int numPods = 100;
         final int numNodes = 50;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
-        final int[] podsDemands = new int[numPods];
-        final int[] nodeCapacities = new int[numNodes];
+        final int[] podsDemands1 = new int[numPods];
+        final int[] podsDemands2 = new int[numPods];
+        final int[] podsDemands3 = new int[numPods];
+
+        final int[] nodeCapacities1 = new int[numNodes];
+        final int[] nodeCapacities2 = new int[numNodes];
+        final int[] nodeCapacities3 = new int[numNodes];
 
         for (int i = 0; i < numPods; i++) {
             podsControllableNodes[i] = model.newIntVar(0, numNodes - 1, "");
         }
         for (int i = 0; i < numPods; i++) {
-            podsDemands[i] = 1;
+            podsDemands1[i] = 1;
+            podsDemands2[i] = 2;
+            podsDemands3[i] = 3;
         }
         for (int i = 0; i < numNodes; i++) {
-            nodeCapacities[i] = 500;
+            nodeCapacities1[i] = 500;
+            nodeCapacities2[i] = 600;
+            nodeCapacities3[i] = 700;
         }
 
         // 1. Symmetry breaking
@@ -152,7 +161,10 @@ public class OrToolsTest {
         }
 
         // 2. Capacity constraint
-        final IntVar[] slacks = new IntVar[numNodes];
+        final IntVar[] slacks1 = new IntVar[numNodes];
+        final IntVar[] slacks2 = new IntVar[numNodes];
+        final IntVar[] slacks3 = new IntVar[numNodes];
+
         for (int node = 0; node < numNodes; node++) {
             final IntVar[] bools = new IntVar[numPods];
             for (int i = 0; i < numPods; i++) {
@@ -161,20 +173,42 @@ public class OrToolsTest {
                 model.addDifferent(podsControllableNodes[i], node).onlyEnforceIf(bVar.not());
                 bools[i] = bVar;
             }
-            final IntVar load = model.newIntVar(0, 10000000, "");
-            model.addEquality(load, LinearExpr.scalProd(bools, podsDemands));
+            final IntVar load1 = model.newIntVar(0, 10000000, "");
+            final IntVar load2 = model.newIntVar(0, 10000000, "");
+            final IntVar load3 = model.newIntVar(0, 10000000, "");
+            model.addEquality(load1, LinearExpr.scalProd(bools, podsDemands1));
+            model.addEquality(load2, LinearExpr.scalProd(bools, podsDemands2));
+            model.addEquality(load3, LinearExpr.scalProd(bools, podsDemands3));
 
-            final IntVar slack = model.newIntVar(0, 10000000, "");
-            model.addEquality(slack, LinearExpr.scalProd(new IntVar[]{model.newConstant(nodeCapacities[node]), load},
+            final IntVar slack1 = model.newIntVar(0, 10000000, "");
+            final IntVar slack2 = model.newIntVar(0, 10000000, "");
+            final IntVar slack3 = model.newIntVar(0, 10000000, "");
+
+            model.addEquality(slack1, LinearExpr.scalProd(new IntVar[]{model.newConstant(nodeCapacities1[node]), load1},
                                                                       new int[]{1, -1}));
+            model.addEquality(slack2, LinearExpr.scalProd(new IntVar[]{model.newConstant(nodeCapacities2[node]), load2},
+                    new int[]{1, -1}));
+            model.addEquality(slack3, LinearExpr.scalProd(new IntVar[]{model.newConstant(nodeCapacities3[node]), load3},
+                    new int[]{1, -1}));
 
-            slacks[node] = slack;
-            model.addGreaterOrEqual(slack, 0);
+            slacks1[node] = slack1;
+            slacks2[node] = slack2;
+            slacks3[node] = slack3;
+
+            model.addGreaterOrEqual(slack1, 0);
+            model.addGreaterOrEqual(slack2, 0);
+            model.addGreaterOrEqual(slack3, 0);
+
         }
-        final IntVar min = model.newIntVar(0, 1000000000, "");
-        model.addMinEquality(min, slacks);
-        model.maximize(min);
+        final IntVar min1 = model.newIntVar(0, 1000000000, "");
+//        final IntVar min2 = model.newIntVar(0, 1000000000, "");
+//        final IntVar min3 = model.newIntVar(0, 1000000000, "");
+        model.addMinEquality(min1, slacks1);
+//        model.addMinEquality(min2, slacks2);
+//        model.addMinEquality(min3, slacks3);
 
+//        model.maximize(LinearExpr.sum(new IntVar[]{min1, min2, min3}));
+        model.maximize(min1);
         System.out.println("Model creation: " + (System.currentTimeMillis() - now));
 
         // Create a solver and solve the model.
@@ -184,7 +218,9 @@ public class OrToolsTest {
         solver.getParameters().setCpModelProbingLevel(0);
         final CpSolverStatus status = solver.solve(model);
         if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
-            System.out.println(solver.value(min));
+            System.out.println(solver.value(min1));
+//            System.out.println(solver.value(min2));
+//            System.out.println(solver.value(min3));
         }
         System.out.println("Done: " + (System.currentTimeMillis() - now));
     }

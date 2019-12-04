@@ -49,11 +49,11 @@ class WorkloadGeneratorIT extends ITBase {
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
     private static final String CPU_SCALE_DOWN_PROPERTY = "cpuScaleDown";
-    private static final int CPU_SCALE_DOWN_DEFAULT = 20;
+    private static final int CPU_SCALE_DOWN_DEFAULT = 1;
     private static final String MEM_SCALE_DOWN_PROPERTY = "memScaleDown";
-    private static final int MEM_SCALE_DOWN_DEFAULT = 50;
+    private static final int MEM_SCALE_DOWN_DEFAULT = 1;
     private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
-    private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
+    private static final int TIME_SCALE_DOWN_DEFAULT = 1;
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);

@@ -41,9 +41,9 @@ public class KubernetesDeployer implements IDeployer {
 
         @Override
         public void run() {
-            LOG.info("Creating deployment (name:{}, schedulerName:{}) at {}",
+            LOG.info("Creating deployment (name:{}, schedulerName:{}) with masterUrl {} at {}",
                     deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    System.currentTimeMillis());
+                    fabricClient.getConfiguration().getMasterUrl(), System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(namespace)
                     .create(deployment);
         }
@@ -58,9 +58,9 @@ public class KubernetesDeployer implements IDeployer {
 
         @Override
         public void run() {
-            LOG.info("Terminating deployment (name:{}, schedulerName:{}) at {}",
+            LOG.info("Terminating deployment (name:{}, schedulerName:{}) with masterUrl {} at {}",
                     deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    System.currentTimeMillis());
+                    fabricClient.getConfiguration().getMasterUrl(), System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(namespace)
                     .delete(deployment);
         }
