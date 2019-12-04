@@ -25,6 +25,7 @@ class Policies {
         ALL_POLICIES.add(podAntiAffinityPredicate());
         ALL_POLICIES.add(capacityConstraint(true, true));
         ALL_POLICIES.add(taintsAndTolerations());
+        ALL_POLICIES.add(symmetryBreaking());
     }
 
     /**
@@ -35,14 +36,7 @@ class Policies {
         final String constraint = "create view constraint_controllable_node_name_domain as " +
                                   "select * from pods_to_assign " +
                                   "where controllable__node_name in " +
-                                        "(select name from node_info" +
-                                        "  where node_info.unschedulable = false and " +
-                                        "        node_info.memory_pressure = false and " +
-                                        "        node_info.out_of_disk = false and " +
-                                        "        node_info.disk_pressure = false and " +
-                                        "        node_info.pid_pressure = false and " +
-                                        "        node_info.network_unavailable = false and " +
-                                        "        node_info.ready = true)";
+                                        "(select name from allowed_nodes)";
         return new Policy("NodePredicates", constraint);
     }
 
@@ -140,9 +134,12 @@ class Policies {
         // Kubernetes, because there always some system pods running on each node.
         final List<String> views = new ArrayList<>();
         final String intermediateView = "create view pods_slack_per_node as " +
-            "select (spare_capacity_per_node.cpu_remaining - sum(pods_to_assign.cpu_request)) as cpu_slack," +
-            "  (spare_capacity_per_node.memory_remaining - sum(pods_to_assign.memory_request)) as memory_slack," +
-            "  (spare_capacity_per_node.pods_remaining - sum(pods_to_assign.pods_request)) as pods_slack " +
+            "select ((spare_capacity_per_node.cpu_remaining - sum(pods_to_assign.cpu_request)) * 100) " +
+                "     / spare_capacity_per_node.cpu_remaining as cpu_slack," +
+            "  ((spare_capacity_per_node.memory_remaining - sum(pods_to_assign.memory_request)) * 100) " +
+                "     / spare_capacity_per_node.memory_remaining as memory_slack," +
+            "  ((spare_capacity_per_node.pods_remaining - sum(pods_to_assign.pods_request)) * 100) " +
+                "     / spare_capacity_per_node.pods_remaining as pods_slack " +
             "from spare_capacity_per_node " +
             "join pods_to_assign " +
             "     on pods_to_assign.controllable__node_name = spare_capacity_per_node.name " +
@@ -154,23 +151,41 @@ class Policies {
                                                "  and memory_slack >= 0 " +
                                                "  and pods_slack >= 0";
         final String capacityCpuSoftConstraint = "create view objective_least_requested_cpu as " +
-                                                 "select min(cpu_slack) from pods_slack_per_node";
+                                                 "select min(cpu_slack + memory_slack + pods_slack) " +
+                                                 "from pods_slack_per_node";
+        /*
         final String capacityMemSoftConstraint = "create view objective_least_requested_mem as " +
                                                  "select min(memory_slack) from pods_slack_per_node";
 
         // Will spread out pods even if they don't request any cpu/mem resources
         final String capacityPodsSoftConstraint = "create view objective_least_requested_pods as " +
                                                   "select min(pods_slack) from pods_slack_per_node";
+         */
         views.add(intermediateView);
         if (withHardConstraint) {
             views.add(capacityHardConstraint);
         }
         if (withSoftConstraint) {
             views.add(capacityCpuSoftConstraint);
-            views.add(capacityMemSoftConstraint);
-            views.add(capacityPodsSoftConstraint);
+//            views.add(capacityMemSoftConstraint);
+//            views.add(capacityPodsSoftConstraint);
         }
         return new Policy("CapacityConstraint", views);
+    }
+
+    /**
+     * All pods belonging to the same owner are symmetric with respect to one another.
+     */
+    static Policy symmetryBreaking() {
+        // We don't handle outer joins yet, so this policy currently assumes that there is at least one running
+        // pod per node. If not, those nodes will lack a row in the spare_capacity_per_node view. This is fine for
+        // Kubernetes, because there always some system pods running on each node.
+        final String constraint = "create view constraint_symmetry_breaking as " +
+                "select * " +
+                "from pods_to_assign " +
+                "group by owner_name " +
+                "having increasing(pods_to_assign.controllable__node_name) = true";
+        return new Policy("SymmetryBreaking", constraint);
     }
 
     /**

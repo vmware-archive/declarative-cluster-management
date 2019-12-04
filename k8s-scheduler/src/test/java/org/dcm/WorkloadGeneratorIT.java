@@ -5,21 +5,21 @@
 
 package org.dcm;
 
+import com.google.common.base.Preconditions;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -45,22 +45,21 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *
  *  mvn integrate-test -DargLine="-Dk8sUrl=<hostname>:<port> -DschedulerName=dcm-scheduler"
  */
-public class WorkloadGeneratorIT extends ITBase {
+class WorkloadGeneratorIT extends ITBase {
     private static final Logger LOG = LoggerFactory.getLogger(WorkloadGeneratorIT.class);
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
-    @Nullable private static String schedulerName;
+    private static final String CPU_SCALE_DOWN_PROPERTY = "cpuScaleDown";
+    private static final int CPU_SCALE_DOWN_DEFAULT = 40;
+    private static final String MEM_SCALE_DOWN_PROPERTY = "memScaleDown";
+    private static final int MEM_SCALE_DOWN_DEFAULT = 50;
+    private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
+    private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);
     private final List<ScheduledFuture> startDepList = new ArrayList<>();
     private final List<ScheduledFuture> endDepList = new ArrayList<>();
-
-    @BeforeAll
-    public static void setSchedulerFromEnvironment() {
-        final String property = System.getProperty(SCHEDULER_NAME_PROPERTY);
-        schedulerName = property == null ? SCHEDULER_NAME_DEFAULT : property;
-    }
 
     @BeforeEach
     public void logBuildInfo() {
@@ -78,7 +77,12 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testSmallTrace() throws Exception {
         if (getClass().getClassLoader().getResource("test-data.txt") != null) {
             System.out.println("Running small trace");
-            runTrace("test-data.txt");
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("test-data.txt", deployer);
         } else {
             System.out.println("test file not found");
         }
@@ -88,7 +92,12 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testAzureV1Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v1-data.txt") != null) {
             System.out.println("Running Azure v1 complete trace");
-            runTrace("v1-data.txt");
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("v1-data.txt", deployer);
         } else {
             System.out.println("Azure v1 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
                     " workload-generator to generate the required traces.");
@@ -99,7 +108,12 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testAzureV1Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v1-cropped.txt") != null) {
             System.out.println("Running Azure v1 cropped trace");
-            runTrace("v1-cropped.txt");
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("v1-cropped.txt", deployer);
         } else {
             System.out.println("Azure v1 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
                     " workload-generator to generate the required traces.");
@@ -110,7 +124,12 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testAzureV2Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v2-data.txt") != null) {
             System.out.println("Running Azure v2 complete trace");
-            runTrace("v2-data.txt");
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("v2-data.txt", deployer);
         } else {
             System.out.println("Azure v2 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
                     " workload-generator to generate the required traces.");
@@ -121,27 +140,50 @@ public class WorkloadGeneratorIT extends ITBase {
     public void testAzureV2Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v2-cropped.txt") != null) {
             System.out.println("Running Azure v2 cropped trace");
-            runTrace("v2-cropped.txt");
+            // Trace pod and node arrivals/departure
+            final long traceId = System.currentTimeMillis();
+            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
+            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
+            runTrace("v2-cropped.txt", deployer);
         } else {
             System.out.println("Azure v2 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
                     " workload-generator to generate the required traces.");
         }
     }
 
-    public void runTrace(final String fileName) throws Exception {
-        // Trace pod and node arrivals/departure
-        final long traceId = System.currentTimeMillis();
-        fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
-        fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
+    private void runTrace(final String fileName, final IPodDeployer deployer) throws Exception {
+        final String schedulerNameProperty = System.getProperty(SCHEDULER_NAME_PROPERTY);
+        final String schedulerName = schedulerNameProperty == null ? SCHEDULER_NAME_DEFAULT : schedulerNameProperty;
 
+        final String cpuScaleProperty = System.getProperty(CPU_SCALE_DOWN_PROPERTY);
+        final int cpuScaleDown = cpuScaleProperty == null ? CPU_SCALE_DOWN_DEFAULT : Integer.parseInt(cpuScaleProperty);
+
+        final String memScaleProperty = System.getProperty(MEM_SCALE_DOWN_PROPERTY);
+        final int memScaleDown = memScaleProperty == null ? MEM_SCALE_DOWN_DEFAULT : Integer.parseInt(memScaleProperty);
+
+        final String timeScaleProperty = System.getProperty(TIME_SCALE_DOWN_PROPERTY);
+        final int timeScaleDown = timeScaleProperty == null ? TIME_SCALE_DOWN_DEFAULT :
+                                        Integer.parseInt(timeScaleProperty);
+        runTrace(fabricClient, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
+    }
+
+    void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
+                  final String schedulerName, final int cpuScaleDown, final int memScaleDown, final int timeScaleDown)
+            throws Exception {
         assertNotNull(schedulerName);
-        LOG.info("Running testAffinityAntiAffinity with parameters: MasterUrl:{} SchedulerName:{}",
-                fabricClient.getConfiguration().getMasterUrl(), schedulerName);
+        LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
+                 " MemScaleDown:{} TimeScaleDown:{}", schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream(fileName);
+        Preconditions.checkNotNull(inStream);
+        int limit = 2000;
 
+        long maxStart = 0;
+        long maxEnd = 0;
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
             String line;
@@ -149,15 +191,18 @@ public class WorkloadGeneratorIT extends ITBase {
             final long startTime = System.currentTimeMillis();
             System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
+                if (limit-- == 0) {
+                    break;
+                }
                 final String[] parts = line.split(" ", 7);
-                final Integer start = Integer.parseInt(parts[2]);
-                final Integer end = Integer.parseInt(parts[3]);
-                final Float cpu = Float.parseFloat(parts[4]);
-                final Float mem = Float.parseFloat(parts[5]);
-                final Integer vmCount = Integer.parseInt(parts[6]);
+                final int start = Integer.parseInt(parts[2]) / timeScaleDown;
+                final int end = Integer.parseInt(parts[3]) / timeScaleDown;
+                final float cpu = Float.parseFloat(parts[4]) / cpuScaleDown;
+                final float mem = Float.parseFloat(parts[5]) / memScaleDown;
+                final int vmCount = Integer.parseInt(parts[6]);
 
                 // generate a deployment's details based on cpu, mem requirements
-                final Deployment deployment = getDeployment(cpu, mem, vmCount, taskCount);
+                final Deployment deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);
 
                 // get task time info
                 final long taskStartTime = (long) start * 1000; // converting to millisec
@@ -167,39 +212,42 @@ public class WorkloadGeneratorIT extends ITBase {
 
                 // create deployment in the k8s cluster at the correct start time
                 final ScheduledFuture scheduledStart = scheduledExecutorService.schedule(
-                        new StartDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
+                        deployer.startDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
+                startDepList.add(scheduledStart);
 
                 // get duration based on start and end times
                 final int duration = getDuration(start, end);
 
                 // Schedule deletion of this deployment based on duration + time until start of the dep
                 final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
-                        new EndDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
+                        deployer.endDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
+
+                maxStart = Math.max(maxStart, waitTime / 1000);
+                maxEnd = Math.max(maxEnd, (waitTime / 1000) + duration);
 
                 // Add to a list to enable keeping the test active until deletion
-                startDepList.add(scheduledStart);
                 endDepList.add(scheduledEnd);
 
                 taskCount++;
             }
-
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
 
-        // Wait until all scheduled deletes are completed
-        for (final ScheduledFuture end: endDepList) {
-            end.get();
-        }
+        LOG.info("All tasks launched. The latest application will start at {}s, and the last deletion" +
+                 " will happen at {}s. Sleeping for {}s before teardown.", maxStart / 1000, maxEnd, maxStart / 100);
+        Thread.sleep((long) maxStart + 60000);
+        deleteAllRunningPods(client);
     }
 
-    private Deployment getDeployment(final float cpu, final float mem, final int count, final int taskCount) {
-        final URL url = getClass().getClassLoader().getResource("cache-example.yml");
+    private Deployment getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,
+                                     final float mem, final int count, final int taskCount) {
+        final URL url = getClass().getClassLoader().getResource("app-no-constraints.yml");
         assertNotNull(url);
         final File file = new File(url.getFile());
 
         // Load the template file and update its contents to generate a new deployment template
-        final Deployment deployment = fabricClient.apps().deployments().load(file).get();
+        final Deployment deployment = client.apps().deployments().load(file).get();
         deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
         final String appName = "app-" + taskCount;
         deployment.getMetadata().setName(appName);
@@ -209,8 +257,8 @@ public class WorkloadGeneratorIT extends ITBase {
         for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
             final Container container = iter.next();
             final ResourceRequirements resReq = new ResourceRequirements();
-            final Map<String, Quantity> reqs = new HashMap<String, Quantity>();
-            reqs.put("cpu", new Quantity(Float.toString(cpu * 1000) + "m"));
+            final Map<String, Quantity> reqs = new HashMap<>();
+            reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
             reqs.put("memory", new Quantity(Float.toString(mem)));
             resReq.setRequests(reqs);
             container.setResources(resReq);
@@ -224,42 +272,8 @@ public class WorkloadGeneratorIT extends ITBase {
         if (endTime <= startTime) {
             endTime = startTime + 5;
         }
-        final int duration = (endTime - startTime);
-        return duration;
+        return (endTime - startTime);
     }
-
-    private static class StartDeployment implements Runnable {
-        Deployment deployment;
-
-        StartDeployment(final Deployment dep) {
-            this.deployment = dep;
-        }
-
-        @Override
-        public void run() {
-            System.out.println("Creating deployment " + deployment.getMetadata().getName() +
-                    " at " + System.currentTimeMillis());
-            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                    .create(deployment);
-        }
-    }
-
-    private static class EndDeployment implements Runnable {
-        Deployment deployment;
-
-        EndDeployment(final Deployment dep) {
-            this.deployment = dep;
-        }
-
-        @Override
-        public void run() {
-            System.out.println("Terminating deployment " + deployment.getMetadata().getName() +
-                    " at " + System.currentTimeMillis());
-            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                    .delete(deployment);
-        }
-    }
-
 
     private static final class LoggingPodWatcher implements Watcher<Pod> {
         private final long traceId;

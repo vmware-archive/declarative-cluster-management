@@ -40,24 +40,23 @@ public class ITBase {
     }
 
     @BeforeEach
-    @Timeout(60 /* seconds */)
+    @Timeout(300 /* seconds */)
     public void deleteAllRunningPods() throws Exception {
-        final List<Deployment> deployments = fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                .list().getItems();
-        for (final Deployment deployment: deployments) {
-            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).delete(deployment);
-        }
-        final List<Pod> pods = fabricClient.pods().inNamespace(TEST_NAMESPACE)
-                .list().getItems();
-        for (final Pod pod: pods) {
-            fabricClient.pods().inNamespace(TEST_NAMESPACE).delete(pod);
-        }
-        waitUntil((n) -> hasDrained());
+        deleteAllRunningPods(fabricClient);
     }
 
-
-    Deployment launchDeploymentFromFile(final String resourceName) {
-        return launchDeploymentFromFile(resourceName, "default-scheduler");
+    public void deleteAllRunningPods(final DefaultKubernetesClient client) throws Exception {
+        final List<Deployment> deployments = client.apps().deployments().inNamespace(TEST_NAMESPACE)
+                .list().getItems();
+        for (final Deployment deployment: deployments) {
+            client.apps().deployments().inNamespace(TEST_NAMESPACE).delete(deployment);
+        }
+        final List<Pod> pods = client.pods().inNamespace(TEST_NAMESPACE)
+                .list().getItems();
+        for (final Pod pod: pods) {
+            client.pods().inNamespace(TEST_NAMESPACE).delete(pod);
+        }
+        waitUntil(client, (n) -> hasDrained(client));
     }
 
     Deployment launchDeploymentFromFile(final String resourceName, final String schedulerName) {
@@ -77,17 +76,17 @@ public class ITBase {
                 .count() == numPods;
     }
 
-    void waitUntil(final Predicate<Integer> condition) throws Exception {
+    void waitUntil(final DefaultKubernetesClient client, final Predicate<Integer> condition) throws Exception {
         if (condition.test(0)) {
             return;
         }
         final CountDownLatch latch = new CountDownLatch(1);
-        fabricClient.pods().inNamespace(TEST_NAMESPACE).watch(new PodConditionWatcher(condition, latch));
+        client.pods().inNamespace(TEST_NAMESPACE).watch(new PodConditionWatcher(condition, latch));
         latch.await();
     }
 
-    private boolean hasDrained() {
-        return fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems().size() == 0;
+    private boolean hasDrained(final DefaultKubernetesClient client) {
+        return client.pods().inNamespace(TEST_NAMESPACE).list().getItems().size() == 0;
     }
 
     private static class PodConditionWatcher implements Watcher<Pod> {

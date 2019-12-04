@@ -18,7 +18,7 @@ class Utils {
     static double resourceRequirementSum(final List<ResourceRequirements> resourceRequirements,
                                           final String resourceName) {
         return resourceRequirements.stream().mapToDouble(e -> {
-            if (e.getRequests() == null) {
+            if (e == null || e.getRequests() == null) {
                 return 0L;
             }
             final Quantity resourceQuantity = e.getRequests().get(resourceName);

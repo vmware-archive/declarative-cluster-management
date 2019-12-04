@@ -84,6 +84,29 @@ public class Ops {
         return data.length;
     }
 
+    public IntVar div(final IntVar left, final int right) {
+        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        model.addDivisionEquality(ret, left, model.newConstant(right));
+        return ret;
+    }
+
+
+    public IntVar plus(final int left, final IntVar right) {
+        return plus(model.newConstant(left), right);
+    }
+
+    public IntVar plus(final IntVar left, final int right) {
+        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        model.addEquality(ret, LinearExpr.sum(new IntVar[]{left, model.newConstant(right)}));
+        return ret;
+    }
+
+    public IntVar plus(final IntVar left, final IntVar right) {
+        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        model.addEquality(ret, LinearExpr.sum(new IntVar[]{left, right}));
+        return ret;
+    }
+
     public IntVar minus(final int left, final IntVar right) {
         return minus(model.newConstant(left), right);
     }

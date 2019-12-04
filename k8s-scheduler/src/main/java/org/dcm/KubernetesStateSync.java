@@ -20,9 +20,6 @@ import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
 class KubernetesStateSync {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
     private final SharedInformerFactory sharedInformerFactory;
@@ -31,8 +28,7 @@ class KubernetesStateSync {
         this.sharedInformerFactory = client.informers();
     }
 
-    Flowable<List<PodEvent>> setupInformersAndPodEventStream(final DSLContext conn, final int batchCount,
-                                                             final long batchTimeMs) {
+    Flowable<PodEvent> setupInformersAndPodEventStream(final DSLContext conn) {
 
         final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
@@ -42,19 +38,11 @@ class KubernetesStateSync {
         final SharedIndexInformer<Pod> podInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Pod.class, PodList.class, 30000);
         final PublishProcessor<PodEvent> podEventPublishProcessor = PublishProcessor.create();
-        podInformer.addEventHandler(new PodResourceEventHandler(conn, podEventPublishProcessor));
+        podInformer.addEventHandler(new PodResourceEventHandler(podEventPublishProcessor));
 
         LOG.info("Instantiated node and pod informers. Starting them all now.");
 
-        return podEventPublishProcessor
-                       .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
-                               && podEvent.getPod().getStatus().getPhase().equals("Pending")
-                               && podEvent.getPod().getSpec().getNodeName() == null
-                               && podEvent.getPod().getSpec().getSchedulerName().equals(
-                                           Scheduler.SCHEDULER_NAME)
-                              )
-                       .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
-                       .filter(podEvents -> !podEvents.isEmpty());
+        return podEventPublishProcessor;
     }
 
     void startProcessingEvents() {
