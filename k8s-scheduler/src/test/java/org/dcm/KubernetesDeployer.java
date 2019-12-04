@@ -44,12 +44,8 @@ public class KubernetesDeployer implements IDeployer {
             LOG.info("Creating deployment (name:{}, schedulerName:{}) with masterUrl {} at {}",
                     deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
                     fabricClient.getConfiguration().getMasterUrl(), System.currentTimeMillis());
-            try {
-                final Deployment deployment = fabricClient.apps().deployments().inNamespace(namespace)
-                        .create(this.deployment);
-            } catch (final Exception e) {
-                e.printStackTrace();
-            }
+            fabricClient.apps().deployments().inNamespace(namespace)
+                    .create(this.deployment);
         }
     }
 
