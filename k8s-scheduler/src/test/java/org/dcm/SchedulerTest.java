@@ -416,9 +416,9 @@ public class SchedulerTest {
                                                    final boolean conditionToRemainingPods,
                                                    final boolean cannotBePlacedAnywhere) {
         final DSLContext conn = Scheduler.setupDb();
-        final int numPods = 10;
+        final int numPods = 4;
         final int numPodsToModify = 3;
-        final int numNodes = 10;
+        final int numNodes = 3;
 
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
@@ -593,10 +593,10 @@ public class SchedulerTest {
                 // NotIn
                 argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
                 argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
                 argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
                 argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
 
                 // DoesNotExist
                 argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false),

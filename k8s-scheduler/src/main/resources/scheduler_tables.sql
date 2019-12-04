@@ -326,7 +326,18 @@ join pod_labels
         or (pod_anti_affinity_match_expressions.label_operator = 'NotIn')
         or (pod_anti_affinity_match_expressions.label_operator = 'DoesNotExist')
 join pod_info
-        on pod_labels.pod_name = pod_info.pod_name;
+        on pod_labels.pod_name = pod_info.pod_name
+group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_anti_affinity_match_expressions.label_selector,
+         pod_anti_affinity_match_expressions.topology_key, pod_anti_affinity_match_expressions.label_operator,
+         pod_anti_affinity_match_expressions.num_match_expressions, pod_info.node_name
+having case pod_anti_affinity_match_expressions.label_operator
+             when 'NotIn'
+                  then not(any(pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
+                               and pod_anti_affinity_match_expressions.label_value = pod_labels.label_value))
+             when 'DoesNotExist'
+                  then not(any(pod_anti_affinity_match_expressions.label_key = pod_labels.label_key))
+             else count(distinct match_expression) = pod_anti_affinity_match_expressions.num_match_expressions
+       end;
 
 create view inter_pod_anti_affinity_matches as
 select *, count(*) over (partition by pod_name) as num_matches from inter_pod_anti_affinity_matches_inner;
