@@ -162,8 +162,6 @@ public class OrToolsTest {
 
         // 2. Capacity constraint
         final IntVar[] slacks1 = new IntVar[numNodes];
-        final IntVar[] slacks2 = new IntVar[numNodes];
-        final IntVar[] slacks3 = new IntVar[numNodes];
 
         for (int node = 0; node < numNodes; node++) {
             final IntVar[] bools = new IntVar[numPods];
@@ -192,8 +190,6 @@ public class OrToolsTest {
                     new int[]{1, -1}));
 
             slacks1[node] = slack1;
-            slacks2[node] = slack2;
-            slacks3[node] = slack3;
 
             model.addGreaterOrEqual(slack1, 0);
             model.addGreaterOrEqual(slack2, 0);
@@ -201,13 +197,7 @@ public class OrToolsTest {
 
         }
         final IntVar min1 = model.newIntVar(0, 1000000000, "");
-//        final IntVar min2 = model.newIntVar(0, 1000000000, "");
-//        final IntVar min3 = model.newIntVar(0, 1000000000, "");
         model.addMinEquality(min1, slacks1);
-//        model.addMinEquality(min2, slacks2);
-//        model.addMinEquality(min3, slacks3);
-
-//        model.maximize(LinearExpr.sum(new IntVar[]{min1, min2, min3}));
         model.maximize(min1);
         System.out.println("Model creation: " + (System.currentTimeMillis() - now));
 
@@ -219,8 +209,6 @@ public class OrToolsTest {
         final CpSolverStatus status = solver.solve(model);
         if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
             System.out.println(solver.value(min1));
-//            System.out.println(solver.value(min2));
-//            System.out.println(solver.value(min3));
         }
         System.out.println("Done: " + (System.currentTimeMillis() - now));
     }

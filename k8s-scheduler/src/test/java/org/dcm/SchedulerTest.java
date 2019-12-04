@@ -954,12 +954,11 @@ public class SchedulerTest {
         final List<String> policies = Policies.getDefaultPolicies();
         DebugUtils.dbLoad(conn);
 
+        System.out.println(conn.selectFrom(Tables.SPARE_CAPACITY_PER_NODE).fetch());
         // All pod additions have completed
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
-        for (int i = 0; i < 100; i++) {
-            final Result<? extends Record> results = scheduler.runOneLoop();
-            System.out.println(results);
-        }
+        final Result<? extends Record> results = scheduler.runOneLoop();
+        System.out.println(results);
     }
 
 

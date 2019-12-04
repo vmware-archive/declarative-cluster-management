@@ -18,6 +18,7 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.reactivex.processors.PublishProcessor;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Disabled;
@@ -28,7 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-class EmulatedClusterTest extends ITBase {
+class EmulatedClusterTest {
 
     @Test
     @Disabled
@@ -67,7 +68,9 @@ class EmulatedClusterTest extends ITBase {
         }
         final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
         final IDeployer deployer = new EmulatedDeployer(handler, "default");
-        workloadGeneratorIT.runTrace("v1-cropped.txt", deployer, "dcm-scheduler", 20, 50, 1000);
+        final DefaultKubernetesClient client = new DefaultKubernetesClient();
+        workloadGeneratorIT.runTrace(client, "v1-cropped.txt", deployer, "dcm-scheduler",
+                          20, 50, 1000);
     }
 
     private Node addNode(final String nodeName, final Map<String, String> labels,

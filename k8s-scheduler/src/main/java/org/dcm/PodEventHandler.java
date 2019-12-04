@@ -103,7 +103,7 @@ class PodEventHandler {
         final long memoryRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "memory");
         final long ephemeralStorageRequest =
                 (long) Utils.resourceRequirementSum(resourceRequirements, "ephemeral-storage");
-        final long podsRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "pods");
+        final long podsRequest = 1;
         podInfoRecord.setPodName(pod.getMetadata().getName());
         podInfoRecord.setStatus(pod.getStatus().getPhase());
         podInfoRecord.setNodeName(pod.getSpec().getNodeName());

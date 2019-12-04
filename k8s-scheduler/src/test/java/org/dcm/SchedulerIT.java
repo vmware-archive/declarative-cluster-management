@@ -57,7 +57,7 @@ public class SchedulerIT extends ITBase {
                     .create(deployment);
 
         final int newPodsToCreate = deployment.getSpec().getReplicas();
-        waitUntil((n) -> hasNRunningPods(newPodsToCreate));
+        waitUntil(fabricClient, (n) -> hasNRunningPods(newPodsToCreate));
         final List<Pod> items =
                 fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
         assertEquals(newPodsToCreate, items.size());
@@ -86,7 +86,7 @@ public class SchedulerIT extends ITBase {
         final String webStoreName = webStoreExample.getMetadata().getName();
 
         final int newPodsToCreate = cacheExample.getSpec().getReplicas() + webStoreExample.getSpec().getReplicas();
-        waitUntil((n) -> hasNRunningPods(newPodsToCreate));
+        waitUntil(fabricClient, (n) -> hasNRunningPods(newPodsToCreate));
         final List<Pod> items = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
         assertEquals(newPodsToCreate, items.size());
         items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));

@@ -12,6 +12,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,11 +50,11 @@ class WorkloadGeneratorIT extends ITBase {
     private static final String SCHEDULER_NAME_PROPERTY = "schedulerName";
     private static final String SCHEDULER_NAME_DEFAULT = "default-scheduler";
     private static final String CPU_SCALE_DOWN_PROPERTY = "cpuScaleDown";
-    private static final int CPU_SCALE_DOWN_DEFAULT = 1;
+    private static final int CPU_SCALE_DOWN_DEFAULT = 40;
     private static final String MEM_SCALE_DOWN_PROPERTY = "memScaleDown";
-    private static final int MEM_SCALE_DOWN_DEFAULT = 1;
+    private static final int MEM_SCALE_DOWN_DEFAULT = 50;
     private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
-    private static final int TIME_SCALE_DOWN_DEFAULT = 1;
+    private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(100);
@@ -165,11 +166,12 @@ class WorkloadGeneratorIT extends ITBase {
         final String timeScaleProperty = System.getProperty(TIME_SCALE_DOWN_PROPERTY);
         final int timeScaleDown = timeScaleProperty == null ? TIME_SCALE_DOWN_DEFAULT :
                                         Integer.parseInt(timeScaleProperty);
-        runTrace(fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
+        runTrace(fabricClient, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
     }
 
-    void runTrace(final String fileName, final IDeployer deployer, final String schedulerName,
-                  final int cpuScaleDown, final int memScaleDown, final int timeScaleDown) throws Exception {
+    void runTrace(final DefaultKubernetesClient client, final String fileName, final IDeployer deployer,
+                  final String schedulerName, final int cpuScaleDown, final int memScaleDown, final int timeScaleDown)
+            throws Exception {
         assertNotNull(schedulerName);
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
                  " MemScaleDown:{} TimeScaleDown:{}", schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
@@ -178,8 +180,10 @@ class WorkloadGeneratorIT extends ITBase {
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream(fileName);
         Preconditions.checkNotNull(inStream);
-        int limit = 1000;
+        int limit = 2000;
 
+        float maxStart = 0;
+        float maxEnd = 0;
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
             String line;
@@ -198,7 +202,7 @@ class WorkloadGeneratorIT extends ITBase {
                 final int vmCount = Integer.parseInt(parts[6]);
 
                 // generate a deployment's details based on cpu, mem requirements
-                final Deployment deployment = getDeployment(schedulerName, cpu, mem, vmCount, taskCount);
+                final Deployment deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);
 
                 // get task time info
                 final long taskStartTime = (long) start * 1000; // converting to millisec
@@ -218,6 +222,9 @@ class WorkloadGeneratorIT extends ITBase {
                 final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
                         deployer.endDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
 
+                maxStart = Math.max(maxStart, waitTime / 1000);
+                maxEnd = Math.max(maxEnd, (waitTime / 1000) + duration);
+
                 // Add to a list to enable keeping the test active until deletion
                 endDepList.add(scheduledEnd);
 
@@ -227,20 +234,26 @@ class WorkloadGeneratorIT extends ITBase {
             throw new RuntimeException(e);
         }
 
+        /*
         // Wait until all scheduled deletes are completed
         for (final ScheduledFuture end: endDepList) {
             end.get();
-        }
+        }*/
+
+        LOG.info("All tasks launched. The latest application will start at {}s, and the last deletion" +
+                 " will happen at {}s. Sleeping for {}s before teardown.", maxStart / 1000, maxEnd, maxStart / 100);
+        Thread.sleep((long) maxStart + 60000);
+        deleteAllRunningPods(client);
     }
 
-    private Deployment getDeployment(final String schedulerName, final float cpu, final float mem, final int count,
-                                     final int taskCount) {
+    private Deployment getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,
+                                     final float mem, final int count, final int taskCount) {
         final URL url = getClass().getClassLoader().getResource("app-no-constraints.yml");
         assertNotNull(url);
         final File file = new File(url.getFile());
 
         // Load the template file and update its contents to generate a new deployment template
-        final Deployment deployment = fabricClient.apps().deployments().load(file).get();
+        final Deployment deployment = client.apps().deployments().load(file).get();
         deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
         final String appName = "app-" + taskCount;
         deployment.getMetadata().setName(appName);
