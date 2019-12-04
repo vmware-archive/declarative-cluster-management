@@ -18,30 +18,32 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
-import io.reactivex.Flowable;
 import io.reactivex.processors.PublishProcessor;
 import org.jooq.DSLContext;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 class EmulatedClusterTest extends ITBase {
 
     @Test
+    @Disabled
     public void runTraceLocally() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler podResourceEventHandler = new PodResourceEventHandler(conn, emitter);
-        emitter.subscribe();
-
+        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final int numNodes = 50;
 
         // Add all nodes
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+
+        final List<String> policies = Policies.getDefaultPolicies();
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        scheduler.startScheduler(emitter, new EmulatedBinder(conn), 100, 100);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
@@ -61,24 +63,10 @@ class EmulatedClusterTest extends ITBase {
             pod.getMetadata().setNamespace("kube-system");
             pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
             pod.getSpec().setNodeName(nodeName);
-            podResourceEventHandler.onAdd(pod);
+            handler.onAdd(pod);
         }
-        final List<String> policies = Policies.getDefaultPolicies();
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
-        final Flowable<List<PodEvent>> flowable = emitter
-                .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
-                        && podEvent.getPod().getStatus().getPhase().equals("Pending")
-                        && podEvent.getPod().getSpec().getNodeName() == null
-                        && podEvent.getPod().getSpec().getSchedulerName().equals(
-                        Scheduler.SCHEDULER_NAME)
-                )
-                .buffer(100, TimeUnit.MILLISECONDS, 100)
-                .filter(podEvents -> !podEvents.isEmpty());
-
-        scheduler.startScheduler(flowable, new EmulatedBinder(conn));
-
         final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
-        final IDeployer deployer = new EmulatedDeployer(podResourceEventHandler, "default");
+        final IDeployer deployer = new EmulatedDeployer(handler, "default");
         workloadGeneratorIT.runTrace("v1-cropped.txt", deployer, "dcm-scheduler", 20, 50, 1000);
     }
 

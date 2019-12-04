@@ -47,6 +47,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -73,10 +74,11 @@ public final class Scheduler {
             metrics.histogram(name(Scheduler.class, "pods-per-scheduling-attempt"));
     private final Timer updateDataTimes = metrics.timer(name(Scheduler.class, "updateDataTimes"));
     private final Timer solveTimes = metrics.timer(name(Scheduler.class, "solveTimes"));
+    private final Object freezeUpdates = new Object();
     @Nullable private Disposable subscription;
     private final List<Table<?>> relevantTables = Lists.newArrayList(Tables.PODS_TO_ASSIGN,
                                                                      Tables.POD_NODE_SELECTOR_MATCHES,
-                                                                     Tables.NODE_INFO,
+                                                                     Tables.ALLOWED_NODES,
                                                                      Tables.INTER_POD_AFFINITY_MATCHES,
                                                                      Tables.INTER_POD_ANTI_AFFINITY_MATCHES,
                                                                      Tables.SPARE_CAPACITY_PER_NODE,
@@ -98,63 +100,76 @@ public final class Scheduler {
         LOG.info("Initialized scheduler:: model:{} relevantTables:{}", model, relevantTables);
     }
 
-    void startScheduler(final Flowable<List<PodEvent>> eventStream, final IPodToNodeBinder binder) {
-        subscription = eventStream.subscribe(
-            podEvents -> {
-                podsPerSchedulingEvent.update(podEvents.size());
-                LOG.info("Received the following {} events: {}", podEvents.size(), podEvents);
+    void startScheduler(final Flowable<PodEvent> eventStream, final IPodToNodeBinder binder, final int batchCount,
+                        final long batchTimeMs) {
+        final PodEventHandler podEventHandler = new PodEventHandler(conn);
+        subscription = eventStream
+            .map(podEvent -> {
+                synchronized (freezeUpdates) {
+                    return podEventHandler.handlePodEvent(podEvent);
+                }
+            })
+            .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
+                    && podEvent.getPod().getStatus().getPhase().equals("Pending")
+                    && podEvent.getPod().getSpec().getNodeName() == null
+                    && podEvent.getPod().getSpec().getSchedulerName().equals(
+                    Scheduler.SCHEDULER_NAME)
+            )
+            .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
+            .filter(podEvents -> !podEvents.isEmpty())
+            .subscribe(
+                podEvents -> {
+                    podsPerSchedulingEvent.update(podEvents.size());
+                    LOG.info("Received the following {} events: {}", podEvents.size(), podEvents);
 
-                final int batch = batchId.incrementAndGet();
+                    if (conn.fetchCount(Tables.PODS_TO_ASSIGN) == 0) {
+                        LOG.error("Solver invoked when there were no new pods to schedule");
+                        return;
+                    }
+                    final int batch = batchId.incrementAndGet();
 
-                final long now = System.nanoTime();
-                final Result<? extends Record> podsToAssignUpdated = runOneLoop();
-                final long totalTime = System.nanoTime() - now;
-                solverInvocations.mark();
+                    final long now = System.nanoTime();
+                    final Result<? extends Record> podsToAssignUpdated = runOneLoop();
+                    final long totalTime = System.nanoTime() - now;
+                    solverInvocations.mark();
 
-                // First, locally update the node_name entries for pods
-                podsToAssignUpdated.parallelStream().forEach(r -> {
-                    final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                    final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
-                    LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
-                    conn.update(Tables.POD_INFO)
-                            .set(Tables.POD_INFO.NODE_NAME, nodeName)
-                            .where(Tables.POD_INFO.POD_NAME.eq(podName))
-                            .execute();
-                    LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
-                            podName, batch, totalTime);
-                });
-                LOG.info("Done with updates");
-                // Next, issue bind requests for pod -> node_name
-                podsToAssignUpdated
-                    .forEach((record) -> ForkJoinPool.commonPool().execute(
-                        () -> {
-                            final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                            final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
-                            final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
-                            LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
-                            binder.bindOne(namespace, podName, nodeName);
-                        }
-                    ));
-                LOG.info("Done with bindings");
-            },
-            e -> {
-                System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN)
-                        .fetch());
-                System.out.println(conn.selectFrom(Tables.POD_INFO)
-                        .where(Tables.POD_INFO.NAMESPACE.ne("kube-system"))
-                        .fetch());
-                System.out.println(conn.selectFrom(Tables.SPARE_CAPACITY_PER_NODE).fetch());
-                LOG.error("Received exception", e);
-            }
-        );
+                    // First, locally update the node_name entries for pods
+                    podsToAssignUpdated.parallelStream().forEach(r -> {
+                        final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
+                        final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                        LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
+                        conn.update(Tables.POD_INFO)
+                                .set(Tables.POD_INFO.NODE_NAME, nodeName)
+                                .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                                .execute();
+                        LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
+                                podName, batch, totalTime);
+                    });
+                    LOG.info("Done with updates");
+                    // Next, issue bind requests for pod -> node_name
+                    podsToAssignUpdated
+                        .forEach((record) -> ForkJoinPool.commonPool().execute(
+                            () -> {
+                                final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
+                                final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
+                                final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                                LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
+                                binder.bindOne(namespace, podName, nodeName);
+                            }
+                        ));
+                    LOG.info("Done with bindings");
+                },
+                e -> {
+                    LOG.error("Received exception. Dumping DB state to /tmp/", e);
+                    DebugUtils.dbDump(conn);
+                }
+            );
     }
 
     Result<? extends Record> runOneLoop() {
         final Timer.Context updateDataTimer = updateDataTimes.time();
-        model.updateData();
-        if (conn.fetchCount(Tables.PODS_TO_ASSIGN) == 0) {
-            LOG.error("");
-            throw new RuntimeException("Solver invoked when there were no new pods to schedule");
+        synchronized (freezeUpdates) {
+            model.updateData();
         }
         updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();
@@ -244,12 +259,11 @@ public final class Scheduler {
                  kubernetesClient.getConfiguration().getMasterUrl());
 
         final KubernetesStateSync stateSync = new KubernetesStateSync(kubernetesClient);
-        final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn,
-                                                          Integer.parseInt(cmd.getOptionValue("batch-size")),
-                                                          Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
         final KubernetesBinder binder = new KubernetesBinder(kubernetesClient);
-        scheduler.startScheduler(eventStream, binder);
+        scheduler.startScheduler(eventStream, binder,
+                                 Integer.parseInt(cmd.getOptionValue("batch-size")),
+                                 Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
         stateSync.startProcessingEvents();
         Thread.currentThread().join();
     }

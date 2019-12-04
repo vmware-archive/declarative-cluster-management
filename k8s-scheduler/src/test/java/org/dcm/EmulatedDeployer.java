@@ -6,6 +6,7 @@
 package org.dcm;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -59,6 +60,9 @@ public class EmulatedDeployer implements IDeployer {
                 meta.setName(deploymentName + "-" + i);
                 meta.setCreationTimestamp("" + System.currentTimeMillis());
                 meta.setNamespace(namespace);
+                final OwnerReference reference = new OwnerReference();
+                reference.setName(deploymentName);
+                meta.setOwnerReferences(List.of(reference));
                 final PodSpec spec = deployment.getSpec().getTemplate().getSpec();
                 final PodStatus status = new PodStatus();
                 status.setPhase("Pending");

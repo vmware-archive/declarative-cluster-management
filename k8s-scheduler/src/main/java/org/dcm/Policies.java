@@ -36,14 +36,7 @@ class Policies {
         final String constraint = "create view constraint_controllable_node_name_domain as " +
                                   "select * from pods_to_assign " +
                                   "where controllable__node_name in " +
-                                        "(select name from node_info" +
-                                        "  where node_info.unschedulable = false and " +
-                                        "        node_info.memory_pressure = false and " +
-                                        "        node_info.out_of_disk = false and " +
-                                        "        node_info.disk_pressure = false and " +
-                                        "        node_info.pid_pressure = false and " +
-                                        "        node_info.network_unavailable = false and " +
-                                        "        node_info.ready = true)";
+                                        "(select name from allowed_nodes)";
         return new Policy("NodePredicates", constraint);
     }
 
@@ -158,21 +151,24 @@ class Policies {
                                                "  and memory_slack >= 0 " +
                                                "  and pods_slack >= 0";
         final String capacityCpuSoftConstraint = "create view objective_least_requested_cpu as " +
-                                                 "select min(cpu_slack) from pods_slack_per_node";
+                                                 "select min(cpu_slack + memory_slack + pods_slack) " +
+                                                 "from pods_slack_per_node";
+        /*
         final String capacityMemSoftConstraint = "create view objective_least_requested_mem as " +
                                                  "select min(memory_slack) from pods_slack_per_node";
 
         // Will spread out pods even if they don't request any cpu/mem resources
         final String capacityPodsSoftConstraint = "create view objective_least_requested_pods as " +
                                                   "select min(pods_slack) from pods_slack_per_node";
+         */
         views.add(intermediateView);
         if (withHardConstraint) {
             views.add(capacityHardConstraint);
         }
         if (withSoftConstraint) {
             views.add(capacityCpuSoftConstraint);
-            views.add(capacityMemSoftConstraint);
-            views.add(capacityPodsSoftConstraint);
+//            views.add(capacityMemSoftConstraint);
+//            views.add(capacityPodsSoftConstraint);
         }
         return new Policy("CapacityConstraint", views);
     }

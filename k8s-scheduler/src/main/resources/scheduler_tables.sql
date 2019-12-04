@@ -226,7 +226,7 @@ create table batch_size
 );
 
 create view pods_to_assign as
-select * from pods_to_assign_no_limit limit 100;
+select * from pods_to_assign_no_limit limit 50;
 
 
 -- Pods with port requests
@@ -331,18 +331,19 @@ join pod_info
 create view inter_pod_anti_affinity_matches as
 select *, count(*) over (partition by pod_name) as num_matches from inter_pod_anti_affinity_matches_inner;
 
-
 -- Spare capacity
 create view spare_capacity_per_node as
-select node_info.name as name,
-       cast(node_info.cpu_allocatable - sum(pod_info.cpu_request) as integer) as cpu_remaining,
-       cast(node_info.memory_allocatable - sum(pod_info.memory_request) as integer) as memory_remaining,
-       cast(node_info.pods_allocatable - sum(pod_info.pods_request) as integer) as pods_remaining
-from node_info
-join pod_info
-     on pod_info.node_name = node_info.name and pod_info.node_name != 'null'
-group by node_info.name, node_info.cpu_allocatable,
-         node_info.memory_allocatable, node_info.pods_allocatable;
+select * from
+    (select node_info.name as name,
+           cast(node_info.cpu_allocatable - sum(pod_info.cpu_request) as integer) as cpu_remaining,
+           cast(node_info.memory_allocatable - sum(pod_info.memory_request) as integer) as memory_remaining,
+           cast(node_info.pods_allocatable - sum(pod_info.pods_request) as integer) as pods_remaining
+    from node_info
+    join pod_info
+         on pod_info.node_name = node_info.name and pod_info.node_name != 'null'
+    group by node_info.name, node_info.cpu_allocatable,
+             node_info.memory_allocatable, node_info.pods_allocatable)
+where cpu_remaining > 0 and memory_remaining > 0 and pods_remaining > 0;
 
 -- Taints and tolerations
 create view pods_that_tolerate_node_taints as
@@ -362,3 +363,16 @@ having count(*) = A.num_taints;
 
 create view nodes_that_have_tolerations as
 select distinct node_name from node_taints;
+
+-- Avoid overloaded nodes or nodes that report being under resource pressure
+create view allowed_nodes as
+select distinct node_info.name from node_info
+join spare_capacity_per_node
+  on spare_capacity_per_node.name = node_info.name
+where node_info.unschedulable = false and
+      node_info.memory_pressure = false and
+      node_info.out_of_disk = false and
+      node_info.disk_pressure = false and
+      node_info.pid_pressure = false and
+      node_info.network_unavailable = false and
+      node_info.ready = true;

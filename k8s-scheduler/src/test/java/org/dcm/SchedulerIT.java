@@ -44,9 +44,8 @@ public class SchedulerIT extends ITBase {
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, "");
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, 50, 1000);
-        scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient));
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient), 50, 1000);
         stateSync.startProcessingEvents();
 
         // Add a new one
@@ -74,9 +73,8 @@ public class SchedulerIT extends ITBase {
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, "");
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, 50, 1000);
-        scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient));
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient),  50, 1000);
         stateSync.startProcessingEvents();
 
         // Add a new one
