@@ -11,6 +11,12 @@ import io.reactivex.processors.PublishProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+
+/**
+ * Subscribes to Kubernetes pod events and streams them to a flowable. Notably, it does not write
+ * it to the database unlike the NodeResourceEventHandler. We do this to have tigher control over
+ * batching these writes to the database.
+ */
 class PodResourceEventHandler implements ResourceEventHandler<Pod> {
     private static final Logger LOG = LoggerFactory.getLogger(PodResourceEventHandler.class);
     private final PublishProcessor<PodEvent> flowable;

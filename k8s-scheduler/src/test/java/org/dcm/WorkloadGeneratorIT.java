@@ -81,7 +81,7 @@ class WorkloadGeneratorIT extends ITBase {
             fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
             fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
 
-            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
             runTrace("test-data.txt", deployer);
         } else {
             System.out.println("test file not found");
@@ -96,7 +96,7 @@ class WorkloadGeneratorIT extends ITBase {
             fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
             fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
 
-            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
             runTrace("v1-data.txt", deployer);
         } else {
             System.out.println("Azure v1 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
@@ -112,7 +112,7 @@ class WorkloadGeneratorIT extends ITBase {
             fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
             fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
 
-            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
             runTrace("v1-cropped.txt", deployer);
         } else {
             System.out.println("Azure v1 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
@@ -128,7 +128,7 @@ class WorkloadGeneratorIT extends ITBase {
             fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
             fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
 
-            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
             runTrace("v2-data.txt", deployer);
         } else {
             System.out.println("Azure v2 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
@@ -145,7 +145,7 @@ class WorkloadGeneratorIT extends ITBase {
             fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
             fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
 
-            final IDeployer deployer = new KubernetesDeployer(fabricClient, TEST_NAMESPACE);
+            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
             runTrace("v2-cropped.txt", deployer);
         } else {
             System.out.println("Azure v2 trace not found. Please run \"bash getAzureTraces.sh\" in the folder" +
@@ -153,7 +153,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    private void runTrace(final String fileName, final IDeployer deployer) throws Exception {
+    private void runTrace(final String fileName, final IPodDeployer deployer) throws Exception {
         final String schedulerNameProperty = System.getProperty(SCHEDULER_NAME_PROPERTY);
         final String schedulerName = schedulerNameProperty == null ? SCHEDULER_NAME_DEFAULT : schedulerNameProperty;
 
@@ -169,7 +169,7 @@ class WorkloadGeneratorIT extends ITBase {
         runTrace(fabricClient, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
     }
 
-    void runTrace(final DefaultKubernetesClient client, final String fileName, final IDeployer deployer,
+    void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
                   final String schedulerName, final int cpuScaleDown, final int memScaleDown, final int timeScaleDown)
             throws Exception {
         assertNotNull(schedulerName);
@@ -233,12 +233,6 @@ class WorkloadGeneratorIT extends ITBase {
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
-
-        /*
-        // Wait until all scheduled deletes are completed
-        for (final ScheduledFuture end: endDepList) {
-            end.get();
-        }*/
 
         LOG.info("All tasks launched. The latest application will start at {}s, and the last deletion" +
                  " will happen at {}s. Sleeping for {}s before teardown.", maxStart / 1000, maxEnd, maxStart / 100);

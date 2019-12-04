@@ -29,6 +29,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+
+/**
+ * Tests that replay cluster traces in process without the involvement of a Kubernetes cluster.
+ */
 class EmulatedClusterTest {
 
     @Test
@@ -44,7 +48,7 @@ class EmulatedClusterTest {
 
         final List<String> policies = Policies.getDefaultPolicies();
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
-        scheduler.startScheduler(emitter, new EmulatedBinder(conn), 100, 100);
+        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(conn), 100, 100);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
@@ -67,7 +71,7 @@ class EmulatedClusterTest {
             handler.onAdd(pod);
         }
         final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
-        final IDeployer deployer = new EmulatedDeployer(handler, "default");
+        final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
         workloadGeneratorIT.runTrace(client, "v1-cropped.txt", deployer, "dcm-scheduler",
                           20, 50, 1000);

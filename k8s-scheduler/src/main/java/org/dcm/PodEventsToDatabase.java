@@ -30,8 +30,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-class PodEventHandler {
-    private static final Logger LOG = LoggerFactory.getLogger(PodEventHandler.class);
+
+/**
+ * Reflects pod events from the Kubernetes API into the database.
+ */
+class PodEventsToDatabase {
+    private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
     private final DSLContext conn;
 
     private enum Operators {
@@ -41,11 +45,11 @@ class PodEventHandler {
         DoesNotExists
     }
 
-    PodEventHandler(final DSLContext conn) {
+    PodEventsToDatabase(final DSLContext conn) {
         this.conn = conn;
     }
 
-    PodEvent handlePodEvent(final PodEvent event) {
+    PodEvent handle(final PodEvent event) {
         switch (event.getAction()) {
             case ADDED:
                 addPod(event.getPod());

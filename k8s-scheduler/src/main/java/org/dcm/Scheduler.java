@@ -102,11 +102,11 @@ public final class Scheduler {
 
     void startScheduler(final Flowable<PodEvent> eventStream, final IPodToNodeBinder binder, final int batchCount,
                         final long batchTimeMs) {
-        final PodEventHandler podEventHandler = new PodEventHandler(conn);
+        final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(conn);
         subscription = eventStream
             .map(podEvent -> {
                 synchronized (freezeUpdates) {
-                    return podEventHandler.handlePodEvent(podEvent);
+                    return podEventsToDatabase.handle(podEvent);
                 }
             })
             .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)

@@ -7,7 +7,11 @@ package org.dcm;
 
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 
-public interface IDeployer {
+/**
+ * An interface used by WorkloadGeneratorIT.runTrace() to create and delete pod deployments. It allows
+ * us to replay traces locally or against an actual Kubernetes cluster
+ */
+public interface IPodDeployer {
 
     Runnable startDeployment(final Deployment deployment);
 

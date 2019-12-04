@@ -11,7 +11,7 @@
         <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="off">
             <AppenderRef ref="console" />
         </Logger>
-        <Logger name="org.dcm.EmulatedDeployer" additivity="false" level="info">
+        <Logger name="org.dcm.EmulatedPodDeployer" additivity="false" level="info">
             <AppenderRef ref="console" />
         </Logger>
         <Root level="info" additivity="false">

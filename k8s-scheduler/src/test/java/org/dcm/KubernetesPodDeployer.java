@@ -11,13 +11,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-public class KubernetesDeployer implements IDeployer {
-    private static final Logger LOG = LoggerFactory.getLogger(KubernetesDeployer.class);
+/**
+ * Deploys and deletes pods against an actual Kubernetes cluster
+ */
+public class KubernetesPodDeployer implements IPodDeployer {
+    private static final Logger LOG = LoggerFactory.getLogger(KubernetesPodDeployer.class);
 
     private final DefaultKubernetesClient fabricClient;
     private final String namespace;
 
-    public KubernetesDeployer(final DefaultKubernetesClient fabricClient, final String namespace) {
+    public KubernetesPodDeployer(final DefaultKubernetesClient fabricClient, final String namespace) {
         this.fabricClient = fabricClient;
         this.namespace = namespace;
     }

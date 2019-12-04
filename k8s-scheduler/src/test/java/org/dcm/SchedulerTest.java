@@ -75,13 +75,13 @@ public class SchedulerTest {
     @Test
     public void testDeleteCascade() {
         final DSLContext conn = Scheduler.setupDb();
-        final PodEventHandler handler = new PodEventHandler(conn);
+        final PodEventsToDatabase handler = new PodEventsToDatabase(conn);
         final String podName = "p1";
         final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.singletonMap("k", "v"));
-        handler.handlePodEvent(new PodEvent(PodEvent.Action.ADDED, pod));
+        handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
         assertTrue(conn.fetchExists(Tables.POD_INFO));
         assertTrue(conn.fetchExists(Tables.POD_LABELS));
-        handler.handlePodEvent(new PodEvent(PodEvent.Action.DELETED, pod));
+        handler.handle(new PodEvent(PodEvent.Action.DELETED, pod));
         assertFalse(conn.fetchExists(Tables.POD_INFO));
         assertFalse(conn.fetchExists(Tables.POD_LABELS));
     }
@@ -111,8 +111,8 @@ public class SchedulerTest {
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventHandler eventHandler = new PodEventHandler(conn);
-        emitter.map(eventHandler::handlePodEvent).subscribe();
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
 
         // We pick a random node from [0, numNodes) to assign all pods to.
         final int nodeToAssignTo = ThreadLocalRandom.current().nextInt(numNodes);
@@ -161,8 +161,8 @@ public class SchedulerTest {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventHandler eventHandler = new PodEventHandler(conn);
-        emitter.map(eventHandler::handlePodEvent).subscribe();
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
 
         final int numPods = 10;
         final int numNodes = 10;
@@ -274,8 +274,8 @@ public class SchedulerTest {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventHandler eventHandler = new PodEventHandler(conn);
-        emitter.map(eventHandler::handlePodEvent).subscribe();
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
 
         final int numPods = 10;
         final int numNodes = 100;
@@ -443,8 +443,8 @@ public class SchedulerTest {
 
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventHandler eventHandler = new PodEventHandler(conn);
-        emitter.map(eventHandler::handlePodEvent).subscribe();
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
 
         final List<String> allPods = IntStream.range(0, numPods)
                 .mapToObj(i -> "p" + i)
@@ -676,8 +676,8 @@ public class SchedulerTest {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventHandler eventHandler = new PodEventHandler(conn);
-        emitter.map(eventHandler::handlePodEvent).subscribe();
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
         final int numPods = cpuRequests.size();
         final int numNodes = nodeCpuCapacities.size();
 
@@ -780,8 +780,8 @@ public class SchedulerTest {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventHandler eventHandler = new PodEventHandler(conn);
-        emitter.map(eventHandler::handlePodEvent).subscribe();
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
 
         final int numPods = tolerations.size();
         final int numNodes = taints.size();

@@ -10,6 +10,10 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.KubernetesClient;
 
+
+/**
+ * Pod -> node binding implementation that works with a real Kubernetes cluster
+ */
 class KubernetesBinder implements IPodToNodeBinder {
     private final KubernetesClient client;
 

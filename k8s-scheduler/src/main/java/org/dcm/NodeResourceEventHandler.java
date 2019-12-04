@@ -23,6 +23,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+
+/**
+ * Subscribes to Kubernetes node events and reflects them in the database
+ */
 class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     private static final Logger LOG = LoggerFactory.getLogger(NodeResourceEventHandler.class);
     private final DSLContext conn;

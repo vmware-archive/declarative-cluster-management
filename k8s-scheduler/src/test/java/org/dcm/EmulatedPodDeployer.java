@@ -19,13 +19,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class EmulatedDeployer implements IDeployer {
-    private static final Logger LOG = LoggerFactory.getLogger(EmulatedDeployer.class);
+
+/**
+ * Creates pods that correspond to a deployment without actually deploying them to a real cluster. Allows us
+ * to replay traces locally.
+ */
+public class EmulatedPodDeployer implements IPodDeployer {
+    private static final Logger LOG = LoggerFactory.getLogger(EmulatedPodDeployer.class);
     private final PodResourceEventHandler resourceEventHandler;
     private final String namespace;
     private final Map<String, List<Pod>> pods = new ConcurrentHashMap<>();
 
-    public EmulatedDeployer(final PodResourceEventHandler podResourceEventHandler, final String namespace) {
+    EmulatedPodDeployer(final PodResourceEventHandler podResourceEventHandler, final String namespace) {
         this.resourceEventHandler = podResourceEventHandler;
         this.namespace = namespace;
     }

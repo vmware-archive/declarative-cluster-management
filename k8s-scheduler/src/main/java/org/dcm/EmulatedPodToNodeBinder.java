@@ -13,12 +13,16 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class EmulatedBinder implements IPodToNodeBinder {
-    private static final Logger LOG = LoggerFactory.getLogger(EmulatedBinder.class);
+
+/**
+ * Applies the results of a pod -> node binding directly against the database
+ */
+public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
+    private static final Logger LOG = LoggerFactory.getLogger(EmulatedPodToNodeBinder.class);
     private final DSLContext conn;
     private final ExecutorService executorService = Executors.newScheduledThreadPool(5);
 
-    EmulatedBinder(final DSLContext conn) {
+    EmulatedPodToNodeBinder(final DSLContext conn) {
         this.conn = conn;
     }
 
