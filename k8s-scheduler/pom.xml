@@ -53,6 +53,11 @@
             <artifactId>commons-cli</artifactId>
             <version>1.4</version>
         </dependency>
+        <dependency>
+            <groupId>com.github.davidmoten</groupId>
+            <artifactId>rxjava2-extras</artifactId>
+            <version>0.1.36</version>
+        </dependency>
     </dependencies>
 
     <build>

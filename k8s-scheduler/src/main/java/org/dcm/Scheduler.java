@@ -10,6 +10,7 @@ import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
+import com.github.davidmoten.rx2.flowable.Transformers;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
@@ -115,7 +116,7 @@ public final class Scheduler {
                     && podEvent.getPod().getSpec().getSchedulerName().equals(
                     Scheduler.SCHEDULER_NAME)
             )
-            .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
+            .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
             .filter(podEvents -> !podEvents.isEmpty())
             .subscribe(
                 podEvents -> {
