@@ -207,9 +207,6 @@ public class OrToolsTest {
         solver.getParameters().setLogSearchProgress(true);
         solver.getParameters().setCpModelProbingLevel(0);
 
-        for (int i = 0; i < numPods; i++) {
-            model.addHint(podsControllableNodes[i], i);
-        }
         final CpSolverStatus status = solver.solve(model);
         if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
             System.out.println(solver.value(min1));
