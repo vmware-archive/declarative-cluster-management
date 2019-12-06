@@ -148,7 +148,7 @@ class Policies {
                                                "where cpu_load <= 100 " +
                                                "  and memory_load <= 100";
         final String capacityCpuMemSoftConstraint = "create view objective_least_requested_cpu_mem as " +
-                                                    "select max(cpu_load + memory_load) " +
+                                                    "select -max(cpu_load + memory_load) " +
                                                     "from pods_slack_per_node";
         views.add(intermediateView);
         if (withHardConstraint) {

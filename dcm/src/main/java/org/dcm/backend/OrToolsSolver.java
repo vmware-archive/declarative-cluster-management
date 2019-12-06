@@ -170,7 +170,7 @@ public class OrToolsSolver implements ISolverBackend {
                 });
         if (!objectiveFunctions.isEmpty()) {
             final String objectiveFunctionSum = String.join(", ", objectiveFunctions.keySet());
-            output.addStatement("model.minimize(o.sumV($T.of($L)))", List.class, objectiveFunctionSum);
+            output.addStatement("model.maximize(o.sumV($T.of($L)))", List.class, objectiveFunctionSum);
         }
 
         addSolvePhase(output, context);
