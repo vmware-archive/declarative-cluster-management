@@ -134,12 +134,10 @@ class Policies {
         // Kubernetes, because there always some system pods running on each node.
         final List<String> views = new ArrayList<>();
         final String intermediateView = "create view pods_slack_per_node as " +
-            "select ((spare_capacity_per_node.cpu_remaining - sum(pods_to_assign.cpu_request)) * 100) " +
-                "     / spare_capacity_per_node.cpu_remaining as cpu_slack," +
-            "  ((spare_capacity_per_node.memory_remaining - sum(pods_to_assign.memory_request)) * 100) " +
-                "     / spare_capacity_per_node.memory_remaining as memory_slack," +
-            "  ((spare_capacity_per_node.pods_remaining - sum(pods_to_assign.pods_request)) * 100) " +
-                "     / spare_capacity_per_node.pods_remaining as pods_slack " +
+            "select sum((pods_to_assign.cpu_request * 100) / spare_capacity_per_node.cpu_remaining) " +
+                "      as cpu_load," +
+            "  sum((pods_to_assign.memory_request * 100) / spare_capacity_per_node.memory_remaining) " +
+                "      as memory_load " +
             "from spare_capacity_per_node " +
             "join pods_to_assign " +
             "     on pods_to_assign.controllable__node_name = spare_capacity_per_node.name " +
@@ -147,28 +145,17 @@ class Policies {
             "         spare_capacity_per_node.memory_remaining, spare_capacity_per_node.pods_remaining";
         final String capacityHardConstraint =  "create view constraint_capacity as " +
                                                "select * from pods_slack_per_node " +
-                                               "where cpu_slack >= 0 " +
-                                               "  and memory_slack >= 0 " +
-                                               "  and pods_slack >= 0";
-        final String capacityCpuSoftConstraint = "create view objective_least_requested_cpu as " +
-                                                 "select min(cpu_slack + memory_slack + pods_slack) " +
-                                                 "from pods_slack_per_node";
-        /*
-        final String capacityMemSoftConstraint = "create view objective_least_requested_mem as " +
-                                                 "select min(memory_slack) from pods_slack_per_node";
-
-        // Will spread out pods even if they don't request any cpu/mem resources
-        final String capacityPodsSoftConstraint = "create view objective_least_requested_pods as " +
-                                                  "select min(pods_slack) from pods_slack_per_node";
-         */
+                                               "where cpu_load <= 100 " +
+                                               "  and memory_load <= 100";
+        final String capacityCpuMemSoftConstraint = "create view objective_least_requested_cpu_mem as " +
+                                                    "select -max(cpu_load + memory_load) " +
+                                                    "from pods_slack_per_node";
         views.add(intermediateView);
         if (withHardConstraint) {
             views.add(capacityHardConstraint);
         }
         if (withSoftConstraint) {
-            views.add(capacityCpuSoftConstraint);
-//            views.add(capacityMemSoftConstraint);
-//            views.add(capacityPodsSoftConstraint);
+            views.add(capacityCpuMemSoftConstraint);
         }
         return new Policy("CapacityConstraint", views);
     }

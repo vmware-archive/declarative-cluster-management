@@ -48,7 +48,7 @@ class EmulatedClusterTest {
 
         final List<String> policies = Policies.getDefaultPolicies();
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
-        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(conn), 100, 100);
+        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(conn), 100, 500);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());

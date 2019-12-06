@@ -73,7 +73,7 @@ public class OrToolsTest {
         final CpModel model = new CpModel();
 
         // Create the variables.
-        final int numPods = 100;
+        final int numPods = 1000;
         final int numNodes = 50;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
         final int[] podsDemands = new int[numPods];
@@ -130,7 +130,7 @@ public class OrToolsTest {
         final CpModel model = new CpModel();
 
         // Create the variables.
-        final int numPods = 100;
+        final int numPods = 1000;
         final int numNodes = 50;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
         final int[] podsDemands1 = new int[numPods];
@@ -206,6 +206,7 @@ public class OrToolsTest {
         solver.getParameters().setNumSearchWorkers(4);
         solver.getParameters().setLogSearchProgress(true);
         solver.getParameters().setCpModelProbingLevel(0);
+
         final CpSolverStatus status = solver.solve(model);
         if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
             System.out.println(solver.value(min1));

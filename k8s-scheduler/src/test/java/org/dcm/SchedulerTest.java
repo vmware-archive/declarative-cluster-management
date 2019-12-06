@@ -760,15 +760,10 @@ public class SchedulerTest {
                         List.of(1, 1, 1, 1, 1), List.of(1, 1, 1, 50, 1), true, false,
                         onlyN3MustBeAssignedNewPods, true),
 
-                Arguments.of("No resource requests: pods will be spread out by soft constraint (no hard constraint)",
-                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0),
-                        List.of(1, 1, 1, 1, 1), List.of(1, 1, 1, 1, 1), false, true,
-                        onePodPerNode, true),
-
-                Arguments.of("No resource requests: pods will be spread out by soft constraint (with hard constraint)",
-                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0),
-                        List.of(1, 1, 1, 1, 1), List.of(1, 1, 1, 1, 1), true, true,
-                        onePodPerNode, true)
+                Arguments.of("Only memory requests, only soft constraints, pods must be spread out",
+                        List.of(0, 0, 0), List.of(10, 10, 10),
+                        List.of(1, 1, 1, 1, 1), List.of(100, 100, 100, 100, 100), false, true,
+                        onePodPerNode , true)
         );
     }
 
