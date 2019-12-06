@@ -31,7 +31,7 @@ public abstract class ViewUpdater {
     String triggerClassName;
     final String key;
 
-    final Connection connection;
+    private final Connection connection;
     private final List<String> baseTables;
     private final DSLContext dbCtx;
     private final Map<String, Map<DDlogCommand.Kind, PreparedStatement>> preparedQueries = new HashMap<>();
@@ -74,7 +74,7 @@ public abstract class ViewUpdater {
         this.irTables = irTables;
         this.baseTables = baseTables;
         this.dbCtx = dbCtx;
-        this.updater = new DDlogUpdater(r -> receiveUpdateFromDDlog(r), irTables);
+        this.updater = new DDlogUpdater(this::receiveUpdateFromDDlog, irTables);
     }
 
     private String generatePreparedQueryString(final String dataType, final DDlogCommand.Kind commandKind) {
@@ -111,7 +111,7 @@ public abstract class ViewUpdater {
     }
 
     private void receiveUpdateFromDDlog(final DDlogCommand<DDlogRecord> command) {
-        final List<Object> objects = new ArrayList();
+        final List<Object> objects = new ArrayList<>();
         final DDlogRecord record = command.value();
         final String tableName = record.getStructName();
 
@@ -155,7 +155,7 @@ public abstract class ViewUpdater {
             final String tableName = command.tableName;
 
             // for logging
-            recordsReceived.computeIfAbsent(tableName, k -> 0);
+            recordsReceived.putIfAbsent(tableName, 0);
             recordsReceived.put(tableName, recordsReceived.get(tableName) + 1);
 
             // check if query is already created and if not, create it
