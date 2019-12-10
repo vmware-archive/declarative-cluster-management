@@ -236,6 +236,11 @@ public class MinizincSolver implements ISolverBackend {
         return ret;
     }
 
+    @Override
+    public boolean needsGroupTables() {
+        return true;
+    }
+
     private List<MonoidComprehension> comprehensionRewritePipeline(final MonoidComprehension comprehension,
                                                                    final boolean isConstraint) {
         // (1) Split into multiple comprehensions, one per head

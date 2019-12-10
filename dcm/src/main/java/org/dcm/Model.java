@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -89,19 +90,23 @@ public class Model {
          * Identify additional views to create in the database for group bys. These views will be added to
          * the DB, and we augment the list of tables to pass to the compiler with these views.
          */
-        final List<CreateView> groupByViewsToCreate = viewsInPolicy.stream().map(view -> {
-            final ExtractGroupTable groupTable = new ExtractGroupTable();
-            return groupTable.process(view);
-        }).filter(Optional::isPresent)
-          .map(Optional::get)
-          .collect(Collectors.toList());
-        groupByViewsToCreate.forEach(view -> {
-            final String s = SqlFormatter.formatSql(view, Optional.empty());
-            dbCtx.execute(s);
-        });
-        final Set<String> createdViewNames = groupByViewsToCreate.stream().map(view -> view.getName().toString()
-                                                                                     .toUpperCase(Locale.getDefault()))
-                                                                          .collect(Collectors.toSet());
+        final Set<String> createdViewNames = new HashSet<>();
+        if (backend.needsGroupTables()) {
+            final List<CreateView> groupByViewsToCreate = viewsInPolicy.stream().map(view -> {
+                final ExtractGroupTable groupTable = new ExtractGroupTable();
+                return groupTable.process(view);
+            }).filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .collect(Collectors.toList());
+            groupByViewsToCreate.forEach(view -> {
+                final String s = SqlFormatter.formatSql(view, Optional.empty());
+                dbCtx.execute(s);
+            });
+            final Set<String> viewsToCreate = groupByViewsToCreate.stream().map(view -> view.getName().toString()
+                                                                            .toUpperCase(Locale.getDefault()))
+                                                                            .collect(Collectors.toSet());
+            createdViewNames.addAll(viewsToCreate);
+        }
         final List<Table<?>> augmentedTableList = new ArrayList<>(tables);
         // dbCtx.meta().getTables(<name>) is buggy https://github.com/jOOQ/jOOQ/issues/7686,
         // so we're going to scan all tables and pick the ones whose names match that of the views we created.

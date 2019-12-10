@@ -877,6 +877,11 @@ public class OrToolsSolver implements ISolverBackend {
         return Collections.emptyList();
     }
 
+    @Override
+    public boolean needsGroupTables() {
+        return false;
+    }
+
     private String exprToStr(final MethodSpec.Builder output, final Expr expr) {
         return exprToStr(output, expr, true, null);
     }

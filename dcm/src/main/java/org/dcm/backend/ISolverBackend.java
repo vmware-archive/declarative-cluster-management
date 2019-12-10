@@ -26,4 +26,6 @@ public interface ISolverBackend {
                                    final Map<String, MonoidComprehension> objectiveFunctions);
 
     List<String> generateDataCode(final IRContext context);
+
+    boolean needsGroupTables();
 }
