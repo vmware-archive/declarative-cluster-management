@@ -352,7 +352,7 @@ public class Ops {
     }
 
     public IntVar or(final boolean left, final IntVar right) {
-        return left ? model.newConstant(1) : or(model.newConstant(0), right);
+        return left ? model.newConstant(1) : right;
     }
 
     public IntVar or(final IntVar left, final boolean right) {
@@ -368,7 +368,7 @@ public class Ops {
 
 
     public IntVar and(final boolean left, final IntVar right) {
-        return left ? and(model.newConstant(1), right) : model.newConstant(0);
+        return left ? right : model.newConstant(0);
     }
 
     public IntVar and(final IntVar left, final boolean right) {
