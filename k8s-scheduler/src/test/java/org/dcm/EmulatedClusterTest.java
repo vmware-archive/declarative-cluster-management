@@ -41,7 +41,7 @@ class EmulatedClusterTest {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final int numNodes = 50;
+        final int numNodes = 1000;
 
         // Add all nodes
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);

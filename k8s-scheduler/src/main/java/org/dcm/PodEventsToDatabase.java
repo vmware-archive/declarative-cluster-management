@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 
@@ -145,6 +146,9 @@ class PodEventsToDatabase {
         // This field is important because while we injest info about all pods, we only make scheduling decisions
         // for pods that have dcm-scheduler as their name
         podInfoRecord.setSchedulername(pod.getSpec().getSchedulerName());
+
+        // Compute equivalent class similar to what the default scheduler does
+        podInfoRecord.setEquivalenceClass(equivalenceClassHash(pod));
 
         podInfoRecord.store(); // upsert
     }
@@ -305,5 +309,16 @@ class PodEventsToDatabase {
             }
             termNumber += 1;
         }
+    }
+
+    private long equivalenceClassHash(final Pod pod) {
+        return Objects.hash(pod.getMetadata().getNamespace(),
+                            pod.getMetadata().getLabels(),
+                            pod.getSpec().getAffinity(),
+                            pod.getSpec().getInitContainers(),
+                            pod.getSpec().getNodeName(),
+                            pod.getSpec().getNodeSelector(),
+                            pod.getSpec().getTolerations(),
+                            pod.getSpec().getVolumes());
     }
 }
