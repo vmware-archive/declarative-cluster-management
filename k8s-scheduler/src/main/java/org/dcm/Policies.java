@@ -164,13 +164,10 @@ class Policies {
      * All pods belonging to the same owner are symmetric with respect to one another.
      */
     static Policy symmetryBreaking() {
-        // We don't handle outer joins yet, so this policy currently assumes that there is at least one running
-        // pod per node. If not, those nodes will lack a row in the spare_capacity_per_node view. This is fine for
-        // Kubernetes, because there always some system pods running on each node.
         final String constraint = "create view constraint_symmetry_breaking as " +
                 "select * " +
                 "from pods_to_assign " +
-                "group by owner_name " +
+                "group by equivalence_class " +
                 "having increasing(pods_to_assign.controllable__node_name) = true";
         return new Policy("SymmetryBreaking", constraint);
     }

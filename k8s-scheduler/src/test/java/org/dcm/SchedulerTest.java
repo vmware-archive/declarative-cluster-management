@@ -949,7 +949,6 @@ public class SchedulerTest {
         final List<String> policies = Policies.getDefaultPolicies();
         DebugUtils.dbLoad(conn);
 
-        System.out.println(conn.selectFrom(Tables.SPARE_CAPACITY_PER_NODE).fetch());
         // All pod additions have completed
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
