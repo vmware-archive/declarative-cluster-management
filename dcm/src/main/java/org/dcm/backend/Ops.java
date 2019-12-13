@@ -18,10 +18,15 @@ import java.util.List;
 public class Ops {
     private final CpModel model;
     private final StringEncoding encoder;
+    private final IntVar trueVar;
+    private final IntVar falseVar;
+
 
     public Ops(final CpModel model, final StringEncoding encoding) {
         this.model = model;
         this.encoder = encoding;
+        this.trueVar = model.newConstant(1);
+        this.falseVar = model.newConstant(0);
     }
 
     public int sum(final List<Integer> data) {
@@ -352,7 +357,7 @@ public class Ops {
     }
 
     public IntVar or(final boolean left, final IntVar right) {
-        return left ? model.newConstant(1) : right;
+        return left ? trueVar : right;
     }
 
     public IntVar or(final IntVar left, final boolean right) {
@@ -368,7 +373,7 @@ public class Ops {
 
 
     public IntVar and(final boolean left, final IntVar right) {
-        return left ? right : model.newConstant(0);
+        return left ? right : falseVar;
     }
 
     public IntVar and(final IntVar left, final boolean right) {
@@ -400,7 +405,7 @@ public class Ops {
     }
 
     public IntVar toConst(final boolean expr) {
-        return expr ? model.newConstant(1) : model.newConstant(0);
+        return expr ? trueVar : falseVar;
     }
 
     public IntVar toConst(final long expr) {
