@@ -26,6 +26,7 @@ import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.WildcardTypeName;
+import org.apache.commons.text.diff.StringsComparator;
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
@@ -72,6 +73,8 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -79,6 +82,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -165,7 +169,8 @@ public class OrToolsSolver implements ISolverBackend {
         objectiveFunctions
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final String s = exprToStr(output, rewrittenComprehension);
+                    final ExprContext objFunctionContext = new ExprContext(false);
+                    final String s = exprToStr(output, rewrittenComprehension, objFunctionContext);
                     output.addStatement("final $T $L = $L", IntVar.class, name, s);
                 });
         if (!objectiveFunctions.isEmpty()) {
@@ -251,25 +256,33 @@ public class OrToolsSolver implements ISolverBackend {
             populateQualifiersByVarType(inner, varQualifiers, nonVarQualifiers, false);
 
             final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView);
-            maybeAddNonVarAggregateFilters(output, nonVarQualifiers, controlFlowsToPop, groupContext);
+            final ExprContext context = new ExprContext(false);
+            maybeAddNonVarAggregateFilters(output, nonVarQualifiers, controlFlowsToPop, groupContext, context);
 
             // If this is not a constraint, we simply add a to a result set
             if (!isConstraint) {
                 final TypeSpec typeSpec = tupleGen.getTupleType(inner.getHead().getSelectExprs().size());
                 final String viewTupleGenericParameters =
                         generateTupleGenericParameters(inner.getHead().getSelectExprs());
-                output.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
-                int numSelectExprs = inner.getHead().getSelectExprs().size();
-                for (final Expr expr : inner.getHead().getSelectExprs()) {
-                    final String result = exprToStr(output, expr, true, groupContext);
-                    output.addCode(result);
-
-                    if (numSelectExprs > 1) {
-                        numSelectExprs--;
-                        output.addCode(","); // Separate tuple entries by a comma
-                    }
-                }
-                output.addCode(");\n");
+                final ExprContext aggregateFunctionContext = new ExprContext(false);
+                final String tupleResult = inner.getHead().getSelectExprs().stream()
+                                                 .map(e -> exprToStr(output, e, true, groupContext,
+                                                                             aggregateFunctionContext))
+                                                 .collect(Collectors.joining(", "));
+//                output.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
+//                int numSelectExprs = inner.getHead().getSelectExprs().size();
+//                for (final Expr expr : inner.getHead().getSelectExprs()) {
+//                    final String result = exprToStr(output, expr, true, groupContext);
+//                    output.addCode(result);
+//
+//                    if (numSelectExprs > 1) {
+//                        numSelectExprs--;
+//                        output.addCode(","); // Separate tuple entries by a comma
+//                    }
+//                }
+//                output.addCode(");\n");
+                output.addStatement("final $1N<$2L> res = new $1N<>($L)", typeSpec, viewTupleGenericParameters,
+                                                                          tupleResult);
 
                 // Record field name indices for view
                 // TODO: wrap this block into a helper.
@@ -280,9 +293,10 @@ public class OrToolsSolver implements ISolverBackend {
                 output.addStatement("$L.add(res)", tableNameStr(viewName));
             }
             else  {
+                final ExprContext aggregateFunctionContext = new ExprContext(false);
                 // If this is a constraint, we translate having clauses into a constraint statement
                 addAggregateConstraint(output, varQualifiers, nonVarQualifiers,
-                                       new GroupContext(groupByQualifier, intermediateView));
+                                       new GroupContext(groupByQualifier, intermediateView), aggregateFunctionContext);
             }
 
             controlFlowsToPop.forEach(s -> output.endControlFlow());
@@ -304,13 +318,15 @@ public class OrToolsSolver implements ISolverBackend {
         // Add a comment with the view name
         output.addCode("\n").addComment("$L view $L", isConstraint ? "Constraint" : "Non-constraint", viewName);
 
+        final ExprContext context = new ExprContext(false);
+
         // Extract the set of columns being selected in this view
         final AtomicInteger fieldIndex = new AtomicInteger();
         final List<ColumnIdentifier> headItemsList = getColumnsAccessed(comprehension, isConstraint);
 
         // Compute a string that represents the set of field accesses for the above columns
         final String headItemsStr = headItemsList.stream()
-                .map(expr -> convertToFieldAccess(output, expr, viewName, fieldIndex))
+                .map(expr -> convertToFieldAccess(output, expr, viewName, fieldIndex, context))
                 .collect(Collectors.joining(",\n    "));
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
@@ -337,7 +353,7 @@ public class OrToolsSolver implements ISolverBackend {
         addNestedForLoops(output, nonVarQualifiers, controlFlowsToPop);
 
         // Filter out nested for loops using an if(predicate) statement
-        maybeAddNonVarFilters(output, nonVarQualifiers, controlFlowsToPop, isConstraint);
+        maybeAddNonVarFilters(output, nonVarQualifiers, controlFlowsToPop, isConstraint, context);
 
         if (!isConstraint // for simple constraints, we post constraints in this inner loop itself
            || (groupByQualifier != null) // for aggregate constraints, we populate a
@@ -348,7 +364,7 @@ public class OrToolsSolver implements ISolverBackend {
             addToResultSet(output, viewName, tupleSize, headItemsStr, headItemsListTupleGenericParameters,
                     resultSetNameStr, groupByQualifier);
         } else {
-            addRowConstraint(output, varQualifiers, nonVarQualifiers);
+            addRowConstraint(output, varQualifiers, nonVarQualifiers, context);
         }
 
         // Pop all control flows (nested for loops and if statement)
@@ -396,10 +412,11 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private String convertToFieldAccess(final MethodSpec.Builder output, final Expr expr,
-                                        final String viewName, final AtomicInteger fieldIndex) {
+                                        final String viewName, final AtomicInteger fieldIndex,
+                                        final ExprContext context) {
         Preconditions.checkArgument(expr instanceof ColumnIdentifier);
         final String fieldName = updateFieldIndex(viewName, expr, fieldIndex);
-        return exprToStr(output, expr)  + " /* " + fieldName + " */";
+        return exprToStr(output, expr, context)  + " /* " + fieldName + " */";
     }
 
     private String updateFieldIndex(final String viewName, final Expr argument, final AtomicInteger counter) {
@@ -454,15 +471,16 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private void maybeAddNonVarFilters(final MethodSpec.Builder output, final QualifiersByType nonVarQualifiers,
-                                       final ArrayDeque<String> controlFlowsToPop, final boolean isConstraint) {
+                                       final ArrayDeque<String> controlFlowsToPop, final boolean isConstraint,
+                                       final ExprContext context) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
-                .map(expr -> exprToStr(output, expr, false, null))
+                .map(expr -> exprToStr(output, expr, false, null, context))
                 .collect(Collectors.joining(" \n    && "));
         // For non constraint views, where clauses are a filter criterion, whereas for constraint views, they
         // are the constraint itself.
         final String wherePredicateStr = isConstraint ? "" :
                                          nonVarQualifiers.wherePredicates.stream()
-                                                .map(expr -> exprToStr(output, expr, false, null))
+                                                .map(expr -> exprToStr(output, expr, false, null, context))
                                                 .collect(Collectors.joining(" \n    && "));
         final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
                 .filter(s -> !s.equals(""))
@@ -478,9 +496,10 @@ public class OrToolsSolver implements ISolverBackend {
     private void maybeAddNonVarAggregateFilters(final MethodSpec.Builder output,
                                                 final QualifiersByType nonVarQualifiers,
                                                 final ArrayDeque<String> controlFlowsToPop,
-                                                final GroupContext groupContext) {
+                                                final GroupContext groupContext,
+                                                final ExprContext context) {
         final String predicateStr = nonVarQualifiers.aggregatePredicates.stream()
-                .map(expr -> exprToStr(output, expr, false, groupContext))
+                .map(expr -> exprToStr(output, expr, false, groupContext, context))
                 .collect(Collectors.joining(" \n    && "));
 
         if (!predicateStr.isEmpty()) {
@@ -517,7 +536,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private void addRowConstraint(final MethodSpec.Builder output, final QualifiersByType varQualifiers,
-                                  final QualifiersByType nonVarQualifiers) {
+                                  final QualifiersByType nonVarQualifiers, final ExprContext context) {
         final String joinPredicateStr;
         if (varQualifiers.joinPredicates.size() > 0) {
             final BinaryOperatorPredicate combinedJoinPredicate = varQualifiers.joinPredicates
@@ -525,24 +544,25 @@ public class OrToolsSolver implements ISolverBackend {
                     .map(e -> (BinaryOperatorPredicate) e)
                     .reduce(varQualifiers.joinPredicates.get(0),
                        (left, right) -> new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.AND, left, right));
-            joinPredicateStr = exprToStr(output, combinedJoinPredicate, true, null);
+            joinPredicateStr = exprToStr(output, combinedJoinPredicate, true, null, context);
         } else {
             joinPredicateStr = "";
         }
-        varQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, joinPredicateStr, null));
-        nonVarQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, joinPredicateStr, null));
+        varQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, joinPredicateStr, null, context));
+        nonVarQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, joinPredicateStr, null, context));
     }
 
     private void addAggregateConstraint(final MethodSpec.Builder output, final QualifiersByType varQualifiers,
-                                        final QualifiersByType nonVarQualifiers, final GroupContext groupContext) {
-        varQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, "", groupContext));
-        nonVarQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, "", groupContext));
+                                        final QualifiersByType nonVarQualifiers, final GroupContext groupContext,
+                                        final ExprContext context) {
+        varQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, "", groupContext, context));
+        nonVarQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, "", groupContext, context));
     }
 
     private void topLevelConstraint(final MethodSpec.Builder output, final Expr expr, final String joinPredicateStr,
-                                    @Nullable final GroupContext groupContext) {
+                                    @Nullable final GroupContext groupContext, final ExprContext context) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
-        final String statement = maybeWrapped(output, expr, groupContext);
+        final String statement = maybeWrapped(output, expr, groupContext, context);
 
         if (joinPredicateStr.isEmpty()) {
             output.addStatement("model.addEquality($L, 1)", statement);
@@ -555,8 +575,8 @@ public class OrToolsSolver implements ISolverBackend {
      * Wrap constants 'x' in model.newConstant(x) depending on the type. Also converts true/false to 1/0.
      */
     private String maybeWrapped(final MethodSpec.Builder output, final Expr expr,
-                                @Nullable final GroupContext groupContext) {
-        String exprStr = exprToStr(output, expr, true, groupContext);
+                                @Nullable final GroupContext groupContext, final ExprContext context) {
+        String exprStr = exprToStr(output, expr, true, groupContext, context);
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
         if (expr instanceof MonoidLiteral && ((MonoidLiteral) expr).getValue() instanceof Boolean) {
@@ -882,14 +902,15 @@ public class OrToolsSolver implements ISolverBackend {
         return false;
     }
 
-    private String exprToStr(final MethodSpec.Builder output, final Expr expr) {
-        return exprToStr(output, expr, true, null);
+    private String exprToStr(final MethodSpec.Builder output, final Expr expr, final ExprContext context) {
+        return exprToStr(output, expr, true, null, context);
     }
 
     private String exprToStr(final MethodSpec.Builder output, final Expr expr, final boolean allowControllable,
-                             @Nullable final GroupContext currentGroup) {
+                             @Nullable final GroupContext currentGroup, final ExprContext context) {
         final ExprToStrVisitor visitor = new ExprToStrVisitor(output, allowControllable, currentGroup, null);
-        return Objects.requireNonNull(visitor.visit(expr, false));
+        final String resultVariable = Objects.requireNonNull(visitor.visit(expr, context));
+        return resultVariable;
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
@@ -917,7 +938,7 @@ public class OrToolsSolver implements ISolverBackend {
         Preconditions.checkArgument(var.tableRowGenerators.isEmpty());
     }
 
-    private class ExprToStrVisitor extends MonoidVisitor<String, Boolean> {
+    private class ExprToStrVisitor extends MonoidVisitor<String, ExprContext> {
         private final MethodSpec.Builder output;
         private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
@@ -934,45 +955,46 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Nullable
         @Override
-        protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Boolean isFunctionContext) {
+        protected String visitMonoidFunction(final MonoidFunction node, @Nullable final ExprContext context) {
             final String vectorName = currentSubQueryContext == null ? "data" : currentSubQueryContext.subQueryName;
 
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
-            final String processedArgument = visit(node.getArgument(), true);
+            assert context != null;
+            final String processedArgument = visit(node.getArgument(), context.withEnterFunctionContext());
             final boolean argumentIsIntVar = inferType(node.getArgument()).equals("IntVar");
             final String formatStr = "$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())";
             switch (node.getFunction()) {
                 case SUM:
                     final String sumFunction = argumentIsIntVar ? "sumV" : "sum";
-                    return CodeBlock.of("o.$L(" + formatStr + ")",
-                            sumFunction, vectorName, processedArgument, Collectors.class).toString();
+                    return applyAndLeaveScope(CodeBlock.of("o.$L(" + formatStr + ")",
+                            sumFunction, vectorName, processedArgument, Collectors.class).toString(), context);
                 case COUNT:
                     final String countFunction = argumentIsIntVar ? "sumV" : "sum";
 
                     // In these cases, it is safe to replace count(argument) with sum(1)
                     if ((node.getArgument() instanceof MonoidLiteral ||
                          node.getArgument() instanceof ColumnIdentifier)) {
-                        return argumentIsIntVar ? CodeBlock.of("o.toConst($L.size())", vectorName).toString()
-                                : CodeBlock.of("$L.size()", vectorName).toString();
+                        return applyAndLeaveScope(argumentIsIntVar ? CodeBlock.of("o.toConst($L.size())", vectorName).toString()
+                                : CodeBlock.of("$L.size()", vectorName).toString(), context);
                     }
-                    return CodeBlock.of("o.$L(" + formatStr + ")",
-                            countFunction , vectorName, processedArgument, Collectors.class).toString();
+                    return applyAndLeaveScope(CodeBlock.of("o.$L(" + formatStr + ")",
+                            countFunction , vectorName, processedArgument, Collectors.class).toString(), context);
                 case MAX:
                     final CodeBlock maxArg = CodeBlock.of(formatStr, vectorName, processedArgument, Collectors.class);
                     final String maxArgType = inferType(node.getArgument());
-                    return String.format("o.maxV%s(%s)", maxArgType, maxArg);
+                    return applyAndLeaveScope(String.format("o.maxV%s(%s)", maxArgType, maxArg), context);
                 case MIN:
                     final CodeBlock minArg = CodeBlock.of(formatStr, vectorName, processedArgument, Collectors.class);
                     final String minArgType = inferType(node.getArgument());
-                    return String.format("o.minV%s(%s)", minArgType, minArg);
+                    return applyAndLeaveScope(String.format("o.minV%s(%s)", minArgType, minArg), context);
                 case ALL_EQUAL:
-                    return CodeBlock.of("o.allEqual(" + formatStr + ")",
-                            vectorName, processedArgument, Collectors.class).toString();
+                    return applyAndLeaveScope(CodeBlock.of("o.allEqual(" + formatStr + ")",
+                            vectorName, processedArgument, Collectors.class).toString(), context);
                 case INCREASING:
                     output.addStatement("o.increasing(" + formatStr + ")",
                             vectorName, processedArgument, Collectors.class);
-                    return "model.newConstant(1)";
+                    return applyAndLeaveScope("model.newConstant(1)", context);
                 case ALL_DIFFERENT:
                 default:
                     throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
@@ -981,39 +1003,39 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Nullable
         @Override
-        protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final Boolean context) {
+        protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final ExprContext context) {
             final String processedArgument = visit(node.getArgument(), context);
-            return String.format("o.exists(%s)", processedArgument);
+            return apply(String.format("o.exists(%s)", processedArgument), context);
         }
 
         @Nullable
         @Override
-        protected String visitIsNullPredicate(final IsNullPredicate node, @Nullable final Boolean context) {
+        protected String visitIsNullPredicate(final IsNullPredicate node, @Nullable final ExprContext context) {
             final String type = inferType(node.getArgument());
             final String processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(!type.equals("IntVar"));
-            return String.format("%s == null", processedArgument);
+            return apply(String.format("%s == null", processedArgument), context);
         }
 
         @Nullable
         @Override
-        protected String visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final Boolean context) {
+        protected String visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final ExprContext context) {
             final String type = inferType(node.getArgument());
             final String processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(!type.equals("IntVar"));
-            return String.format("%s != null", processedArgument);
+            return apply(String.format("%s != null", processedArgument), context);
         }
 
         @Nullable
         @Override
-        protected String visitUnaryOperator(final UnaryOperator node, @Nullable final Boolean isFunctionContext) {
+        protected String visitUnaryOperator(final UnaryOperator node, @Nullable final ExprContext context) {
             switch (node.getOperator()) {
                 case NOT:
-                    return String.format("o.not(%s)", visit(node.getArgument(), isFunctionContext));
+                    return apply(String.format("o.not(%s)", visit(node.getArgument(), context)), context);
                 case MINUS:
-                    return String.format("o.mult(-1, %s)", visit(node.getArgument(), isFunctionContext));
+                    return apply(String.format("o.mult(-1, %s)", visit(node.getArgument(), context)), context);
                 case PLUS:
-                    return visit(node.getArgument(), isFunctionContext);
+                    return apply(visit(node.getArgument(), context), context);
                 default:
                     throw new IllegalArgumentException(node.toString());
             }
@@ -1022,10 +1044,11 @@ public class OrToolsSolver implements ISolverBackend {
         @Nullable
         @Override
         protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
-                                                      @Nullable final Boolean isFunctionContext) {
-            final String left = Objects.requireNonNull(visit(node.getLeft(), isFunctionContext),
+                                                      @Nullable final ExprContext context) {
+            Preconditions.checkNotNull(context);
+            final String left = Objects.requireNonNull(visit(node.getLeft(), context),
                                                        "Expr was null: " + node.getLeft());
-            final String right = Objects.requireNonNull(visit(node.getRight(), isFunctionContext),
+            final String right = Objects.requireNonNull(visit(node.getRight(), context),
                                                         "Expr was null: " + node.getRight());
             final BinaryOperatorPredicate.Operator op = node.getOperator();
             final String leftType = inferType(node.getLeft());
@@ -1035,31 +1058,31 @@ public class OrToolsSolver implements ISolverBackend {
                 // We need to generate an IntVar.
                 switch (op) {
                     case EQUAL:
-                        return String.format("o.eq(%s, %s)", left, right);
+                        return apply(String.format("o.eq(%s, %s)", left, right), context);
                     case NOT_EQUAL:
-                        return String.format("o.ne(%s, %s)", left, right);
+                        return apply(String.format("o.ne(%s, %s)", left, right), context);
                     case AND:
-                        return String.format("o.and(%s, %s)", left, right);
+                        return apply(String.format("o.and(%s, %s)", left, right), context);
                     case OR:
-                        return String.format("o.or(%s, %s)", left, right);
+                        return apply(String.format("o.or(%s, %s)", left, right), context);
                     case LESS_THAN_OR_EQUAL:
-                        return String.format("o.leq(%s, %s)", left, right);
+                        return apply(String.format("o.leq(%s, %s)", left, right), context);
                     case LESS_THAN:
-                        return String.format("o.lt(%s, %s)", left, right);
+                        return apply(String.format("o.lt(%s, %s)", left, right), context);
                     case GREATER_THAN_OR_EQUAL:
-                        return String.format("o.geq(%s, %s)", left, right);
+                        return apply(String.format("o.geq(%s, %s)", left, right), context);
                     case GREATER_THAN:
-                        return String.format("o.gt(%s, %s)", left, right);
+                        return apply(String.format("o.gt(%s, %s)", left, right), context);
                     case ADD:
-                        return String.format("o.plus(%s, %s)", left, right);
+                        return apply(String.format("o.plus(%s, %s)", left, right), context);
                     case SUBTRACT:
-                        return String.format("o.minus(%s, %s)", left, right);
+                        return apply(String.format("o.minus(%s, %s)", left, right), context);
                     case MULTIPLY:
-                        return String.format("o.mult(%s, %s)", left, right);
+                        return apply(String.format("o.mult(%s, %s)", left, right), context);
                     case DIVIDE:
-                        return String.format("o.div(%s, %s)", left, right);
+                        return apply(String.format("o.div(%s, %s)", left, right), context);
                     case IN:
-                        return String.format("o.in%s(%s, %s)", rightType, left, right);
+                        return apply(String.format("o.in%s(%s, %s)", rightType, left, right), context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1068,31 +1091,31 @@ public class OrToolsSolver implements ISolverBackend {
                 // Both operands are non-var, so we generate an expression in Java.
                 switch (op) {
                     case EQUAL:
-                        return String.format("(o.eq(%s, %s))", left, right);
+                        return apply(String.format("(o.eq(%s, %s))", left, right), context);
                     case NOT_EQUAL:
-                        return String.format("(!o.eq(%s, %s))", left, right);
+                        return apply(String.format("(!o.eq(%s, %s))", left, right), context);
                     case AND:
-                        return String.format("(%s && %s)", left, right);
+                        return apply(String.format("(%s && %s)", left, right), context);
                     case OR:
-                        return String.format("(%s || %s)", left, right);
+                        return apply(String.format("(%s || %s)", left, right), context);
                     case IN:
-                        return String.format("(o.in(%s, %s))", left, right);
+                        return apply(String.format("(o.in(%s, %s))", left, right), context);
                     case LESS_THAN_OR_EQUAL:
-                        return String.format("(%s <= %s)", left, right);
+                        return apply(String.format("(%s <= %s)", left, right), context);
                     case LESS_THAN:
-                        return String.format("(%s < %s)", left, right);
+                        return apply(String.format("(%s < %s)", left, right), context);
                     case GREATER_THAN_OR_EQUAL:
-                        return String.format("(%s >= %s)", left, right);
+                        return apply(String.format("(%s >= %s)", left, right), context);
                     case GREATER_THAN:
-                        return String.format("(%s > %s)", left, right);
+                        return apply(String.format("(%s > %s)", left, right), context);
                     case ADD:
-                        return String.format("(%s + %s)", left, right);
+                        return apply(String.format("(%s + %s)", left, right), context);
                     case SUBTRACT:
-                        return String.format("(%s - %s)", left, right);
+                        return apply(String.format("(%s - %s)", left, right), context);
                     case MULTIPLY:
-                        return String.format("(%s * %s)", left, right);
+                        return apply(String.format("(%s * %s)", left, right), context);
                     case DIVIDE:
-                        return String.format("(%s / %s)", left, right);
+                        return apply(String.format("(%s / %s)", left, right), context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1101,18 +1124,18 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Nullable
         @Override
-        protected String visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Boolean isFunctionContext) {
-            Preconditions.checkNotNull(isFunctionContext);
+        protected String visitColumnIdentifier(final ColumnIdentifier node, @Nullable final ExprContext context) {
+            Preconditions.checkNotNull(context);
             // If we are evaluating a group-by comprehension, then column accesses that happen outside the context
             // of an aggregation function must refer to the grouping column, not the inner tuple being iterated over.
-            if (!isFunctionContext && currentGroupContext != null) {
+            if (!context.isFunctionContext() && currentGroupContext != null) {
                 final String tableName = node.getTableName();
                 final String fieldName = node.getField().getName();
                 int columnNumber = 0;
                 for (final ColumnIdentifier ci: currentGroupContext.qualifier.getColumnIdentifiers()) {
                     if (ci.getTableName().equalsIgnoreCase(tableName)
                             && ci.getField().getName().equalsIgnoreCase(fieldName)) {
-                        return String.format("group.value%s()", columnNumber);
+                        return apply(String.format("group.value%s()", columnNumber), context);
                     }
                     columnNumber++;
                 }
@@ -1121,17 +1144,17 @@ public class OrToolsSolver implements ISolverBackend {
 
             // Within a group-by, we refer to values from the intermediate group by table. This involves an
             // indirection from columns to tuple indices
-            if (isFunctionContext && currentGroupContext != null) {
+            if (context.isFunctionContext() && currentGroupContext != null) {
                 final String tempTableName = currentGroupContext.groupViewName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
-                return String.format("t.value%s()", fieldIndex);
+                return apply(String.format("t.value%s()", fieldIndex), context);
             }
 
             // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
-            if (isFunctionContext && currentSubQueryContext != null) {
+            if (context.isFunctionContext() && currentSubQueryContext != null) {
                 final String tempTableName = currentSubQueryContext.subQueryName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
-                return String.format("t.value%s()", fieldIndex);
+                return apply(String.format("t.value%s()", fieldIndex), context);
             }
 
             final String tableName = node.getField().getIRTable().getName();
@@ -1140,12 +1163,12 @@ public class OrToolsSolver implements ISolverBackend {
             if (!allowControllable && fieldName.contains("CONTROLLABLE")) {
                 throw new UnsupportedOperationException("Controllable variables not allowed in predicates");
             }
-            return fieldNameStrWithIter(tableName, fieldName, iterStr);
+            return apply(fieldNameStrWithIter(tableName, fieldName, iterStr), context);
         }
 
         @Nullable
         @Override
-        protected String visitMonoidLiteral(final MonoidLiteral node, @Nullable final Boolean isFunctionContext) {
+        protected String visitMonoidLiteral(final MonoidLiteral node, @Nullable final ExprContext context) {
             if (node.getValue() instanceof String) {
                 return node.getValue().toString().replace("'", "\"");
             } else {
@@ -1156,7 +1179,7 @@ public class OrToolsSolver implements ISolverBackend {
         @Nullable
         @Override
         protected String visitMonoidComprehension(final MonoidComprehension node,
-                                                  @Nullable final Boolean isFunctionContext) {
+                                                  @Nullable final ExprContext context) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             addView(output, newSubqueryName, node, false);
@@ -1173,20 +1196,21 @@ public class OrToolsSolver implements ISolverBackend {
             final boolean headSelectItemContainsMonoidFunction = visitor.getFound();
 
             // If the head contains a function, then this is a scalar subquery
+            final ExprContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
             if (headSelectItemContainsMonoidFunction) {
-                return innerVisitor.visit(headSelectItem, true);
+                return applyAndLeaveScope(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
             } else {
                 // Else, treat the result as a vector
-                final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), true);
-                return CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
-                                     processedHeadItem, Collectors.class).toString();
+                final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), newCtx);
+                return applyAndLeaveScope(CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
+                                     processedHeadItem, Collectors.class).toString(), context);
             }
         }
 
         @Nullable
         @Override
         protected String visitGroupByComprehension(final GroupByComprehension node,
-                                                   @Nullable final Boolean isFunctionContext) {
+                                                   @Nullable final ExprContext context) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             addView(output, newSubqueryName, node, false);
@@ -1199,16 +1223,41 @@ public class OrToolsSolver implements ISolverBackend {
             final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
 
             // if scalar subquery
+            final ExprContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
             if (headSelectItem instanceof MonoidFunction) {
-                return innerVisitor.visit(headSelectItem, true);
+                return applyAndLeaveScope(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
             } else {
                 final String processedHeadItem =
-                        innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0), true);
+                        innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0), newCtx);
                 // Treat as a vector
-                return CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
-                        processedHeadItem, Collectors.class).toString();
+                return applyAndLeaveScope(CodeBlock.of("$L.stream().map(t -> $L).collect($T.toList())", newSubqueryName,
+                             processedHeadItem, Collectors.class).toString(), context);
             }
         }
+
+        protected String apply(final String result, final ExprContext context) {
+            System.out.println(result + context.declareVariable(result) + " " + context.declarations);
+            return context.declareVariable(result);
+        }
+
+        protected String applyAndLeaveScope(final String result, final ExprContext context) {
+            System.out.println(result + context.declareVariable(result) + " " + context.declarations);
+            final Declarations declarations = context.leaveScope();
+            System.out.println("Just popped " + declarations);
+            codeGenerateDeclarations(output, declarations);
+            return context.declareVariable(result);
+        }
+    }
+
+    protected void codeGenerateDeclarations(final MethodSpec.Builder output, final Declarations declarations) {
+        final Map<String, String> sortedMap = new TreeMap<>();
+        declarations.declarations.forEach(
+                (k, v) -> sortedMap.put(v.get(0), k)
+        );
+
+        sortedMap.forEach(
+                (k, v) -> output.addStatement("var $L = $L", k, v)
+        );
     }
 
     private static class ContainsMonoidFunction extends MonoidVisitor<Boolean, Void> {
@@ -1283,5 +1332,68 @@ public class OrToolsSolver implements ISolverBackend {
 
     private String getTempViewName() {
         return  "tmp" + intermediateViewCounter.getAndIncrement();
+    }
+
+    private static class ExprContext {
+        private final Deque<Declarations> declarations;
+        private final boolean isFunctionContext;
+
+        private ExprContext(final Deque<Declarations> declarations, final boolean isFunctionContext) {
+            this.declarations = declarations;
+            this.isFunctionContext = isFunctionContext;
+            enterScope();
+        }
+
+        private ExprContext(final boolean isFunctionContext) {
+            this(new ArrayDeque<>(), isFunctionContext);
+        }
+
+        ExprContext withEnterFunctionContext() {
+            return new ExprContext(declarations, true);
+        }
+
+        boolean isFunctionContext() {
+            return isFunctionContext;
+        }
+
+        void enterScope() {
+            final Declarations newDeclarationScope = new Declarations(Integer.toString(declarations.size()));
+            declarations.addLast(newDeclarationScope);
+            System.out.println("Entering new scope " + declarations);
+        }
+
+        Declarations leaveScope() {
+            return declarations.pop();
+        }
+
+        String declareVariable(final String result) {
+            return declarations.getLast().add(result);
+        }
+    }
+
+    private static class Declarations {
+        private static final String TEMP_VAR_PREFIX = "i";
+        private final Map<String, List<String>> declarations = new HashMap<>();
+//        private final String scopePrefix;
+        private static final AtomicInteger varCounter = new AtomicInteger(0);
+
+        private Declarations(final String scopePrefix) {
+//            this.scopePrefix = scopePrefix;
+        }
+
+        String add(final String expression) {
+//            final String varName = TEMP_VAR_PREFIX + "S" + scopePrefix + "V" + varCounter.getAndIncrement();
+            final String varName = TEMP_VAR_PREFIX + varCounter.getAndIncrement();
+            declarations.computeIfAbsent(expression,
+                                         (k) -> new ArrayList<>()).add(varName);
+            return declarations.get(expression).get(0);
+        }
+
+        @Override
+        public String toString() {
+            return "Declarations{" +
+                    "declarations=" + declarations +
+                    '}';
+        }
     }
 }
