@@ -149,6 +149,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         final MethodSpec.Builder output = MethodSpec.methodBuilder("solve");
+        final CodeBlock.Builder block = CodeBlock.builder();
 
         addInitializer(output);
         try {
@@ -159,18 +160,18 @@ public class OrToolsSolver implements ISolverBackend {
         nonConstraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    addView(output, name, rewrittenComprehension, false);
+                    output.addCode(addView(block, name, rewrittenComprehension, false).build());
                 });
         constraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    addView(output, name, rewrittenComprehension, true);
+                    output.addCode(addView(block, name, rewrittenComprehension, true).build());
                 });
         objectiveFunctions
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     final ExprContext objFunctionContext = new ExprContext(false);
-                    final String s = exprToStr(output, rewrittenComprehension, objFunctionContext);
+                    final String s = exprToStr(block, rewrittenComprehension, objFunctionContext);
                     output.addStatement("final $T $L = $L", IntVar.class, name, s);
                 });
         if (!objectiveFunctions.isEmpty()) {
@@ -195,7 +196,7 @@ public class OrToolsSolver implements ISolverBackend {
         return compile(spec);
     }
 
-    private void addView(final MethodSpec.Builder output, final String viewName,
+    private CodeBlock.Builder addView(final CodeBlock.Builder output, final String viewName,
                          final MonoidComprehension comprehension, final boolean isConstraint) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
@@ -224,9 +225,9 @@ public class OrToolsSolver implements ISolverBackend {
             final int innerTupleSize = Collections.max(viewToFieldIndex.get(intermediateView.toUpperCase(Locale.US))
                                                                        .values()) + 1;
             // (1) Create the result set
-            output.addCode("\n");
+            output.addStatement("\n");
             output.addStatement(printTime("Group-by intermediate view"));
-            output.addComment("$L view $L", isConstraint ? "Constraint" : "Non-constraint",
+            output.addStatement("\\ $L view $L", isConstraint ? "Constraint" : "Non-constraint",
                                             tableNameStr(viewName));
 
             if (!isConstraint) {
@@ -300,25 +301,22 @@ public class OrToolsSolver implements ISolverBackend {
 
             controlFlowsToPop.forEach(s -> output.endControlFlow());
             output.addStatement(printTime("Group-by final view"));
-            return;
+            return output;
         }
-        buildInnerComprehension(output, viewName, comprehension, null, isConstraint);
+        return buildInnerComprehension(output, viewName, comprehension, null, isConstraint);
     }
 
     /**
      * Converts a comprehension into a set of nested for loops that return a "result set". The result set
      * is represented as a list of tuples.
      */
-    private void buildInnerComprehension(final MethodSpec.Builder output, final String viewName,
+    private CodeBlock.Builder buildInnerComprehension(final CodeBlock.Builder output, final String viewName,
                                          final MonoidComprehension comprehension,
                                          @Nullable final GroupByQualifier groupByQualifier,
                                          final boolean isConstraint) {
-        if(viewName.equals("subquery1")) {
-            System.out.println("lo");
-        }
         Preconditions.checkNotNull(comprehension.getHead());
         // Add a comment with the view name
-        output.addCode("\n").addComment("$L view $L", isConstraint ? "Constraint" : "Non-constraint", viewName);
+        output.add("\n").addStatement("/* $L view $L */", isConstraint ? "Constraint" : "Non-constraint", viewName);
 
 
         // Extract the set of columns being selected in this view
@@ -363,6 +361,7 @@ public class OrToolsSolver implements ISolverBackend {
         ) {
             // If filter predicate is true, then retrieve expressions to collect into result set. Note, this does not
             // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
+            codeGenerateDeclarations(output, context.declarations.getLast());
             addToResultSet(output, viewName, tupleSize, headItemsStr, headItemsListTupleGenericParameters,
                     resultSetNameStr, groupByQualifier);
         } else {
@@ -375,6 +374,7 @@ public class OrToolsSolver implements ISolverBackend {
         );
         // Print debugging info
         // output.addStatement("$T.out.println($N)", System.class, viewRecords);
+        return output;
     }
 
     private List<ColumnIdentifier> getColumnsAccessed(final MonoidComprehension comprehension,
@@ -413,7 +413,7 @@ public class OrToolsSolver implements ISolverBackend {
         return visitor.getColumnIdentifiers();
     }
 
-    private String convertToFieldAccess(final MethodSpec.Builder output, final Expr expr,
+    private String convertToFieldAccess(final CodeBlock.Builder output, final Expr expr,
                                         final String viewName, final AtomicInteger fieldIndex,
                                         final ExprContext context) {
         Preconditions.checkArgument(expr instanceof ColumnIdentifier);
@@ -437,7 +437,7 @@ public class OrToolsSolver implements ISolverBackend {
         return fieldName;
     }
 
-    private void maybeAddMapOrListForResultSet(final MethodSpec.Builder output, final String viewName,
+    private void maybeAddMapOrListForResultSet(final CodeBlock.Builder output, final String viewName,
                                                final int tupleSize, final String headItemsListTupleGenericParameters,
                                                final String viewRecords,
                                                @Nullable final GroupByQualifier groupByQualifier,
@@ -462,7 +462,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
-    private void addNestedForLoops(final MethodSpec.Builder output, final QualifiersByType nonVarQualifiers,
+    private void addNestedForLoops(final CodeBlock.Builder output, final QualifiersByType nonVarQualifiers,
                                    final ArrayDeque<String> controlFlowsToPop) {
         nonVarQualifiers.tableRowGenerators.forEach(tr -> {
             final String tableName = tr.getTable().getName();
@@ -473,7 +473,7 @@ public class OrToolsSolver implements ISolverBackend {
         });
     }
 
-    private void maybeAddNonVarFilters(final MethodSpec.Builder output, final QualifiersByType nonVarQualifiers,
+    private void maybeAddNonVarFilters(final CodeBlock.Builder output, final QualifiersByType nonVarQualifiers,
                                        final ArrayDeque<String> controlFlowsToPop, final boolean isConstraint,
                                        final ExprContext context) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
@@ -496,7 +496,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
-    private void maybeAddNonVarAggregateFilters(final MethodSpec.Builder output,
+    private void maybeAddNonVarAggregateFilters(final CodeBlock.Builder output,
                                                 final QualifiersByType nonVarQualifiers,
                                                 final ArrayDeque<String> controlFlowsToPop,
                                                 final GroupContext groupContext) {
@@ -512,7 +512,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
-    private void addToResultSet(final MethodSpec.Builder output, final String viewName, final int tupleSize,
+    private void addToResultSet(final CodeBlock.Builder output, final String viewName, final int tupleSize,
                                 final String headItemsStr, final String headItemsListTupleGenericParameters,
                                 final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
         // Create a tuple for the result set
@@ -538,7 +538,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
-    private void addRowConstraint(final MethodSpec.Builder output, final QualifiersByType varQualifiers,
+    private void addRowConstraint(final CodeBlock.Builder output, final QualifiersByType varQualifiers,
                                   final QualifiersByType nonVarQualifiers, final ExprContext context) {
         final String joinPredicateStr;
         if (varQualifiers.joinPredicates.size() > 0) {
@@ -555,14 +555,14 @@ public class OrToolsSolver implements ISolverBackend {
         nonVarQualifiers.wherePredicates.forEach(e -> topLevelConstraint(output, e, joinPredicateStr, null, context));
     }
 
-    private void addAggregateConstraint(final MethodSpec.Builder output, final QualifiersByType varQualifiers,
+    private void addAggregateConstraint(final CodeBlock.Builder output, final QualifiersByType varQualifiers,
                                         final QualifiersByType nonVarQualifiers, final GroupContext groupContext,
                                         final ExprContext context) {
         varQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, "", groupContext, context));
         nonVarQualifiers.aggregatePredicates.forEach(e -> topLevelConstraint(output, e, "", groupContext, context));
     }
 
-    private void topLevelConstraint(final MethodSpec.Builder output, final Expr expr, final String joinPredicateStr,
+    private void topLevelConstraint(final CodeBlock.Builder output, final Expr expr, final String joinPredicateStr,
                                     @Nullable final GroupContext groupContext, final ExprContext context) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
         final String statement = maybeWrapped(output, expr, groupContext, context);
@@ -577,7 +577,7 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Wrap constants 'x' in model.newConstant(x) depending on the type. Also converts true/false to 1/0.
      */
-    private String maybeWrapped(final MethodSpec.Builder output, final Expr expr,
+    private String maybeWrapped(final CodeBlock.Builder output, final Expr expr,
                                 @Nullable final GroupContext groupContext, final ExprContext context) {
         String exprStr = exprToStr(output, expr, true, groupContext, context);
 
@@ -615,8 +615,8 @@ public class OrToolsSolver implements ISolverBackend {
             if (table.isAliasedTable()) {
                 continue;
             }
-            output.addCode("\n");
-            output.addComment("Table $S", table.getName());
+            output.addStatement("\n");
+            output.addStatement("/* Table $S */", table.getName());
             // ...2) create a List<[RecordType]> to represent the table
             output.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
                                  List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),
@@ -646,8 +646,8 @@ public class OrToolsSolver implements ISolverBackend {
             //..4) introduce primary-key constraints
             table.getPrimaryKey().ifPresent(e -> {
                 if (!e.getPrimaryKeyFields().isEmpty() && e.hasControllableColumn()) {
-                    output.addCode("\n");
-                    output.addComment("Primary key constraints for $L", tableNameStr(table.getName()));
+                    output.addStatement("\n");
+                    output.addStatement("/* Primary key constraints for $L */", tableNameStr(table.getName()));
 
                     // Use a specialized propagator if we only have a single column primary key
                     if (e.getPrimaryKeyFields().size() == 1) {
@@ -684,8 +684,8 @@ public class OrToolsSolver implements ISolverBackend {
                         if (!child.isControllable()) {
                             return;
                         }
-                        output.addCode("\n");
-                        output.addComment("Foreign key constraints: $L.$L -> $L.$L",
+                        output.addStatement("\n");
+                        output.addStatement("/* Foreign key constraints: $L.$L -> $L.$L */",
                                 child.getIRTable().getName(), child.getName(),
                                 parent.getIRTable().getName(), parent.getName());
                         output.beginControlFlow("for (int i = 0; i < $L; i++)",
@@ -905,27 +905,27 @@ public class OrToolsSolver implements ISolverBackend {
         return false;
     }
 
-    private String exprToStr(final MethodSpec.Builder output, final Expr expr, final ExprContext context) {
+    private String exprToStr(final CodeBlock.Builder output, final Expr expr, final ExprContext context) {
         return exprToStr(output, expr, true, null, context);
     }
 
-    private String exprToStr(final MethodSpec.Builder output, final Expr expr, final boolean allowControllable,
+    private String exprToStr(final CodeBlock.Builder output, final Expr expr, final boolean allowControllable,
                              @Nullable final GroupContext currentGroup, final ExprContext context) {
         return exprToStr(output, expr, allowControllable, currentGroup, true, context);
     }
 
-    private String exprToStr(final MethodSpec.Builder output, final Expr expr, final boolean allowControllable,
+    private String exprToStr(final CodeBlock.Builder output, final Expr expr, final boolean allowControllable,
                              @Nullable final GroupContext currentGroup, final boolean generateDeclarations,
                              final ExprContext context) {
         final ExprToStrVisitor visitor = new ExprToStrVisitor(output, allowControllable, currentGroup, null);
         final String resultVariable = Objects.requireNonNull(visitor.visit(expr, context));
         if (generateDeclarations) {
-            codeGenerateDeclarations(output, context.declarations.pop());
+            codeGenerateDeclarations(output, context.declarations.getLast());
         }
         return resultVariable;
     }
 
-    private String exprToStrNoDeclarations(final MethodSpec.Builder output, final Expr expr,
+    private String exprToStrNoDeclarations(final CodeBlock.Builder output, final Expr expr,
                                            final boolean allowControllable,
                                            @Nullable final GroupContext currentGroup, final ExprContext context) {
         return exprToStr(output, expr, allowControllable, currentGroup, false, context);
@@ -957,12 +957,12 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private class ExprToStrVisitor extends MonoidVisitor<String, ExprContext> {
-        private final MethodSpec.Builder output;
+        private final CodeBlock.Builder output;
         private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
         @Nullable private final SubQueryContext currentSubQueryContext;
 
-        private ExprToStrVisitor(final MethodSpec.Builder output, final boolean allowControllable,
+        private ExprToStrVisitor(final CodeBlock.Builder output, final boolean allowControllable,
                                  @Nullable final GroupContext currentGroupContext,
                                  @Nullable final SubQueryContext currentSubQueryContext) {
             this.output = output;
@@ -1200,7 +1200,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                   @Nullable final ExprContext context) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
-            addView(output, newSubqueryName, node, false);
+            final CodeBlock.Builder code = CodeBlock.builder();
+            final CodeBlock.Builder result = addView(code, newSubqueryName, node, false);
             Preconditions.checkNotNull(node.getHead());
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
@@ -1217,6 +1218,7 @@ public class OrToolsSolver implements ISolverBackend {
             final ExprContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
             if (headSelectItemContainsMonoidFunction) {
                 final String w = applyAndLeaveScope(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                output.add(result.build());
                 return w;
             } else {
                 // Else, treat the result as a vector
@@ -1232,7 +1234,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                    @Nullable final ExprContext context) {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
-            addView(output, newSubqueryName, node, false);
+            final CodeBlock.Builder code = CodeBlock.builder();
+            final CodeBlock.Builder result = addView(code, newSubqueryName, node, false);
             Preconditions.checkNotNull(node.getComprehension().getHead());
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
@@ -1244,7 +1247,9 @@ public class OrToolsSolver implements ISolverBackend {
             // if scalar subquery
             final ExprContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
             if (headSelectItem instanceof MonoidFunction) {
-                return applyAndLeaveScope(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                final String res = applyAndLeaveScope(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                output.add(result.build());
+                return res;
             } else {
                 final String processedHeadItem =
                         innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0), newCtx);
@@ -1268,7 +1273,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
-    protected void codeGenerateDeclarations(final MethodSpec.Builder output, final Declarations declarations) {
+    protected void codeGenerateDeclarations(final CodeBlock.Builder output, final Declarations declarations) {
         final Map<String, String> sortedMap = new TreeMap<>();
         declarations.declarations.forEach(
                 (k, v) -> sortedMap.put(v.get(0), k)
