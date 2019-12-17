@@ -26,7 +26,6 @@ import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.WildcardTypeName;
-import org.apache.commons.text.diff.StringsComparator;
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
@@ -73,9 +72,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -115,6 +114,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
     private final TupleGen tupleGen = new TupleGen();
+    private final Set<String> alreadyDeclared = new HashSet<>(); // TODO: remove
 
     static {
         Preconditions.checkNotNull(System.getenv(OR_TOOLS_LIB_ENV));
@@ -256,8 +256,8 @@ public class OrToolsSolver implements ISolverBackend {
             populateQualifiersByVarType(inner, varQualifiers, nonVarQualifiers, false);
 
             final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView);
-            final ExprContext context = new ExprContext(false);
-            maybeAddNonVarAggregateFilters(output, nonVarQualifiers, controlFlowsToPop, groupContext, context);
+
+            maybeAddNonVarAggregateFilters(output, nonVarQualifiers, controlFlowsToPop, groupContext);
 
             // If this is not a constraint, we simply add a to a result set
             if (!isConstraint) {
@@ -266,8 +266,7 @@ public class OrToolsSolver implements ISolverBackend {
                         generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 final ExprContext aggregateFunctionContext = new ExprContext(false);
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
-                                                 .map(e -> exprToStr(output, e, true, groupContext,
-                                                                             aggregateFunctionContext))
+                                                 .map(e -> exprToStr(output, e, true, groupContext, aggregateFunctionContext))
                                                  .collect(Collectors.joining(", "));
 //                output.addCode("final $1N<$2L> res = new $1N<>(", typeSpec, viewTupleGenericParameters);
 //                int numSelectExprs = inner.getHead().getSelectExprs().size();
@@ -314,17 +313,20 @@ public class OrToolsSolver implements ISolverBackend {
                                          final MonoidComprehension comprehension,
                                          @Nullable final GroupByQualifier groupByQualifier,
                                          final boolean isConstraint) {
+        if(viewName.equals("subquery1")) {
+            System.out.println("lo");
+        }
         Preconditions.checkNotNull(comprehension.getHead());
         // Add a comment with the view name
         output.addCode("\n").addComment("$L view $L", isConstraint ? "Constraint" : "Non-constraint", viewName);
 
-        final ExprContext context = new ExprContext(false);
 
         // Extract the set of columns being selected in this view
         final AtomicInteger fieldIndex = new AtomicInteger();
         final List<ColumnIdentifier> headItemsList = getColumnsAccessed(comprehension, isConstraint);
 
         // Compute a string that represents the set of field accesses for the above columns
+        final ExprContext context = new ExprContext(false);
         final String headItemsStr = headItemsList.stream()
                 .map(expr -> convertToFieldAccess(output, expr, viewName, fieldIndex, context))
                 .collect(Collectors.joining(",\n    "));
@@ -416,7 +418,8 @@ public class OrToolsSolver implements ISolverBackend {
                                         final ExprContext context) {
         Preconditions.checkArgument(expr instanceof ColumnIdentifier);
         final String fieldName = updateFieldIndex(viewName, expr, fieldIndex);
-        return exprToStr(output, expr, context)  + " /* " + fieldName + " */";
+        return exprToStrNoDeclarations(output, expr, true, null, context)
+                + " /* " + fieldName + " */";
     }
 
     private String updateFieldIndex(final String viewName, final Expr argument, final AtomicInteger counter) {
@@ -496,8 +499,8 @@ public class OrToolsSolver implements ISolverBackend {
     private void maybeAddNonVarAggregateFilters(final MethodSpec.Builder output,
                                                 final QualifiersByType nonVarQualifiers,
                                                 final ArrayDeque<String> controlFlowsToPop,
-                                                final GroupContext groupContext,
-                                                final ExprContext context) {
+                                                final GroupContext groupContext) {
+        final ExprContext context = new ExprContext(false);
         final String predicateStr = nonVarQualifiers.aggregatePredicates.stream()
                 .map(expr -> exprToStr(output, expr, false, groupContext, context))
                 .collect(Collectors.joining(" \n    && "));
@@ -908,9 +911,24 @@ public class OrToolsSolver implements ISolverBackend {
 
     private String exprToStr(final MethodSpec.Builder output, final Expr expr, final boolean allowControllable,
                              @Nullable final GroupContext currentGroup, final ExprContext context) {
+        return exprToStr(output, expr, allowControllable, currentGroup, true, context);
+    }
+
+    private String exprToStr(final MethodSpec.Builder output, final Expr expr, final boolean allowControllable,
+                             @Nullable final GroupContext currentGroup, final boolean generateDeclarations,
+                             final ExprContext context) {
         final ExprToStrVisitor visitor = new ExprToStrVisitor(output, allowControllable, currentGroup, null);
         final String resultVariable = Objects.requireNonNull(visitor.visit(expr, context));
+        if (generateDeclarations) {
+            codeGenerateDeclarations(output, context.declarations.pop());
+        }
         return resultVariable;
+    }
+
+    private String exprToStrNoDeclarations(final MethodSpec.Builder output, final Expr expr,
+                                           final boolean allowControllable,
+                                           @Nullable final GroupContext currentGroup, final ExprContext context) {
+        return exprToStr(output, expr, allowControllable, currentGroup, false, context);
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
@@ -1198,7 +1216,8 @@ public class OrToolsSolver implements ISolverBackend {
             // If the head contains a function, then this is a scalar subquery
             final ExprContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
             if (headSelectItemContainsMonoidFunction) {
-                return applyAndLeaveScope(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                final String w = applyAndLeaveScope(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                return w;
             } else {
                 // Else, treat the result as a vector
                 final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), newCtx);
@@ -1256,7 +1275,12 @@ public class OrToolsSolver implements ISolverBackend {
         );
 
         sortedMap.forEach(
-                (k, v) -> output.addStatement("var $L = $L", k, v)
+                (k, v) -> {
+                    if (!alreadyDeclared.contains(k)) {
+                        output.addStatement("var $L = $L", k, v);
+                        alreadyDeclared.add(k);
+                    }
+                }
         );
     }
 
