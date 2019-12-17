@@ -1395,8 +1395,13 @@ public class OrToolsSolver implements ISolverBackend {
             return declarations.pop();
         }
 
-        String declareVariable(final String result) {
-            return declarations.getLast().add(result);
+        String declareVariable(final String expression) {
+            for (final Declarations d: declarations) {
+                if (d.exists(expression)) {
+                    return d.get(expression);
+                }
+            }
+            return declarations.getLast().add(expression);
         }
     }
 
@@ -1408,6 +1413,14 @@ public class OrToolsSolver implements ISolverBackend {
 
         private Declarations(final String scopePrefix) {
 //            this.scopePrefix = scopePrefix;
+        }
+
+        boolean exists(final String expression) {
+            return declarations.containsKey(expression);
+        }
+
+        String get(final String expression) {
+            return declarations.get(expression).get(0);
         }
 
         String add(final String expression) {
