@@ -6,21 +6,18 @@ package org.dcm.backend;
 
 import com.squareup.javapoet.CodeBlock;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 class CodeTree {
 
     static class BlockExpr {
-
-    }
-
-    static class AllCode extends BlockExpr {
-        final List<Block> exprs = new ArrayList<>();
 
     }
 
@@ -30,6 +27,7 @@ class CodeTree {
         final List<CodeBlock> trailer;
         final Declarations declarations;
         final String name;
+        final Set<String> tailDeclarations;
 
         Block(final String name) {
             this.children = new ArrayList<>();
@@ -37,6 +35,7 @@ class CodeTree {
             this.trailer = new ArrayList<>();
             this.declarations = new Declarations(name);
             this.name = name;
+            this.tailDeclarations = new HashSet<>();
         }
 
         void addHeader(final CodeBlock blockExpr) {
@@ -51,7 +50,10 @@ class CodeTree {
             trailer.add(blockExpr);
         }
 
-        String declare(final String expr) {
+        String declare(final String expr, final boolean tail) {
+            if (tail) {
+                tailDeclarations.add(expr);
+            }
             return declarations.add(expr);
         }
 
@@ -71,11 +73,23 @@ class CodeTree {
             );
 
             declarations.declarations.forEach(
-                    (k, v) -> b.addStatement("var $L = $L", v.get(0), k)
+                    (k, v) -> {
+                        if (!tailDeclarations.contains(k)) {
+                            b.addStatement("var $L = $L", v.get(0), k);
+                        }
+                    }
             );
 
             children.forEach(
                     e -> b.add(e.toString())
+            );
+
+            declarations.declarations.forEach(
+                    (k, v) -> {
+                        if (tailDeclarations.contains(k)) {
+                            b.addStatement("var $L = $L", v.get(0), k);
+                        }
+                    }
             );
 
             trailer.forEach(e -> b.add(e));

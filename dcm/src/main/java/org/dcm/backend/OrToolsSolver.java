@@ -507,7 +507,7 @@ public class OrToolsSolver implements ISolverBackend {
             loopStatements.add(CodeBlock.of("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr));
 //            controlFlowsToPop.add(String.format("for (%s)", iterStr));
         });
-        return new CodeTree.ForBlock(viewName, loopStatements);
+        return new CodeTree.ForBlock(viewName + "ForLoops", loopStatements);
     }
 
     private CodeTree.Block maybeAddNonVarFilters(final String viewName, final QualifiersByType nonVarQualifiers,
@@ -555,7 +555,7 @@ public class OrToolsSolver implements ISolverBackend {
                                           final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
         final CodeTree.Block block = new CodeTree.Block(viewName + "AddToResultSet");
         // Create a tuple for the result set
-        block.addTrailer(CodeBlock.builder().addStatement("final Tuple$1L<$2L> tuple = new Tuple$1L<>(\n    $3L\n    )",
+        block.addTrailer(CodeBlock.builder().addStatement("final Tuple$1L<$2L> t = new Tuple$1L<>(\n    $3L\n    )",
                          tupleSize, headItemsListTupleGenericParameters, headItemsStr).build()
         );
 
@@ -1016,7 +1016,6 @@ public class OrToolsSolver implements ISolverBackend {
             // the computed inner expression within a function to avoid creating too many intermediate variables.
             assert context != null;
             assert false;
-            final CodeTree.Block subqueryBlock = findChildBlockByName(context.currentScope(), vectorName);
             final String processedArgument = visit(node.getArgument(), context.withEnterFunctionContext());
             final boolean argumentIsIntVar = inferType(node.getArgument()).equals("IntVar");
             final String formatStr = "$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())";
@@ -1139,6 +1138,7 @@ public class OrToolsSolver implements ISolverBackend {
                     case DIVIDE:
                         return apply(String.format("o.div(%s, %s)", left, right), context);
                     case IN:
+                        System.out.println("HERE");
                         return apply(String.format("o.in%s(%s, %s)", rightType, left, right), context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
@@ -1204,14 +1204,14 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isFunctionContext() && currentGroupContext != null) {
                 final String tempTableName = currentGroupContext.groupViewName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
-                return apply(String.format("t.value%s()", fieldIndex), context);
+                return applyTail(String.format("t.value%s()", fieldIndex), context);
             }
 
             // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
             if (context.isFunctionContext() && currentSubQueryContext != null) {
                 final String tempTableName = currentSubQueryContext.subQueryName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
-                return apply(String.format("t.value%s()", fieldIndex), context);
+                return applyTail(String.format("t.value%s()", fieldIndex), context);
             }
 
             final String tableName = node.getField().getIRTable().getName();
@@ -1262,11 +1262,13 @@ public class OrToolsSolver implements ISolverBackend {
                 return w;
             } else {
                 // Else, treat the result as a vector
+                newCtx.enterScope(findForLoopBlockByName(subQueryBlock, newSubqueryName));
                 final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), newCtx);
                 final String type = inferType(node.getHead().getSelectExprs().get(0));
                 final String listName =
                         extractVectorFromView(processedHeadItem, currentBlock, subQueryBlock, newSubqueryName, type);
                 currentBlock.addChild(subQueryBlock);
+                newCtx.leaveScope();
                 return apply(listName, subQueryBlock, context);
             }
         }
@@ -1307,13 +1309,15 @@ public class OrToolsSolver implements ISolverBackend {
             }
         }
 
+        protected String applyTail(final String result, final ExprContext context) {
+            return context.declareVariable(result, true);
+        }
+
         protected String apply(final String result, final ExprContext context) {
-            System.out.println(result + context.declareVariable(result) + " " + context);
             return context.declareVariable(result);
         }
 
         protected String apply(final String result, final CodeTree.Block block, final ExprContext context) {
-            System.out.println(result + context.declareVariable(result, block) + " " + context);
             return context.declareVariable(result, block);
         }
     }
@@ -1406,7 +1410,8 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         ExprContext withEnterFunctionContext() {
-            return new ExprContext(scopeStack, true);
+            final Deque<CodeTree.Block> stackCopy = new ArrayDeque<>(scopeStack);
+            return new ExprContext(stackCopy, true);
         }
 
         boolean isFunctionContext() {
@@ -1415,7 +1420,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         void enterScope(final CodeTree.Block block) {
             scopeStack.addLast(block);
-            System.out.println("Entering new scope " + scopeStack);
+            System.out.println("Entering new scope " + scopeStack.stream().map(e -> e.name).collect(Collectors.joining(" -> ")));
         }
 
         CodeTree.Block currentScope() {
@@ -1427,16 +1432,20 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         String declareVariable(final String expression) {
+            return declareVariable(expression, false);
+        }
+
+        String declareVariable(final String expression, final boolean tail) {
             for (final CodeTree.Block block: scopeStack) {
                 if (block.hasDeclaration(expression)) {
                     return block.getDeclaredName(expression);
                 }
             }
-            return scopeStack.getLast().declare(expression);
+            return scopeStack.getLast().declare(expression, tail);
         }
 
         String declareVariable(final String expression, final CodeTree.Block block) {
-            return block.declare(expression);
+            return block.declare(expression, false);
         }
     }
 
@@ -1450,7 +1459,7 @@ public class OrToolsSolver implements ISolverBackend {
 
     private static String extractVectorFromView(final String processedHeadItem, final CodeTree.Block currentBlock,
                                             final CodeTree.Block viewBlock, final String viewName, final String type) {
-        final CodeTree.Block forLoop = findChildBlockByName(viewBlock, viewName);
+        final CodeTree.Block forLoop = findForLoopBlockByName(viewBlock, viewName);
         final String listName = "listOf" + processedHeadItem;
         viewBlock.addHeader(statement("final List<$L> listOf$L = new $T<>()",
                                       type, processedHeadItem, ArrayList.class));
@@ -1458,9 +1467,10 @@ public class OrToolsSolver implements ISolverBackend {
         return listName;
     }
 
-    private static CodeTree.Block findChildBlockByName(final CodeTree.Block currentBlock, final String childBlockName) {
+    private static CodeTree.Block findForLoopBlockByName(final CodeTree.Block currentBlock,
+                                                         final String childBlockName) {
         final List<CodeTree.Block> childBlocks = currentBlock.children.stream()
-                .filter(e -> e.name.equals(childBlockName))
+                .filter(e -> e.name.equals(childBlockName + "ForLoops"))
                 .collect(Collectors.toList());
         assert childBlocks.size() == 1;
         return childBlocks.get(0);
