@@ -6,13 +6,10 @@ package org.dcm.backend;
 
 import com.squareup.javapoet.CodeBlock;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 class CodeTree {
@@ -22,12 +19,12 @@ class CodeTree {
     }
 
     static class Block extends BlockExpr {
-        final List<CodeBlock> header;
+        final List<StringBlock> header;
         final List<Block> children;
-        final List<CodeBlock> trailer;
+        final List<StringBlock> trailer;
         final Declarations declarations;
         final String name;
-        final Set<String> tailDeclarations;
+        final List<BlockExpr> insertionOrder = new ArrayList<>();
 
         Block(final String name) {
             this.children = new ArrayList<>();
@@ -35,26 +32,29 @@ class CodeTree {
             this.trailer = new ArrayList<>();
             this.declarations = new Declarations(name);
             this.name = name;
-            this.tailDeclarations = new HashSet<>();
         }
 
         void addHeader(final CodeBlock blockExpr) {
-            header.add(blockExpr);
+            final StringBlock b = new StringBlock(blockExpr);
+            header.add(b);
+//            insertionOrder.add(b);
         }
 
         void addChild(final Block child) {
             children.add(child);
+            insertionOrder.add(child);
         }
 
         void addTrailer(final CodeBlock blockExpr) {
-            trailer.add(blockExpr);
+            final StringBlock b = new StringBlock(blockExpr);
+            trailer.add(b);
+            insertionOrder.add(b);
         }
 
-        String declare(final String expr, final boolean tail) {
-            if (tail) {
-                tailDeclarations.add(expr);
-            }
-            return declarations.add(expr);
+        String declare(final String expr) {
+            final String varName = declarations.add(expr);
+            insertionOrder.add(new DeclarationStatement(varName, expr));
+            return varName;
         }
 
         boolean hasDeclaration(final String expr) {
@@ -69,30 +69,13 @@ class CodeTree {
         public String toString() {
             final CodeBlock.Builder b = CodeBlock.builder();
             header.forEach(
-                    e -> b.add(e)
-            );
-
-            declarations.declarations.forEach(
-                    (k, v) -> {
-                        if (!tailDeclarations.contains(k)) {
-                            b.addStatement("var $L = $L", v.get(0), k);
-                        }
-                    }
-            );
-
-            children.forEach(
                     e -> b.add(e.toString())
             );
-
-            declarations.declarations.forEach(
-                    (k, v) -> {
-                        if (tailDeclarations.contains(k)) {
-                            b.addStatement("var $L = $L", v.get(0), k);
-                        }
+            insertionOrder.forEach(
+                    e -> {
+                        b.add(e.toString());
                     }
             );
-
-            trailer.forEach(e -> b.add(e));
             return b.build().toString();
         }
     }
@@ -171,6 +154,34 @@ class CodeTree {
             return "Declarations{" +
                     "declarations=" + declarations +
                     '}';
+        }
+    }
+
+    static class DeclarationStatement extends BlockExpr {
+        private final String expr;
+        private final String varName;
+
+        DeclarationStatement(final String varName, final String expr) {
+            this.varName = varName;
+            this.expr = expr;
+        }
+
+        @Override
+        public String toString() {
+            return CodeBlock.builder().addStatement("var $L = $L", varName, expr).build().toString();
+        }
+    }
+
+    static class StringBlock extends BlockExpr {
+        private final CodeBlock codeBlock;
+
+        StringBlock(final CodeBlock codeBlock) {
+            this.codeBlock = codeBlock;
+        }
+
+        @Override
+        public String toString() {
+            return codeBlock.toString();
         }
     }
 

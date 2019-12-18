@@ -348,10 +348,6 @@ public class OrToolsSolver implements ISolverBackend {
         final ExprContext context = new ExprContext(false);
         context.enterScope(block);
 
-        final String headItemsStr = headItemsList.stream()
-                .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex, context))
-                .collect(Collectors.joining(",\n    "));
-
         // Compute a string that represents the Java types corresponding to the headItemsStr
         final String headItemsListTupleGenericParameters = generateTupleGenericParameters(headItemsList);
         Preconditions.checkArgument(!headItemsListTupleGenericParameters.isEmpty(),
@@ -377,6 +373,12 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Filter out nested for loops using an if(predicate) statement
         context.enterScope(forLoopsBlock);
+
+        // Identify head items to be accessed within loop
+        final String headItemsStr = headItemsList.stream()
+                .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex, context))
+                .collect(Collectors.joining(",\n    "));
+
         final CodeTree.Block nonVarFiltersBlock = maybeAddNonVarFilters(viewName, nonVarQualifiers,
                                                                         isConstraint, context);
 
@@ -390,6 +392,7 @@ public class OrToolsSolver implements ISolverBackend {
             // If filter predicate is true, then retrieve expressions to collect into result set. Note, this does not
             // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
 //            codeGenerateDeclarations(context.declarations.getLast());
+
             final CodeTree.Block resultSetAddBlock = addToResultSet(viewName, tupleSize, headItemsStr,
                                                                headItemsListTupleGenericParameters,
                                                                resultSetNameStr, groupByQualifier);
@@ -577,7 +580,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                     viewRecords, ArrayList.class)
                                       .build());
         } else {
-            block.addTrailer(CodeBlock.builder().addStatement("$L.add(tuple)", viewRecords).build());
+            block.addTrailer(CodeBlock.builder().addStatement("$L.add(t)", viewRecords).build());
         }
         return block;
     }
@@ -1015,7 +1018,6 @@ public class OrToolsSolver implements ISolverBackend {
             // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
             // the computed inner expression within a function to avoid creating too many intermediate variables.
             assert context != null;
-            assert false;
             final String processedArgument = visit(node.getArgument(), context.withEnterFunctionContext());
             final boolean argumentIsIntVar = inferType(node.getArgument()).equals("IntVar");
             final String formatStr = "$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())";
@@ -1204,14 +1206,14 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isFunctionContext() && currentGroupContext != null) {
                 final String tempTableName = currentGroupContext.groupViewName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
-                return applyTail(String.format("t.value%s()", fieldIndex), context);
+                return apply(String.format("t.value%s()", fieldIndex), context);
             }
 
             // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
             if (context.isFunctionContext() && currentSubQueryContext != null) {
                 final String tempTableName = currentSubQueryContext.subQueryName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
-                return applyTail(String.format("t.value%s()", fieldIndex), context);
+                return apply(String.format("t.value%s()", fieldIndex), context);
             }
 
             final String tableName = node.getField().getIRTable().getName();
@@ -1307,10 +1309,6 @@ public class OrToolsSolver implements ISolverBackend {
                 // Treat as a vector
                 return apply(listName, subQueryBlock, context);
             }
-        }
-
-        protected String applyTail(final String result, final ExprContext context) {
-            return context.declareVariable(result, true);
         }
 
         protected String apply(final String result, final ExprContext context) {
@@ -1432,20 +1430,16 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         String declareVariable(final String expression) {
-            return declareVariable(expression, false);
-        }
-
-        String declareVariable(final String expression, final boolean tail) {
             for (final CodeTree.Block block: scopeStack) {
                 if (block.hasDeclaration(expression)) {
                     return block.getDeclaredName(expression);
                 }
             }
-            return scopeStack.getLast().declare(expression, tail);
+            return scopeStack.getLast().declare(expression);
         }
 
         String declareVariable(final String expression, final CodeTree.Block block) {
-            return block.declare(expression, false);
+            return block.declare(expression);
         }
     }
 
