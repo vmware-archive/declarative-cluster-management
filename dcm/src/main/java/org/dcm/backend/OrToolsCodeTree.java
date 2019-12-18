@@ -8,8 +8,11 @@ import com.squareup.javapoet.CodeBlock;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 class CodeTree {
@@ -19,8 +22,9 @@ class CodeTree {
     }
 
     static class Block extends BlockExpr {
-        final List<StringBlock> header;
+        final Set<StringBlock> header;
         final List<Block> children;
+        final List<StringBlock> textChildren;
         final List<StringBlock> trailer;
         final Declarations declarations;
         final String name;
@@ -28,21 +32,27 @@ class CodeTree {
 
         Block(final String name) {
             this.children = new ArrayList<>();
-            this.header = new ArrayList<>();
+            this.textChildren = new ArrayList<>();
+            this.header = new LinkedHashSet<>();
             this.trailer = new ArrayList<>();
             this.declarations = new Declarations(name);
             this.name = name;
         }
 
-        void addHeader(final CodeBlock blockExpr) {
+        boolean addHeader(final CodeBlock blockExpr) {
             final StringBlock b = new StringBlock(blockExpr);
-            header.add(b);
-//            insertionOrder.add(b);
+            return header.add(b);
         }
 
         void addChild(final Block child) {
             children.add(child);
             insertionOrder.add(child);
+        }
+
+        void addChild(final CodeBlock child) {
+            final StringBlock b = new StringBlock(child);
+            textChildren.add(b);
+            insertionOrder.add(b);
         }
 
         void addTrailer(final CodeBlock blockExpr) {
@@ -118,7 +128,7 @@ class CodeTree {
         public String toString() {
             final CodeBlock.Builder b = CodeBlock.builder();
             b.beginControlFlow(predicate);
-            b.add(super.toString());
+            b.addStatement("continue");
             b.endControlFlow();
             return b.build().toString();
         }
@@ -182,6 +192,19 @@ class CodeTree {
         @Override
         public String toString() {
             return codeBlock.toString();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            StringBlock that = (StringBlock) o;
+            return codeBlock.equals(that.codeBlock);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(codeBlock);
         }
     }
 

@@ -230,10 +230,10 @@ public class OrToolsSolver implements ISolverBackend {
             final int innerTupleSize = Collections.max(viewToFieldIndex.get(intermediateView.toUpperCase(Locale.US))
                                                                        .values()) + 1;
             // (1) Create the result set
-            block.addHeader(CodeBlock.builder()
+            block.addChild(CodeBlock.builder()
                                  .addStatement("\n")
                                  .addStatement(printTime("Group-by intermediate view"))
-                                 .addStatement("\\ $L view $L", isConstraint ? "Constraint" : "Non-constraint",
+                                 .addStatement("/* $L view $L */", isConstraint ? "Constraint" : "Non-constraint",
                                                     tableNameStr(viewName))
                                      .build()
             );
@@ -244,7 +244,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String viewTupleGenericParameters =
                         generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 viewTupleTypeParameters.put(tableNameStr(viewName), viewTupleGenericParameters);
-                block.addHeader(
+                block.addChild(
                     CodeBlock.builder().addStatement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
                                                      viewTupleGenericParameters, tableNameStr(viewName),
                                                      ArrayList.class, intermediateView)
@@ -254,11 +254,9 @@ public class OrToolsSolver implements ISolverBackend {
 
             // (2) Loop over the result set collected from the inner comprehension
             final CodeTree.ForBlock forBlock = new CodeTree.ForBlock(viewName,
-                    CodeBlock.builder()
-                             .addStatement("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
+                    CodeBlock.of("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
                                             Map.Entry.class, groupByQualifiersSize, groupByTupleTypeParameters,
                                             innerTupleSize, headItemsTupleTypeParamters, intermediateView)
-                             .build()
             );
 
             forBlock.addHeader(
@@ -270,13 +268,19 @@ public class OrToolsSolver implements ISolverBackend {
                          .build()
             );
 
+            final CodeTree.ForBlock dataForBlock = new CodeTree.ForBlock(viewName + "Data",
+                        CodeBlock.of("for (final Tuple$L<$L> t: data)", innerTupleSize, headItemsTupleTypeParamters)
+            );
+            forBlock.addChild(dataForBlock);
+
             // (3) Filter if necessary
             final QualifiersByType varQualifiers = new QualifiersByType();
             final QualifiersByType nonVarQualifiers = new QualifiersByType();
             populateQualifiersByVarType(inner, varQualifiers, nonVarQualifiers, false);
 
             final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView);
-
+            final ExprContext aggregateFunctionContext = new ExprContext(false);
+            aggregateFunctionContext.enterScope(forBlock);
             final CodeTree.Block nonVarAggregateFiltersBlock = maybeAddNonVarAggregateFilters(viewName,
                                                                                         nonVarQualifiers, groupContext);
             forBlock.addChild(nonVarAggregateFiltersBlock);
@@ -286,15 +290,11 @@ public class OrToolsSolver implements ISolverBackend {
                 final TypeSpec typeSpec = tupleGen.getTupleType(inner.getHead().getSelectExprs().size());
                 final String viewTupleGenericParameters =
                         generateTupleGenericParameters(inner.getHead().getSelectExprs());
-                final ExprContext aggregateFunctionContext = new ExprContext(false);
-                aggregateFunctionContext.enterScope(forBlock);
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
                                                  .map(e -> exprToStr(e, true, groupContext, aggregateFunctionContext))
                                                  .collect(Collectors.joining(", "));
-                aggregateFunctionContext.leaveScope();
-
                 forBlock.addTrailer(
-                   CodeBlock.builder().addStatement("final $1N<$2L> res = new $1N<>($L)", typeSpec,
+                   CodeBlock.builder().addStatement("final $1N<$2L> res = new $1N<>($3L)", typeSpec,
                                                     viewTupleGenericParameters, tupleResult).build()
                 );
 
@@ -307,14 +307,13 @@ public class OrToolsSolver implements ISolverBackend {
                 forBlock.addTrailer(CodeBlock.builder().addStatement("$L.add(res)", tableNameStr(viewName)).build());
             }
             else  {
-                final ExprContext aggregateFunctionContext = new ExprContext(false);
                 // If this is a constraint, we translate having clauses into a constraint statement
 
                 final List<CodeBlock> constraintBlocks = addAggregateConstraint(varQualifiers, nonVarQualifiers,
                         new GroupContext(groupByQualifier, intermediateView), aggregateFunctionContext);
                 constraintBlocks.forEach(forBlock::addTrailer);
             }
-
+            aggregateFunctionContext.leaveScope();
             block.addChild(forBlock);
             block.addTrailer(printTime("Group-by final view"));
             return block;
@@ -530,9 +529,8 @@ public class OrToolsSolver implements ISolverBackend {
 
         if (!predicateStr.isEmpty()) {
             // Add filter predicate if available
-            final String nonVarFilter = CodeBlock.of("if ($L)", predicateStr).toString();
+            final String nonVarFilter = CodeBlock.of("if (!($L))", predicateStr).toString();
             return new CodeTree.IfBlock(viewName + "nonVarFilter", nonVarFilter);
-//            controlFlowsToPop.add("if (" + predicateStr + ")");
         }
         return new CodeTree.Block(viewName + "nonVarFilter");
     }
@@ -576,7 +574,7 @@ public class OrToolsSolver implements ISolverBackend {
                     numberOfGroupByColumns, Objects.requireNonNull(viewGroupByTupleTypeParameters.get(viewName)),
                     groupString).build());
             block.addTrailer(CodeBlock.builder()
-                                      .addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(tuple)",
+                                      .addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(t)",
                                                     viewRecords, ArrayList.class)
                                       .build());
         } else {
@@ -1014,49 +1012,52 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final ExprContext context) {
             final String vectorName = currentSubQueryContext == null ? "data" : currentSubQueryContext.subQueryName;
-
-            // Functions always apply on a vector. We perform a pass to identify whether we can vectorize
-            // the computed inner expression within a function to avoid creating too many intermediate variables.
             assert context != null;
+
+            // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
+            // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
+            final CodeTree.Block forLoop = findLoopForVector(context.currentScope(), vectorName);
+            context.enterScope(forLoop);
             final String processedArgument = visit(node.getArgument(), context.withEnterFunctionContext());
-            final boolean argumentIsIntVar = inferType(node.getArgument()).equals("IntVar");
-            final String formatStr = "$L.stream()\n      .map(t -> $L)\n      .collect($T.toList())";
+            context.leaveScope();
+
+            final String argumentType = inferType(node.getArgument());
+            final boolean argumentIsIntVar = argumentType.equals("IntVar");
+
+            final String listOfProcessedItem =
+                    extractVectorFromView(processedArgument, context.currentScope(), forLoop, argumentType);
+            String function = null;
             switch (node.getFunction()) {
                 case SUM:
-                    final String sumFunction = argumentIsIntVar ? "sumV" : "sum";
-                    return apply(CodeBlock.of("o.$L(" + formatStr + ")",
-                            sumFunction, vectorName, processedArgument, Collectors.class).toString(), context);
+                    function = argumentIsIntVar ? "sumV" : "sum";
+                    break;
                 case COUNT:
-                    final String countFunction = argumentIsIntVar ? "sumV" : "sum";
-
                     // In these cases, it is safe to replace count(argument) with sum(1)
                     if ((node.getArgument() instanceof MonoidLiteral ||
                          node.getArgument() instanceof ColumnIdentifier)) {
                         return apply(argumentIsIntVar ? CodeBlock.of("o.toConst($L.size())", vectorName).toString()
                                 : CodeBlock.of("$L.size()", vectorName).toString(), context);
                     }
-                    return apply(CodeBlock.of("o.$L(" + formatStr + ")",
-                            countFunction , vectorName, processedArgument, Collectors.class).toString(), context);
+                    function = argumentIsIntVar ? "sumV" : "sum";
+                    break;
                 case MAX:
-                    final CodeBlock maxArg = CodeBlock.of(formatStr, vectorName, processedArgument, Collectors.class);
-                    final String maxArgType = inferType(node.getArgument());
-                    return apply(String.format("o.maxV%s(%s)", maxArgType, maxArg), context);
+                    function = String.format("maxV%s", argumentType);
+                    break;
                 case MIN:
-                    final CodeBlock minArg = CodeBlock.of(formatStr, vectorName, processedArgument, Collectors.class);
-                    final String minArgType = inferType(node.getArgument());
-                    return apply(String.format("o.minV%s(%s)", minArgType, minArg), context);
+                    function = String.format("minV%s", argumentType);
+                    break;
                 case ALL_EQUAL:
-                    return apply(CodeBlock.of("o.allEqual(" + formatStr + ")",
-                            vectorName, processedArgument, Collectors.class).toString(), context);
+                    function = "allEqual";
+                    break;
                 case INCREASING:
-                    assert false;
-//                    output.addStatement("o.increasing(" + formatStr + ")",
-//                            vectorName, processedArgument, Collectors.class);
+                    context.currentScope().addChild(statement("o.increasing($L)", listOfProcessedItem));
                     return apply("model.newConstant(1)", context);
                 case ALL_DIFFERENT:
                 default:
                     throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
             }
+            Preconditions.checkNotNull(function);
+            return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();
         }
 
         @Nullable
@@ -1258,17 +1259,18 @@ public class OrToolsSolver implements ISolverBackend {
             // If the head contains a function, then this is a scalar subquery
             final ExprContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
             if (headSelectItemContainsMonoidFunction) {
-                final String w = apply(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
-                assert false;
-//                output.add(result.build());
-                return w;
+                newCtx.enterScope(subQueryBlock);
+                currentBlock.addChild(subQueryBlock);
+                final String ret = apply(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                newCtx.leaveScope();
+                return ret;
             } else {
                 // Else, treat the result as a vector
                 newCtx.enterScope(findForLoopBlockByName(subQueryBlock, newSubqueryName));
                 final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), newCtx);
                 final String type = inferType(node.getHead().getSelectExprs().get(0));
                 final String listName =
-                        extractVectorFromView(processedHeadItem, currentBlock, subQueryBlock, newSubqueryName, type);
+                        extractVectorFromView(processedHeadItem, subQueryBlock, newSubqueryName, type);
                 currentBlock.addChild(subQueryBlock);
                 newCtx.leaveScope();
                 return apply(listName, subQueryBlock, context);
@@ -1294,18 +1296,21 @@ public class OrToolsSolver implements ISolverBackend {
             // if scalar subquery
             final ExprContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
             if (headSelectItem instanceof MonoidFunction) {
-                final String res = apply(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
-                assert false;
-//                output.add(result.build());
-                return res;
+                newCtx.enterScope(subQueryBlock);
+                currentBlock.addChild(subQueryBlock);
+                final String ret = apply(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                newCtx.leaveScope();
+                return ret;
             } else {
+                newCtx.enterScope(findForLoopBlockByName(subQueryBlock, newSubqueryName));
                 final String processedHeadItem =
                     Objects.requireNonNull(innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0),
                                            newCtx));
                 final String type = inferType(node.getComprehension().getHead().getSelectExprs().get(0));
                 final String listName =
-                        extractVectorFromView(processedHeadItem, currentBlock, subQueryBlock, newSubqueryName, type);
+                        extractVectorFromView(processedHeadItem, subQueryBlock, newSubqueryName, type);
                 currentBlock.addChild(subQueryBlock);
+                newCtx.leaveScope();
                 // Treat as a vector
                 return apply(listName, subQueryBlock, context);
             }
@@ -1383,7 +1388,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private CodeBlock printTime(final String event) {
-        return CodeBlock.of("System.out.println(\"$L: we are at \" + (System.nanoTime() - startTime))", event);
+        return CodeBlock.of("System.out.println(\"$L: we are at \" + (System.nanoTime() - startTime));", event);
     }
 
     private String inferType(final Expr expr) {
@@ -1426,7 +1431,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         CodeTree.Block leaveScope() {
-            return scopeStack.pop();
+            return scopeStack.removeLast();
         }
 
         String declareVariable(final String expression) {
@@ -1447,18 +1452,10 @@ public class OrToolsSolver implements ISolverBackend {
         return CodeBlock.builder().addStatement(format, args).build();
     }
 
-    private static CodeBlock statement(final String format) {
-        return CodeBlock.builder().addStatement(format).build();
-    }
-
-    private static String extractVectorFromView(final String processedHeadItem, final CodeTree.Block currentBlock,
-                                            final CodeTree.Block viewBlock, final String viewName, final String type) {
+    private static String extractVectorFromView(final String processedHeadItem, final CodeTree.Block viewBlock,
+                                                final String viewName, final String type) {
         final CodeTree.Block forLoop = findForLoopBlockByName(viewBlock, viewName);
-        final String listName = "listOf" + processedHeadItem;
-        viewBlock.addHeader(statement("final List<$L> listOf$L = new $T<>()",
-                                      type, processedHeadItem, ArrayList.class));
-        forLoop.addTrailer(statement("$L.add($L)", listName, processedHeadItem));
-        return listName;
+        return extractVectorFromView(processedHeadItem, viewBlock, forLoop, type);
     }
 
     private static CodeTree.Block findForLoopBlockByName(final CodeTree.Block currentBlock,
@@ -1468,5 +1465,25 @@ public class OrToolsSolver implements ISolverBackend {
                 .collect(Collectors.toList());
         assert childBlocks.size() == 1;
         return childBlocks.get(0);
+    }
+
+    private static CodeTree.Block findLoopForVector(final CodeTree.Block currentBlock, final String viewName) {
+        final String nameToSearch = viewName.equals("data") ? currentBlock.name + "Data" : viewName + "ForLoops";
+        final List<CodeTree.Block> childBlocks = currentBlock.children.stream()
+                .filter(e -> e.name.equals(nameToSearch))
+                .collect(Collectors.toList());
+        assert childBlocks.size() == 1;
+        return childBlocks.get(0);
+    }
+
+    private static String extractVectorFromView(final String processedHeadItem, final CodeTree.Block outerBlock,
+                                                final CodeTree.Block innerBlock, final String type) {
+        final String listName = "listOf" + processedHeadItem;
+        final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>()",
+                type, processedHeadItem, ArrayList.class));
+        if (wasAdded) {
+            innerBlock.addTrailer(statement("$L.add($L)", listName, processedHeadItem));
+        }
+        return listName;
     }
 }
