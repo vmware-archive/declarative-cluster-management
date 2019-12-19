@@ -174,15 +174,18 @@ public class OrToolsSolver implements ISolverBackend {
                     exprContext.enterScope(outerBlock);
                     final CodeTree.Block block = addView(name, rewrittenComprehension, true, exprContext);
                     exprContext.leaveScope();
-                    System.out.println(block);
                     output.addCode(block.toString());
                 });
         objectiveFunctions
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     final ExprContext objFunctionContext = new ExprContext(false);
-                    final String s = exprToStr(rewrittenComprehension, objFunctionContext);
-                    output.addStatement("final $T $L = $L", IntVar.class, name, s);
+                    final CodeTree.Block outerBlock = new CodeTree.Block("outer");
+                    objFunctionContext.enterScope(outerBlock);
+                    final String exprStr = exprToStr(rewrittenComprehension, objFunctionContext);
+                    objFunctionContext.leaveScope();
+                    output.addCode(outerBlock.toString());
+                    output.addStatement("final $T $L = $L", IntVar.class, name, exprStr);
                 });
         if (!objectiveFunctions.isEmpty()) {
             final String objectiveFunctionSum = String.join(", ", objectiveFunctions.keySet());

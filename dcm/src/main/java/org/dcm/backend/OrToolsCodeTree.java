@@ -62,7 +62,6 @@ class CodeTree {
         }
 
         String declare(final String expr) {
-//            assert !expr.equals("nodeLabels.get(nodeLabelsIter).get(\"LABEL_KEY\", String.class)");
             final String varName = declarations.add(expr);
             insertionOrder.add(new DeclarationStatement(varName, expr));
             return varName;
