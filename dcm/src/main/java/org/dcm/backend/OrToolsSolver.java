@@ -302,7 +302,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                  .map(e -> exprToStr(e, true, groupContext, context))
                                                  .collect(Collectors.joining(", "));
                 forBlock.addTrailer(
-                   CodeBlock.builder().addStatement("final $1N<$2L> res = new $1N<>($3L)", typeSpec,
+                   CodeBlock.builder().addStatement("final $1N<$2L> t = new $1N<>($3L)", typeSpec,
                                                     viewTupleGenericParameters, tupleResult).build()
                 );
 
@@ -312,7 +312,7 @@ public class OrToolsSolver implements ISolverBackend {
                 inner.getHead().getSelectExprs().forEach(
                         e -> updateFieldIndex(viewName, e, fieldIndex)
                 );
-                forBlock.addTrailer(CodeBlock.builder().addStatement("$L.add(res)", tableNameStr(viewName)).build());
+                forBlock.addTrailer(CodeBlock.builder().addStatement("$L.add(t)", tableNameStr(viewName)).build());
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
@@ -1208,17 +1208,20 @@ public class OrToolsSolver implements ISolverBackend {
                 throw new UnsupportedOperationException("Could not find group-by column " + node);
             }
 
-            // Within a group-by, we refer to values from the intermediate group by table. This involves an
-            // indirection from columns to tuple indices
-            if (context.isFunctionContext() && currentGroupContext != null) {
-                final String tempTableName = currentGroupContext.tempTableName.toUpperCase(Locale.US);
+            // TODO: The next two blocks can both simultaenously be true. This can happen when we are within
+            //  a subquery and a group-by context at the same time. We need a cleaner way to distinguish what
+            //  scope to be searching for the indices.
+            // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
+            if (context.isFunctionContext() && currentSubQueryContext != null) {
+                final String tempTableName = currentSubQueryContext.subQueryName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
                 return apply(String.format("t.value%s()", fieldIndex), context);
             }
 
-            // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
-            if (context.isFunctionContext() && currentSubQueryContext != null) {
-                final String tempTableName = currentSubQueryContext.subQueryName.toUpperCase(Locale.US);
+            // Within a group-by, we refer to values from the intermediate group by table. This involves an
+            // indirection from columns to tuple indices
+            if (context.isFunctionContext() && currentGroupContext != null) {
+                final String tempTableName = currentGroupContext.tempTableName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
                 return apply(String.format("t.value%s()", fieldIndex), context);
             }
