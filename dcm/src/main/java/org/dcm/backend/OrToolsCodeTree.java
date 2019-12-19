@@ -138,7 +138,7 @@ class OutputIR {
     static class Declarations extends BlockExpr {
         private static final String TEMP_VAR_PREFIX = "i";
         private final Map<String, List<String>> declarations = new LinkedHashMap<>();
-        private static final AtomicInteger varCounter = new AtomicInteger(0);
+        private static final AtomicInteger VAR_COUNTER = new AtomicInteger(0);
 
         boolean exists(final String expression) {
             return declarations.containsKey(expression);
@@ -149,7 +149,7 @@ class OutputIR {
         }
 
         String add(final String expression) {
-            final String varName = TEMP_VAR_PREFIX + varCounter.getAndIncrement();
+            final String varName = TEMP_VAR_PREFIX + VAR_COUNTER.getAndIncrement();
             declarations.computeIfAbsent(expression,
                                          (k) -> new ArrayList<>()).add(varName);
             return declarations.get(expression).get(0);
@@ -191,11 +191,11 @@ class OutputIR {
         }
 
         @Override
-        public boolean equals(Object o) {
+        public boolean equals(final Object o) {
             if (this == o) {
                 return true;
             }
-            if (o == null || getClass() != o.getClass()) {
+            if (!(o instanceof StringBlock)) {
                 return false;
             }
             final StringBlock that = (StringBlock) o;

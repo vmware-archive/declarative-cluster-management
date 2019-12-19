@@ -74,7 +74,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -113,7 +112,6 @@ public class OrToolsSolver implements ISolverBackend {
     private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
     private final TupleGen tupleGen = new TupleGen();
-    private final Set<String> alreadyDeclared = new HashSet<>(); // TODO: remove
 
     static {
         Preconditions.checkNotNull(System.getenv(OR_TOOLS_LIB_ENV));
@@ -256,10 +254,9 @@ public class OrToolsSolver implements ISolverBackend {
                         generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 viewTupleTypeParameters.put(tableNameStr(viewName), viewTupleGenericParameters);
                 block.addChild(
-                    CodeBlock.builder().addStatement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
+                    statement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
                                                      viewTupleGenericParameters, tableNameStr(viewName),
                                                      ArrayList.class, intermediateView)
-                             .build()
                 );
             }
 
@@ -480,8 +477,8 @@ public class OrToolsSolver implements ISolverBackend {
         return fieldName;
     }
 
-    private OutputIR.Block maybeAddMapOrListForResultSet(final String viewName,
-                                                         final int tupleSize, final String headItemsListTupleGenericParameters,
+    private OutputIR.Block maybeAddMapOrListForResultSet(final String viewName, final int tupleSize,
+                                                         final String headItemsListTupleGenericParameters,
                                                          final String viewRecords,
                                                          @Nullable final GroupByQualifier groupByQualifier,
                                                          final boolean isConstraint) {
@@ -1340,6 +1337,41 @@ public class OrToolsSolver implements ISolverBackend {
         protected String apply(final String result, final OutputIR.Block block, final ExprContext context) {
             return context.declareVariable(result, block);
         }
+
+
+        private String extractVectorFromView(final String processedHeadItem, final OutputIR.Block viewBlock,
+                                                    final String viewName, final String type) {
+            final OutputIR.Block forLoop = findForLoopBlockByName(viewBlock, viewName);
+            return extractVectorFromView(processedHeadItem, viewBlock, forLoop, type);
+        }
+
+        private OutputIR.Block findForLoopBlockByName(final OutputIR.Block currentBlock,
+                                                             final String childBlockName) {
+            final List<OutputIR.Block> childBlocks = currentBlock.children.stream()
+                    .filter(e ->  e instanceof OutputIR.ForBlock &&  e.name.equals(childBlockName))
+                    .collect(Collectors.toList());
+            assert childBlocks.size() == 1;
+            return childBlocks.get(0);
+        }
+
+        private OutputIR.Block findLoopForVector(final OutputIR.Block currentBlock, final String viewName) {
+            final List<OutputIR.Block> childBlocks = currentBlock.children.stream()
+                    .filter(e -> e instanceof OutputIR.ForBlock && e.name.equals(viewName))
+                    .collect(Collectors.toList());
+            assert childBlocks.size() == 1;
+            return childBlocks.get(0);
+        }
+
+        private String extractVectorFromView(final String processedHeadItem, final OutputIR.Block outerBlock,
+                                                    final OutputIR.Block innerBlock, final String type) {
+            final String listName = "listOf" + processedHeadItem;
+            final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>()",
+                    type, processedHeadItem, ArrayList.class));
+            if (wasAdded) {
+                innerBlock.addTrailer(statement("$L.add($L)", listName, processedHeadItem));
+            }
+            return listName;
+        }
     }
 
     private static class ContainsMonoidFunction extends MonoidVisitor<Boolean, Void> {
@@ -1468,40 +1500,5 @@ public class OrToolsSolver implements ISolverBackend {
 
     private static CodeBlock statement(final String format, final Object... args) {
         return CodeBlock.builder().addStatement(format, args).build();
-    }
-
-    private static String extractVectorFromView(final String processedHeadItem, final OutputIR.Block viewBlock,
-                                                final String viewName, final String type) {
-        final OutputIR.Block forLoop = findForLoopBlockByName(viewBlock, viewName);
-        return extractVectorFromView(processedHeadItem, viewBlock, forLoop, type);
-    }
-
-    private static OutputIR.Block findForLoopBlockByName(final OutputIR.Block currentBlock,
-                                                         final String childBlockName) {
-        final List<OutputIR.Block> childBlocks = currentBlock.children.stream()
-                .filter(e ->  e instanceof OutputIR.ForBlock &&  e.name.equals(childBlockName))
-                .collect(Collectors.toList());
-        assert childBlocks.size() == 1;
-        return childBlocks.get(0);
-    }
-
-    private static OutputIR.Block findLoopForVector(final OutputIR.Block currentBlock, final String viewName) {
-        final String nameToSearch = viewName; //.equals("data") ? currentBlock.name + "Data" : viewName + "ForLoops";
-        final List<OutputIR.Block> childBlocks = currentBlock.children.stream()
-                .filter(e -> e instanceof OutputIR.ForBlock && e.name.equals(nameToSearch))
-                .collect(Collectors.toList());
-        assert childBlocks.size() == 1;
-        return childBlocks.get(0);
-    }
-
-    private static String extractVectorFromView(final String processedHeadItem, final OutputIR.Block outerBlock,
-                                                final OutputIR.Block innerBlock, final String type) {
-        final String listName = "listOf" + processedHeadItem;
-        final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>()",
-                type, processedHeadItem, ArrayList.class));
-        if (wasAdded) {
-            innerBlock.addTrailer(statement("$L.add($L)", listName, processedHeadItem));
-        }
-        return listName;
     }
 }
