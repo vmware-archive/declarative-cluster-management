@@ -7,6 +7,8 @@
 package org.dcm.backend;
 
 import org.dcm.compiler.monoid.ColumnIdentifier;
+import org.dcm.compiler.monoid.GroupByComprehension;
+import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidVisitor;
 
 import javax.annotation.Nullable;
@@ -20,6 +22,18 @@ class GetColumnIdentifiers extends MonoidVisitor<Void, Void> {
     protected Void visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Void context) {
         columnIdentifiers.add(node);
         return super.visitColumnIdentifier(node, context);
+    }
+
+    @Nullable
+    @Override
+    protected Void visitMonoidComprehension(final MonoidComprehension node, @Nullable final Void context) {
+        return null;
+    }
+
+    @Nullable
+    @Override
+    protected Void visitGroupByComprehension(GroupByComprehension node, @Nullable Void context) {
+        return null;
     }
 
     LinkedHashSet<ColumnIdentifier> getColumnIdentifiers() {

@@ -158,14 +158,22 @@ public class OrToolsSolver implements ISolverBackend {
         nonConstraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final CodeTree.Block block = addView(name, rewrittenComprehension, false);
+                    final ExprContext exprContext = new ExprContext(false);
+                    final CodeTree.Block outerBlock = new CodeTree.Block("outer");
+                    exprContext.enterScope(outerBlock);
+                    final CodeTree.Block block = addView(name, rewrittenComprehension, false, exprContext);
+                    exprContext.leaveScope();
                     System.out.println(block);
                     output.addCode(block.toString());
                 });
         constraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final CodeTree.Block block = addView(name, rewrittenComprehension, true);
+                    final ExprContext exprContext = new ExprContext(false);
+                    final CodeTree.Block outerBlock = new CodeTree.Block("outer");
+                    exprContext.enterScope(outerBlock);
+                    final CodeTree.Block block = addView(name, rewrittenComprehension, true, exprContext);
+                    exprContext.leaveScope();
                     System.out.println(block);
                     output.addCode(block.toString());
                 });
@@ -199,7 +207,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private CodeTree.Block addView(final String viewName, final MonoidComprehension comprehension,
-                                   final boolean isConstraint) {
+                                   final boolean isConstraint, final ExprContext context) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
             final MonoidComprehension inner = groupByComprehension.getComprehension();
@@ -214,7 +222,7 @@ public class OrToolsSolver implements ISolverBackend {
             // We create an intermediate view that extracts groups and returns a List<Tuple> per group
             final String intermediateView = getTempViewName();
             final CodeTree.Block intermediateViewBlock =
-                    buildInnerComprehension(intermediateView, inner, groupByQualifier, isConstraint);
+                    buildInnerComprehension(intermediateView, inner, groupByQualifier, isConstraint, context);
             block.addChild(intermediateViewBlock);
 
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
@@ -268,7 +276,7 @@ public class OrToolsSolver implements ISolverBackend {
                          .build()
             );
 
-            final CodeTree.ForBlock dataForBlock = new CodeTree.ForBlock(viewName + "Data",
+            final CodeTree.ForBlock dataForBlock = new CodeTree.ForBlock(viewName,
                         CodeBlock.of("for (final Tuple$L<$L> t: data)", innerTupleSize, headItemsTupleTypeParamters)
             );
             forBlock.addChild(dataForBlock);
@@ -278,11 +286,11 @@ public class OrToolsSolver implements ISolverBackend {
             final QualifiersByType nonVarQualifiers = new QualifiersByType();
             populateQualifiersByVarType(inner, varQualifiers, nonVarQualifiers, false);
 
-            final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView);
-            final ExprContext aggregateFunctionContext = new ExprContext(false);
-            aggregateFunctionContext.enterScope(forBlock);
+            final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView, viewName);
+            context.enterScope(forBlock);
             final CodeTree.Block nonVarAggregateFiltersBlock = maybeAddNonVarAggregateFilters(viewName,
-                                                                                        nonVarQualifiers, groupContext);
+                                                                                        nonVarQualifiers, groupContext,
+                                                                                        context);
             forBlock.addChild(nonVarAggregateFiltersBlock);
 
             // If this is not a constraint, we simply add a to a result set
@@ -291,7 +299,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String viewTupleGenericParameters =
                         generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
-                                                 .map(e -> exprToStr(e, true, groupContext, aggregateFunctionContext))
+                                                 .map(e -> exprToStr(e, true, groupContext, context))
                                                  .collect(Collectors.joining(", "));
                 forBlock.addTrailer(
                    CodeBlock.builder().addStatement("final $1N<$2L> res = new $1N<>($3L)", typeSpec,
@@ -310,15 +318,15 @@ public class OrToolsSolver implements ISolverBackend {
                 // If this is a constraint, we translate having clauses into a constraint statement
 
                 final List<CodeBlock> constraintBlocks = addAggregateConstraint(varQualifiers, nonVarQualifiers,
-                        new GroupContext(groupByQualifier, intermediateView), aggregateFunctionContext);
+                        new GroupContext(groupByQualifier, intermediateView, viewName), context);
                 constraintBlocks.forEach(forBlock::addTrailer);
             }
-            aggregateFunctionContext.leaveScope();
+            context.leaveScope();
             block.addChild(forBlock);
             block.addTrailer(printTime("Group-by final view"));
             return block;
         }
-        return buildInnerComprehension(viewName, comprehension, null, isConstraint);
+        return buildInnerComprehension(viewName, comprehension, null, isConstraint, context);
     }
 
     /**
@@ -328,7 +336,7 @@ public class OrToolsSolver implements ISolverBackend {
     private CodeTree.Block buildInnerComprehension(final String viewName,
                                          final MonoidComprehension comprehension,
                                          @Nullable final GroupByQualifier groupByQualifier,
-                                         final boolean isConstraint) {
+                                         final boolean isConstraint, final ExprContext context) {
         final CodeTree.Block block = new CodeTree.Block(viewName);
         Preconditions.checkNotNull(comprehension.getHead());
         // Add a comment with the view name
@@ -344,7 +352,6 @@ public class OrToolsSolver implements ISolverBackend {
         final List<ColumnIdentifier> headItemsList = getColumnsAccessed(comprehension, isConstraint);
 
         // Compute a string that represents the set of field accesses for the above columns
-        final ExprContext context = new ExprContext(false);
         context.enterScope(block);
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
@@ -390,7 +397,6 @@ public class OrToolsSolver implements ISolverBackend {
         ) {
             // If filter predicate is true, then retrieve expressions to collect into result set. Note, this does not
             // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
-//            codeGenerateDeclarations(context.declarations.getLast());
 
             final CodeTree.Block resultSetAddBlock = addToResultSet(viewName, tupleSize, headItemsStr,
                                                                headItemsListTupleGenericParameters,
@@ -509,7 +515,7 @@ public class OrToolsSolver implements ISolverBackend {
             loopStatements.add(CodeBlock.of("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr));
 //            controlFlowsToPop.add(String.format("for (%s)", iterStr));
         });
-        return new CodeTree.ForBlock(viewName + "ForLoops", loopStatements);
+        return new CodeTree.ForBlock(viewName, loopStatements);
     }
 
     private CodeTree.Block maybeAddNonVarFilters(final String viewName, final QualifiersByType nonVarQualifiers,
@@ -537,10 +543,10 @@ public class OrToolsSolver implements ISolverBackend {
 
     private CodeTree.Block maybeAddNonVarAggregateFilters(final String viewName,
                                                           final QualifiersByType nonVarQualifiers,
-                                                          final GroupContext groupContext) {
-        final ExprContext context = new ExprContext(false);
+                                                          final GroupContext groupContext,
+                                                          final ExprContext exprContext) {
         final String predicateStr = nonVarQualifiers.aggregatePredicates.stream()
-                .map(expr -> exprToStr(expr, false, groupContext, context))
+                .map(expr -> exprToStr(expr, false, groupContext, exprContext))
                 .collect(Collectors.joining(" \n    && "));
 
         if (!predicateStr.isEmpty()) {
@@ -1011,9 +1017,9 @@ public class OrToolsSolver implements ISolverBackend {
         @Nullable
         @Override
         protected String visitMonoidFunction(final MonoidFunction node, @Nullable final ExprContext context) {
-            final String vectorName = currentSubQueryContext == null ? "data" : currentSubQueryContext.subQueryName;
+            final String vectorName = currentSubQueryContext == null ? currentGroupContext.groupViewName
+                                                                     : currentSubQueryContext.subQueryName;
             assert context != null;
-
             // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
             // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
             final CodeTree.Block forLoop = findLoopForVector(context.currentScope(), vectorName);
@@ -1205,7 +1211,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Within a group-by, we refer to values from the intermediate group by table. This involves an
             // indirection from columns to tuple indices
             if (context.isFunctionContext() && currentGroupContext != null) {
-                final String tempTableName = currentGroupContext.groupViewName.toUpperCase(Locale.US);
+                final String tempTableName = currentGroupContext.tempTableName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
                 return apply(String.format("t.value%s()", fieldIndex), context);
             }
@@ -1243,7 +1249,7 @@ public class OrToolsSolver implements ISolverBackend {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             final CodeTree.Block currentBlock = context.currentScope();
-            final CodeTree.Block subQueryBlock = addView(newSubqueryName, node, false);
+            final CodeTree.Block subQueryBlock = addView(newSubqueryName, node, false, context);
             Preconditions.checkNotNull(node.getHead());
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
@@ -1284,7 +1290,7 @@ public class OrToolsSolver implements ISolverBackend {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             final CodeTree.Block currentBlock = context.currentScope();
-            final CodeTree.Block subQueryBlock = addView(newSubqueryName, node, false);
+            final CodeTree.Block subQueryBlock = addView(newSubqueryName, node, false, context);
             Preconditions.checkNotNull(node.getComprehension().getHead());
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
@@ -1342,10 +1348,12 @@ public class OrToolsSolver implements ISolverBackend {
 
     private static class GroupContext {
         private final GroupByQualifier qualifier;
+        private final String tempTableName;
         private final String groupViewName;
 
-        private GroupContext(final GroupByQualifier qualifier, final String groupViewName) {
+        private GroupContext(final GroupByQualifier qualifier, final String tempTableName, final String groupViewName) {
             this.qualifier = qualifier;
+            this.tempTableName = tempTableName;
             this.groupViewName = groupViewName;
         }
     }
@@ -1461,16 +1469,16 @@ public class OrToolsSolver implements ISolverBackend {
     private static CodeTree.Block findForLoopBlockByName(final CodeTree.Block currentBlock,
                                                          final String childBlockName) {
         final List<CodeTree.Block> childBlocks = currentBlock.children.stream()
-                .filter(e -> e.name.equals(childBlockName + "ForLoops"))
+                .filter(e ->  e instanceof CodeTree.ForBlock &&  e.name.equals(childBlockName))
                 .collect(Collectors.toList());
         assert childBlocks.size() == 1;
         return childBlocks.get(0);
     }
 
     private static CodeTree.Block findLoopForVector(final CodeTree.Block currentBlock, final String viewName) {
-        final String nameToSearch = viewName.equals("data") ? currentBlock.name + "Data" : viewName + "ForLoops";
+        final String nameToSearch = viewName; //.equals("data") ? currentBlock.name + "Data" : viewName + "ForLoops";
         final List<CodeTree.Block> childBlocks = currentBlock.children.stream()
-                .filter(e -> e.name.equals(nameToSearch))
+                .filter(e -> e instanceof CodeTree.ForBlock && e.name.equals(nameToSearch))
                 .collect(Collectors.toList());
         assert childBlocks.size() == 1;
         return childBlocks.get(0);
