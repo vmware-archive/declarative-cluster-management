@@ -32,7 +32,7 @@ class GetColumnIdentifiers extends MonoidVisitor<Void, Void> {
 
     @Nullable
     @Override
-    protected Void visitGroupByComprehension(GroupByComprehension node, @Nullable Void context) {
+    protected Void visitGroupByComprehension(final GroupByComprehension node, @Nullable final Void context) {
         return null;
     }
 

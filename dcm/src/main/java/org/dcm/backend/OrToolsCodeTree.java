@@ -2,6 +2,7 @@
  * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
  * SPDX-License-Identifier: BSD-2
  */
+
 package org.dcm.backend;
 
 import com.squareup.javapoet.CodeBlock;
@@ -15,7 +16,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-class CodeTree {
+class OutputIR {
 
     static class BlockExpr {
 
@@ -35,7 +36,7 @@ class CodeTree {
             this.textChildren = new ArrayList<>();
             this.header = new LinkedHashSet<>();
             this.trailer = new ArrayList<>();
-            this.declarations = new Declarations(name);
+            this.declarations = new Declarations();
             this.name = name;
         }
 
@@ -139,10 +140,6 @@ class CodeTree {
         private final Map<String, List<String>> declarations = new LinkedHashMap<>();
         private static final AtomicInteger varCounter = new AtomicInteger(0);
 
-        Declarations(final String scopePrefix) {
-//            this.scopePrefix = scopePrefix;
-        }
-
         boolean exists(final String expression) {
             return declarations.containsKey(expression);
         }
@@ -152,7 +149,6 @@ class CodeTree {
         }
 
         String add(final String expression) {
-//            final String varName = TEMP_VAR_PREFIX + "S" + scopePrefix + "V" + varCounter.getAndIncrement();
             final String varName = TEMP_VAR_PREFIX + varCounter.getAndIncrement();
             declarations.computeIfAbsent(expression,
                                          (k) -> new ArrayList<>()).add(varName);
@@ -196,31 +192,19 @@ class CodeTree {
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            StringBlock that = (StringBlock) o;
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            final StringBlock that = (StringBlock) o;
             return codeBlock.equals(that.codeBlock);
         }
 
         @Override
         public int hashCode() {
             return Objects.hash(codeBlock);
-        }
-    }
-
-    static class TupleCollect extends BlockExpr {
-        private final String name;
-
-        TupleCollect(final String name) {
-            this.name = name;
-        }
-    }
-
-    static class ListCollect extends BlockExpr {
-        private final String name;
-
-        ListCollect(final String name) {
-            this.name = name;
         }
     }
 }
