@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 /**
  * A simple IR to represent the output Java program that we are generating
  * for the OrTools solver. The IR represents a tree of "blocks", where each block has
- * a set of variable declarations, headers and a body comprised of more Blocks.
+ * a set of variable declarations, headers and a body comprised of more blocks.
  * Headers for the time being are just strings.
  *
  * toString() recursively generates the required code.
@@ -110,10 +110,12 @@ class OutputIR {
             return declarations.get(expr);
         }
 
-        public List<BlockExpr> getForLoopsByName(final String name) {
-            return children.stream()
+        public ForBlock getForLoopByName(final String name) {
+            final List<BlockExpr> loops = children.stream()
                     .filter(e ->  e instanceof OutputIR.ForBlock &&  e.getName().equals(name))
                     .collect(Collectors.toList());
+            assert loops.size() == 1 && loops.get(0) instanceof ForBlock;
+            return (ForBlock) loops.get(0);
         }
 
         @Override
