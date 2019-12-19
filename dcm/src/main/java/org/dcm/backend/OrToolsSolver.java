@@ -161,7 +161,6 @@ public class OrToolsSolver implements ISolverBackend {
                     exprContext.enterScope(outerBlock);
                     final OutputIR.Block block = addView(name, rewrittenComprehension, false, exprContext);
                     exprContext.leaveScope();
-                    System.out.println(block);
                     output.addCode(block.toString());
                 });
         constraintViews
@@ -407,13 +406,7 @@ public class OrToolsSolver implements ISolverBackend {
             addRowConstraintBlock.forEach(forLoopsBlock::addTrailer);
         }
 
-        // Pop all control flows (nested for loops and if statement)
-//        controlFlowsToPop.forEach(
-//                e -> output.endControlFlow()
-//        );
         // Print debugging info
-        // output.addStatement("$T.out.println($N)", System.class, viewRecords);
-        System.out.println(block);
         context.leaveScope();
         context.leaveScope();
         return block;
@@ -1152,7 +1145,6 @@ public class OrToolsSolver implements ISolverBackend {
                     case DIVIDE:
                         return apply(String.format("o.div(%s, %s)", left, right), context);
                     case IN:
-                        System.out.println("HERE");
                         return apply(String.format("o.in%s(%s, %s)", rightType, left, right), context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
