@@ -965,8 +965,7 @@ public class OrToolsSolver implements ISolverBackend {
     private String exprToStr(final Expr expr, final boolean allowControllable,
                              @Nullable final GroupContext currentGroup, final ExprContext context) {
         final ExprToStrVisitor visitor = new ExprToStrVisitor(allowControllable, currentGroup, null);
-        final String resultVariable = Objects.requireNonNull(visitor.visit(expr, context));
-        return resultVariable;
+        return Objects.requireNonNull(visitor.visit(expr, context));
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
@@ -1017,7 +1016,7 @@ public class OrToolsSolver implements ISolverBackend {
             // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
             final OutputIR.Block forLoop = findLoopForVector(context.currentScope(), vectorName);
             if (node.getFunction().equals(MonoidFunction.Function.SUM)) {
-                return handleSum(node.getArgument(), context.currentScope(), forLoop, context);
+                return maybeTranslateSumIntoScalarProduct(node.getArgument(), context.currentScope(), forLoop, context);
             }
 
             context.enterScope(forLoop);
@@ -1368,8 +1367,8 @@ public class OrToolsSolver implements ISolverBackend {
             return listName;
         }
 
-        private String handleSum(final Expr node, final OutputIR.Block outerBlock,
-                                 final OutputIR.Block forLoop, final ExprContext context) {
+        private String maybeTranslateSumIntoScalarProduct(final Expr node, final OutputIR.Block outerBlock,
+                                                          final OutputIR.Block forLoop, final ExprContext context) {
             if (node instanceof BinaryOperatorPredicate) {
                 final BinaryOperatorPredicate operation = (BinaryOperatorPredicate) node;
                 final BinaryOperatorPredicate.Operator op = operation.getOperator();
