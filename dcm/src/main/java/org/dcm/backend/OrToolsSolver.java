@@ -1016,6 +1016,10 @@ public class OrToolsSolver implements ISolverBackend {
             // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
             // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
             final OutputIR.Block forLoop = findLoopForVector(context.currentScope(), vectorName);
+            if (node.getFunction().equals(MonoidFunction.Function.SUM)) {
+                return handleSum(node.getArgument(), context.currentScope(), forLoop, context);
+            }
+
             context.enterScope(forLoop);
             final String processedArgument = visit(node.getArgument(), context.withEnterFunctionContext());
             context.leaveScope();
@@ -1028,8 +1032,7 @@ public class OrToolsSolver implements ISolverBackend {
             String function = null;
             switch (node.getFunction()) {
                 case SUM:
-                    function = argumentIsIntVar ? "sumV" : "sum";
-                    break;
+                    throw new IllegalStateException("Unreachable");
                 case COUNT:
                     // In these cases, it is safe to replace count(argument) with sum(1)
                     if ((node.getArgument() instanceof MonoidLiteral ||
@@ -1363,6 +1366,51 @@ public class OrToolsSolver implements ISolverBackend {
                 innerBlock.addTrailer(statement("$L.add($L)", listName, processedHeadItem));
             }
             return listName;
+        }
+
+        private String handleSum(final Expr node, final OutputIR.Block outerBlock,
+                                 final OutputIR.Block forLoop, final ExprContext context) {
+            if (node instanceof BinaryOperatorPredicate) {
+                final BinaryOperatorPredicate operation = (BinaryOperatorPredicate) node;
+                final BinaryOperatorPredicate.Operator op = operation.getOperator();
+                final Expr left = operation.getLeft();
+                final Expr right = operation.getRight();
+                final String leftType = inferType(left);
+                final String rightType = inferType(right);
+                if (op.equals(BinaryOperatorPredicate.Operator.MULTIPLY)) {
+                    if (leftType.equals("IntVar") && !rightType.equals("IntVar")) {
+                        return createTermsForScalarProduct(left, right, context, outerBlock, forLoop, rightType);
+                    }
+                    if (rightType.equals("IntVar") && !leftType.equals("IntVar")) {
+                        return createTermsForScalarProduct(right, left, context, outerBlock, forLoop, leftType);
+                    }
+                }
+            }
+            // regular sum
+            context.enterScope(forLoop);
+            final String processedArgument = Objects.requireNonNull(visit(node, context.withEnterFunctionContext()));
+            context.leaveScope();
+            final String argumentType = inferType(node);
+            final String function = argumentType.equals("IntVar") ? "sumV" : "sum";
+            final String listOfProcessedItem =
+                    extractVectorFromView(processedArgument, context.currentScope(), forLoop, argumentType);
+            return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();
+        }
+
+        private String createTermsForScalarProduct(final Expr variables, final Expr coefficients,
+                                                   final ExprContext context, final OutputIR.Block outerBlock,
+                                                   final OutputIR.Block forLoop,
+                                                   final String coefficientsType) {
+            context.enterScope(forLoop);
+            final String variablesItem = Objects.requireNonNull(visit(variables, context.withEnterFunctionContext()));
+            final String coefficientsItem = Objects.requireNonNull(visit(coefficients,
+                                                                         context.withEnterFunctionContext()));
+            context.leaveScope();
+            final String listOfVariablesItem =
+                    extractVectorFromView(variablesItem, outerBlock, forLoop, "IntVar");
+            final String listOfCoefficientsItem =
+                    extractVectorFromView(coefficientsItem, outerBlock, forLoop, coefficientsType);
+            return CodeBlock.of("o.scalProd($L, $L)", listOfVariablesItem, listOfCoefficientsItem).toString();
         }
     }
 
