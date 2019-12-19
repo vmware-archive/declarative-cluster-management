@@ -112,6 +112,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
     private final TupleGen tupleGen = new TupleGen();
+    private final OutputIR outputIR = new OutputIR();
 
     static {
         Preconditions.checkNotNull(System.getenv(OR_TOOLS_LIB_ENV));
@@ -153,11 +154,12 @@ public class OrToolsSolver implements ISolverBackend {
         } catch (final ClassNotFoundException e) {
             throw new IllegalStateException(e);
         }
+
         nonConstraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     final ExprContext exprContext = new ExprContext(false);
-                    final OutputIR.Block outerBlock = new OutputIR.Block("outer");
+                    final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     exprContext.enterScope(outerBlock);
                     final OutputIR.Block block = addView(name, rewrittenComprehension, false, exprContext);
                     exprContext.leaveScope();
@@ -167,7 +169,7 @@ public class OrToolsSolver implements ISolverBackend {
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     final ExprContext exprContext = new ExprContext(false);
-                    final OutputIR.Block outerBlock = new OutputIR.Block("outer");
+                    final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     exprContext.enterScope(outerBlock);
                     final OutputIR.Block block = addView(name, rewrittenComprehension, true, exprContext);
                     exprContext.leaveScope();
@@ -177,7 +179,7 @@ public class OrToolsSolver implements ISolverBackend {
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     final ExprContext objFunctionContext = new ExprContext(false);
-                    final OutputIR.Block outerBlock = new OutputIR.Block("outer");
+                    final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     objFunctionContext.enterScope(outerBlock);
                     final String exprStr = exprToStr(rewrittenComprehension, objFunctionContext);
                     objFunctionContext.leaveScope();
@@ -212,7 +214,7 @@ public class OrToolsSolver implements ISolverBackend {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
             final MonoidComprehension inner = groupByComprehension.getComprehension();
             final GroupByQualifier groupByQualifier = groupByComprehension.getGroupByQualifier();
-            final OutputIR.Block block = new OutputIR.Block(viewName);
+            final OutputIR.Block block = outputIR.newBlock(viewName);
 
             // Rewrite inner comprehension using the following rule:
             // [ [blah - sum(X) | <....>] | G]
@@ -260,7 +262,7 @@ public class OrToolsSolver implements ISolverBackend {
             }
 
             // (2) Loop over the result set collected from the inner comprehension
-            final OutputIR.ForBlock forBlock = new OutputIR.ForBlock(viewName,
+            final OutputIR.ForBlock forBlock = outputIR.newForBlock(viewName,
                     CodeBlock.of("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
                                             Map.Entry.class, groupByQualifiersSize, groupByTupleTypeParameters,
                                             innerTupleSize, headItemsTupleTypeParamters, intermediateView)
@@ -275,7 +277,7 @@ public class OrToolsSolver implements ISolverBackend {
                          .build()
             );
 
-            final OutputIR.ForBlock dataForBlock = new OutputIR.ForBlock(viewName,
+            final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName,
                         CodeBlock.of("for (final Tuple$L<$L> t: data)", innerTupleSize, headItemsTupleTypeParamters)
             );
             forBlock.addChild(dataForBlock);
@@ -336,7 +338,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                    final MonoidComprehension comprehension,
                                                    @Nullable final GroupByQualifier groupByQualifier,
                                                    final boolean isConstraint, final ExprContext context) {
-        final OutputIR.Block block = new OutputIR.Block(viewName);
+        final OutputIR.Block block = outputIR.newBlock(viewName);
         Preconditions.checkNotNull(comprehension.getHead());
         // Add a comment with the view name
         block.addHeader(
@@ -475,7 +477,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                          final String viewRecords,
                                                          @Nullable final GroupByQualifier groupByQualifier,
                                                          final boolean isConstraint) {
-        final OutputIR.Block block = new OutputIR.Block(viewName + "CreateResultSet");
+        final OutputIR.Block block = outputIR.newBlock(viewName + "CreateResultSet");
         final TypeSpec tupleSpec = tupleGen.getTupleType(tupleSize);
         if (groupByQualifier != null) {
             // Create group by tuple
@@ -506,9 +508,8 @@ public class OrToolsSolver implements ISolverBackend {
             final String tableNumRowsStr = tableNumRowsStr(tableName);
             final String iterStr = iterStr(tr.getTable().getAliasedName());
             loopStatements.add(CodeBlock.of("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr));
-//            controlFlowsToPop.add(String.format("for (%s)", iterStr));
         });
-        return new OutputIR.ForBlock(viewName, loopStatements);
+        return outputIR.newForBlock(viewName, loopStatements);
     }
 
     private OutputIR.Block maybeAddNonVarFilters(final String viewName, final QualifiersByType nonVarQualifiers,
@@ -529,9 +530,9 @@ public class OrToolsSolver implements ISolverBackend {
         if (!predicateStr.isEmpty()) {
             // Add filter predicate if available
             final String nonVarFilter = CodeBlock.of("if (!($L))", predicateStr).toString();
-            return new OutputIR.IfBlock(viewName + "nonVarFilter", nonVarFilter);
+            return outputIR.newIfBlock(viewName + "nonVarFilter", nonVarFilter);
         }
-        return new OutputIR.Block(viewName + "nonVarFilter");
+        return outputIR.newBlock(viewName + "nonVarFilter");
     }
 
     private OutputIR.Block maybeAddNonVarAggregateFilters(final String viewName,
@@ -545,15 +546,15 @@ public class OrToolsSolver implements ISolverBackend {
         if (!predicateStr.isEmpty()) {
             // Add filter predicate if available
             final String nonVarFilter = CodeBlock.of("if ($L)", predicateStr).toString();
-            return new OutputIR.IfBlock(viewName + "nonVarFilter", nonVarFilter);
+            return outputIR.newIfBlock(viewName + "nonVarFilter", nonVarFilter);
         }
-        return new OutputIR.Block(viewName + "nonVarFilter");
+        return outputIR.newBlock(viewName + "nonVarFilter");
     }
 
     private OutputIR.Block addToResultSet(final String viewName, final int tupleSize,
                                           final String headItemsStr, final String headItemsListTupleGenericParameters,
                                           final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
-        final OutputIR.Block block = new OutputIR.Block(viewName + "AddToResultSet");
+        final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
         // Create a tuple for the result set
         block.addChild(CodeBlock.builder().addStatement("final Tuple$1L<$2L> t = new Tuple$1L<>(\n    $3L\n    )",
                          tupleSize, headItemsListTupleGenericParameters, headItemsStr).build()
@@ -1207,7 +1208,7 @@ public class OrToolsSolver implements ISolverBackend {
                 throw new UnsupportedOperationException("Could not find group-by column " + node);
             }
 
-            // TODO: The next two blocks can both simultaenously be true. This can happen when we are within
+            // TODO: The next two blocks can both simultaneously be true. This can happen when we are within
             //  a subquery and a group-by context at the same time. We need a cleaner way to distinguish what
             //  scope to be searching for the indices.
             // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices

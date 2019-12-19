@@ -26,6 +26,28 @@ import java.util.stream.Collectors;
  * toString() recursively generates the required code.
  */
 class OutputIR {
+    private static final String TEMP_VAR_PREFIX = "i";
+    private final AtomicInteger intermediateVariableCounter;
+
+    OutputIR() {
+        this.intermediateVariableCounter = new AtomicInteger(0);
+    }
+
+    Block newBlock(final String name) {
+        return new Block(name);
+    }
+
+    ForBlock newForBlock(final String name, final CodeBlock block) {
+        return new ForBlock(name, block);
+    }
+
+    ForBlock newForBlock(final String name, final List<CodeBlock> block) {
+        return new ForBlock(name, block);
+    }
+
+    IfBlock newIfBlock(final String name, final String predicate) {
+        return new IfBlock(name, predicate);
+    }
 
     /**
      * Base for every type of expression, identified by a non-unique name
@@ -33,7 +55,7 @@ class OutputIR {
     static class BlockExpr {
         private final String name;
 
-        BlockExpr(final String name) {
+        private BlockExpr(final String name) {
             this.name = name;
         }
 
@@ -46,13 +68,13 @@ class OutputIR {
      * A generic block of code, that starts with a header of strings, followed by a list of blocks. Each
      * block has a set of variable declarations.
      */
-    static class Block extends BlockExpr {
+    class Block extends BlockExpr {
         private final Set<StringBlock> header;
         private final List<BlockExpr> children;
         private final Declarations declarations;
         private final List<BlockExpr> insertionOrder = new ArrayList<>();
 
-        Block(final String name) {
+        private Block(final String name) {
             super(name);
             this.children = new ArrayList<>();
             this.header = new LinkedHashSet<>();
@@ -98,12 +120,10 @@ class OutputIR {
         public String toString() {
             final CodeBlock.Builder b = CodeBlock.builder();
             header.forEach(
-                    e -> b.add(e.toString())
+                e -> b.add(e.toString())
             );
             insertionOrder.forEach(
-                    e -> {
-                        b.add(e.toString());
-                    }
+                e -> b.add(e.toString())
             );
             return b.build().toString();
         }
@@ -112,15 +132,15 @@ class OutputIR {
     /**
      * A block representing a nested for loop.
      */
-    static class ForBlock extends Block {
+    class ForBlock extends Block {
         private final List<CodeBlock> loopExpr;
 
-        ForBlock(final String name, final CodeBlock loopExpr) {
+        private ForBlock(final String name, final CodeBlock loopExpr) {
             super(name);
             this.loopExpr = List.of(loopExpr);
         }
 
-        ForBlock(final String name, final List<CodeBlock> loopExpr) {
+        private ForBlock(final String name, final List<CodeBlock> loopExpr) {
             super(name);
             this.loopExpr = loopExpr;
         }
@@ -141,7 +161,7 @@ class OutputIR {
     /**
      * A block representing an If statement.
      */
-    static class IfBlock extends Block {
+    class IfBlock extends Block {
         private final String predicate;
 
         IfBlock(final String name, final String predicate) {
@@ -163,12 +183,10 @@ class OutputIR {
      * Tracks the set of variable declarations within a block. Within a given block, expressions
      * are reused if possible.
      */
-    static class Declarations extends BlockExpr {
-        private static final String TEMP_VAR_PREFIX = "i";
+    private class Declarations extends BlockExpr {
         private final Map<String, List<String>> declarations = new LinkedHashMap<>();
-        private static final AtomicInteger VAR_COUNTER = new AtomicInteger(0);
 
-        Declarations(final String name) {
+        private Declarations(final String name) {
             super(name);
         }
 
@@ -181,7 +199,7 @@ class OutputIR {
         }
 
         String add(final String expression) {
-            final String varName = TEMP_VAR_PREFIX + VAR_COUNTER.getAndIncrement();
+            final String varName = TEMP_VAR_PREFIX + intermediateVariableCounter.getAndIncrement();
             declarations.computeIfAbsent(expression,
                                          (k) -> new ArrayList<>()).add(varName);
             return declarations.get(expression).get(0);
@@ -196,13 +214,13 @@ class OutputIR {
     }
 
     /**
-     * Tracks the actual statements within a block where an expression has to be assigned to a variable
+     * Represents statements within a block where an expression is assigned to a variable
      */
-    static class DeclarationStatement extends BlockExpr {
+    private static class DeclarationStatement extends BlockExpr {
         private final String expr;
         private final String varName;
 
-        DeclarationStatement(final String varName, final String expr) {
+        private DeclarationStatement(final String varName, final String expr) {
             super("declaration");
             this.varName = varName;
             this.expr = expr;
@@ -215,13 +233,13 @@ class OutputIR {
     }
 
     /**
-     * A block of code, already in the form of the output string. Used for boilerplate within the generated code
-     * like comments and some initialization statements.
+     * A block of code, already in the form of the required output string. Used for boilerplate within the
+     * generated code like comments and some initialization statements.
      */
-    static class StringBlock extends BlockExpr {
+    private static class StringBlock extends BlockExpr {
         private final CodeBlock codeBlock;
 
-        StringBlock(final CodeBlock codeBlock) {
+        private StringBlock(final CodeBlock codeBlock) {
             super("string-block");
             this.codeBlock = codeBlock;
         }
