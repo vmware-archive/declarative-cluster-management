@@ -15,29 +15,48 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
+/**
+ * A simple IR to represent the output Java program that we are generating
+ * for the OrTools solver. The IR represents a tree of "blocks", where each block has
+ * a set of variable declarations, headers and a body comprised of more Blocks.
+ * Headers for the time being are just strings.
+ *
+ * toString() recursively generates the required code.
+ */
 class OutputIR {
 
+    /**
+     * Base for every type of expression, identified by a non-unique name
+     */
     static class BlockExpr {
+        private final String name;
 
+        BlockExpr(final String name) {
+            this.name = name;
+        }
+
+        protected String getName() {
+            return name;
+        }
     }
 
+    /**
+     * A generic block of code, that starts with a header of strings, followed by a list of blocks. Each
+     * block has a set of variable declarations.
+     */
     static class Block extends BlockExpr {
-        final Set<StringBlock> header;
-        final List<Block> children;
-        final List<StringBlock> textChildren;
-        final List<StringBlock> trailer;
-        final Declarations declarations;
-        final String name;
-        final List<BlockExpr> insertionOrder = new ArrayList<>();
+        private final Set<StringBlock> header;
+        private final List<BlockExpr> children;
+        private final Declarations declarations;
+        private final List<BlockExpr> insertionOrder = new ArrayList<>();
 
         Block(final String name) {
+            super(name);
             this.children = new ArrayList<>();
-            this.textChildren = new ArrayList<>();
             this.header = new LinkedHashSet<>();
-            this.trailer = new ArrayList<>();
-            this.declarations = new Declarations();
-            this.name = name;
+            this.declarations = new Declarations(name);
         }
 
         boolean addHeader(final CodeBlock blockExpr) {
@@ -52,13 +71,6 @@ class OutputIR {
 
         void addChild(final CodeBlock child) {
             final StringBlock b = new StringBlock(child);
-            textChildren.add(b);
-            insertionOrder.add(b);
-        }
-
-        void addTrailer(final CodeBlock blockExpr) {
-            final StringBlock b = new StringBlock(blockExpr);
-            trailer.add(b);
             insertionOrder.add(b);
         }
 
@@ -76,6 +88,12 @@ class OutputIR {
             return declarations.get(expr);
         }
 
+        public List<BlockExpr> getForLoopsByName(final String name) {
+            return children.stream()
+                    .filter(e ->  e instanceof OutputIR.ForBlock &&  e.getName().equals(name))
+                    .collect(Collectors.toList());
+        }
+
         @Override
         public String toString() {
             final CodeBlock.Builder b = CodeBlock.builder();
@@ -91,8 +109,11 @@ class OutputIR {
         }
     }
 
+    /**
+     * A block representing a nested for loop.
+     */
     static class ForBlock extends Block {
-        final List<CodeBlock> loopExpr;
+        private final List<CodeBlock> loopExpr;
 
         ForBlock(final String name, final CodeBlock loopExpr) {
             super(name);
@@ -117,8 +138,11 @@ class OutputIR {
         }
     }
 
+    /**
+     * A block representing an If statement.
+     */
     static class IfBlock extends Block {
-        final String predicate;
+        private final String predicate;
 
         IfBlock(final String name, final String predicate) {
             super(name);
@@ -135,10 +159,18 @@ class OutputIR {
         }
     }
 
+    /**
+     * Tracks the set of variable declarations within a block. Within a given block, expressions
+     * are reused if possible.
+     */
     static class Declarations extends BlockExpr {
         private static final String TEMP_VAR_PREFIX = "i";
         private final Map<String, List<String>> declarations = new LinkedHashMap<>();
         private static final AtomicInteger VAR_COUNTER = new AtomicInteger(0);
+
+        Declarations(final String name) {
+            super(name);
+        }
 
         boolean exists(final String expression) {
             return declarations.containsKey(expression);
@@ -163,11 +195,15 @@ class OutputIR {
         }
     }
 
+    /**
+     * Tracks the actual statements within a block where an expression has to be assigned to a variable
+     */
     static class DeclarationStatement extends BlockExpr {
         private final String expr;
         private final String varName;
 
         DeclarationStatement(final String varName, final String expr) {
+            super("declaration");
             this.varName = varName;
             this.expr = expr;
         }
@@ -178,10 +214,15 @@ class OutputIR {
         }
     }
 
+    /**
+     * A block of code, already in the form of the output string. Used for boilerplate within the generated code
+     * like comments and some initialization statements.
+     */
     static class StringBlock extends BlockExpr {
         private final CodeBlock codeBlock;
 
         StringBlock(final CodeBlock codeBlock) {
+            super("string-block");
             this.codeBlock = codeBlock;
         }
 

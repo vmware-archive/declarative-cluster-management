@@ -300,7 +300,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
                                                  .map(e -> exprToStr(e, true, groupContext, context))
                                                  .collect(Collectors.joining(", "));
-                forBlock.addTrailer(
+                forBlock.addChild(
                    CodeBlock.builder().addStatement("final $1N<$2L> t = new $1N<>($3L)", typeSpec,
                                                     viewTupleGenericParameters, tupleResult).build()
                 );
@@ -311,18 +311,18 @@ public class OrToolsSolver implements ISolverBackend {
                 inner.getHead().getSelectExprs().forEach(
                         e -> updateFieldIndex(viewName, e, fieldIndex)
                 );
-                forBlock.addTrailer(CodeBlock.builder().addStatement("$L.add(t)", tableNameStr(viewName)).build());
+                forBlock.addChild(CodeBlock.builder().addStatement("$L.add(t)", tableNameStr(viewName)).build());
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
 
                 final List<CodeBlock> constraintBlocks = addAggregateConstraint(varQualifiers, nonVarQualifiers,
                         new GroupContext(groupByQualifier, intermediateView, viewName), context);
-                constraintBlocks.forEach(forBlock::addTrailer);
+                constraintBlocks.forEach(forBlock::addChild);
             }
             context.leaveScope();
             block.addChild(forBlock);
-            block.addTrailer(printTime("Group-by final view"));
+            block.addChild(printTime("Group-by final view"));
             return block;
         }
         return buildInnerComprehension(viewName, comprehension, null, isConstraint, context);
@@ -403,7 +403,7 @@ public class OrToolsSolver implements ISolverBackend {
             forLoopsBlock.addChild(resultSetAddBlock);
         } else {
             final List<CodeBlock> addRowConstraintBlock = addRowConstraint(varQualifiers, nonVarQualifiers, context);
-            addRowConstraintBlock.forEach(forLoopsBlock::addTrailer);
+            addRowConstraintBlock.forEach(forLoopsBlock::addChild);
         }
 
         // Print debugging info
@@ -555,7 +555,7 @@ public class OrToolsSolver implements ISolverBackend {
                                           final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
         final OutputIR.Block block = new OutputIR.Block(viewName + "AddToResultSet");
         // Create a tuple for the result set
-        block.addTrailer(CodeBlock.builder().addStatement("final Tuple$1L<$2L> t = new Tuple$1L<>(\n    $3L\n    )",
+        block.addChild(CodeBlock.builder().addStatement("final Tuple$1L<$2L> t = new Tuple$1L<>(\n    $3L\n    )",
                          tupleSize, headItemsListTupleGenericParameters, headItemsStr).build()
         );
 
@@ -568,16 +568,16 @@ public class OrToolsSolver implements ISolverBackend {
                     .collect(Collectors.joining(",     \n"));
 
             // Organize the collected tuples from the nested for loops by groupByTuple
-            block.addTrailer(CodeBlock.builder()
+            block.addChild(CodeBlock.builder()
                                      .addStatement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
                     numberOfGroupByColumns, Objects.requireNonNull(viewGroupByTupleTypeParameters.get(viewName)),
                     groupString).build());
-            block.addTrailer(CodeBlock.builder()
+            block.addChild(CodeBlock.builder()
                                       .addStatement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(t)",
                                                     viewRecords, ArrayList.class)
                                       .build());
         } else {
-            block.addTrailer(CodeBlock.builder().addStatement("$L.add(t)", viewRecords).build());
+            block.addChild(CodeBlock.builder().addStatement("$L.add(t)", viewRecords).build());
         }
         return block;
     }
@@ -1341,19 +1341,15 @@ public class OrToolsSolver implements ISolverBackend {
 
         private OutputIR.Block findForLoopBlockByName(final OutputIR.Block currentBlock,
                                                              final String childBlockName) {
-            final List<OutputIR.Block> childBlocks = currentBlock.children.stream()
-                    .filter(e ->  e instanceof OutputIR.ForBlock &&  e.name.equals(childBlockName))
-                    .collect(Collectors.toList());
-            assert childBlocks.size() == 1;
-            return childBlocks.get(0);
+            final List<OutputIR.BlockExpr> childBlocks = currentBlock.getForLoopsByName(childBlockName);
+            assert childBlocks.size() == 1 && childBlocks.get(0) instanceof OutputIR.ForBlock;
+            return ( OutputIR.ForBlock) childBlocks.get(0);
         }
 
         private OutputIR.Block findLoopForVector(final OutputIR.Block currentBlock, final String viewName) {
-            final List<OutputIR.Block> childBlocks = currentBlock.children.stream()
-                    .filter(e -> e instanceof OutputIR.ForBlock && e.name.equals(viewName))
-                    .collect(Collectors.toList());
-            assert childBlocks.size() == 1;
-            return childBlocks.get(0);
+            final List<OutputIR.BlockExpr> childBlocks = currentBlock.getForLoopsByName(viewName);
+            assert childBlocks.size() == 1  && childBlocks.get(0) instanceof OutputIR.ForBlock;;
+            return (OutputIR.ForBlock) childBlocks.get(0);
         }
 
         private String extractVectorFromView(final String processedHeadItem, final OutputIR.Block outerBlock,
@@ -1362,7 +1358,7 @@ public class OrToolsSolver implements ISolverBackend {
             final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>()",
                     type, processedHeadItem, ArrayList.class));
             if (wasAdded) {
-                innerBlock.addTrailer(statement("$L.add($L)", listName, processedHeadItem));
+                innerBlock.addChild(statement("$L.add($L)", listName, processedHeadItem));
             }
             return listName;
         }
