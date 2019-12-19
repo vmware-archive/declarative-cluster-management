@@ -952,6 +952,7 @@ public class SchedulerTest {
         // All pod additions have completed
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
+        System.out.println(results);
     }
 
 

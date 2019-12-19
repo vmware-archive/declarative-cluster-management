@@ -43,7 +43,7 @@ public class Ops {
         return ret;
     }
 
-
+    // TODO: add test case to OpsTests
     public IntVar scalProd(final List<IntVar> variables, final List<Integer> coefficients) {
         final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
         model.addEquality(ret, LinearExpr.scalProd(variables.toArray(new IntVar[0]),
