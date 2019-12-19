@@ -1044,8 +1044,13 @@ public class OrToolsSolver implements ISolverBackend {
                     // In these cases, it is safe to replace count(argument) with sum(1)
                     if ((node.getArgument() instanceof MonoidLiteral ||
                          node.getArgument() instanceof ColumnIdentifier)) {
-                        return apply(argumentIsIntVar ? CodeBlock.of("o.toConst($L.size())", vectorName).toString()
-                                : CodeBlock.of("$L.size()", vectorName).toString(), context);
+                        // TODO: another sign that groupContext/subQueryContext should be handled by ExprContext
+                        //  and scopes
+                        final String scanOver = currentSubQueryContext == null ?
+                                                   "data" : currentSubQueryContext.subQueryName;
+                        return apply(argumentIsIntVar
+                                      ? CodeBlock.of("o.toConst($L.size())", scanOver).toString()
+                                      : CodeBlock.of("$L.size()", scanOver).toString(), context);
                     }
                     function = argumentIsIntVar ? "sumV" : "sum";
                     break;
