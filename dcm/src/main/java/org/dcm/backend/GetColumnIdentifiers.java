@@ -17,7 +17,7 @@ import java.util.LinkedHashSet;
 
 /**
  * A visitor that returns the set of accessed columns within a comprehension's scope, *without entering
- * sub-queries*.
+ * sub-queries.
  */
 class GetColumnIdentifiers extends MonoidVisitor<Void, Void> {
     private final LinkedHashSet<ColumnIdentifier> columnIdentifiers = new LinkedHashSet<>();
