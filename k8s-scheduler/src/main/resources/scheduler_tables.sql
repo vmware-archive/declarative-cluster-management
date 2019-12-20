@@ -228,7 +228,7 @@ create table batch_size
 );
 
 create view pods_to_assign as
-select * from pods_to_assign_no_limit limit 50;
+select * from pods_to_assign_no_limit limit 100;
 
 
 -- Pods with port requests

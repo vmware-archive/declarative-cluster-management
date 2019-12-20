@@ -43,6 +43,14 @@ public class Ops {
         return ret;
     }
 
+    // TODO: add test case to OpsTests
+    public IntVar scalProd(final List<IntVar> variables, final List<Integer> coefficients) {
+        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        model.addEquality(ret, LinearExpr.scalProd(variables.toArray(new IntVar[0]),
+                                                   coefficients.stream().mapToInt(Integer::intValue).toArray()));
+        return ret;
+    }
+
     public void increasing(final List<IntVar> data) {
         for (int i = 0; i < data.size() - 1; i++) {
             model.addLessOrEqual(data.get(i), data.get(i + 1));
