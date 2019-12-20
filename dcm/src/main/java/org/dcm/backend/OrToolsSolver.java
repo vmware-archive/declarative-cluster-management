@@ -234,7 +234,7 @@ public class OrToolsSolver implements ISolverBackend {
             final String intermediateView = getTempViewName();
             final OutputIR.Block intermediateViewBlock =
                     buildInnerComprehension(intermediateView, inner, groupByQualifier, isConstraint, context);
-            block.addChild(intermediateViewBlock);
+            block.addBody(intermediateViewBlock);
 
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
             // in two steps...
@@ -249,7 +249,7 @@ public class OrToolsSolver implements ISolverBackend {
             final int innerTupleSize = Collections.max(viewToFieldIndex.get(intermediateView.toUpperCase(Locale.US))
                                                                        .values()) + 1;
             // (1) Create the result set
-            block.addChild(CodeBlock.builder()
+            block.addBody(CodeBlock.builder()
                                  .add("\n")
                                  .addStatement(printTime("Group-by intermediate view"))
                                  .add("/* $L view $L */\n", isConstraint ? "Constraint" : "Non-constraint",
@@ -263,7 +263,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String viewTupleGenericParameters =
                         generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 viewTupleTypeParameters.put(tableNameStr(viewName), viewTupleGenericParameters);
-                block.addChild(
+                block.addBody(
                     statement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
                                                      viewTupleGenericParameters, tableNameStr(viewName),
                                                      ArrayList.class, intermediateView)
@@ -289,7 +289,7 @@ public class OrToolsSolver implements ISolverBackend {
             final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName,
                         CodeBlock.of("for (final Tuple$L<$L> t: data)", innerTupleSize, headItemsTupleTypeParamters)
             );
-            forBlock.addChild(dataForBlock);
+            forBlock.addBody(dataForBlock);
 
             // (3) Filter if necessary
             final QualifiersByType varQualifiers = new QualifiersByType();
@@ -301,7 +301,7 @@ public class OrToolsSolver implements ISolverBackend {
             final OutputIR.Block nonVarAggregateFiltersBlock = maybeAddNonVarAggregateFilters(viewName,
                                                                                         nonVarQualifiers, groupContext,
                                                                                         context);
-            forBlock.addChild(nonVarAggregateFiltersBlock);
+            forBlock.addBody(nonVarAggregateFiltersBlock);
 
             // If this is not a constraint, we simply add a to a result set
             if (!isConstraint) {
@@ -311,7 +311,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
                                                  .map(e -> exprToStr(e, true, groupContext, context))
                                                  .collect(Collectors.joining(", "));
-                forBlock.addChild(statement("final $1N<$2L> t = new $1N<>($3L)",
+                forBlock.addBody(statement("final $1N<$2L> t = new $1N<>($3L)",
                                             typeSpec, viewTupleGenericParameters, tupleResult));
 
                 // Record field name indices for view
@@ -320,18 +320,18 @@ public class OrToolsSolver implements ISolverBackend {
                 inner.getHead().getSelectExprs().forEach(
                         e -> updateFieldIndex(e, viewName, fieldIndex)
                 );
-                forBlock.addChild(statement("$L.add(t)", tableNameStr(viewName)));
+                forBlock.addBody(statement("$L.add(t)", tableNameStr(viewName)));
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
 
                 final List<CodeBlock> constraintBlocks = addAggregateConstraint(varQualifiers, nonVarQualifiers,
                         new GroupContext(groupByQualifier, intermediateView, viewName), context);
-                constraintBlocks.forEach(forBlock::addChild);
+                constraintBlocks.forEach(forBlock::addBody);
             }
             context.leaveScope();
-            block.addChild(forBlock);
-            block.addChild(printTime("Group-by final view"));
+            block.addBody(forBlock);
+            block.addBody(printTime("Group-by final view"));
             return block;
         }
         return buildInnerComprehension(viewName, comprehension, null, isConstraint, context);
@@ -394,9 +394,9 @@ public class OrToolsSolver implements ISolverBackend {
         final OutputIR.Block nonVarFiltersBlock = maybeAddNonVarFilters(viewName, nonVarQualifiers,
                                                                         isConstraint, context);
 
-        block.addChild(resultSetDeclBlock);
-        block.addChild(forLoopsBlock);
-        forLoopsBlock.addChild(nonVarFiltersBlock);
+        block.addBody(resultSetDeclBlock);
+        block.addBody(forLoopsBlock);
+        forLoopsBlock.addBody(nonVarFiltersBlock);
         if (!isConstraint // for simple constraints, we post constraints in this inner loop itself
            || (groupByQualifier != null) // for aggregate constraints, we populate a
                                          // result set and post constraints elsewhere
@@ -407,10 +407,10 @@ public class OrToolsSolver implements ISolverBackend {
             final OutputIR.Block resultSetAddBlock = addToResultSet(viewName, tupleSize, headItemsStr,
                                                                headItemsListTupleGenericParameters,
                                                                resultSetNameStr, groupByQualifier);
-            forLoopsBlock.addChild(resultSetAddBlock);
+            forLoopsBlock.addBody(resultSetAddBlock);
         } else {
             final List<CodeBlock> addRowConstraintBlock = addRowConstraint(varQualifiers, nonVarQualifiers, context);
-            addRowConstraintBlock.forEach(forLoopsBlock::addChild);
+            addRowConstraintBlock.forEach(forLoopsBlock::addBody);
         }
 
         // Print debugging info
@@ -608,7 +608,7 @@ public class OrToolsSolver implements ISolverBackend {
                                           final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
         // Create a tuple for the result set
-        block.addChild(statement("final Tuple$1L<$2L> t = new Tuple$1L<>(\n    $3L\n    )",
+        block.addBody(statement("final Tuple$1L<$2L> t = new Tuple$1L<>(\n    $3L\n    )",
                                  tupleSize, headItemsListTupleGenericParameters, headItemsStr));
 
         // Update result set
@@ -620,13 +620,13 @@ public class OrToolsSolver implements ISolverBackend {
                     .collect(Collectors.joining(",     \n"));
 
             // Organize the collected tuples from the nested for loops by groupByTuple
-            block.addChild(statement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
+            block.addBody(statement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
                            numberOfGroupByColumns, Objects.requireNonNull(viewGroupByTupleTypeParameters.get(viewName)),
                            groupString));
-            block.addChild(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(t)",
+            block.addBody(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(t)",
                                      viewRecords, ArrayList.class));
         } else {
-            block.addChild(statement("$L.add(t)", viewRecords));
+            block.addBody(statement("$L.add(t)", viewRecords));
         }
         return block;
     }
@@ -1127,7 +1127,7 @@ public class OrToolsSolver implements ISolverBackend {
                     function = "allEqual";
                     break;
                 case INCREASING:
-                    context.currentScope().addChild(statement("o.increasing($L)", listOfProcessedItem));
+                    context.currentScope().addBody(statement("o.increasing($L)", listOfProcessedItem));
                     return apply("model.newConstant(1)", context);
                 case ALL_DIFFERENT:
                 default:
@@ -1346,7 +1346,7 @@ public class OrToolsSolver implements ISolverBackend {
             // If the head contains a function, then this is a scalar subquery
             if (headSelectItemContainsMonoidFunction) {
                 newCtx.enterScope(subQueryBlock);
-                currentBlock.addChild(subQueryBlock);
+                currentBlock.addBody(subQueryBlock);
                 final String ret = apply(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
                 newCtx.leaveScope();
                 return ret;
@@ -1357,7 +1357,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String type = inferType(node.getHead().getSelectExprs().get(0));
                 final String listName =
                         extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
-                currentBlock.addChild(subQueryBlock);
+                currentBlock.addBody(subQueryBlock);
                 newCtx.leaveScope();
                 return apply(listName, subQueryBlock, context);
             }
@@ -1384,7 +1384,7 @@ public class OrToolsSolver implements ISolverBackend {
             // if scalar subquery
             if (headSelectItem instanceof MonoidFunction) {
                 newCtx.enterScope(subQueryBlock);
-                currentBlock.addChild(subQueryBlock);
+                currentBlock.addBody(subQueryBlock);
                 final String ret = apply(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
                 newCtx.leaveScope();
                 return ret;
@@ -1396,7 +1396,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String type = inferType(node.getComprehension().getHead().getSelectExprs().get(0));
                 final String listName =
                         extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
-                currentBlock.addChild(subQueryBlock);
+                currentBlock.addBody(subQueryBlock);
                 newCtx.leaveScope();
                 // Treat as a vector
                 return apply(listName, subQueryBlock, context);
@@ -1460,7 +1460,7 @@ public class OrToolsSolver implements ISolverBackend {
             final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>()",
                     variableType, variableToExtract, ArrayList.class));
             if (wasAdded) {
-                innerBlock.addChild(statement("$L.add($L)", listName, variableToExtract));
+                innerBlock.addBody(statement("$L.add($L)", listName, variableToExtract));
             }
             return listName;
         }

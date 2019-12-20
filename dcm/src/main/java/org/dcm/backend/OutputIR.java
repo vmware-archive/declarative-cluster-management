@@ -70,13 +70,13 @@ class OutputIR {
      */
     class Block extends BlockExpr {
         private final Set<StringBlock> header;
-        private final List<BlockExpr> children;
+        private final List<BlockExpr> body;
         private final Declarations declarations;
         private final List<BlockExpr> insertionOrder = new ArrayList<>();
 
         private Block(final String name) {
             super(name);
-            this.children = new ArrayList<>();
+            this.body = new ArrayList<>();
             this.header = new LinkedHashSet<>();
             this.declarations = new Declarations(name);
         }
@@ -86,13 +86,13 @@ class OutputIR {
             return header.add(b);
         }
 
-        void addChild(final Block child) {
-            children.add(child);
-            insertionOrder.add(child);
+        void addBody(final Block block) {
+            body.add(block);
+            insertionOrder.add(block);
         }
 
-        void addChild(final CodeBlock child) {
-            final StringBlock b = new StringBlock(child);
+        void addBody(final CodeBlock block) {
+            final StringBlock b = new StringBlock(block);
             insertionOrder.add(b);
         }
 
@@ -111,7 +111,7 @@ class OutputIR {
         }
 
         public ForBlock getForLoopByName(final String name) {
-            final List<BlockExpr> loops = children.stream()
+            final List<BlockExpr> loops = body.stream()
                     .filter(e ->  e instanceof OutputIR.ForBlock &&  e.getName().equals(name))
                     .collect(Collectors.toList());
             assert loops.size() == 1 && loops.get(0) instanceof ForBlock;
