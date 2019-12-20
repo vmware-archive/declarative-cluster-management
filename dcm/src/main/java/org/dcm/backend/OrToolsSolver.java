@@ -208,6 +208,15 @@ public class OrToolsSolver implements ISolverBackend {
         return compile(spec);
     }
 
+    /**
+     * Creates and populates a block, representing a view. This corresponds to one or more sets of nested
+     * for loops and result sets.
+     * @param viewName name of the view to be created
+     * @param comprehension comprehension corresponding to `viewName`, to be translated into a block of code
+     * @param isConstraint whether the comprehension represents a constraint
+     * @param context the translation context for the comprehension
+     * @return the block created for the comprehension
+     */
     private OutputIR.Block addView(final String viewName, final MonoidComprehension comprehension,
                                    final boolean isConstraint, final TranslationContext context) {
         if (comprehension instanceof GroupByComprehension) {
@@ -309,7 +318,7 @@ public class OrToolsSolver implements ISolverBackend {
                 // TODO: wrap this block into a helper.
                 final AtomicInteger fieldIndex = new AtomicInteger(0);
                 inner.getHead().getSelectExprs().forEach(
-                        e -> updateFieldIndex(viewName, e, fieldIndex)
+                        e -> updateFieldIndex(e, viewName, fieldIndex)
                 );
                 forBlock.addChild(statement("$L.add(t)", tableNameStr(viewName)));
             }
@@ -410,6 +419,14 @@ public class OrToolsSolver implements ISolverBackend {
         return block;
     }
 
+    /**
+     * Gets the set of columns accessed within the current scope of a comprehension (for example, without entering
+     * sub-queries)
+     *
+     * @param comprehension comprehension to search for columns
+     * @param isConstraint whether the comprehension represents a constraint or not
+     * @return a list of ColumnIdentifiers corresponding to columns within the comprehension
+     */
     private List<ColumnIdentifier> getColumnsAccessed(final MonoidComprehension comprehension,
                                                       final boolean isConstraint) {
         if (isConstraint) {
@@ -446,14 +463,31 @@ public class OrToolsSolver implements ISolverBackend {
         return visitor.getColumnIdentifiers();
     }
 
-    private String convertToFieldAccess(final Expr expr, final String viewName, final AtomicInteger fieldIndex,
+    /**
+     * Translates a field access within a loop into an index in the tuple returned per iteration of the loop
+     *
+     * @param expr The expression to create a field for
+     * @param viewName the view within which this expression is being visited
+     * @param fieldIndexCounter the counter to use for generating field access indices
+     * @param context the translation context
+     * @return A string representing the field being accessed
+     */
+    private String convertToFieldAccess(final Expr expr, final String viewName, final AtomicInteger fieldIndexCounter,
                                         final TranslationContext context) {
         Preconditions.checkArgument(expr instanceof ColumnIdentifier);
-        final String fieldName = updateFieldIndex(viewName, expr, fieldIndex);
+        final String fieldName = updateFieldIndex(expr, viewName, fieldIndexCounter);
         return exprToStr(expr, context) + " /* " + fieldName + " */";
     }
 
-    private String updateFieldIndex(final String viewName, final Expr argument, final AtomicInteger counter) {
+    /**
+     * Updates the tracked index for a field within a loop's result set
+     *
+     * @param argument The expression to create a field for
+     * @param viewName the view within which this expression is being visited
+     * @param fieldIndexCounter the counter to use for generating field access indices
+     * @return A string representing the field being accessed
+     */
+    private String updateFieldIndex(final Expr argument, final String viewName, final AtomicInteger fieldIndexCounter) {
         final String fieldName = argument.getAlias().orElseGet(() -> {
                         if (argument instanceof ColumnIdentifier) {
                             return ((ColumnIdentifier) argument).getField().getName();
@@ -464,10 +498,14 @@ public class OrToolsSolver implements ISolverBackend {
                 )
                 .toUpperCase(Locale.US);
         viewToFieldIndex.computeIfAbsent(viewName.toUpperCase(Locale.US), (k) -> new HashMap<>())
-                        .compute(fieldName, (k, v) -> counter.getAndIncrement());
+                        .compute(fieldName, (k, v) -> fieldIndexCounter.getAndIncrement());
         return fieldName;
     }
 
+    /**
+     * If required, returns a block of code representing maps or lists created to host the result-sets returned
+     * by a view.
+     */
     private OutputIR.Block maybeAddMapOrListForResultSet(final String viewName, final int tupleSize,
                                                          final String headItemsListTupleGenericParameters,
                                                          final String viewRecords,
@@ -496,6 +534,10 @@ public class OrToolsSolver implements ISolverBackend {
         return block;
     }
 
+
+    /**
+     * Returns a block of code representing nested for loops for a view
+     */
     private OutputIR.Block addNestedForLoops(final String viewName,
                                              final QualifiersByType nonVarQualifiers) {
         final List<CodeBlock> loopStatements = new ArrayList<>();
@@ -508,6 +550,10 @@ public class OrToolsSolver implements ISolverBackend {
         return outputIR.newForBlock(viewName, loopStatements);
     }
 
+    /**
+     * Returns a block of code representing an if statement that evaluates constant predicates to determine
+     * whether a result-set or constraint applies to a row within a view
+     */
     private OutputIR.Block maybeAddNonVarFilters(final String viewName, final QualifiersByType nonVarQualifiers,
                                                  final boolean isConstraint, final TranslationContext context) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
@@ -531,6 +577,10 @@ public class OrToolsSolver implements ISolverBackend {
         return outputIR.newBlock(viewName + "nonVarFilter");
     }
 
+    /**
+     * Returns a block of code representing an if statement that evaluates constant aggregate predicates to determine
+     * whether a result-set or constraint applies to a row within a view
+     */
     private OutputIR.Block maybeAddNonVarAggregateFilters(final String viewName,
                                                           final QualifiersByType nonVarQualifiers,
                                                           final GroupContext groupContext,
@@ -547,6 +597,12 @@ public class OrToolsSolver implements ISolverBackend {
         return outputIR.newBlock(viewName + "nonVarFilter");
     }
 
+    /**
+     * Returns a block of code representing an addition of a tuple to a result-set.
+     *
+     * TODO: this overlaps with newly added logic to extract vectors from tuples. They currently perform redundant
+     *  work that results in additional lists and passes over the data being created.
+     */
     private OutputIR.Block addToResultSet(final String viewName, final int tupleSize,
                                           final String headItemsStr, final String headItemsListTupleGenericParameters,
                                           final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
@@ -575,6 +631,9 @@ public class OrToolsSolver implements ISolverBackend {
         return block;
     }
 
+    /**
+     * Returns a list of code blocks representing constraints posted against rows within a view
+     */
     private List<CodeBlock> addRowConstraint(final QualifiersByType varQualifiers,
                                   final QualifiersByType nonVarQualifiers, final TranslationContext context) {
         final String joinPredicateStr;
@@ -596,6 +655,9 @@ public class OrToolsSolver implements ISolverBackend {
         return results;
     }
 
+    /**
+     * Returns a list of code blocks representing aggregate constraints posted against rows within a view
+     */
     private List<CodeBlock> addAggregateConstraint(final QualifiersByType varQualifiers,
                                         final QualifiersByType nonVarQualifiers, final GroupContext groupContext,
                                         final TranslationContext context) {
@@ -607,6 +669,9 @@ public class OrToolsSolver implements ISolverBackend {
         return results;
     }
 
+    /**
+     * Creates a string representing a declared constraint
+     */
     private CodeBlock topLevelConstraint(final Expr expr, final String joinPredicateStr,
                                     @Nullable final GroupContext groupContext, final TranslationContext context) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
@@ -775,6 +840,9 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
+    /**
+     * Generates the initial statements within the generated solve() block
+     */
     private void addInitializer(final MethodSpec.Builder output) {
         // ? extends Record
         final WildcardTypeName recordT = WildcardTypeName.subtypeOf(Record.class);
@@ -795,6 +863,9 @@ public class OrToolsSolver implements ISolverBackend {
                .addCode("\n");
     }
 
+    /**
+     * Generates the statements that create and configure the solver, before solving the created model
+     */
     private void addSolvePhase(final MethodSpec.Builder output, final IRContext context) {
         output.addCode("\n")
                .addComment("Start solving")
@@ -986,6 +1057,9 @@ public class OrToolsSolver implements ISolverBackend {
         Preconditions.checkArgument(var.tableRowGenerators.isEmpty());
     }
 
+    /**
+     * The main logic to parse a comprehension and translate it into a set of intermediate variables and expressions.
+     */
     private class ExprToStrVisitor extends MonoidVisitor<String, TranslationContext> {
         private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
@@ -1391,6 +1465,25 @@ public class OrToolsSolver implements ISolverBackend {
             return listName;
         }
 
+        /**
+         * A sum of an expression of the form (X * Y), where X is a variable and Y is a constant, is best
+         * expressed as a scalar product which takes a list of variables, and a corresponding list of coefficients.
+         * This is common in bin-packing problems where a list of variables corresponding to whether a task is
+         * assigned to a bin, is weighted by the demands of each task, and the resulting weighted sum of variables
+         * is used in capacity constraints.
+         *
+         * This optimization saves the CP-SAT solver a lot of effort in the pre-solving and solving phases,
+         * leading to signficant performance improvements.
+         *
+         * If we cannot perform this optimization, we revert to computing a sum just like any other function.
+         * See visitMonoidFunction().
+         *
+         * @param node the argument of a sum() function
+         * @param outerBlock the block within which the sum is being computed
+         * @param forLoop the for loop block within which the arguments for the sum are extracted
+         * @param context the current translation context
+         * @return A variable that yields the result of the sum
+         */
         private String maybeOptimizeSumIntoScalarProduct(final Expr node, final OutputIR.Block outerBlock,
                                                          final OutputIR.Block forLoop,
                                                          final TranslationContext context) {
@@ -1401,6 +1494,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final Expr right = operation.getRight();
                 final String leftType = inferType(left);
                 final String rightType = inferType(right);
+                // TODO: The multiply may not necessarily be the top level operation.
                 if (op.equals(BinaryOperatorPredicate.Operator.MULTIPLY)) {
                     if (leftType.equals("IntVar") && !rightType.equals("IntVar")) {
                         return createTermsForScalarProduct(left, right, context, outerBlock, forLoop, rightType);
@@ -1421,6 +1515,10 @@ public class OrToolsSolver implements ISolverBackend {
             return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();
         }
 
+        /**
+         * Given two expressions representing a variable and coefficients, generate a scalar product term. To do so,
+         * we extract the necessary lists from the for loop where these variables and coefficients are collected.
+         */
         private String createTermsForScalarProduct(final Expr variables, final Expr coefficients,
                                                    final TranslationContext context, final OutputIR.Block outerBlock,
                                                    final OutputIR.Block forLoop,
