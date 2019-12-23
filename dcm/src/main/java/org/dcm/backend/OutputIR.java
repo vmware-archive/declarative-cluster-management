@@ -38,11 +38,19 @@ class OutputIR {
     }
 
     ForBlock newForBlock(final String name, final CodeBlock block) {
-        return new ForBlock(name, block);
+        return new ForBlock(name, block, "");
+    }
+
+    ForBlock newForBlock(final String name, final CodeBlock block, final String size) {
+        return new ForBlock(name, block, size);
     }
 
     ForBlock newForBlock(final String name, final List<CodeBlock> block) {
-        return new ForBlock(name, block);
+        return new ForBlock(name, block, "");
+    }
+
+    ForBlock newForBlock(final String name, final List<CodeBlock> block, final String size) {
+        return new ForBlock(name, block, size);
     }
 
     IfBlock newIfBlock(final String name, final String predicate) {
@@ -136,15 +144,22 @@ class OutputIR {
      */
     class ForBlock extends Block {
         private final List<CodeBlock> loopExpr;
+        private final String size;
 
-        private ForBlock(final String name, final CodeBlock loopExpr) {
+        private ForBlock(final String name, final CodeBlock loopExpr, final String size) {
             super(name);
             this.loopExpr = List.of(loopExpr);
+            this.size = size;
         }
 
-        private ForBlock(final String name, final List<CodeBlock> loopExpr) {
+        private ForBlock(final String name, final List<CodeBlock> loopExpr, final String size) {
             super(name);
             this.loopExpr = loopExpr;
+            this.size = size;
+        }
+
+        public String getSize() {
+            return size;
         }
 
         @Override
@@ -230,7 +245,7 @@ class OutputIR {
 
         @Override
         public String toString() {
-            return CodeBlock.builder().addStatement("var $L = $L", varName, expr).build().toString();
+            return CodeBlock.builder().addStatement("final var $L = $L", varName, expr).build().toString();
         }
     }
 

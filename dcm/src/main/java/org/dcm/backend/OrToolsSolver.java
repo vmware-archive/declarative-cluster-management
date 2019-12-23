@@ -287,7 +287,8 @@ public class OrToolsSolver implements ISolverBackend {
             );
 
             final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName,
-                        CodeBlock.of("for (final Tuple$L<$L> t: data)", innerTupleSize, headItemsTupleTypeParamters)
+                        CodeBlock.of("for (final Tuple$L<$L> t: data)", innerTupleSize, headItemsTupleTypeParamters),
+                        "data.size()"
             );
             forBlock.addBody(dataForBlock);
 
@@ -1457,8 +1458,12 @@ public class OrToolsSolver implements ISolverBackend {
         private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
                                            final OutputIR.Block innerBlock, final String variableType) {
             final String listName = "listOf" + variableToExtract;
-            final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>()",
-                    variableType, variableToExtract, ArrayList.class));
+            // For computing aggregates, the list being scanned is always named "data", and
+            // those loop blocks have a valid size. Use this for pre-allocating lists.
+            final String maybeGuessSize = innerBlock instanceof OutputIR.ForBlock ?
+                                        ((OutputIR.ForBlock) innerBlock).getSize() : "";
+            final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>($L)",
+                    variableType, variableToExtract, ArrayList.class, maybeGuessSize));
             if (wasAdded) {
                 innerBlock.addBody(statement("$L.add($L)", listName, variableToExtract));
             }
