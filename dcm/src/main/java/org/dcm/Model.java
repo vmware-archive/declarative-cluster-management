@@ -57,7 +57,7 @@ public class Model {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
     private static final String CURRENT_SCHEMA = "CURR";
     private static final SqlParser PARSER = new SqlParser();
-    private final ParsingOptions options = new ParsingOptions();
+    private static final ParsingOptions OPTIONS = new ParsingOptions();
     private final DSLContext dbCtx;
     private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
@@ -68,19 +68,19 @@ public class Model {
 
 
     @SuppressWarnings("unused")
-    private Model(final DSLContext dbCtx, final ISolverBackend backend,
-                  final List<Table<?>> tables, final List<String> views,
-                  final Conf conf) {
+    private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
+                  final List<String> constraints) {
+        assert !tables.isEmpty();
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
         this.backend = backend;
-        final List<CreateView> viewsInPolicy = views.stream().map(
-                view -> {
+        final List<CreateView> constraintViews = constraints.stream().map(
+                constraint -> {
                     try {
-                        return (CreateView) PARSER.createStatement(view, options);
+                        return (CreateView) PARSER.createStatement(constraint, OPTIONS);
                     } catch (final ParsingException e) {
-                        LOG.error("Could not parse view: {}", view, e);
+                        LOG.error("Could not parse view: {}", constraint, e);
                         throw e;
                     }
                 }
@@ -92,7 +92,7 @@ public class Model {
          */
         final Set<String> createdViewNames = new HashSet<>();
         if (backend.needsGroupTables()) {
-            final List<CreateView> groupByViewsToCreate = viewsInPolicy.stream().map(view -> {
+            final List<CreateView> groupByViewsToCreate = constraintViews.stream().map(view -> {
                 final ExtractGroupTable groupTable = new ExtractGroupTable();
                 return groupTable.process(view);
             }).filter(Optional::isPresent)
@@ -135,108 +135,40 @@ public class Model {
         }
         irContext = new IRContext(irTables);
         compiler = new ModelCompiler(irContext);
-        compiler.compile(viewsInPolicy, backend);
+        compiler.compile(constraintViews, backend);
     }
 
 
     /**
-     * Builds a Minizinc model out of dslContext
+     * Builds a model out of dslContext, using the Minizinc solver as a backend
      *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
+     * @param dslContext JOOQ DSLContext to use to find tables representing the model.
+     * @param constraints The hard and soft constraints, with one view per string
      * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
      * @return An initialized Model instance with a populated modelFile
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> views,
+    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> constraints,
                                                 final File modelFile, final File dataFile) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, tables, views, modelFile, dataFile);
+        final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
+        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, new Conf()), tables, constraints);
     }
 
     /**
-     * Builds a Minizinc model out of dslContext
+     * Builds a model out of dslContext with the supplied solver backend.
      *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @param conf configuration object
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> views,
-                                                final File modelFile, final File dataFile, final Conf conf) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, tables, views, modelFile, dataFile, conf);
-    }
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param tables A set of tables for which the Minzinc model will be generated
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
-                                                final List<String> views, final File modelFile,
-                                                final File dataFile) {
-        return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf());
-    }
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param tables A set of tables for which the Minzinc model will be generated
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @param conf configuration object
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
-                                                final List<String> views, final File modelFile,
-                                                final File dataFile, final Conf conf) {
-        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, conf), tables, views, conf);
-    }
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
+     * @param dslContext JOOQ DSLContext to use to find tables representing the model.
      * @param solverBackend A solver implementation. See the ISolverBackend class.
-     * @param tables A set of tables for which the Minzinc model will be generated
-     * @param conf configuration object
+     * @param constraints The hard and soft constraints, with one view per string
      * @return An initialized Model instance with a populated modelFile
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
     public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
-                                                final List<Table<?>> tables, final List<String> views,
-                                                final Conf conf) {
-        return new Model(dslContext, solverBackend, tables, views, conf);
-    }
-
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param solverBackend A solver implementation. See the ISolverBackend class.
-     * @param conf configuration object
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
-                                                final List<String> views, final Conf conf) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, solverBackend, tables, views, conf);
+                                                final List<String> constraints) {
+        final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
+        return new Model(dslContext, solverBackend, tables, constraints);
     }
 
     /**
@@ -244,7 +176,14 @@ public class Model {
      *
      * @return list of all the tables on the CURRENT_SCHEMA
      */
-    private static List<Table<?>> getTablesFromContext(final DSLContext dslContext) {
+    private static List<Table<?>> getTablesFromContext(final DSLContext dslContext, final List<String> constraints) {
+        final Set<String> accessedTableNames = new HashSet<>();
+        constraints.forEach(constraint -> {
+            final CreateView createView = (CreateView) PARSER.createStatement(constraint, OPTIONS);
+            final ExtractAccessedTables visitor = new ExtractAccessedTables(accessedTableNames);
+            visitor.process(createView);
+        });
+
         final Meta dslMeta = dslContext.meta();
         final List<Table<?>> tables = new ArrayList<>();
         for (final Table<?> t : dslMeta.getTables()) {
@@ -252,7 +191,17 @@ public class Model {
             if (!t.getSchema().getName().equals(CURRENT_SCHEMA)) {
                 continue;
             }
-            tables.add(t);
+            // If there are no constraints, access all tables. Else, only access the tables that are referenced
+            // by the constraints.
+            if (constraints.size() == 0 || accessedTableNames.contains(t.getName())) {
+                tables.add(t);
+
+                // Also add tables referenced by foreign keys.
+                // TODO: this might be overly conservative
+                t.getReferences().forEach(
+                    fk -> tables.add(fk.getKey().getTable())
+                );
+            }
         }
         return tables;
     }

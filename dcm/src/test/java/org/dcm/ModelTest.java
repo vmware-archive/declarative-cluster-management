@@ -1870,10 +1870,10 @@ public class ModelTest {
         switch (solverBackend) {
             case MinizincSolver:
                 final MinizincSolver minizincSolver = new MinizincSolver(modelFile, dataFile, new Conf());
-                return Model.buildModel(conn, minizincSolver, views, new Conf());
+                return Model.buildModel(conn, minizincSolver, views);
             case OrToolsSolver:
                 final OrToolsSolver orToolsSolver = new OrToolsSolver();
-                return Model.buildModel(conn, orToolsSolver, views, new Conf());
+                return Model.buildModel(conn, orToolsSolver, views);
             default:
                 throw new IllegalArgumentException(solverBackend.toString());
         }

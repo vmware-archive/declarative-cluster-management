@@ -196,6 +196,14 @@ class Policies {
         return from(ALL_POLICIES);
     }
 
+    static List<String> getDefaultPoliciesWithPodsToAssignReplaced(final String podsToAssignReplacement) {
+        return ALL_POLICIES.stream()
+                    .map(policy -> policy.views)
+                    .flatMap(Collection::stream)
+                    .map(view -> view.replaceAll("pods_to_assign", podsToAssignReplacement))
+                    .collect(Collectors.toList());
+    }
+
     static List<String> from(final Policy policy) {
         return from(Collections.singletonList(policy));
     }

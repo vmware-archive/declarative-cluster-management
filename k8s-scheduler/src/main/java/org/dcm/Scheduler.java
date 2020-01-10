@@ -13,7 +13,6 @@ import com.codahale.metrics.Timer;
 import com.github.davidmoten.rx2.flowable.Transformers;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
-import com.google.common.collect.Lists;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.reactivex.Flowable;
@@ -30,7 +29,6 @@ import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.SQLDialect;
-import org.jooq.Table;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +39,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -77,28 +76,20 @@ public final class Scheduler {
     private final Timer solveTimes = metrics.timer(name(Scheduler.class, "solveTimes"));
     private final Object freezeUpdates = new Object();
     @Nullable private Disposable subscription;
-    private final List<Table<?>> relevantTables = Lists.newArrayList(Tables.PODS_TO_ASSIGN,
-                                                                     Tables.POD_NODE_SELECTOR_MATCHES,
-                                                                     Tables.ALLOWED_NODES,
-                                                                     Tables.INTER_POD_AFFINITY_MATCHES,
-                                                                     Tables.INTER_POD_ANTI_AFFINITY_MATCHES,
-                                                                     Tables.SPARE_CAPACITY_PER_NODE,
-                                                                     Tables.PODS_THAT_TOLERATE_NODE_TAINTS,
-                                                                     Tables.NODES_THAT_HAVE_TOLERATIONS);
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
-                Charset.forName("UTF8")))) {
+                StandardCharsets.UTF_8))) {
             final String gitProperties = gitPropertiesFile.lines().collect(Collectors.joining(" "));
             LOG.info("Starting DCM Kubernetes scheduler. Build info: {}", gitProperties);
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
         this.conn = conn;
-        this.model = createDcmModel(conn, solverToUse, policies, relevantTables);
-        LOG.info("Initialized scheduler:: model:{} relevantTables:{}", model, relevantTables);
+        this.model = createDcmModel(conn, solverToUse, policies);
+        LOG.info("Initialized scheduler:: model:{}", model);
     }
 
     void startScheduler(final Flowable<PodEvent> eventStream, final IPodToNodeBinder binder, final int batchCount,
@@ -184,17 +175,16 @@ public final class Scheduler {
     /**
      * Instantiates a DCM model based on the configured policies.
      */
-    private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies,
-                                 final List<Table<?>> tables) {
+    private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies) {
         switch (solverToUse) {
             case "MNZ-CHUFFED":
                 final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
                 final File dataFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_data.dzn");
                 final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
-                return Model.buildModel(conn, solver, tables, policies, new Conf());
+                return Model.buildModel(conn, solver, policies);
             case "ORTOOLS":
                 final OrToolsSolver orToolsSolver = new OrToolsSolver();
-                return Model.buildModel(conn, orToolsSolver, tables, policies, new Conf());
+                return Model.buildModel(conn, orToolsSolver, policies);
             default:
                 throw new IllegalArgumentException(solverToUse);
         }
