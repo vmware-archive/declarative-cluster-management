@@ -38,7 +38,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -199,7 +198,7 @@ public final class Scheduler {
         properties.setProperty("foreign_keys", "true");
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/scheduler_tables.sql");
         try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
-                Charset.forName("UTF8")))) {
+                                                                                    StandardCharsets.UTF_8))) {
             // Create a fresh database
             final String connectionURL = "jdbc:h2:mem:;create=true";
             final Connection conn = DriverManager.getConnection(connectionURL, properties);

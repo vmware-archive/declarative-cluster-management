@@ -61,7 +61,7 @@ public class Model {
     private final DSLContext dbCtx;
     private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
-    private final Multimap<Table, Constraint> jooqTableConstraintMap;
+    private final Multimap<Table<?>, Constraint> jooqTableConstraintMap;
     private final ModelCompiler compiler;
     private IRContext irContext;
     private final ISolverBackend backend;
@@ -129,7 +129,7 @@ public class Model {
 
             // remove fk constraints
             final Table<? extends Record> table = entry.getKey();
-            for (final ForeignKey fk : table.getReferences()) {
+            for (final ForeignKey<? extends Record, ?> fk : table.getReferences()) {
                 jooqTableConstraintMap.put(table, fk.constraint());
             }
         }
@@ -326,9 +326,9 @@ public class Model {
     /**
      * Restore previously removed constraints
      */
-    private void restoreConstraints(final Multimap<Table, Constraint> constraints) {
-        for (final Map.Entry<Table, Constraint> entry : constraints.entries()) {
-            final Table table = entry.getKey();
+    private void restoreConstraints(final Multimap<Table<?>, Constraint> constraints) {
+        for (final Map.Entry<Table<?>, Constraint> entry : constraints.entries()) {
+            final Table<?> table = entry.getKey();
             final Constraint constraint = entry.getValue();
             LOG.info("Restoring constraint: {} on table: {}", constraint, table);
             dbCtx.alterTable(table).add(constraint).execute();
@@ -337,11 +337,10 @@ public class Model {
 
     /**
      * Removes existing foreign key constraints
-     * @return Returns the removed constraints per table
      */
-    private void removeConstraints(final Multimap<Table, Constraint> constraints) {
-        for (final Map.Entry<Table, Constraint> entry : constraints.entries()) {
-            final Table table = entry.getKey();
+    private void removeConstraints(final Multimap<Table<?>, Constraint> constraints) {
+        for (final Map.Entry<Table<?>, Constraint> entry : constraints.entries()) {
+            final Table<?> table = entry.getKey();
             final Constraint constraint = entry.getValue();
             LOG.info("Removing constraint: {} on table: {}", constraint, table);
             dbCtx.alterTable(table).drop(constraint).execute();
