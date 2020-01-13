@@ -13,6 +13,7 @@ import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
+import com.google.common.io.Files;
 import org.dcm.backend.ISolverBackend;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.compiler.ModelCompiler;
@@ -138,6 +139,22 @@ public class Model {
         compiler.compile(constraintViews, backend);
     }
 
+    /**
+     * Builds a model out of dslContext, using the Minizinc solver as a backend.
+     *
+     * @param dslContext JOOQ DSLContext to use to find tables representing the model.
+     * @param constraints The hard and soft constraints, with one view per string
+     * @return An initialized Model instance
+     */
+    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
+    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> constraints) {
+        final File tempDir = Files.createTempDir();
+        final File modelFile = new File(tempDir.getPath() + "/model.mzn");
+        final File dataFile = new File(tempDir.getPath() + "/data.dzn");
+        final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
+        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, new Conf()), tables, constraints);
+    }
+
 
     /**
      * Builds a model out of dslContext, using the Minizinc solver as a backend
@@ -147,7 +164,7 @@ public class Model {
      * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
-     * @return An initialized Model instance with a populated modelFile
+     * @return An initialized Model instance
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
     public static synchronized Model buildModel(final DSLContext dslContext, final List<String> constraints,
@@ -162,7 +179,7 @@ public class Model {
      * @param dslContext JOOQ DSLContext to use to find tables representing the model.
      * @param solverBackend A solver implementation. See the ISolverBackend class.
      * @param constraints The hard and soft constraints, with one view per string
-     * @return An initialized Model instance with a populated modelFile
+     * @return An initialized Model instance
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
     public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,

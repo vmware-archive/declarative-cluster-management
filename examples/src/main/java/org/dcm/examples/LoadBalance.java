@@ -6,7 +6,6 @@
 package org.dcm.examples;
 
 import com.google.common.base.Splitter;
-import com.google.common.io.Files;
 import org.dcm.Model;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -14,7 +13,6 @@ import org.jooq.Result;
 import org.jooq.SQLDialect;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -48,10 +46,7 @@ class LoadBalance {
 
     LoadBalance(final List<String> constraints) {
         conn = setup();
-        final File tempDir = Files.createTempDir();
-        final File modelFile = new File(tempDir.getPath() + "/load_balance_model.mzn");
-        final File dataFile = new File(tempDir.getPath() + "/load_balance_data.dzn");
-        model = Model.buildModel(conn, constraints, modelFile, dataFile);
+        model = Model.buildModel(conn, constraints);
     }
 
     /**
