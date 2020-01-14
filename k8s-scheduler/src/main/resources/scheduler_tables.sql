@@ -35,7 +35,8 @@ create table pod_info
   has_node_selector_labels boolean not null,
   has_pod_affinity_requirements boolean not null,
   has_pod_anti_affinity_requirements boolean not null,
-  equivalence_class bigint not null
+  equivalence_class bigint not null,
+  qos_class varchar(10) not null
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.
@@ -214,7 +215,8 @@ select
   has_node_selector_labels,
   has_pod_affinity_requirements,
   has_pod_anti_affinity_requirements,
-  equivalence_class
+  equivalence_class,
+  qos_class
 from pod_info
 where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler'
 order by creation_timestamp;

@@ -46,6 +46,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -84,6 +85,69 @@ public class SchedulerTest {
         handler.handle(new PodEvent(PodEvent.Action.DELETED, pod));
         assertFalse(conn.fetchExists(Tables.POD_INFO));
         assertFalse(conn.fetchExists(Tables.POD_LABELS));
+    }
+
+    /*
+     * Tests different QoS configurations using two containers and different requests/limits for each
+     */
+    @ParameterizedTest
+    @MethodSource("testQosConditions")
+    public void testQoS(final List<Integer> cpuRequests, final List<Integer> cpuLimit,
+                        final List<Integer> memoryRequests, final List<Integer> memoryLimit,
+                        final PodEventsToDatabase.QosClass expected) {
+        final DSLContext conn = Scheduler.setupDb();
+        final PodEventsToDatabase handler = new PodEventsToDatabase(conn);
+
+        final Pod pod = newPod("pod1", "Pending", Collections.emptyMap(), Collections.emptyMap());
+        pod.getSpec().setContainers(new ArrayList<>());
+
+        for (int i = 0; i < 2; i++) {
+            final Map<String, Quantity> requests = new HashMap<>();
+            if (i <= cpuRequests.size() - 1) {
+                requests.put("cpu", new Quantity(String.valueOf(cpuRequests.get(i))));
+            }
+            if (i <= memoryRequests.size() - 1) {
+                requests.put("memory", new Quantity(String.valueOf(memoryRequests.get(i))));
+            }
+            requests.put("pods", new Quantity("1"));
+
+            final Map<String, Quantity> limits = new HashMap<>();
+            if (i <= cpuLimit.size() - 1) {
+                limits.put("cpu", new Quantity(String.valueOf(cpuLimit.get(i))));
+            }
+            if (i <= memoryLimit.size() - 1) {
+                limits.put("memory", new Quantity(String.valueOf(memoryLimit.get(i))));
+            }
+            limits.put("pods", new Quantity("1"));
+
+            final Container container = new Container();
+            container.setName("c" + i);
+
+            final ResourceRequirements resourceRequirements = new ResourceRequirements();
+            resourceRequirements.setRequests(requests);
+            resourceRequirements.setLimits(limits);
+            container.setResources(resourceRequirements);
+
+            pod.getSpec().getContainers().add(container);
+        }
+        handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
+
+        final List<String> results = conn.selectFrom(Tables.POD_INFO).fetch(Tables.POD_INFO.QOS_CLASS);
+        assertEquals(1, results.size());
+        assertEquals(expected.toString(), results.get(0));
+    }
+
+    public static Stream<Arguments> testQosConditions() {
+        return Stream.of(
+                Arguments.of(List.of(1, 1), List.of(1, 1), List.of(10, 10), List.of(10, 10),
+                             PodEventsToDatabase.QosClass.Guaranteed),
+                Arguments.of(List.of(2, 1), List.of(5, 1), List.of(10, 10), List.of(10, 10),
+                             PodEventsToDatabase.QosClass.Burstable),
+                Arguments.of(List.of(), List.of(), List.of(10, 10), List.of(10, 10),
+                             PodEventsToDatabase.QosClass.Burstable),
+                Arguments.of(List.of(), List.of(), List.of(), List.of(),
+                             PodEventsToDatabase.QosClass.BestEffort)
+        );
     }
 
     /*

@@ -16,6 +16,7 @@ import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodAffinityTerm;
 import io.fabric8.kubernetes.api.model.PodSpec;
+import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
 import org.dcm.k8s.generated.Tables;
@@ -150,6 +151,8 @@ class PodEventsToDatabase {
         // Compute equivalent class similar to what the default scheduler does
         podInfoRecord.setEquivalenceClass(equivalenceClassHash(pod));
 
+        // QoS classes are defined based on the requests/limits configured for containers in the pod
+        podInfoRecord.setQosClass(getQosClass(resourceRequirements).toString());
         podInfoRecord.store(); // upsert
     }
 
@@ -320,5 +323,42 @@ class PodEventsToDatabase {
                             pod.getSpec().getNodeSelector(),
                             pod.getSpec().getTolerations(),
                             pod.getSpec().getVolumes());
+    }
+
+    /**
+     * Guaranteed -> requests == limits for all containers
+     * BestEffort -> no requests nor limits for any containers
+     * Burstable -> requests and limits do not match
+     */
+    private QosClass getQosClass(final List<ResourceRequirements> resourceRequirements) {
+        final List<String> supportedResources = List.of("cpu", "memory");
+        boolean isGuaranteed = true;
+        boolean bestEffort = true;
+        for (final ResourceRequirements reqs: resourceRequirements) {
+            for (final String supportedResource: supportedResources) {
+                final Quantity request = reqs.getRequests() == null ? null : reqs.getRequests().get(supportedResource);
+                final Quantity limit = reqs.getLimits() == null ? null : reqs.getLimits().get(supportedResource);
+                if (request != null || limit != null) {
+                    bestEffort = false;
+                }
+                if (request == null || !request.equals(limit)) {
+                    isGuaranteed = false;
+                }
+            }
+        }
+
+        if (bestEffort) {
+            return QosClass.BestEffort;
+        }
+        if (isGuaranteed) {
+            return QosClass.Guaranteed;
+        }
+        return QosClass.Burstable;
+    }
+
+    enum QosClass {
+        Guaranteed,
+        BestEffort,
+        Burstable
     }
 }
