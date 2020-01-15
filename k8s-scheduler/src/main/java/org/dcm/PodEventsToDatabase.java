@@ -139,7 +139,6 @@ class PodEventsToDatabase {
         } else {
             podInfoRecord.setHasPodAntiAffinityRequirements(false);
         }
-
         // We cap the max priority to 100 to prevent overflow issues in the solver
         podInfoRecord.setPriority(Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(),
                 100));

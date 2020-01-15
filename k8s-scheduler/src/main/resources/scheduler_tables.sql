@@ -104,6 +104,14 @@ create table pod_anti_affinity_match_expressions
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
 
+-- Tracks pod disruption budget match expressions
+create table pdb_match_expressions
+(
+  pdb_name varchar(30) not null,
+  min_available integer not null,
+  max_unavailable integer not null,
+  allowed_disruptions integer not null
+);
 
 -- Tracks the set of labels per pod, and indicates if
 -- any of them are also node selector labels

@@ -11,6 +11,8 @@ import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.policy.PodDisruptionBudget;
+import io.fabric8.kubernetes.api.model.policy.PodDisruptionBudgetList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
@@ -33,6 +35,11 @@ class KubernetesStateSync {
         final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
         nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(conn));
+
+        // Pod disruption budget listener
+        final SharedIndexInformer<PodDisruptionBudget> pdbInformer = sharedInformerFactory
+                .sharedIndexInformerFor(PodDisruptionBudget.class, PodDisruptionBudgetList.class, 30000);
+        pdbInformer.addEventHandler(new PdbResourceEventHandler(conn));
 
         // Pod informer
         final SharedIndexInformer<Pod> podInformer = sharedInformerFactory
