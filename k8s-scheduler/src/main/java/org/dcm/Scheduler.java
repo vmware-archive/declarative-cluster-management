@@ -157,6 +157,9 @@ public final class Scheduler {
             );
     }
 
+    /**
+     * Runs one iteration of the initial placement logic for pending pods
+     */
     Result<? extends Record> runOneLoop() {
         final Timer.Context updateDataTimer = updateDataTimes.time();
         synchronized (freezeUpdates) {
