@@ -178,6 +178,8 @@ public final class Scheduler {
      * Runs one iteration of the initial placement logic for pending pods
      */
     Result<? extends Record> runOneLoop() {
+        conn.createOrReplaceView("PODS_TO_ASSIGN")
+                .as("select * from pods_to_assign_no_limit'").execute();
         final Timer.Context updateDataTimer = updateDataTimes.time();
         synchronized (freezeUpdates) {
             initialPlacementModel.updateData();
@@ -195,16 +197,14 @@ public final class Scheduler {
      * Runs one iteration of the initial placement logic for pending pods
      */
     Result<? extends Record> runDescheduler() {
-        final Timer.Context updateDataTimer = updateDataTimes.time();
+        conn.createOrReplaceView("PODS_TO_ASSIGN")
+                .as("select * from pods_to_deschedule").execute();
         synchronized (freezeUpdates) {
             deschedulingModel.updateData();
         }
-        updateDataTimer.stop();
-        final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated =
                 deschedulingModel.solveModelWithoutTableUpdates(Collections.singleton("PODS_TO_ASSIGN"))
                         .get("PODS_TO_ASSIGN");
-        solveTimer.stop();
         return podsToAssignUpdated;
     }
 

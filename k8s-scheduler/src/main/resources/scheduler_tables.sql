@@ -241,6 +241,28 @@ create table batch_size
 create view pods_to_assign as
 select * from pods_to_assign_no_limit limit 100;
 
+create view pods_to_deschedule as
+select
+  pod_name,
+  status,
+  node_name as current_node_name,
+  node_name as controllable__node_name,
+  namespace,
+  cpu_request,
+  memory_request,
+  ephemeral_storage_request,
+  pods_request,
+  owner_name,
+  creation_timestamp,
+  has_node_selector_labels,
+  has_pod_affinity_requirements,
+  has_pod_anti_affinity_requirements,
+  equivalence_class,
+  qos_class
+from pod_info
+where status = 'Running' and schedulerName = 'dcm-scheduler' and namespace != 'kube-system'
+limit 100;
+
 
 -- Pods with port requests
 create view pods_with_port_requests as

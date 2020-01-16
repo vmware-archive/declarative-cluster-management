@@ -207,19 +207,22 @@ class Policies {
      * Descheduling policies
      */
     static Policy deschedulingConstraints() {
-        final String allowPodEvictionsButNotReassignment =  "create view constraint_descheduling as " +
-                                                            "select * " +
-                                                            "from pods_to_assign " +
-                                                            "where controllable__node_name = current_node_name " +
-                                                            "   or controllable__node_name = 'NULL_NODE'";
-
+        final String allowPodEvictionsButNotReassignment = "create view constraint_descheduling as " +
+                                                           "select * " +
+                                                           "from pods_to_assign " +
+                                                           "where controllable__node_name = current_node_name " +
+                                                           "   or controllable__node_name = 'NULL_NODE'";
         final String limitNumberOfEvictedTasks =  "create view constraint_eviction_limit as " +
                                                   "select * " +
                                                   "from pods_to_assign " +
+                                                  "where status = 'Running' " +
                                                   "group by status " +
-                                                  "having sum(controllable__node_name = 'NULL_NODE') < 5";
+                                                  "having sum(controllable__node_name != current_node_name) = 2";
+        final String minimizeMoves = "create view objective_minimize_moves as " +
+                                     "select -sum(current_node_name != controllable__node_name) " +
+                                     "from pods_to_assign";
         return new Policy("DeschedulingConstraints", List.of(allowPodEvictionsButNotReassignment,
-                                                                   limitNumberOfEvictedTasks));
+                limitNumberOfEvictedTasks, minimizeMoves));
     }
 
     static List<String> getInitialPlacementPolicies() {

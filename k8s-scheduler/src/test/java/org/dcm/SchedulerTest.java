@@ -1022,6 +1022,68 @@ public class SchedulerTest {
     }
 
     /*
+     * Test descheduling logic. We test to see whether the initial placement's objective functions
+     * are improved when evicting pods.
+     */
+    @Test
+    public void testDescheduler() {
+        final DSLContext conn = Scheduler.setupDb();
+        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
+        final int numPods = 6;
+        final int numNodes = 5;
+
+        // Add running pods
+        for (int i = 0; i < numPods; i++) {
+            final String podName = "p" + i;
+            final Pod pod;
+
+            final Map<String, Quantity> resourceRequests = new HashMap<>();
+            resourceRequests.put("cpu", new Quantity(String.valueOf(5)));
+            resourceRequests.put("memory", new Quantity(String.valueOf(5)));
+            resourceRequests.put("pods", new Quantity("1"));
+            pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n2"); // assign all nodes to n1 by default
+
+            // Assumes that there is only one container
+            pod.getSpec().getContainers().get(0)
+                    .getResources()
+                    .setRequests(resourceRequests);
+            handler.onAdd(pod);
+        }
+
+        // Add all nodes and one system pod per node
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        for (int i = 0; i < numNodes; i++) {
+            final String nodeName = "n" + i;
+            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(50)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(50)));
+            nodeResourceEventHandler.onAdd(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-" + nodeName;
+            final Pod pod;
+            final String status = "Running";
+            pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName(nodeName);
+            pod.getMetadata().setNamespace("kube-system");
+            handler.onAdd(pod);
+        }
+
+        final List<String> policies = Policies.getInitialPlacementPolicies();
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Result<? extends Record> result = scheduler.runDescheduler();
+        final List<String> nodes = result.stream()
+                .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                .collect(Collectors.toList());
+        System.out.println(result);
+    }
+
+
+    /*
      * This represents a workload where we are slow
      */
     @Test
