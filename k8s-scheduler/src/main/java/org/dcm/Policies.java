@@ -33,11 +33,14 @@ class Policies {
      * that satisfy some predicates corresponding to availability and resource utilization
      */
     static Policy nodePredicates() {
-        final String constraint = "create view constraint_controllable_node_name_domain as " +
+        final String validNodes = "create view constraint_controllable_node_name_domain as " +
                                   "select * from pods_to_assign " +
-                                  "where controllable__node_name in " +
-                                        "(select name from allowed_nodes)";
-        return new Policy("NodePredicates", constraint);
+                                  "where controllable__node_name in (select name from allowed_nodes) " +
+                                  " or controllable__node_name = 'NULL_NODE'";
+        final String softConstraintToMinimizeUnassignedPods =
+                        "create view objective_minimize_nulls as " +
+                        "select -sum(controllable__node_name = 'NULL_NODE') * 100 from pods_to_assign";
+        return new Policy("NodePredicates", List.of(validNodes, softConstraintToMinimizeUnassignedPods));
     }
 
     /**
@@ -53,7 +56,10 @@ class Policies {
                                   "      pods_to_assign.controllable__node_name in " +
                                   "         (select node_name " +
                                   "          from pod_node_selector_matches " +
-                                  "          where pods_to_assign.pod_name = pod_node_selector_matches.pod_name)";
+                                  "          where pods_to_assign.pod_name = pod_node_selector_matches.pod_name)" +
+
+                                  // Else infeasible
+                                  "   or controllable__node_name = 'NULL_NODE'";
         return new Policy("NodeSelectorPredicate", constraint);
     }
 
@@ -85,7 +91,10 @@ class Policies {
             "         (select inter_pod_affinity_matches.node_name " +
             "          from inter_pod_affinity_matches " +
             "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
-            "          and inter_pod_affinity_matches.node_name is not null)"; // running pods
+            "          and inter_pod_affinity_matches.node_name is not null)" + // running pods
+
+            // Else infeasible
+            "   or controllable__node_name = 'NULL_NODE'";
         return new Policy("InterPodAffinity", constraint);
     }
 
@@ -118,7 +127,10 @@ class Policies {
             "         (select inter_pod_affinity_matches.node_name " +
             "          from inter_pod_affinity_matches " +
             "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
-            "          and inter_pod_affinity_matches.node_name is not null)"; // running pods
+            "          and inter_pod_affinity_matches.node_name is not null)" + // running pods
+
+            // Else infeasible
+            "   or controllable__node_name = 'NULL_NODE'";
         return new Policy("InterPodAntiAffinity", constraint);
     }
 

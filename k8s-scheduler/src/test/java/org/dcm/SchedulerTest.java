@@ -61,9 +61,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Tests for the scheduler
@@ -199,7 +197,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
@@ -300,7 +298,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -429,19 +427,22 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
 
+        final Result<? extends Record> results = scheduler.runOneLoop();
+        assertEquals(numPods, results.size());
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
-            // Should be unsat
-            assertThrows(ModelException.class, scheduler::runOneLoop);
-        } else {
-            final Result<? extends Record> results = scheduler.runOneLoop();
-            assertEquals(numPods, results.size());
+            final Set<String> assignedNodes =
+                    results.stream().filter(e -> e.getValue("HAS_NODE_SELECTOR_LABELS", Boolean.class))
+                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                    .collect(Collectors.toSet());
+            assertEquals(1, assignedNodes.size());
+            assertTrue(assignedNodes.contains("NULL_NODE"));
         }
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream testNodeAffinity() {
+    private static Stream<Arguments> testNodeAffinity() {
         final List<NodeSelectorTerm> inTerm = List.of(term(nodeExpr("k1", "In", "l1", "l2")));
         final List<NodeSelectorTerm> existsTerm = List.of(term(nodeExpr("k1", "Exists", "l1", "l2")));
         final List<NodeSelectorTerm> notInTerm = List.of(term(nodeExpr("k1", "NotIn", "l1", "l2")));
@@ -497,9 +498,7 @@ public class SchedulerTest {
     public void testPodToPodAffinityOrAntiAffinity(final String label, final String condition,
                                                    final List<PodAffinityTerm> terms,
                                                    final Map<String, String> podLabelsInput,
-                                                   final boolean conditionToLabelledPods,
-                                                   final boolean conditionToRemainingPods,
-                                                   final boolean cannotBePlacedAnywhere) {
+                                                   final AACheck assertOn) {
         final DSLContext conn = Scheduler.setupDb();
         final int numPods = 4;
         final int numPodsToModify = 3;
@@ -563,52 +562,31 @@ public class SchedulerTest {
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
-        if (cannotBePlacedAnywhere) {
-            assertThrows(ModelException.class, scheduler::runOneLoop);
-        } else {
-            final Result<? extends Record> result = scheduler.runOneLoop();
-            for (final Record record: result) {
-                final String podName = record.getValue("POD_NAME", String.class);
-                final String assignedNode = record.getValue("CONTROLLABLE__NODE_NAME", String.class);
-                final Set<String> nodesAssignedToPodsWithAffinityRequirements = result.stream()
-                        .filter(e -> podsToAssign.contains(e.getValue("POD_NAME", String.class)))
-                        .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
-                        .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                        .collect(Collectors.toSet());
-                final Set<String> nodesAssignedToPodsWithoutAffinityRequirements = result.stream()
-                        .filter(e -> !podsToAssign.contains(e.getValue("POD_NAME", String.class)))
-                        .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
-                        .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                        .collect(Collectors.toSet());
+        final Result<? extends Record> result = scheduler.runOneLoop();
+        for (final Record record: result) {
+            final String podName = record.getValue("POD_NAME", String.class);
+            final String assignedNode = record.getValue("CONTROLLABLE__NODE_NAME", String.class);
+            final List<String> nodesAssignedToPodsWithAffinityRequirements = result.stream()
+                    .filter(e -> podsToAssign.contains(e.getValue("POD_NAME", String.class)))
+                    .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
+                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                    .collect(Collectors.toList());
+            final List<String> nodesAssignedToPodsWithoutAffinityRequirements = result.stream()
+                    .filter(e -> !podsToAssign.contains(e.getValue("POD_NAME", String.class)))
+                    .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
+                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                    .collect(Collectors.toList());
 
-                if (condition.equals("Affinity")) {
-                    // conditionToLabelledPods => affineToLabelledPods
-                    // conditionToRemainingPods => affineToRemainingPods
-                    if (podsToAssign.contains(podName) && conditionToLabelledPods && conditionToRemainingPods) {
-                        assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode) ||
-                                nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                    } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
-                        assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
-                    } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
-                        assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                    }
-                } else if (condition.equals("AntiAffinity")) {
-                    // conditionToLabelledPods => antiAffineToLabelledPods
-                    // conditionToRemainingPods => antiAffineToRemainingPods
-                    if (podsToAssign.contains(podName) && conditionToLabelledPods && conditionToRemainingPods) {
-                        fail();
-                    } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
-                        assertFalse(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
-                    } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
-                        assertFalse(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                    }
-                }
+            if (podsToAssign.contains(podName)) {
+                check(assertOn, nodesAssignedToPodsWithAffinityRequirements,
+                        nodesAssignedToPodsWithoutAffinityRequirements,
+                        assignedNode);
             }
         }
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream testPodAffinity() {
+    private static Stream<Arguments> testPodAffinity() {
         final String topologyKey = "kubernetes.io/hostname";
         final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
                                                        podExpr("k1", "In", "l1", "l2")));
@@ -624,87 +602,131 @@ public class SchedulerTest {
 
                 // --------- Pod Affinity -----------
                 // In
-                argGen("Affinity", inTerm, map("k1", "l1"), true, false, false),
-                argGen("Affinity", inTerm, map("k1", "l2"), true, false, false),
-                argGen("Affinity", inTerm, map("k1", "l3"), false, false, true),
-                argGen("Affinity", inTerm, map("k", "l", "k1", "l1"), true, false, false),
-                argGen("Affinity", inTerm, map("k", "l", "k1", "l2"), true, false, false),
-                argGen("Affinity", inTerm, map("k", "l", "k1", "l3"), false, false, true),
+                argGen("Affinity", inTerm, map("k1", "l1"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", inTerm, map("k1", "l2"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", inTerm, map("k1", "l3"), AACheck.CannotBePlacedAnywhere),
+                argGen("Affinity", inTerm, map("k", "l", "k1", "l1"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", inTerm, map("k", "l", "k1", "l2"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", inTerm, map("k", "l", "k1", "l3"), AACheck.CannotBePlacedAnywhere),
 
                 // Exists
-                argGen("Affinity", existsTerm, map("k1", "l1"), true, false, false),
-                argGen("Affinity", existsTerm, map("k1", "l2"), true, false, false),
-                argGen("Affinity", existsTerm, map("k1", "l3"), true, false, false),
-                argGen("Affinity", existsTerm, map("k2", "l3"), false, false, true),
-                argGen("Affinity", existsTerm, map("k2", "l1"), false, false, true),
-                argGen("Affinity", existsTerm, map("k", "l", "k1", "l1"), true, false, false),
-                argGen("Affinity", existsTerm, map("k", "l", "k1", "l2"), true, false, false),
-                argGen("Affinity", existsTerm, map("k", "l", "k1", "l3"), true, false, false),
-                argGen("Affinity", existsTerm, map("k", "l", "k2", "l1"), false, false, true),
-                argGen("Affinity", existsTerm, map("k", "l", "k2", "l2"), false, false, true),
-                argGen("Affinity", existsTerm, map("k", "l", "k2", "l3"), false, false, true),
+                argGen("Affinity", existsTerm, map("k1", "l1"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", existsTerm, map("k1", "l2"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", existsTerm, map("k1", "l3"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", existsTerm, map("k2", "l3"), AACheck.CannotBePlacedAnywhere),
+                argGen("Affinity", existsTerm, map("k2", "l1"), AACheck.CannotBePlacedAnywhere),
+                argGen("Affinity", existsTerm, map("k", "l", "k1", "l1"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", existsTerm, map("k", "l", "k1", "l2"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", existsTerm, map("k", "l", "k1", "l3"), AACheck.GoToNodesWithAAReqs),
+                argGen("Affinity", existsTerm, map("k", "l", "k2", "l1"), AACheck.CannotBePlacedAnywhere),
+                argGen("Affinity", existsTerm, map("k", "l", "k2", "l2"), AACheck.CannotBePlacedAnywhere),
+                argGen("Affinity", existsTerm, map("k", "l", "k2", "l3"), AACheck.CannotBePlacedAnywhere),
 
                 // NotIn
-                argGen("Affinity", notInTerm, map("k1", "l1"), false, true, false),
-                argGen("Affinity", notInTerm, map("k1", "l2"), false, true, false),
-                argGen("Affinity", notInTerm, map("k1", "l3"), true, true, false),
-                argGen("Affinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("Affinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("Affinity", notInTerm, map("k", "l", "k1", "l3"), true, true, false),
+                argGen("Affinity", notInTerm, map("k1", "l1"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notInTerm, map("k1", "l2"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notInTerm, map("k1", "l3"), AACheck.CanGoAnywhere),
+                argGen("Affinity", notInTerm, map("k", "l", "k1", "l1"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notInTerm, map("k", "l", "k1", "l2"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notInTerm, map("k", "l", "k1", "l3"), AACheck.CanGoAnywhere),
 
                 // DoesNotExist
-                argGen("Affinity", notExistsTerm, map("k1", "l1"), false, true, false),
-                argGen("Affinity", notExistsTerm, map("k1", "l2"), false, true, false),
-                argGen("Affinity", notExistsTerm, map("k1", "l3"), false, true, false),
-                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false),
+                argGen("Affinity", notExistsTerm, map("k1", "l1"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notExistsTerm, map("k1", "l2"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notExistsTerm, map("k1", "l3"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l1"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l2"), AACheck.GoToNodesWithoutAAReqs),
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), AACheck.GoToNodesWithoutAAReqs),
 
                 // --------- Pod Anti Affinity -----------
                 // In
-                argGen("AntiAffinity", inTerm, map("k1", "l1"), true, false, false),
-                argGen("AntiAffinity", inTerm, map("k1", "l2"), true, false, false),
-                argGen("AntiAffinity", inTerm, map("k1", "l3"), false, false, false),
-                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l1"), true, false, false),
-                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l2"), true, false, false),
-                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l3"), false, false, false),
+                argGen("AntiAffinity", inTerm, map("k1", "l1"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", inTerm, map("k1", "l2"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", inTerm, map("k1", "l3"), AACheck.CanGoAnywhere),
+                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l1"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l2"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l3"), AACheck.CanGoAnywhere),
 
                 // Exists
-                argGen("AntiAffinity", existsTerm, map("k1", "l1"), true, false, false),
-                argGen("AntiAffinity", existsTerm, map("k1", "l2"), true, false, false),
-                argGen("AntiAffinity", existsTerm, map("k1", "l3"), true, false, false),
-                argGen("AntiAffinity", existsTerm, map("k2", "l3"), false, false, false),
-                argGen("AntiAffinity", existsTerm, map("k2", "l1"), false, false, false),
-                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l1"), true, false, false),
-                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l2"), true, false, false),
-                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l3"), true, false, false),
-                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l1"), false, false, false),
-                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l2"), false, false, false),
-                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
+                argGen("AntiAffinity", existsTerm, map("k1", "l1"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", existsTerm, map("k1", "l2"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", existsTerm, map("k1", "l3"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", existsTerm, map("k2", "l3"), AACheck.CanGoAnywhere),
+                argGen("AntiAffinity", existsTerm, map("k2", "l1"), AACheck.CanGoAnywhere),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l1"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l2"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l3"), AACheck.CannotGoToNodesWithAAReqs),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l1"), AACheck.CanGoAnywhere),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l2"), AACheck.CanGoAnywhere),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), AACheck.CanGoAnywhere),
 
                 // NotIn
-                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
+                argGen("AntiAffinity", notInTerm, map("k1", "l1"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notInTerm, map("k1", "l2"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notInTerm, map("k1", "l3"), AACheck.OnePodCannotBePlaced),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), AACheck.OnePodCannotBePlaced),
 
                 // DoesNotExist
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), AACheck.CannotGoToNodesWithoutAAReqs),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), AACheck.CannotGoToNodesWithoutAAReqs)
         );
+    }
+
+    enum AACheck {
+        CanGoAnywhere,
+        GoToNodesWithAAReqs,
+        GoToNodesWithoutAAReqs,
+        CannotGoToNodesWithAAReqs,
+        CannotGoToNodesWithoutAAReqs,
+        CannotBePlacedAnywhere,
+        OnePodCannotBePlaced
+    }
+
+    private static void check(final AACheck condition, final List<String> nodesAssignedToPodsWithAffinityRequirements,
+                              final List<String> nodesAssignedToPodsWithoutAffinityRequirements,
+                              final String assignedNode) {
+        final boolean b1 = nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode);
+        final boolean b2 = nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode);
+        switch (condition) {
+            case CanGoAnywhere:
+                assertTrue(b1 || b2);
+                break;
+            case GoToNodesWithAAReqs:
+                assertTrue(b1);
+                break;
+            case GoToNodesWithoutAAReqs:
+                assertTrue(b2);
+                break;
+            case CannotGoToNodesWithAAReqs:
+                assertFalse(b1);
+                break;
+            case CannotGoToNodesWithoutAAReqs:
+                assertFalse(b2);
+                break;
+            case CannotBePlacedAnywhere:
+                assertEquals(1, Set.of(nodesAssignedToPodsWithAffinityRequirements).size());
+                assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains("NULL_NODE"));
+                assertFalse(b2);
+                break;
+            case OnePodCannotBePlaced:
+                assertTrue(assignedNode.equals("NULL_NODE") ||
+                           nodesAssignedToPodsWithAffinityRequirements.contains("NULL_NODE") ||
+                           nodesAssignedToPodsWithoutAffinityRequirements.contains("NULL_NODE"));
+                break;
+            default:
+                throw new IllegalArgumentException(condition.toString());
+        }
     }
 
     private static Arguments argGen(final String scenario, final List<PodAffinityTerm> terms,
                                     final Map<String, String> podLabelsInput,
-                                    final boolean shouldBeAffineToLabelledPods,
-                                    final boolean shouldBeAffineToRemainingPods,
-                                    final boolean cannotBePlacedAnywhere) {
+                                    final AACheck type) {
         final String termsString = terms.stream().map(PodAffinityTerm::getLabelSelector)
                 .map(expr -> expr.getMatchExpressions().stream()
                         .map(e -> String.format("%s %s %s", e.getKey(), e.getOperator(), e.getValues()))
@@ -712,17 +734,17 @@ public class SchedulerTest {
                 ).collect(Collectors.joining(" or "));
         final String effect = scenario.equals("AntiAffinity") ? "anti-affine" : "affine";
         final String outcomeString =  List.of(
-                shouldBeAffineToLabelledPods ? String.format("should be %s to themselves", effect) : "",
-                shouldBeAffineToRemainingPods ? String.format("should be %s to remaining pods", effect) : "",
-                cannotBePlacedAnywhere ? "cannot be placed anywhere" : "",
-                !shouldBeAffineToLabelledPods && !shouldBeAffineToRemainingPods && !cannotBePlacedAnywhere
-                     ? "can be placed anywhere" : "")
+                type.equals(AACheck.GoToNodesWithAAReqs) ?
+                        String.format("should be %s to themselves", effect) : "",
+                type.equals(AACheck.GoToNodesWithoutAAReqs) ?
+                        String.format("should be %s to remaining pods", effect) : "",
+                type.equals(AACheck.CannotBePlacedAnywhere)  ? "cannot be placed anywhere" : "",
+                type.equals(AACheck.CanGoAnywhere) ? "can be placed anywhere" : "")
                 .stream().filter(e -> e.length() > 0)
                 .collect(Collectors.joining(" and "));
         final String label = String.format("%s: pods with term {%s} and labels %s, %s", scenario, termsString,
                 podLabelsInput, outcomeString);
-        return Arguments.of(label, scenario, terms, podLabelsInput, shouldBeAffineToLabelledPods,
-                            shouldBeAffineToRemainingPods, cannotBePlacedAnywhere);
+        return Arguments.of(label, scenario, terms, podLabelsInput, type);
     }
 
     /*
@@ -734,7 +756,7 @@ public class SchedulerTest {
                                   final List<Integer> memoryRequests, final List<Integer> nodeCpuCapacities,
                                   final List<Integer> nodeMemoryCapacities,
                                   final boolean useHardConstraint, final boolean useSoftConstraint,
-                                  final Predicate<List<String>> assertOn, final boolean feasible) {
+                                  final Predicate<List<String>> assertOn) {
         assertEquals(cpuRequests.size(), memoryRequests.size());
         assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
         final DSLContext conn = Scheduler.setupDb();
@@ -784,25 +806,24 @@ public class SchedulerTest {
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
-        if (feasible) {
-            final Result<? extends Record> result = scheduler.runOneLoop();
-            assertEquals(numPods, result.size());
-            final List<String> nodes = result.stream()
-                                            .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                                            .collect(Collectors.toList());
-            System.out.println(nodes);
-            assertTrue(assertOn.test(nodes));
-        } else {
-            assertThrows(ModelException.class, scheduler::runOneLoop);
-        }
+        final Result<? extends Record> result = scheduler.runOneLoop();
+        assertEquals(numPods, result.size());
+        final List<String> nodes = result.stream()
+                                        .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                                        .collect(Collectors.toList());
+        assertTrue(assertOn.test(nodes));
     }
 
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream spareCapacityValues() {
+    private static Stream<Arguments> spareCapacityValues() {
         final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
         final Predicate<List<String>> n2MustNotBeAssignedNewPods = nodes -> !nodes.contains("n2");
         final Predicate<List<String>> onlyN3MustBeAssignedNewPods = nodes -> Set.of("n3").equals(Set.copyOf(nodes));
+        final Predicate<List<String>> onePodPerNodeWithP1Null = nodes -> nodes.size() == Set.copyOf(nodes).size()
+                                                                  && nodes.stream().filter(e -> e.equals("NULL_NODE"))
+                                                                          .count() == 1
+                                                                  && nodes.get(1).equals("NULL_NODE");
         return Stream.of(
                 Arguments.of("One pod per node",
                              List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
@@ -812,7 +833,7 @@ public class SchedulerTest {
                 Arguments.of("p1 cannot be placed",
                         List.of(10, 11, 10, 10, 10), List.of(10, 10, 10, 10, 10),
                         List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
-                        onePodPerNode, false),
+                        onePodPerNodeWithP1Null, false),
 
                 Arguments.of("n2 does not have sufficient CPU capacity and should not host any new pods",
                         List.of(5, 5, 10, 10, 10), List.of(10, 10, 10, 10, 10),
@@ -834,8 +855,7 @@ public class SchedulerTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("testTaintsAndTolerationsValues")
     public void testTaintsAndTolerations(final String displayName, final List<List<Toleration>> tolerations,
-                                         final List<List<Taint>> taints, final Predicate<List<String>> assertOn,
-                                         final boolean feasible) {
+                                         final List<List<Taint>> taints, final Predicate<List<String>> assertOn) {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
@@ -872,23 +892,19 @@ public class SchedulerTest {
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
 
-        if (feasible) {
-            final Result<? extends Record> result = scheduler.runOneLoop();
-            assertEquals(numPods, result.size());
-            final List<String> nodes = result.stream()
-                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                    .collect(Collectors.toList());
-            assertTrue(assertOn.test(nodes));
-        } else {
-            assertThrows(ModelException.class, scheduler::runOneLoop);
-        }
+        final Result<? extends Record> result = scheduler.runOneLoop();
+        assertEquals(numPods, result.size());
+        final List<String> nodes = result.stream()
+                .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                .collect(Collectors.toList());
+        assertTrue(assertOn.test(nodes));
     }
 
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream testTaintsAndTolerationsValues() {
+    private static Stream<Arguments> testTaintsAndTolerationsValues() {
         final Toleration tolerateK1Equals = new Toleration();
         tolerateK1Equals.setKey("k1");
         tolerateK1Equals.setOperator("Equal");
@@ -939,67 +955,69 @@ public class SchedulerTest {
                 nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n0");
         final Predicate<List<String>> p0goesToN1andP1GoesToN1 =
                 nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n1");
+        final Predicate<List<String>> p0IsNull =
+                nodes -> nodes.size() == 1 && nodes.get(0).equals("NULL_NODE");
         return Stream.of(
                 Arguments.of("No toleration => cannot match taint k1:v1",
                         List.of(List.of()), List.of(List.of(taintK1)),
-                        null, false),
+                        p0IsNull),
 
                 Arguments.of("toleration k1=v1 matches taint k1:v1",
                              List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1)),
-                             nodeGoesToN0, true),
+                             nodeGoesToN0),
 
                 Arguments.of("toleration exists(k1) matches taint k1:v1",
                         List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK2V4)),
-                        nodeGoesToN0, true),
+                        nodeGoesToN0),
 
                 Arguments.of("toleration k1=v1 does not match taint k1:v2",
                         List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1V2)),
-                        null, false),
+                        p0IsNull),
 
                 Arguments.of("toleration exists(k1) does not match taint k1:v1",
                         List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK1)),
-                        null, false),
+                        p0IsNull),
 
                 Arguments.of("toleration k1=v1 does not match taints [k1:v1, k2:v4]",
                         List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1, taintK2V4)),
-                        null, false),
+                        p0IsNull),
 
                 Arguments.of("toleration [k1=v1, exists(k2)] matches taints [k1:v1, k1:v2]",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists)), List.of(List.of(taintK1, taintK2V4)),
-                        nodeGoesToN0, true),
+                        nodeGoesToN0),
 
                 Arguments.of("toleration [k1=v1, exists(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists)),
                         List.of(List.of(taintK1, taintK1V2, taintK2V4)),
-                        null, false),
+                        p0IsNull),
 
                 Arguments.of("toleration [exists(k1), exists(k2)] matches taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Exists, tolerateK2Exists)),
                         List.of(List.of(taintK1, taintK1V2, taintK2V4)),
-                        nodeGoesToN0, true),
+                        nodeGoesToN0),
 
                 Arguments.of("toleration [exists(k1), exists_noexec(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)),
                         List.of(List.of(taintK1, taintK1V2, taintK2V4)),
-                        null, false),
+                        p0IsNull),
 
                 Arguments.of("toleration [exists(k1), exists_noexec(k2)] matches taints [k1:v1]",
                         List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)), List.of(List.of(taintK1)),
-                        nodeGoesToN0, true),
+                        nodeGoesToN0),
 
                 Arguments.of("Multi node: p0 should go to n1 and p1 to n0.",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists),   // pod-0
                                 List.of(tolerateK1ExistsNoExecute)),             // pod-1
                         List.of(List.of(taintK1NoExecute),                     // node-0
                                 List.of(taintK1)),                             // node-1
-                        p0goesToN1andP1GoesToN0, true),
+                        p0goesToN1andP1GoesToN0),
 
                 Arguments.of("Multi node: p0 and p1 cannot tolerate n0 so they go to n1",
                         List.of(List.of(),                                       // pod-0
                                 List.of()),                                      // pod-1
                         List.of(List.of(taintK1NullValue, taintK1),            // node-0
                                 List.of()),                                      // node-1
-                        p0goesToN1andP1GoesToN1, true)
+                        p0goesToN1andP1GoesToN1)
         );
     }
 
