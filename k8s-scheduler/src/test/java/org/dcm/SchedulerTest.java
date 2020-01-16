@@ -1079,7 +1079,7 @@ public class SchedulerTest {
         final List<String> nodes = result.stream()
                 .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
                 .collect(Collectors.toList());
-        System.out.println(result);
+        assertEquals(2, nodes.stream().filter(e -> e.equals("NULL_NODE")).count());
     }
 
 
