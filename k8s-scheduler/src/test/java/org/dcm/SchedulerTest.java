@@ -153,8 +153,8 @@ public class SchedulerTest {
      */
     @Test
     public void testNoDuplicatePolicyNames() {
-        final List<String> namesList = Policies.getAllPolicies();
-        final Set<String> namesSet = new HashSet<>(Policies.getAllPolicies());
+        final List<String> namesList = Policies.getInitialPlacementPolicies();
+        final Set<String> namesSet = new HashSet<>(Policies.getInitialPlacementPolicies());
         assertEquals(namesList.size(), namesSet.size());
     }
 
@@ -1028,7 +1028,7 @@ public class SchedulerTest {
     @Disabled
     public void testNoConstraintPods() {
         final DSLContext conn = Scheduler.setupDb();
-        final List<String> policies = Policies.getDefaultPolicies();
+        final List<String> policies = Policies.getInitialPlacementPolicies();
         DebugUtils.dbLoad(conn);
 
         // All pod additions have completed

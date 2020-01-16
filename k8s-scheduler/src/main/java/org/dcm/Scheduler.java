@@ -63,7 +63,8 @@ public final class Scheduler {
 
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
-    private final Model model;
+    private final Model initialPlacementModel;
+    private final Model deschedulingModel;
 
     private final DSLContext conn;
     private final AtomicInteger batchId = new AtomicInteger(0);
@@ -76,7 +77,13 @@ public final class Scheduler {
     private final Object freezeUpdates = new Object();
     @Nullable private Disposable subscription;
 
-    Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
+    Scheduler(final DSLContext conn, final List<String> initialPlacementPolicies, final String solverToUse,
+              final boolean debugMode, final String fznFlags) {
+        this(conn, initialPlacementPolicies, Policies.getDeschedulingPolicies(), solverToUse, debugMode, fznFlags);
+    }
+
+    Scheduler(final DSLContext conn, final List<String> initialPlacementPolicies,
+              final List<String> deschedulingPolicies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
@@ -87,8 +94,9 @@ public final class Scheduler {
             throw new RuntimeException(e);
         }
         this.conn = conn;
-        this.model = createDcmModel(conn, solverToUse, policies);
-        LOG.info("Initialized scheduler:: model:{}", model);
+        this.initialPlacementModel = createDcmModel(conn, solverToUse, initialPlacementPolicies);
+        this.deschedulingModel = createDcmModel(conn, solverToUse, deschedulingPolicies);
+        LOG.info("Initialized scheduler:: model:{}", initialPlacementModel);
     }
 
     void startScheduler(final Flowable<PodEvent> eventStream, final IPodToNodeBinder binder, final int batchCount,
@@ -172,13 +180,30 @@ public final class Scheduler {
     Result<? extends Record> runOneLoop() {
         final Timer.Context updateDataTimer = updateDataTimes.time();
         synchronized (freezeUpdates) {
-            model.updateData();
+            initialPlacementModel.updateData();
         }
         updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated =
-                model.solveModelWithoutTableUpdates(Collections.singleton("PODS_TO_ASSIGN"))
+                initialPlacementModel.solveModelWithoutTableUpdates(Collections.singleton("PODS_TO_ASSIGN"))
                      .get("PODS_TO_ASSIGN");
+        solveTimer.stop();
+        return podsToAssignUpdated;
+    }
+
+    /**
+     * Runs one iteration of the initial placement logic for pending pods
+     */
+    Result<? extends Record> runDescheduler() {
+        final Timer.Context updateDataTimer = updateDataTimes.time();
+        synchronized (freezeUpdates) {
+            deschedulingModel.updateData();
+        }
+        updateDataTimer.stop();
+        final Timer.Context solveTimer = solveTimes.time();
+        final Result<? extends Record> podsToAssignUpdated =
+                deschedulingModel.solveModelWithoutTableUpdates(Collections.singleton("PODS_TO_ASSIGN"))
+                        .get("PODS_TO_ASSIGN");
         solveTimer.stop();
         return podsToAssignUpdated;
     }
@@ -251,7 +276,8 @@ public final class Scheduler {
 
         final DSLContext conn = setupDb();
         final Scheduler scheduler = new Scheduler(conn,
-                Policies.getDefaultPolicies(),
+                Policies.getInitialPlacementPolicies(),
+                Policies.getDeschedulingPolicies(),
                 cmd.getOptionValue("solver"),
                 Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
                 cmd.getOptionValue("fzn-flags"));

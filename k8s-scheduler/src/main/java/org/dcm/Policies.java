@@ -16,16 +16,20 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 class Policies {
-    private static final List<Policy> ALL_POLICIES = new ArrayList<>();
+    private static final List<Policy> INITIAL_PLACEMENT_POLICIES = new ArrayList<>();
+    private static final List<Policy> DESCHEDULING_POLICIES = new ArrayList<>();
 
     static {
-        ALL_POLICIES.add(nodePredicates());
-        ALL_POLICIES.add(nodeSelectorPredicate());
-        ALL_POLICIES.add(podAffinityPredicate());
-        ALL_POLICIES.add(podAntiAffinityPredicate());
-        ALL_POLICIES.add(capacityConstraint(true, true));
-        ALL_POLICIES.add(taintsAndTolerations());
-        ALL_POLICIES.add(symmetryBreaking());
+        INITIAL_PLACEMENT_POLICIES.add(nodePredicates());
+        INITIAL_PLACEMENT_POLICIES.add(nodeSelectorPredicate());
+        INITIAL_PLACEMENT_POLICIES.add(podAffinityPredicate());
+        INITIAL_PLACEMENT_POLICIES.add(podAntiAffinityPredicate());
+        INITIAL_PLACEMENT_POLICIES.add(capacityConstraint(true, true));
+        INITIAL_PLACEMENT_POLICIES.add(taintsAndTolerations());
+        INITIAL_PLACEMENT_POLICIES.add(symmetryBreaking());
+
+        DESCHEDULING_POLICIES.addAll(INITIAL_PLACEMENT_POLICIES);
+        DESCHEDULING_POLICIES.add(deschedulingConstraints());
     }
 
     /**
@@ -199,21 +203,31 @@ class Policies {
         return new Policy("NodeTaintsPredicate", constraint);
     }
 
+    /**
+     * Descheduling policies
+     */
+    static Policy deschedulingConstraints() {
+        final String allowPodEvictionsButNotReassignment =  "create view constraint_descheduling as " +
+                                                            "select * " +
+                                                            "from pods_to_assign " +
+                                                            "where controllable__node_name = current_node_name " +
+                                                            "   or controllable__node_name = 'NULL_NODE'";
 
-    static List<String> getAllPolicies() {
-        return from(ALL_POLICIES);
+        final String limitNumberOfEvictedTasks =  "create view constraint_eviction_limit as " +
+                                                  "select * " +
+                                                  "from pods_to_assign " +
+                                                  "group by status " +
+                                                  "having sum(controllable__node_name = 'NULL_NODE') < 5";
+        return new Policy("DeschedulingConstraints", List.of(allowPodEvictionsButNotReassignment,
+                                                                   limitNumberOfEvictedTasks));
     }
 
-    static List<String> getDefaultPolicies() {
-        return from(ALL_POLICIES);
+    static List<String> getInitialPlacementPolicies() {
+        return from(INITIAL_PLACEMENT_POLICIES);
     }
 
-    static List<String> getDefaultPoliciesWithPodsToAssignReplaced(final String podsToAssignReplacement) {
-        return ALL_POLICIES.stream()
-                    .map(policy -> policy.views)
-                    .flatMap(Collection::stream)
-                    .map(view -> view.replaceAll("pods_to_assign", podsToAssignReplacement))
-                    .collect(Collectors.toList());
+    static List<String> getDeschedulingPolicies() {
+        return from(DESCHEDULING_POLICIES);
     }
 
     static List<String> from(final Policy policy) {

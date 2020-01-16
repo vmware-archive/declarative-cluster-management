@@ -212,6 +212,7 @@ create view pods_to_assign_no_limit as
 select
   pod_name,
   status,
+  node_name as current_node_name,
   node_name as controllable__node_name,
   namespace,
   cpu_request,
