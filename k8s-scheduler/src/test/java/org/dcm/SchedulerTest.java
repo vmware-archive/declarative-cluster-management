@@ -204,7 +204,7 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream conditions() {
+    private static Stream<Arguments> conditions() {
         return Stream.of(Arguments.of("OutOfDisk", "True"),
                          Arguments.of("MemoryPressure", "True"),
                          Arguments.of("DiskPressure", "True"),
@@ -319,7 +319,7 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream nodeSelectorConditions() {
+    private static Stream<Arguments> nodeSelectorConditions() {
         return Stream.of(Arguments.of(Set.of("p2", "p4"), Set.of("p6"), Set.of("n4"), Set.of("n5")),
                          Arguments.of(Set.of(), Set.of("p6"), Set.of(), Set.of("n5")));
     }
