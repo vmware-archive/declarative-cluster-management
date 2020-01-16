@@ -128,6 +128,11 @@ public final class Scheduler {
                     podsToAssignUpdated.parallelStream().forEach(r -> {
                         final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
                         final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                        if (nodeName.equals("NULL_NODE")) {
+                            LOG.info("pod:{} could not be assigned a node in this iteration", podName);
+                            return;
+                        }
+
                         LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
                         conn.update(Tables.POD_INFO)
                                 .set(Tables.POD_INFO.NODE_NAME, nodeName)
@@ -144,6 +149,10 @@ public final class Scheduler {
                                 final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
                                 final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
                                 final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                                if (nodeName.equals("NULL_NODE")) {
+                                    LOG.info("pod:{} could not be assigned a node in this iteration", podName);
+                                    return;
+                                }
                                 LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
                                 binder.bindOne(namespace, podName, nodeName);
                             }
