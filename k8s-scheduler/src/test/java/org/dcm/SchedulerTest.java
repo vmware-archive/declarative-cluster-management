@@ -1032,11 +1032,10 @@ public class SchedulerTest {
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
         emitter.map(eventHandler::handle).subscribe();
-        final int numPods = 6;
         final int numNodes = 5;
 
         // Add running pods
-        for (int i = 0; i < numPods; i++) {
+        for (int i = 0; i < 8; i++) {
             final String podName = "p" + i;
             final Pod pod;
 
@@ -1045,7 +1044,29 @@ public class SchedulerTest {
             resourceRequests.put("memory", new Quantity(String.valueOf(5)));
             resourceRequests.put("pods", new Quantity("1"));
             pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
-            pod.getSpec().setNodeName("n2"); // assign all nodes to n1 by default
+            pod.getSpec().setNodeName("n1"); // assign all pods to n1 by default
+
+            // Assumes that there is only one container
+            pod.getSpec().getContainers().get(0)
+                    .getResources()
+                    .setRequests(resourceRequests);
+            handler.onAdd(pod);
+        }
+
+        // Add large pods to all nodes
+        for (int i = 0; i < numNodes; i++) {
+            if (i == 1) {
+                continue;
+            }
+            final String podName = "p_n" + i;
+            final Pod pod;
+
+            final Map<String, Quantity> resourceRequests = new HashMap<>();
+            resourceRequests.put("cpu", new Quantity(String.valueOf(50 * i)));
+            resourceRequests.put("memory", new Quantity(String.valueOf(50)));
+            resourceRequests.put("pods", new Quantity("1"));
+            pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i); // assign all pods to n1 by default
 
             // Assumes that there is only one container
             pod.getSpec().getContainers().get(0)
@@ -1059,8 +1080,8 @@ public class SchedulerTest {
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(50)));
-            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(50)));
+            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(500)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(500)));
             nodeResourceEventHandler.onAdd(node);
 
             // Add one system pod per node
@@ -1080,6 +1101,8 @@ public class SchedulerTest {
                 .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
                 .collect(Collectors.toList());
         assertEquals(2, nodes.stream().filter(e -> e.equals("NULL_NODE")).count());
+
+        System.out.println(result);
     }
 
 

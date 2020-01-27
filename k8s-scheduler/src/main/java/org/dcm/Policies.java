@@ -218,7 +218,7 @@ class Policies {
                                                   "where status = 'Running' " +
                                                   "group by status " +
                                                   "having sum(controllable__node_name != current_node_name) = 2";
-        final String minimizeMoves = "create view objective_minimize_moves as " +
+        final String minimizeMoves = "create view objective_minimize_changes as " +
                                      "select -sum(current_node_name != controllable__node_name) " +
                                      "from pods_to_assign";
         return new Policy("DeschedulingConstraints", List.of(allowPodEvictionsButNotReassignment,
