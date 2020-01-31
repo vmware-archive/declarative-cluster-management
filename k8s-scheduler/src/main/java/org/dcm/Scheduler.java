@@ -179,7 +179,7 @@ public final class Scheduler {
      */
     Result<? extends Record> runOneLoop() {
         conn.createOrReplaceView("PODS_TO_ASSIGN")
-                .as("select * from pods_to_assign_no_limit'").execute();
+                .as("select * from pods_to_assign_no_limit limit 100").execute();
         final Timer.Context updateDataTimer = updateDataTimes.time();
         synchronized (freezeUpdates) {
             initialPlacementModel.updateData();
