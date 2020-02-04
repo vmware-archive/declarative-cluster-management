@@ -79,7 +79,8 @@ public class ComprehensionRewriter<T> extends MonoidVisitor<Expr, T> {
 
     @Override
     protected Expr visitMonoidFunction(final MonoidFunction node, @Nullable final T context) {
-        final Expr arguments = this.visit(node.getArgument());
+        final List<Expr> arguments = node.getArgument().stream().map(this::visit)
+                                         .collect(Collectors.toList());
         final MonoidFunction function =  new MonoidFunction(node.getFunction(), arguments);
         node.getAlias().ifPresent(function::setAlias);
         return function;

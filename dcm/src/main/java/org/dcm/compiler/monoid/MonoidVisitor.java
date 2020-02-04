@@ -65,7 +65,9 @@ public class MonoidVisitor<T, C> {
 
     @Nullable
     protected T visitMonoidFunction(final MonoidFunction node, @Nullable final C context) {
-        node.getArgument().acceptVisitor(this, context);
+        for (final Expr expr: node.getArgument()) {
+            expr.acceptVisitor(this, context);
+        }
         return null;
     }
 

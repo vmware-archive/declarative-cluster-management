@@ -174,7 +174,7 @@ class RewriteArity {
             if (node.getFunction().equals(MonoidFunction.Function.SUM) ||
                     node.getFunction().equals(MonoidFunction.Function.COUNT)) {
                 final Expr oldSumArg = node.getFunction().equals(MonoidFunction.Function.COUNT)
-                        ? new MonoidLiteral<>(1, Integer.class) : node.getArgument();
+                        ? new MonoidLiteral<>(1, Integer.class) : node.getArgument().get(0);
                 final BinaryOperatorPredicateWithAggregate newArgument
                         = new BinaryOperatorPredicateWithAggregate(BinaryOperatorPredicate.Operator.MULTIPLY,
                                                                    oldSumArg, qualifier);

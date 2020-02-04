@@ -565,7 +565,8 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                     operands.push(op);
                 } else {
                     // We're usually here because of unary operators like -(count(col1)) in select expressions.
-                    final Expr argument = function.getArgument();
+                    Preconditions.checkArgument(function.getArgument().size() == 1);
+                    final Expr argument = function.getArgument().get(0);
                     final String argumentAsString = evaluateHeadItem(argument, groupByInnerComprehensionQualifier);
                     final String op = String.format("%s(%s)", functionName, argumentAsString);
                     operands.push(op);
@@ -625,7 +626,8 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                 if (literals.get(0) instanceof MonoidFunction) {
                     final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
                     final MonoidFunction function = (MonoidFunction) literals.get(0);
-                    cg.visit(function.getArgument());
+                    Preconditions.checkArgument(function.getArgument().size() == 1);
+                    cg.visit(function.getArgument().get(0));
                     return ImmutableList.of(String.format("%s(%s)", function.getFunction(),
                                                                              cg.evaluateExpression().get(0)));
                 }
@@ -854,7 +856,8 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
              */
         }
         else if (expr instanceof MonoidFunction) {
-            return usesControllableVariables(((MonoidFunction) expr).getArgument());
+            Preconditions.checkArgument(((MonoidFunction) expr).getArgument().size() == 1);
+            return usesControllableVariables(((MonoidFunction) expr).getArgument().get(0));
         }
         else if (expr instanceof BinaryOperatorPredicate) {
             final BinaryOperatorPredicate predicate = (BinaryOperatorPredicate) expr;

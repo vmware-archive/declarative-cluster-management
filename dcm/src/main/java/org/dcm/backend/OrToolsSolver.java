@@ -70,6 +70,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
@@ -167,13 +168,28 @@ public class OrToolsSolver implements ISolverBackend {
                 });
         constraintViews
                 .forEach((name, comprehension) -> {
-                    final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final TranslationContext translationContext = new TranslationContext(false);
-                    final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                    translationContext.enterScope(outerBlock);
-                    final OutputIR.Block block = addView(name, rewrittenComprehension, true, translationContext);
-                    translationContext.leaveScope();
-                    output.addCode(block.toString());
+                    final List<MonoidFunction> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
+                    if (capacityConstraints.isEmpty()) {
+                        final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
+                        final TranslationContext translationContext = new TranslationContext(false);
+                        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+                        translationContext.enterScope(outerBlock);
+                        final OutputIR.Block block = addView(name, rewrittenComprehension, true, translationContext);
+                        translationContext.leaveScope();
+                        output.addCode(block.toString());
+                    } else {
+                        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+                        final TranslationContext translationContext = new TranslationContext(false);
+                        translationContext.enterScope(outerBlock);
+                        final OutputIR.Block block = outputIR.newBlock(name);
+                        block.addBody(CodeBlock.of("o.capacityConstraint($1T.asList(podsToAssignControllableNodeName), " +
+                                                   "spareCapacityPerNode.stream().map(e -> e.get(\"NAME\", $4T.class)).collect($2T.toList())," +
+                                                   "podsToAssign.stream().map(e -> e.get(\"CPU_REQUEST\", $3T.class)).collect($2T.toList())," +
+                                                   "spareCapacityPerNode.stream().map(e -> e.get(\"CPU_REMAINING\", $3T.class)).collect($2T.toList()));", Arrays.class, Collectors.class, Integer.class, String.class));
+                        translationContext.currentScope().addBody(block);
+                        translationContext.leaveScope();
+                        output.addCode(block.toString());
+                    }
                 });
         objectiveFunctions
                 .forEach((name, comprehension) -> {
@@ -325,7 +341,6 @@ public class OrToolsSolver implements ISolverBackend {
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
-
                 final List<CodeBlock> constraintBlocks = addAggregateConstraint(varQualifiers, nonVarQualifiers,
                         new GroupContext(groupByQualifier, intermediateView, viewName), context);
                 constraintBlocks.forEach(forBlock::addBody);
@@ -1087,15 +1102,16 @@ public class OrToolsSolver implements ISolverBackend {
             // We have a special case for sums, because of an optimization where a sum of products can be better
             // represented as a scalar product in or-tools
             if (node.getFunction().equals(MonoidFunction.Function.SUM)) {
-                return maybeOptimizeSumIntoScalarProduct(node.getArgument(), context.currentScope(), forLoop, context);
+                return maybeOptimizeSumIntoScalarProduct(node.getArgument().get(0), context.currentScope(),
+                                                         forLoop, context);
             }
 
             context.enterScope(forLoop);
-            final String processedArgument = Objects.requireNonNull(visit(node.getArgument(),
+            final String processedArgument = Objects.requireNonNull(visit(node.getArgument().get(0),
                                                                           context.withEnterFunctionContext()));
             context.leaveScope();
 
-            final String argumentType = inferType(node.getArgument());
+            final String argumentType = inferType(node.getArgument().get(0));
             final boolean argumentIsIntVar = argumentType.equals("IntVar");
 
             final String listOfProcessedItem =
