@@ -1196,8 +1196,8 @@ public class OrToolsSolver implements ISolverBackend {
                     throw new IllegalStateException("Unreachable");
                 case COUNT:
                     // In these cases, it is safe to replace count(argument) with sum(1)
-                    if ((node.getArgument() instanceof MonoidLiteral ||
-                         node.getArgument() instanceof ColumnIdentifier)) {
+                    if ((node.getArgument().get(0) instanceof MonoidLiteral ||
+                         node.getArgument().get(0) instanceof ColumnIdentifier)) {
                         // TODO: another sign that groupContext/subQueryContext should be handled by ExprContext
                         //  and scopes
                         final String scanOver = currentSubQueryContext == null ?

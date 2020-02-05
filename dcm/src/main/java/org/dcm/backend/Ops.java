@@ -16,7 +16,6 @@ import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -442,7 +441,6 @@ public class Ops {
         final IntervalVar[] tasksIntervals = new IntervalVar[numTasks + capacities.get(0).size()];
 
         final long[] domainArr = domain.stream().mapToLong(encoder::toLong).toArray();
-        System.out.println(Arrays.toString(domainArr));
         final Domain domainT = Domain.fromValues(domainArr);
 
         for (int i = 0; i < numTasks; i++) {
@@ -485,9 +483,6 @@ public class Ops {
         final List<int[]> taskDemands =
                 updatedDemands.stream().map(vec -> vec.stream().mapToInt(Integer::intValue).toArray())
                         .collect(Collectors.toList());
-        taskDemands.forEach(
-                e -> System.out.println(Arrays.toString(e))
-        );
 
         // 2. Capacity constraints
         for (int i = 0; i < numResources; i++) {
