@@ -1625,7 +1625,7 @@ public class OrToolsSolver implements ISolverBackend {
      * @param variableType the type of `variableToExtract`
      * @return the name of the list being extracted
      */
-    private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
+    private  String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
                                        final String loopBlockName, final String variableType) {
         final OutputIR.Block forLoop = outerBlock.getForLoopByName(loopBlockName);
         return extractListFromLoop(variableToExtract, outerBlock, forLoop, variableType);
