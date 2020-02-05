@@ -75,6 +75,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -181,11 +182,8 @@ public class OrToolsSolver implements ISolverBackend {
                         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                         final TranslationContext translationContext = new TranslationContext(false);
                         translationContext.enterScope(outerBlock);
-                        final OutputIR.Block block = outputIR.newBlock(name);
-                        block.addBody(CodeBlock.of("o.capacityConstraint($1T.asList(podsToAssignControllableNodeName), " +
-                                                   "spareCapacityPerNode.stream().map(e -> e.get(\"NAME\", $4T.class)).collect($2T.toList())," +
-                                                   "podsToAssign.stream().map(e -> e.get(\"CPU_REQUEST\", $3T.class)).collect($2T.toList())," +
-                                                   "spareCapacityPerNode.stream().map(e -> e.get(\"CPU_REMAINING\", $3T.class)).collect($2T.toList()));", Arrays.class, Collectors.class, Integer.class, String.class));
+                        final OutputIR.Block block = createCapacityConstraint(name, comprehension, translationContext,
+                                                                              capacityConstraints);
                         translationContext.currentScope().addBody(block);
                         translationContext.leaveScope();
                         output.addCode(block.toString());
@@ -550,19 +548,26 @@ public class OrToolsSolver implements ISolverBackend {
         return block;
     }
 
+    /**
+     * Returns a list of CodeBlocks corresponding to a for loop statement per TableRowGenerator
+     */
+    private List<CodeBlock> forLoopsFromTableRowGenerators(final List<TableRowGenerator> tableRowGenerators) {
+        final List<CodeBlock> loopStatements = new ArrayList<>();
+        tableRowGenerators.forEach(tr -> {
+            final String tableName = tr.getTable().getName();
+            final String tableNumRowsStr = tableNumRowsStr(tableName);
+            final String iterStr = iterStr(tr.getTable().getAliasedName());
+            loopStatements.add(CodeBlock.of("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr));
+        });
+        return loopStatements;
+    }
 
     /**
      * Returns a block of code representing nested for loops for a view
      */
     private OutputIR.Block addNestedForLoops(final String viewName,
                                              final QualifiersByType nonVarQualifiers) {
-        final List<CodeBlock> loopStatements = new ArrayList<>();
-        nonVarQualifiers.tableRowGenerators.forEach(tr -> {
-            final String tableName = tr.getTable().getName();
-            final String tableNumRowsStr = tableNumRowsStr(tableName);
-            final String iterStr = iterStr(tr.getTable().getAliasedName());
-            loopStatements.add(CodeBlock.of("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr));
-        });
+        final List<CodeBlock> loopStatements = forLoopsFromTableRowGenerators(nonVarQualifiers.tableRowGenerators);
         return outputIR.newForBlock(viewName, loopStatements);
     }
 
@@ -1074,6 +1079,76 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     /**
+     *
+     */
+    OutputIR.Block createCapacityConstraint(final String viewName, final MonoidComprehension comprehension,
+                                            final TranslationContext context,
+                                            final List<MonoidFunction> capacityConstraint) {
+        final OutputIR.Block block = outputIR.newBlock(viewName);
+        context.enterScope(block);
+
+        // Add individual for loops to extract what we need. This would use table-row generators.
+        final Map<String, OutputIR.ForBlock> tableToForBlock = new HashMap<>();
+        final List<TableRowGenerator> tableRowGenerators =
+                comprehension.getQualifiers().stream().filter(q -> q instanceof TableRowGenerator)
+                             .map(q -> (TableRowGenerator) q).collect(Collectors.toList());
+        tableRowGenerators.forEach(
+                tableRowGenerator -> {
+                    final CodeBlock codeBlock = forLoopsFromTableRowGenerators(List.of(tableRowGenerator)).get(0);
+                    final OutputIR.ForBlock forBlock = outputIR.newForBlock("", codeBlock);
+                    block.addBody(forBlock);
+                    tableToForBlock.put(tableRowGenerator.getTable().getName(), forBlock);
+                }
+        );
+        final Set<String> vars = new HashSet<>();
+        final Set<String> domain = new HashSet<>();
+        final List<String> demands = new ArrayList<>();
+        final List<String> capacities = new ArrayList<>();
+
+        capacityConstraint.forEach(
+            monoidFunction -> {
+                Preconditions.checkArgument(monoidFunction.getFunction()
+                                                          .equals(MonoidFunction.Function.CAPACITY_CONSTRAINT));
+                final List<Expr> arguments = monoidFunction.getArgument();
+                Preconditions.checkArgument(arguments.size() == 4);
+                for (int i = 0; i < 4; i++) {
+                    final Expr arg = arguments.get(i);
+                    Preconditions.checkArgument(arg instanceof ColumnIdentifier);
+                    final ColumnIdentifier columnArg = (ColumnIdentifier) arg;
+                    final OutputIR.ForBlock forBlock = tableToForBlock.get(columnArg.getTableName());
+                    context.enterScope(forBlock);
+                    final String variableToAssignTo = exprToStr(columnArg, context);
+                    context.leaveScope();
+                    final String parameter = extractListFromLoop(variableToAssignTo, context.currentScope(),
+                                                                forBlock,
+                                                                inferType(columnArg));
+
+                    if (i == 0) { // vars
+                        vars.add(parameter);
+                    } else if (i == 1) { // domain
+                        domain.add(parameter);
+                    } else if (i == 2) { // demands
+                        demands.add(parameter);
+                    } else { // capacities
+                        capacities.add(parameter);
+                    }
+                }
+            }
+        );
+        context.leaveScope();
+        Preconditions.checkArgument(vars.size() == 1 && domain.size() == 1
+                                    && demands.size() == 2 && capacities.size() == 2);
+        final String varsParameterStr = vars.iterator().next();
+        final String domainParameterStr = domain.iterator().next();
+        final String demandsParameterStr = String.join(", ", demands);
+        final String capacitiesParameterStr = String.join(", ", capacities);
+        block.addBody(CodeBlock.of("o.capacityConstraint($L, $L, $T.of($L), $T.of($L));",
+                                  varsParameterStr, domainParameterStr,
+                                  List.class, demandsParameterStr, List.class, capacitiesParameterStr));
+        return block;
+    }
+
+    /**
      * The main logic to parse a comprehension and translate it into a set of intermediate variables and expressions.
      */
     private class ExprToStrVisitor extends MonoidVisitor<String, TranslationContext> {
@@ -1446,47 +1521,6 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         /**
-         * Used to extract a variable computed within each iteration of a loop into a list for later use (for
-         * example, aggregate functions).
-         *
-         * @param variableToExtract a variable name from within a block to extract out of a loop
-         * @param outerBlock the block outside the loop where the extracted list will be created
-         * @param loopBlockName the name of the loop from which we want to extract a list
-         * @param variableType the type of `variableToExtract`
-         * @return the name of the list being extracted
-         */
-        private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
-                                           final String loopBlockName, final String variableType) {
-            final OutputIR.Block forLoop = outerBlock.getForLoopByName(loopBlockName);
-            return extractListFromLoop(variableToExtract, outerBlock, forLoop, variableType);
-        }
-
-        /**
-         * Used to extract a variable computed within each iteration of a loop into a list for later use (for
-         * example, aggregate functions).
-         *
-         * @param variableToExtract a variable name from within a block to extract out of a loop
-         * @param outerBlock the block outside the loop where the extracted list will be created
-         * @param innerBlock the name of the block from which we want to extract a list of `variableToExtract` instances
-         * @param variableType the type of `variableToExtract`
-         * @return the name of the list being extracted
-         */
-        private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
-                                           final OutputIR.Block innerBlock, final String variableType) {
-            final String listName = "listOf" + variableToExtract;
-            // For computing aggregates, the list being scanned is always named "data", and
-            // those loop blocks have a valid size. Use this for pre-allocating lists.
-            final String maybeGuessSize = innerBlock instanceof OutputIR.ForBlock ?
-                                        ((OutputIR.ForBlock) innerBlock).getSize() : "";
-            final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>($L)",
-                    variableType, variableToExtract, ArrayList.class, maybeGuessSize));
-            if (wasAdded) {
-                innerBlock.addBody(statement("$L.add($L)", listName, variableToExtract));
-            }
-            return listName;
-        }
-
-        /**
          * A sum of an expression of the form (X * Y), where X is a variable and Y is a constant, is best
          * expressed as a scalar product which takes a list of variables, and a corresponding list of coefficients.
          * This is common in bin-packing problems where a list of variables corresponding to whether a task is
@@ -1556,6 +1590,48 @@ public class OrToolsSolver implements ISolverBackend {
             return CodeBlock.of("o.scalProd($L, $L)", listOfVariablesItem, listOfCoefficientsItem).toString();
         }
     }
+
+    /**
+     * Used to extract a variable computed within each iteration of a loop into a list for later use (for
+     * example, aggregate functions).
+     *
+     * @param variableToExtract a variable name from within a block to extract out of a loop
+     * @param outerBlock the block outside the loop where the extracted list will be created
+     * @param innerBlock the name of the block from which we want to extract a list of `variableToExtract` instances
+     * @param variableType the type of `variableToExtract`
+     * @return the name of the list being extracted
+     */
+    private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
+                                       final OutputIR.Block innerBlock, final String variableType) {
+        final String listName = "listOf" + variableToExtract;
+        // For computing aggregates, the list being scanned is always named "data", and
+        // those loop blocks have a valid size. Use this for pre-allocating lists.
+        final String maybeGuessSize = innerBlock instanceof OutputIR.ForBlock ?
+                ((OutputIR.ForBlock) innerBlock).getSize() : "";
+        final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>($L)",
+                variableType, variableToExtract, ArrayList.class, maybeGuessSize));
+        if (wasAdded) {
+            innerBlock.addBody(statement("$L.add($L)", listName, variableToExtract));
+        }
+        return listName;
+    }
+
+    /**
+     * Used to extract a variable computed within each iteration of a loop into a list for later use (for
+     * example, aggregate functions).
+     *
+     * @param variableToExtract a variable name from within a block to extract out of a loop
+     * @param outerBlock the block outside the loop where the extracted list will be created
+     * @param loopBlockName the name of the loop from which we want to extract a list
+     * @param variableType the type of `variableToExtract`
+     * @return the name of the list being extracted
+     */
+    private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
+                                       final String loopBlockName, final String variableType) {
+        final OutputIR.Block forLoop = outerBlock.getForLoopByName(loopBlockName);
+        return extractListFromLoop(variableToExtract, outerBlock, forLoop, variableType);
+    }
+
 
     private static class ContainsMonoidFunction extends MonoidVisitor<Boolean, Void> {
         boolean found = false;

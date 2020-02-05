@@ -430,16 +430,16 @@ public class Ops {
     }
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final List<String> domain,
-                                   final List<Integer> demands, final List<Integer> capacities) {
+                                   final List<List<Integer>> demands, final List<List<Integer>> capacities) {
         // Create the variables.
-        Preconditions.checkArgument(domain.size() == capacities.size());
+        Preconditions.checkArgument(domain.size() == capacities.get(0).size());
         final IntVar[] taskToNodeAssignment = varsToAssign.toArray(IntVar[]::new);
         final int numTasks = taskToNodeAssignment.length;
         final IntVar[] nodeIntervalEnd = new IntVar[numTasks];
         final IntervalVar[] tasksIntervals = new IntervalVar[numTasks];
 
-        final int[] taskDemands1 = demands.stream().mapToInt(Integer::intValue).toArray();
-        final int[] nodeCapacities1 = capacities.stream().mapToInt(Integer::intValue).toArray();
+        final int[] taskDemands1 = demands.get(0).stream().mapToInt(Integer::intValue).toArray();
+        final int[] nodeCapacities1 = capacities.get(0).stream().mapToInt(Integer::intValue).toArray();
         final long[] domainArr = domain.stream().mapToLong(encoder::toLong).toArray();
         final Domain domainT = Domain.fromValues(domainArr);
 
