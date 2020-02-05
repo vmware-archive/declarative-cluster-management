@@ -8,21 +8,15 @@ package org.dcm.backend;
 
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Ints;
-import com.google.common.primitives.Longs;
 import com.google.ortools.sat.CpModel;
-import com.google.ortools.sat.CpSolver;
-import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class Ops {
     private final CpModel model;
@@ -452,7 +446,7 @@ public class Ops {
                     model.newConstant(1), nodeIntervalEnd[i], "");
         }
 
-        int maxCapacity1 = Ints.max(nodeCapacities1);
+        final int maxCapacity1 = Ints.max(nodeCapacities1);
 
         // 2. Capacity constraints
         model.addCumulative(tasksIntervals, taskDemands1, model.newConstant(maxCapacity1));

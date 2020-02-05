@@ -541,33 +541,34 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
             if (expr instanceof MonoidFunction) {
                 final MonoidFunction function = (MonoidFunction) expr;
                 final String functionName = FUNCTION_STRING_MAP.get(function.getFunction());
-
-                if (function.getArgument() instanceof ColumnIdentifier) {
-                    final ColumnIdentifier argument = (ColumnIdentifier) function.getArgument();
+                Preconditions.checkArgument(function.getArgument().size() == 1);
+                final Expr argument = function.getArgument().get(0);
+                if (argument instanceof ColumnIdentifier) {
+                    final ColumnIdentifier ci = (ColumnIdentifier) argument;
                     // Minizinc does not have a 'count' function. It therefore requires us to replace
                     // 'count' with 'sum', and the argument with '1'.
-                    final String arg = MinizincString.columnNameWithIteration(argument);
+                    final String arg = MinizincString.columnNameWithIteration(ci);
                     final String op = String.format("%s([%s | %s])", functionName,
                             arg,
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
-                } else if (function.getArgument() instanceof BinaryOperatorPredicate) {
-                    final BinaryOperatorPredicate argument = (BinaryOperatorPredicate) function.getArgument();
-                    final String arg = evaluateHeadItem(argument, null);
+                } else if (argument instanceof BinaryOperatorPredicate) {
+                    final BinaryOperatorPredicate bop = (BinaryOperatorPredicate) argument;
+                    final String arg = evaluateHeadItem(bop, null);
                     final String op = String.format("%s([%s | %s])", functionName,
                             arg,
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
-                } else if (function.getArgument() instanceof MonoidLiteral) {
+                } else if (argument instanceof MonoidLiteral) {
                     final String op = String.format("%s([%s | %s])", functionName,
-                            ((MonoidLiteral) function.getArgument()).getValue(),
+                            ((MonoidLiteral) argument).getValue(),
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
                 } else {
                     // We're usually here because of unary operators like -(count(col1)) in select expressions.
                     Preconditions.checkArgument(function.getArgument().size() == 1);
-                    final Expr argument = function.getArgument().get(0);
-                    final String argumentAsString = evaluateHeadItem(argument, groupByInnerComprehensionQualifier);
+                    final Expr arg = function.getArgument().get(0);
+                    final String argumentAsString = evaluateHeadItem(arg, groupByInnerComprehensionQualifier);
                     final String op = String.format("%s(%s)", functionName, argumentAsString);
                     operands.push(op);
                 }
