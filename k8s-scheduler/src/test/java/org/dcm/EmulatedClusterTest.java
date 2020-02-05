@@ -74,7 +74,7 @@ class EmulatedClusterTest {
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
         workloadGeneratorIT.runTrace(client, "v1-cropped.txt", deployer, "dcm-scheduler",
-                          20, 50, 1000);
+                          20, 50, 100);
     }
 
     private Node addNode(final String nodeName, final Map<String, String> labels,

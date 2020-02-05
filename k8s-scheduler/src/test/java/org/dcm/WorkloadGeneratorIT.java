@@ -180,10 +180,11 @@ class WorkloadGeneratorIT extends ITBase {
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream(fileName);
         Preconditions.checkNotNull(inStream);
-        int limit = 2000;
 
         long maxStart = 0;
         long maxEnd = 0;
+        int totalPods = 0;
+
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
             String line;
@@ -191,9 +192,6 @@ class WorkloadGeneratorIT extends ITBase {
             final long startTime = System.currentTimeMillis();
             System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
-                if (limit-- == 0) {
-                    break;
-                }
                 final String[] parts = line.split(" ", 7);
                 final int start = Integer.parseInt(parts[2]) / timeScaleDown;
                 final int end = Integer.parseInt(parts[3]) / timeScaleDown;
@@ -203,6 +201,7 @@ class WorkloadGeneratorIT extends ITBase {
 
                 // generate a deployment's details based on cpu, mem requirements
                 final Deployment deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);
+                totalPods += deployment.getSpec().getReplicas();
 
                 // get task time info
                 final long taskStartTime = (long) start * 1000; // converting to millisec
@@ -234,8 +233,10 @@ class WorkloadGeneratorIT extends ITBase {
             throw new RuntimeException(e);
         }
 
-        LOG.info("All tasks launched. The latest application will start at {}s, and the last deletion" +
-                 " will happen at {}s. Sleeping for {}s before teardown.", maxStart / 1000, maxEnd, maxStart / 100);
+        LOG.info("All tasks launched ({} pods total). The latest application will start at {}s, and the last deletion" +
+                 " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart / 1000,
+                maxEnd, maxStart / 100);
+
         Thread.sleep((long) maxStart + 60000);
         deleteAllRunningPods(client);
     }
