@@ -36,7 +36,6 @@ import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
-import org.dcm.k8s.generated.tables.records.NodeInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;

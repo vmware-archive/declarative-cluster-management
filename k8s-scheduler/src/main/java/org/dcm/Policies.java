@@ -138,29 +138,13 @@ class Policies {
             "from spare_capacity_per_node " +
             "join pods_to_assign " +
             "     on pods_to_assign.controllable__node_name = spare_capacity_per_node.name " +
-            "having capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, pods_to_assign.cpu_request, spare_capacity_per_node.cpu_remaining) = true" +
-            " and   capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, pods_to_assign.memory_request, spare_capacity_per_node.memory_remaining) = true ";
-//        final String softConstraint = "create view objective_pods_slack_per_node as " +
-//                "select sum(pods_to_assign.cpu_request + pods_to_assign.memory_request) " +
-//                "from spare_capacity_per_node " +
-//                "join pods_to_assign " +
-//                "     on pods_to_assign.controllable__node_name = spare_capacity_per_node.name " +
-//                "group by spare_capacity_per_node.name, spare_capacity_per_node.cpu_remaining, " +
-//                "         spare_capacity_per_node.memory_remaining";
-//        final String capacityHardConstraint =  "create view constraint_capacity as " +
-//                                               "select * from pods_slack_per_node " +
-//                                               "where cpu_load <= 100 " +
-//                                               "  and memory_load <= 100";
-//        final String capacityCpuMemSoftConstraint = "create view objective_least_requested_cpu_mem as " +
-//                                                    "select -max(cpu_load + memory_load) " +
-//                                                    "from pods_slack_per_node";
-//        views.add(intermediateView);
+            "having capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
+            "                           pods_to_assign.cpu_request, spare_capacity_per_node.cpu_remaining) = true" +
+            " and capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
+            "                         pods_to_assign.memory_request, spare_capacity_per_node.memory_remaining) = true";
         if (withHardConstraint) {
             views.add(hardConstraint);
         }
-//        if (withSoftConstraint) {
-//            views.add(softConstraint);
-//        }
         return new Policy("CapacityConstraint", views);
     }
 
