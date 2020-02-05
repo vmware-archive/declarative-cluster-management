@@ -180,7 +180,7 @@ class WorkloadGeneratorIT extends ITBase {
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream(fileName);
         Preconditions.checkNotNull(inStream);
-        int limit = 10000;
+        int limit = 2000;
 
         long maxStart = 0;
         long maxEnd = 0;

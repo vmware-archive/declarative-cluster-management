@@ -1135,8 +1135,7 @@ public class OrToolsSolver implements ISolverBackend {
             }
         );
         context.leaveScope();
-        Preconditions.checkArgument(vars.size() == 1 && domain.size() == 1
-                                    && demands.size() == 2 && capacities.size() == 2);
+        Preconditions.checkArgument(vars.size() == 1 && domain.size() == 1);
         final String varsParameterStr = vars.iterator().next();
         final String domainParameterStr = domain.iterator().next();
         final String demandsParameterStr = String.join(", ", demands);

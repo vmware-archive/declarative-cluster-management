@@ -141,7 +141,9 @@ class Policies {
             "having capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
             "                           pods_to_assign.cpu_request, spare_capacity_per_node.cpu_remaining) = true" +
             " and capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
-            "                         pods_to_assign.memory_request, spare_capacity_per_node.memory_remaining) = true";
+            "                         pods_to_assign.memory_request, spare_capacity_per_node.memory_remaining) = true" +
+            " and capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
+            "                         pods_to_assign.pods_request, spare_capacity_per_node.pods_remaining) = true";
         views.add(hardConstraint);
         // TODO: Add soft constraint only version as well
         return new Policy("CapacityConstraint", views);
