@@ -112,34 +112,44 @@ public final class Scheduler {
                 podEvents -> {
                     podsPerSchedulingEvent.update(podEvents.size());
                     LOG.info("Received the following {} events: {}", podEvents.size(), podEvents);
+                    scheduleAllPendingPods(binder);
+                },
+                e -> {
+                    LOG.error("Received exception. Dumping DB state to /tmp/", e);
+                    DebugUtils.dbDump(conn);
+                }
+            );
+    }
 
-                    if (conn.fetchCount(Tables.PODS_TO_ASSIGN) == 0) {
-                        LOG.error("Solver invoked when there were no new pods to schedule");
-                        return;
-                    }
-                    final int batch = batchId.incrementAndGet();
+    void scheduleAllPendingPods(final IPodToNodeBinder binder) {
+        while (conn.fetchCount(Tables.PODS_TO_ASSIGN) != 0 ) {
+            if (conn.fetchCount(Tables.PODS_TO_ASSIGN) == 0) {
+                LOG.error("Solver invoked when there were no new pods to schedule");
+                return;
+            }
+            final int batch = batchId.incrementAndGet();
 
-                    final long now = System.nanoTime();
-                    final Result<? extends Record> podsToAssignUpdated = runOneLoop();
-                    final long totalTime = System.nanoTime() - now;
-                    solverInvocations.mark();
+            final long now = System.nanoTime();
+            final Result<? extends Record> podsToAssignUpdated = runOneLoop();
+            final long totalTime = System.nanoTime() - now;
+            solverInvocations.mark();
 
-                    // First, locally update the node_name entries for pods
-                    podsToAssignUpdated.parallelStream().forEach(r -> {
-                        final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                        final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
-                        LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
-                        conn.update(Tables.POD_INFO)
-                                .set(Tables.POD_INFO.NODE_NAME, nodeName)
-                                .where(Tables.POD_INFO.POD_NAME.eq(podName))
-                                .execute();
-                        LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
-                                podName, batch, totalTime);
-                    });
-                    LOG.info("Done with updates");
-                    // Next, issue bind requests for pod -> node_name
-                    podsToAssignUpdated
-                        .forEach((record) -> ForkJoinPool.commonPool().execute(
+            // First, locally update the node_name entries for pods
+            podsToAssignUpdated.parallelStream().forEach(r -> {
+                final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
+                final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
+                conn.update(Tables.POD_INFO)
+                        .set(Tables.POD_INFO.NODE_NAME, nodeName)
+                        .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                        .execute();
+                LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
+                        podName, batch, totalTime);
+            });
+            LOG.info("Done with updates");
+            // Next, issue bind requests for pod -> node_name
+            podsToAssignUpdated
+                    .forEach((record) -> ForkJoinPool.commonPool().execute(
                             () -> {
                                 final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
                                 final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
@@ -147,14 +157,9 @@ public final class Scheduler {
                                 LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
                                 binder.bindOne(namespace, podName, nodeName);
                             }
-                        ));
-                    LOG.info("Done with bindings");
-                },
-                e -> {
-                    LOG.error("Received exception. Dumping DB state to /tmp/", e);
-                    DebugUtils.dbDump(conn);
-                }
-            );
+                    ));
+            LOG.info("Done with bindings");
+        }
     }
 
     Result<? extends Record> runOneLoop() {

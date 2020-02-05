@@ -36,6 +36,7 @@ import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
+import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -61,6 +62,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -1017,6 +1019,48 @@ public class SchedulerTest {
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         System.out.println(results);
+    }
+
+
+    /*
+     * Make sure that the scheduler places all pending pods even though it may attempt to place only a subset
+     * of them at a time
+     */
+    @Test
+    public void testPlaceAllPendingPodsRegardlessOfBatchSize() {
+        final DSLContext conn = Scheduler.setupDb();
+        final List<String> policies = Policies.getDefaultPolicies();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final int numNodes = 5;
+        final int numPods = 200;
+        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
+        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
+
+        // We pick a random node from [0, numNodes) to assign all pods to.
+        final int nodeToAssignTo = ThreadLocalRandom.current().nextInt(numNodes);
+        for (int i = 0; i < numNodes; i++) {
+            nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
+                                           Collections.emptyList()));
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAdd(pod);
+        }
+
+        for (int i = 0; i < numPods; i++) {
+            handler.onAdd(newPod("p" + i));
+        }
+
+        // All pod additions have completed
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(conn));
+        final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
+        fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
     }
 
 
