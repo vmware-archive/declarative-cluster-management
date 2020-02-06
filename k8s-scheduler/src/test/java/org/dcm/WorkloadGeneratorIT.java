@@ -203,6 +203,9 @@ class WorkloadGeneratorIT extends ITBase {
                 final Deployment deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);
                 totalPods += deployment.getSpec().getReplicas();
 
+                if (Integer.parseInt(parts[2]) > 86400) { // 24 hour window
+                    break;
+                }
                 // get task time info
                 final long taskStartTime = (long) start * 1000; // converting to millisec
                 final long currentTime = System.currentTimeMillis();
@@ -217,12 +220,13 @@ class WorkloadGeneratorIT extends ITBase {
                 // get duration based on start and end times
                 final int duration = getDuration(start, end);
 
+                final long computedEndTime = Math.min(60, (waitTime / 1000) + duration);
                 // Schedule deletion of this deployment based on duration + time until start of the dep
                 final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
-                        deployer.endDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
+                     deployer.endDeployment(deployment), computedEndTime, TimeUnit.SECONDS);
 
                 maxStart = Math.max(maxStart, waitTime / 1000);
-                maxEnd = Math.max(maxEnd, (waitTime / 1000) + duration);
+                maxEnd = Math.max(maxEnd, computedEndTime);
 
                 // Add to a list to enable keeping the test active until deletion
                 endDepList.add(scheduledEnd);
