@@ -17,6 +17,7 @@ import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.reactivex.Flowable;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -45,6 +46,7 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -95,6 +97,7 @@ public final class Scheduler {
                         final long batchTimeMs) {
         final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(conn);
         subscription = eventStream
+            .subscribeOn(Schedulers.from(Executors.newFixedThreadPool(4)))
             .map(podEvent -> {
                 synchronized (freezeUpdates) {
                     return podEventsToDatabase.handle(podEvent);
@@ -108,6 +111,7 @@ public final class Scheduler {
             )
             .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
             .filter(podEvents -> !podEvents.isEmpty())
+            .observeOn(Schedulers.computation())
             .subscribe(
                 podEvents -> {
                     podsPerSchedulingEvent.update(podEvents.size());
@@ -122,7 +126,7 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        while (conn.fetchCount(Tables.PODS_TO_ASSIGN) != 0 ) {
+        while (conn.fetchCount(Tables.PODS_TO_ASSIGN) != 0) {
             if (conn.fetchCount(Tables.PODS_TO_ASSIGN) == 0) {
                 LOG.error("Solver invoked when there were no new pods to schedule");
                 return;

@@ -62,7 +62,6 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -1016,9 +1015,8 @@ public class SchedulerTest {
         DebugUtils.dbLoad(conn);
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
-        System.out.println(results);
     }
 
 
@@ -1039,8 +1037,6 @@ public class SchedulerTest {
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
         emitter.map(eventHandler::handle).subscribe();
 
-        // We pick a random node from [0, numNodes) to assign all pods to.
-        final int nodeToAssignTo = ThreadLocalRandom.current().nextInt(numNodes);
         for (int i = 0; i < numNodes; i++) {
             nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
                                            Collections.emptyList()));

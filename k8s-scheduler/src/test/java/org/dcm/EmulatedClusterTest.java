@@ -21,7 +21,6 @@ import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.reactivex.processors.PublishProcessor;
 import org.jooq.DSLContext;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -36,7 +35,6 @@ import java.util.Map;
 class EmulatedClusterTest {
 
     @Test
-    @Disabled
     public void runTraceLocally() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
@@ -74,7 +72,7 @@ class EmulatedClusterTest {
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
         workloadGeneratorIT.runTrace(client, "v1-cropped.txt", deployer, "dcm-scheduler",
-                          30, 50, 100);
+                          100, 50, 5);
     }
 
     private Node addNode(final String nodeName, final Map<String, String> labels,

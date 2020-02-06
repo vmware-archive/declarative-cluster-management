@@ -234,10 +234,10 @@ class WorkloadGeneratorIT extends ITBase {
         }
 
         LOG.info("All tasks launched ({} pods total). The latest application will start at {}s, and the last deletion" +
-                 " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart / 1000,
-                maxEnd, maxStart / 100);
+                 " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart,
+                maxEnd, maxStart);
 
-        Thread.sleep((long) maxStart + 60000);
+        Thread.sleep((maxStart + 600) * 1000);
         deleteAllRunningPods(client);
     }
 
