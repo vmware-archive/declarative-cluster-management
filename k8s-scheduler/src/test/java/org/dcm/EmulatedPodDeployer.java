@@ -5,6 +5,7 @@
 
 package org.dcm;
 
+import com.google.common.base.Preconditions;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -90,11 +91,14 @@ public class EmulatedPodDeployer implements IPodDeployer {
         @Override
         public void run() {
             LOG.info("Terminating deployment (name:{}, schedulerName:{}) at {}",
-                    deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
+                    deployment.getMetadata().getName(),
+                    deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
                     System.currentTimeMillis());
-            pods.get(deployment.getMetadata().getName()).forEach(
-                    e -> resourceEventHandler.onDelete(e, false)
-            );
+            final List<Pod> podsList = pods.get(deployment.getMetadata().getName());
+            Preconditions.checkNotNull(podsList);
+            for (final Pod pod: podsList) {
+                resourceEventHandler.onDelete(pod, false);
+            }
         }
     }
 }

@@ -220,7 +220,7 @@ class WorkloadGeneratorIT extends ITBase {
                 // get duration based on start and end times
                 final int duration = getDuration(start, end);
 
-                final long computedEndTime = Math.min(60, (waitTime / 1000) + duration);
+                final long computedEndTime = Math.min(30, (waitTime / 1000) + duration);
                 // Schedule deletion of this deployment based on duration + time until start of the dep
                 final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
                      deployer.endDeployment(deployment), computedEndTime, TimeUnit.SECONDS);
