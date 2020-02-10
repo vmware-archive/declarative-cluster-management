@@ -6,6 +6,10 @@
 package org.dcm;
 
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListenableScheduledFuture;
+import com.google.common.util.concurrent.ListeningScheduledExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -33,8 +37,6 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -56,10 +58,9 @@ class WorkloadGeneratorIT extends ITBase {
     private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
     private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
 
-    private final ScheduledExecutorService scheduledExecutorService =
-            Executors.newScheduledThreadPool(100);
-    private final List<ScheduledFuture> startDepList = new ArrayList<>();
-    private final List<ScheduledFuture> endDepList = new ArrayList<>();
+    private final List<ListenableFuture<?>> deletions = new ArrayList<>();
+    private final ListeningScheduledExecutorService scheduledExecutorService =
+            MoreExecutors.listeningDecorator(Executors.newScheduledThreadPool(100));
 
     @BeforeEach
     public void logBuildInfo() {
@@ -213,24 +214,26 @@ class WorkloadGeneratorIT extends ITBase {
                 final long waitTime = taskStartTime - timeDiff;
 
                 // create deployment in the k8s cluster at the correct start time
-                final ScheduledFuture scheduledStart = scheduledExecutorService.schedule(
+                final ListenableFuture<?> scheduledStart = scheduledExecutorService.schedule(
                         deployer.startDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
-                startDepList.add(scheduledStart);
 
                 // get duration based on start and end times
                 final int duration = getDuration(start, end);
 
                 final long computedEndTime = Math.min(30, (waitTime / 1000) + duration);
+
                 // Schedule deletion of this deployment based on duration + time until start of the dep
-                final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
-                     deployer.endDeployment(deployment), computedEndTime, TimeUnit.SECONDS);
+                scheduledStart.addListener(() -> {
+                    final ListenableScheduledFuture<?> deletion =
+                            scheduledExecutorService.schedule(deployer.endDeployment(deployment),
+                            computedEndTime, TimeUnit.SECONDS);
+                    deletions.add(deletion);
+                }, scheduledExecutorService);
 
                 maxStart = Math.max(maxStart, waitTime / 1000);
                 maxEnd = Math.max(maxEnd, computedEndTime);
 
                 // Add to a list to enable keeping the test active until deletion
-                endDepList.add(scheduledEnd);
-
                 taskCount++;
             }
         } catch (final IOException e) {

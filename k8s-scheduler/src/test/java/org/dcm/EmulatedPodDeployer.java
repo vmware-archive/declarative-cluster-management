@@ -91,9 +91,8 @@ public class EmulatedPodDeployer implements IPodDeployer {
         @Override
         public void run() {
             LOG.info("Terminating deployment (name:{}, schedulerName:{}) at {}",
-                    deployment.getMetadata().getName(),
-                    deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    System.currentTimeMillis());
+                deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
+                System.currentTimeMillis());
             final List<Pod> podsList = pods.get(deployment.getMetadata().getName());
             Preconditions.checkNotNull(podsList);
             for (final Pod pod: podsList) {
