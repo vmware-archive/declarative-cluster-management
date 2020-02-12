@@ -183,7 +183,8 @@ class WorkloadGeneratorIT extends ITBase {
             throws Exception {
         assertNotNull(schedulerName);
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
-                 " MemScaleDown:{} TimeScaleDown:{}", schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
+                 " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{}", schedulerName, cpuScaleDown, memScaleDown,
+                                                                      timeScaleDown, startTimeCutOff);
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
