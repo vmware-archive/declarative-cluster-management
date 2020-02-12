@@ -57,6 +57,8 @@ class WorkloadGeneratorIT extends ITBase {
     private static final int MEM_SCALE_DOWN_DEFAULT = 50;
     private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
     private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
+    private static final String START_TIME_CUTOFF = "startTimeCutOff";
+    private static final int START_TIME_CUTOFF_DEFAULT = 1000;
 
     private final List<ListenableFuture<?>> deletions = new ArrayList<>();
     private final ListeningScheduledExecutorService scheduledExecutorService =
@@ -167,11 +169,17 @@ class WorkloadGeneratorIT extends ITBase {
         final String timeScaleProperty = System.getProperty(TIME_SCALE_DOWN_PROPERTY);
         final int timeScaleDown = timeScaleProperty == null ? TIME_SCALE_DOWN_DEFAULT :
                                         Integer.parseInt(timeScaleProperty);
-        runTrace(fabricClient, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
+
+        final String startTimeCutOffProperty = System.getProperty(START_TIME_CUTOFF);
+        final int startTimeCutOff = startTimeCutOffProperty == null ? START_TIME_CUTOFF_DEFAULT :
+                Integer.parseInt(startTimeCutOffProperty);
+        runTrace(fabricClient, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
+                 startTimeCutOff);
     }
 
     void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
-                  final String schedulerName, final int cpuScaleDown, final int memScaleDown, final int timeScaleDown)
+                  final String schedulerName, final int cpuScaleDown, final int memScaleDown, final int timeScaleDown,
+                  final int startTimeCutOff)
             throws Exception {
         assertNotNull(schedulerName);
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
@@ -204,7 +212,7 @@ class WorkloadGeneratorIT extends ITBase {
                 final Deployment deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);
                 totalPods += deployment.getSpec().getReplicas();
 
-                if (Integer.parseInt(parts[2]) > 86400) { // 24 hour window
+                if (Integer.parseInt(parts[2]) > startTimeCutOff) { // window in seconds
                     break;
                 }
                 // get task time info
