@@ -21,6 +21,7 @@ import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.reactivex.processors.PublishProcessor;
 import org.jooq.DSLContext;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -35,6 +36,7 @@ import java.util.Map;
 class EmulatedClusterTest {
 
     @Test
+    @Disabled
     public void runTraceLocally() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
