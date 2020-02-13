@@ -229,7 +229,7 @@ class WorkloadGeneratorIT extends ITBase {
                 // get duration based on start and end times
                 final int duration = getDuration(start, end);
 
-                final long computedEndTime = Math.min(30, (waitTime / 1000) + duration);
+                final long computedEndTime = (waitTime / 1000) + Math.min(30, duration);
 
                 // Schedule deletion of this deployment based on duration + time until start of the dep
                 scheduledStart.addListener(() -> {
@@ -251,9 +251,9 @@ class WorkloadGeneratorIT extends ITBase {
 
         LOG.info("All tasks launched ({} pods total). The latest application will start at {}s, and the last deletion" +
                  " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart,
-                maxEnd, maxStart);
+                maxEnd, maxEnd);
 
-        Thread.sleep((maxStart + 30) * 1000);
+        Thread.sleep((maxEnd + 30) * 1000);
         deleteAllRunningPods(client);
     }
 
