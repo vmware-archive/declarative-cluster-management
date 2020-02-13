@@ -492,7 +492,7 @@ public class Ops {
         // Cumulative score
         final IntVar[] maximumOfEachResource = new IntVar[numResources];
         for (int i = 0; i < numResources; i++) {
-            final IntVar max = model.newIntVar(0, 10000000, "");
+            final IntVar max = model.newIntVar(0, Integer.MAX_VALUE, "");
             model.addCumulative(tasksIntervals, taskDemands.get(i), max);
             maximumOfEachResource[i] = max;
         }
