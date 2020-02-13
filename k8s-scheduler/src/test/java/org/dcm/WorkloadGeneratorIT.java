@@ -253,7 +253,7 @@ class WorkloadGeneratorIT extends ITBase {
                  " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart,
                 maxEnd, maxStart);
 
-        Thread.sleep((maxEnd + 30) * 1000);
+        Thread.sleep((maxStart + 30) * 1000);
         deleteAllRunningPods(client);
     }
 
