@@ -235,7 +235,7 @@ class WorkloadGeneratorIT extends ITBase {
                 scheduledStart.addListener(() -> {
                     final ListenableScheduledFuture<?> deletion =
                             scheduledExecutorService.schedule(deployer.endDeployment(deployment),
-                            computedEndTime, TimeUnit.SECONDS);
+                            30, TimeUnit.SECONDS);
                     deletions.add(deletion);
                 }, scheduledExecutorService);
 
