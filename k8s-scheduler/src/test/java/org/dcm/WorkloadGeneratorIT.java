@@ -11,6 +11,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListenableScheduledFuture;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+import com.google.common.util.concurrent.SettableFuture;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -233,12 +234,14 @@ class WorkloadGeneratorIT extends ITBase {
                 final long computedEndTime = (waitTime / 1000) + Math.min(30, duration);
 
                 // Schedule deletion of this deployment based on duration + time until start of the dep
+                final SettableFuture<Boolean> onComplete = SettableFuture.create();
                 scheduledStart.addListener(() -> {
                     final ListenableScheduledFuture<?> deletion =
                             scheduledExecutorService.schedule(deployer.endDeployment(deployment),
                             30, TimeUnit.SECONDS);
-                    deletions.add(deletion);
+                    deletion.addListener(() -> onComplete.set(true), scheduledExecutorService);
                 }, scheduledExecutorService);
+                deletions.add(onComplete);
 
                 maxStart = Math.max(maxStart, waitTime / 1000);
                 maxEnd = Math.max(maxEnd, computedEndTime);
