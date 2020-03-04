@@ -22,7 +22,6 @@ import java.io.File;
 import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Predicate;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
