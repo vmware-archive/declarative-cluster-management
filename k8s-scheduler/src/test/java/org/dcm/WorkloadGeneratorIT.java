@@ -6,6 +6,7 @@
 package org.dcm;
 
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListenableScheduledFuture;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
@@ -253,8 +254,8 @@ class WorkloadGeneratorIT extends ITBase {
                  " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart,
                 maxEnd, maxEnd);
 
-        Thread.sleep((maxEnd + 30) * 1000);
-        deleteAllRunningPods(client);
+        final List<Object> objects = Futures.successfulAsList(deletions).get();
+        assert objects.size() != 0;
     }
 
     private Deployment getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,
