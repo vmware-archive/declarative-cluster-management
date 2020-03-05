@@ -64,8 +64,7 @@ public class KubernetesPodDeployer implements IPodDeployer {
             LOG.info("Terminating deployment (name:{}, schedulerName:{}) with masterUrl {} at {}",
                     deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
                     fabricClient.getConfiguration().getMasterUrl(), System.currentTimeMillis());
-            fabricClient.apps().deployments().inNamespace(namespace)
-                    .delete(deployment);
+            fabricClient.resource(deployment).inNamespace(namespace).withGracePeriod(0).delete();
         }
     }
 }
