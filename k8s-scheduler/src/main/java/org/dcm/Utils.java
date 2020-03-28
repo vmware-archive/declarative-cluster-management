@@ -9,8 +9,7 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Objects;
 
 class Utils {
 
@@ -30,12 +29,10 @@ class Utils {
     }
 
     static double convertUnit(final Quantity quantity, final String resourceName) {
-        final String res = quantity.getAmount().replaceAll("[a-zA-Z]", "");
+        final String res = quantity.getAmount();
         final double baseAmount = Double.parseDouble(res);
-        final Pattern p = Pattern.compile("[a-zA-Z]+");
-        final Matcher m = p.matcher(quantity.getAmount());
-        if (m.find()) {
-            final String unit = m.group();
+        final String unit = Objects.requireNonNull(quantity.getFormat());
+        if (!unit.equals("")) {
             switch (unit) {
                 case "m":
                 case "Ki":
@@ -57,7 +54,7 @@ class Utils {
             }
         } else {
             if (resourceName.equals("cpu")) {
-                return baseAmount * 1000; // we represent CPU in milli-CPU units.
+                return baseAmount * 1000; // we represent CPU units in milli-cpus
             }
             return baseAmount;
         }

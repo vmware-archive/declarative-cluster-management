@@ -769,7 +769,8 @@ public class SchedulerTest {
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
+            node.getStatus().getCapacity().put("cpu",
+                                               new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(nodeMemoryCapacities.get(i))));
             nodeResourceEventHandler.onAdd(node);
 
@@ -786,6 +787,8 @@ public class SchedulerTest {
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         if (feasible) {
+            System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN).fetch());
+            System.out.println(conn.selectFrom(Tables.NODE_INFO).fetch());
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
             final List<String> nodes = result.stream()
@@ -1146,7 +1149,7 @@ public class SchedulerTest {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();
-        quantityMap.put("cpu", new Quantity("10"));
+        quantityMap.put("cpu", new Quantity("10", "m"));
         quantityMap.put("memory", new Quantity("1000"));
         quantityMap.put("ephemeral-storage", new Quantity("1000"));
         quantityMap.put("pods", new Quantity("100"));
