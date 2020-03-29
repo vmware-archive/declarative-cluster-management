@@ -41,7 +41,7 @@ class EmulatedClusterTest {
         final DSLContext conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final int numNodes = 50;
+        final int numNodes = 1000;
 
         // Add all nodes
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
@@ -73,7 +73,7 @@ class EmulatedClusterTest {
         final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
-        workloadGeneratorIT.runTrace(client, "v1-cropped.txt", deployer, "dcm-scheduler",
+        workloadGeneratorIT.runTrace(client, "v2-cropped.txt", deployer, "dcm-scheduler",
                           100, 50, 100, 1000000);
     }
 

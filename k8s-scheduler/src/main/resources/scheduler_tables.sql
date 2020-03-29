@@ -356,6 +356,13 @@ select * from
     from node_info
     join pod_info
          on pod_info.node_name = node_info.name and pod_info.node_name != 'null'
+    where node_info.unschedulable = false and
+          node_info.memory_pressure = false and
+          node_info.out_of_disk = false and
+          node_info.disk_pressure = false and
+          node_info.pid_pressure = false and
+          node_info.network_unavailable = false and
+          node_info.ready = true
     group by node_info.name, node_info.cpu_allocatable,
              node_info.memory_allocatable, node_info.pods_allocatable)
 where cpu_remaining > 0 and memory_remaining > 0 and pods_remaining > 0;
@@ -381,13 +388,5 @@ select distinct node_name from node_taints;
 
 -- Avoid overloaded nodes or nodes that report being under resource pressure
 create view allowed_nodes as
-select distinct node_info.name from node_info
-join spare_capacity_per_node
-  on spare_capacity_per_node.name = node_info.name
-where node_info.unschedulable = false and
-      node_info.memory_pressure = false and
-      node_info.out_of_disk = false and
-      node_info.disk_pressure = false and
-      node_info.pid_pressure = false and
-      node_info.network_unavailable = false and
-      node_info.ready = true;
+select name
+from spare_capacity_per_node;

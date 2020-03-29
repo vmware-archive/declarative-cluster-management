@@ -36,7 +36,7 @@ class Policies {
         final String constraint = "create view constraint_controllable_node_name_domain as " +
                                   "select * from pods_to_assign " +
                                   "where controllable__node_name in " +
-                                        "(select name from allowed_nodes)";
+                                        "(select name from spare_capacity_per_node)";
         return new Policy("NodePredicates", constraint);
     }
 

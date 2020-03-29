@@ -207,9 +207,9 @@ class WorkloadGeneratorIT extends ITBase {
                 final String[] parts = line.split(" ", 7);
                 final int start = Integer.parseInt(parts[2]) / timeScaleDown;
                 final int end = Integer.parseInt(parts[3]) / timeScaleDown;
-                final float cpu = Float.parseFloat(parts[4]) / cpuScaleDown;
-                final float mem = Float.parseFloat(parts[5]) / memScaleDown;
-                final int vmCount = Integer.parseInt(parts[6]);
+                final float cpu = Float.parseFloat(parts[4].replace(">", "")) / cpuScaleDown;
+                final float mem = Float.parseFloat(parts[5].replace(">", "")) / memScaleDown;
+                final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
                 // generate a deployment's details based on cpu, mem requirements
                 final Deployment deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);

@@ -97,11 +97,7 @@ public final class Scheduler {
         final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(conn);
         subscription = eventStream
             .subscribeOn(Schedulers.from(Executors.newFixedThreadPool(4)))
-            .map(podEvent -> {
-                synchronized (freezeUpdates) {
-                    return podEventsToDatabase.handle(podEvent);
-                }
-            })
+            .map(podEventsToDatabase::handle)
             .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
                     && podEvent.getPod().getStatus().getPhase().equals("Pending")
                     && podEvent.getPod().getSpec().getNodeName() == null
@@ -168,9 +164,7 @@ public final class Scheduler {
 
     Result<? extends Record> runOneLoop() {
         final Timer.Context updateDataTimer = updateDataTimes.time();
-        synchronized (freezeUpdates) {
-            model.updateData();
-        }
+        model.updateData();
         updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated =
