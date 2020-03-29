@@ -45,7 +45,6 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -95,7 +94,6 @@ public final class Scheduler {
                         final long batchTimeMs) {
         final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(conn);
         subscription = eventStream
-            .subscribeOn(Schedulers.from(Executors.newFixedThreadPool(4)))
             .map(podEventsToDatabase::handle)
             .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
                     && podEvent.getPod().getStatus().getPhase().equals("Pending")

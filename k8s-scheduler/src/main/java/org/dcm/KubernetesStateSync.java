@@ -20,12 +20,16 @@ import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 class KubernetesStateSync {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
     private final SharedInformerFactory sharedInformerFactory;
+    private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     KubernetesStateSync(final KubernetesClient client) {
-        this.sharedInformerFactory = client.informers();
+        this.sharedInformerFactory = client.informers(executorService);
     }
 
     Flowable<PodEvent> setupInformersAndPodEventStream(final DSLContext conn) {
@@ -51,5 +55,6 @@ class KubernetesStateSync {
 
     void shutdown() {
         sharedInformerFactory.stopAllRegisteredInformers();
+        executorService.shutdown();
     }
 }
