@@ -12,6 +12,7 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.reactivex.Flowable;
@@ -45,7 +46,9 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -74,6 +77,8 @@ public final class Scheduler {
     private final Timer updateDataTimes = metrics.timer(name(Scheduler.class, "updateDataTimes"));
     private final Timer solveTimes = metrics.timer(name(Scheduler.class, "solveTimes"));
     @Nullable private Disposable subscription;
+    private final ThreadFactory namedThreadFactory =
+            new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
@@ -104,7 +109,7 @@ public final class Scheduler {
 //            .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
             .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
             .filter(podEvents -> !podEvents.isEmpty())
-            .observeOn(Schedulers.computation())
+            .observeOn(Schedulers.from(Executors.newSingleThreadExecutor(namedThreadFactory)))
             .subscribe(
                 podEvents -> {
                     podsPerSchedulingEvent.update(podEvents.size());
