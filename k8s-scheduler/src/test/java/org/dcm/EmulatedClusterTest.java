@@ -68,7 +68,7 @@ class EmulatedClusterTest {
             pod.getMetadata().setNamespace("kube-system");
             pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
             pod.getSpec().setNodeName(nodeName);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
         final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");

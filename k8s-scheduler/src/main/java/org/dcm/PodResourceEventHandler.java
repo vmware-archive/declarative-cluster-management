@@ -5,11 +5,16 @@
 
 package org.dcm;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.reactivex.processors.PublishProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 
 /**
@@ -20,19 +25,20 @@ import org.slf4j.LoggerFactory;
 class PodResourceEventHandler implements ResourceEventHandler<Pod> {
     private static final Logger LOG = LoggerFactory.getLogger(PodResourceEventHandler.class);
     private final PublishProcessor<PodEvent> flowable;
+    private final ThreadFactory namedThreadFactory =
+            new ThreadFactoryBuilder().setNameFormat("flowable-thread-%d").build();
+    private final ExecutorService service = Executors.newFixedThreadPool(10, namedThreadFactory);
 
     PodResourceEventHandler(final PublishProcessor<PodEvent> flowable) {
         this.flowable = flowable;
     }
 
-    @Override
-    public void onAdd(final Pod pod) {
+    public void onAddSync(final Pod pod) {
         LOG.info("{} pod add received", pod.getMetadata().getName());
         flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); // might be better to add pods in a batch
     }
 
-    @Override
-    public void onUpdate(final Pod oldPod, final Pod newPod) {
+    public void onUpdateSync(final Pod oldPod, final Pod newPod) {
         final String oldPodScheduler = oldPod.getSpec().getSchedulerName();
         final String newPodScheduler = oldPod.getSpec().getSchedulerName();
         assert oldPodScheduler.equals(newPodScheduler);
@@ -40,10 +46,25 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
         flowable.onNext(new PodEvent(PodEvent.Action.UPDATED, newPod));
     }
 
+    public void onDeleteSync(final Pod pod, final boolean deletedFinalStateUnknown) {
+        final long now = System.nanoTime();
+        LOG.debug("{} pod deleted ({}) in {}ns!", pod.getMetadata().getName(), deletedFinalStateUnknown,
+                                                  (System.nanoTime() - now));
+        flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
+    }
+
+    @Override
+    public void onAdd(final Pod pod) {
+        service.execute(() -> onAddSync(pod));
+    }
+
+    @Override
+    public void onUpdate(final Pod oldPod, final Pod newPod) {
+        service.execute(() -> onUpdateSync(oldPod, newPod));
+    }
+
     @Override
     public void onDelete(final Pod pod, final boolean deletedFinalStateUnknown) {
-        final long now = System.nanoTime();
-        LOG.debug("{} pod deleted in {}ns!", pod.getMetadata().getName(), (System.nanoTime() - now));
-        flowable.onNext(new PodEvent(PodEvent.Action.DELETED, pod));
+        service.execute(() -> onDeleteSync(pod, deletedFinalStateUnknown));
     }
 }

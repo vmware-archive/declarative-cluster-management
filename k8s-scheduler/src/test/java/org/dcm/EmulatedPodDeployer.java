@@ -76,7 +76,7 @@ public class EmulatedPodDeployer implements IPodDeployer {
                 pod.setSpec(spec);
                 pod.setStatus(status);
                 pods.computeIfAbsent(deploymentName, (k) -> new ArrayList<>()).add(pod);
-                resourceEventHandler.onAdd(pod);
+                resourceEventHandler.onAddSync(pod);
             }
         }
     }
@@ -96,7 +96,7 @@ public class EmulatedPodDeployer implements IPodDeployer {
             final List<Pod> podsList = pods.get(deployment.getMetadata().getName());
             Preconditions.checkNotNull(podsList);
             for (final Pod pod: podsList) {
-                resourceEventHandler.onDelete(pod, false);
+                resourceEventHandler.onDeleteSync(pod, false);
             }
         }
     }

@@ -192,11 +192,11 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         for (int i = 0; i < numPods; i++) {
-            handler.onAdd(newPod("p" + i));
+            handler.onAddSync(newPod("p" + i));
         }
 
         // All pod additions have completed
@@ -249,7 +249,7 @@ public class SchedulerTest {
             } else {
                 podsWithoutLabels.add(podName);
             }
-            handler.onAdd(newPod(podName, "Pending", selectorLabels, Collections.emptyMap()));
+            handler.onAddSync(newPod(podName, "Pending", selectorLabels, Collections.emptyMap()));
         }
 
         // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
@@ -274,7 +274,7 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // First, we check if the computed intermediate view is correct
@@ -364,7 +364,7 @@ public class SchedulerTest {
                 pod.getSpec().getAffinity().getNodeAffinity()
                    .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes, some of which have labels described by nodeLabelsInput,
@@ -391,7 +391,7 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // First, we check if the computed intermediate views are correct
@@ -543,7 +543,7 @@ public class SchedulerTest {
             } else {
                 pod.getMetadata().setLabels(Collections.singletonMap("dummyKey", "dummyValue"));
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes
@@ -557,7 +557,7 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
@@ -761,7 +761,7 @@ public class SchedulerTest {
             pod.getSpec().getContainers().get(0)
                 .getResources()
                 .setRequests(resourceRequests);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes and one system pod per node
@@ -780,7 +780,7 @@ public class SchedulerTest {
             final String status = "Running";
             pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName(nodeName);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
@@ -857,7 +857,7 @@ public class SchedulerTest {
             if (tolerations.get(i).size() != 0) {
                 pod.getSpec().setTolerations(tolerations.get(i));
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes
@@ -872,7 +872,7 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
@@ -1049,11 +1049,11 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         for (int i = 0; i < numPods; i++) {
-            handler.onAdd(newPod("p" + i));
+            handler.onAddSync(newPod("p" + i));
         }
 
         // All pod additions have completed
