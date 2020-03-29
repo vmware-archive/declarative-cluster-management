@@ -74,7 +74,6 @@ public final class Scheduler {
             metrics.histogram(name(Scheduler.class, "pods-per-scheduling-attempt"));
     private final Timer updateDataTimes = metrics.timer(name(Scheduler.class, "updateDataTimes"));
     private final Timer solveTimes = metrics.timer(name(Scheduler.class, "solveTimes"));
-    private final Object freezeUpdates = new Object();
     @Nullable private Disposable subscription;
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
