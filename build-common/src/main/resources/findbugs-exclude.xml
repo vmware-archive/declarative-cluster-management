@@ -39,6 +39,10 @@
         <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME" />
     </Match>
     <Match>
+        <Class name="org.dcm.backend.OrToolsSolver"/>
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
+    </Match>
+    <Match>
         <Class name="org.dcm.Scheduler" />
         <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME" />
     </Match>

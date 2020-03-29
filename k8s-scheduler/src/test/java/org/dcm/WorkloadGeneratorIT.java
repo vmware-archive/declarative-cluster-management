@@ -7,6 +7,12 @@
 package org.dcm;
 
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListenableScheduledFuture;
+import com.google.common.util.concurrent.ListeningScheduledExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.google.common.util.concurrent.SettableFuture;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -34,8 +40,6 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -56,11 +60,12 @@ class WorkloadGeneratorIT extends ITBase {
     private static final int MEM_SCALE_DOWN_DEFAULT = 50;
     private static final String TIME_SCALE_DOWN_PROPERTY = "timeScaleDown";
     private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
+    private static final String START_TIME_CUTOFF = "startTimeCutOff";
+    private static final int START_TIME_CUTOFF_DEFAULT = 1000;
 
-    private final ScheduledExecutorService scheduledExecutorService =
-            Executors.newScheduledThreadPool(100);
-    private final List<ScheduledFuture> startDepList = new ArrayList<>();
-    private final List<ScheduledFuture> endDepList = new ArrayList<>();
+    private final List<ListenableFuture<?>> deletions = new ArrayList<>();
+    private final ListeningScheduledExecutorService scheduledExecutorService =
+            MoreExecutors.listeningDecorator(Executors.newScheduledThreadPool(100));
 
     @BeforeEach
     public void logBuildInfo() {
@@ -167,24 +172,32 @@ class WorkloadGeneratorIT extends ITBase {
         final String timeScaleProperty = System.getProperty(TIME_SCALE_DOWN_PROPERTY);
         final int timeScaleDown = timeScaleProperty == null ? TIME_SCALE_DOWN_DEFAULT :
                                         Integer.parseInt(timeScaleProperty);
-        runTrace(fabricClient, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
+
+        final String startTimeCutOffProperty = System.getProperty(START_TIME_CUTOFF);
+        final int startTimeCutOff = startTimeCutOffProperty == null ? START_TIME_CUTOFF_DEFAULT :
+                Integer.parseInt(startTimeCutOffProperty);
+        runTrace(fabricClient, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
+                 startTimeCutOff);
     }
 
     void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
-                  final String schedulerName, final int cpuScaleDown, final int memScaleDown, final int timeScaleDown)
+                  final String schedulerName, final int cpuScaleDown, final int memScaleDown, final int timeScaleDown,
+                  final int startTimeCutOff)
             throws Exception {
         assertNotNull(schedulerName);
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
-                 " MemScaleDown:{} TimeScaleDown:{}", schedulerName, cpuScaleDown, memScaleDown, timeScaleDown);
+                 " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{}", schedulerName, cpuScaleDown, memScaleDown,
+                                                                      timeScaleDown, startTimeCutOff);
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         final InputStream inStream = classLoader.getResourceAsStream(fileName);
         Preconditions.checkNotNull(inStream);
-        int limit = 2000;
 
         long maxStart = 0;
         long maxEnd = 0;
+        int totalPods = 0;
+
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
                 Charset.forName("UTF8")))) {
             String line;
@@ -192,19 +205,20 @@ class WorkloadGeneratorIT extends ITBase {
             final long startTime = System.currentTimeMillis();
             System.out.println("Starting at " + startTime);
             while ((line = reader.readLine()) != null) {
-                if (limit-- == 0) {
-                    break;
-                }
                 final String[] parts = line.split(" ", 7);
                 final int start = Integer.parseInt(parts[2]) / timeScaleDown;
                 final int end = Integer.parseInt(parts[3]) / timeScaleDown;
-                final float cpu = Float.parseFloat(parts[4]) / cpuScaleDown;
-                final float mem = Float.parseFloat(parts[5]) / memScaleDown;
-                final int vmCount = Integer.parseInt(parts[6]);
+                final float cpu = Float.parseFloat(parts[4].replace(">", "")) / cpuScaleDown;
+                final float mem = Float.parseFloat(parts[5].replace(">", "")) / memScaleDown;
+                final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
                 // generate a deployment's details based on cpu, mem requirements
                 final Deployment deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);
+                totalPods += deployment.getSpec().getReplicas();
 
+                if (Integer.parseInt(parts[2]) > startTimeCutOff) { // window in seconds
+                    break;
+                }
                 // get task time info
                 final long taskStartTime = (long) start * 1000; // converting to millisec
                 final long currentTime = System.currentTimeMillis();
@@ -212,33 +226,40 @@ class WorkloadGeneratorIT extends ITBase {
                 final long waitTime = taskStartTime - timeDiff;
 
                 // create deployment in the k8s cluster at the correct start time
-                final ScheduledFuture scheduledStart = scheduledExecutorService.schedule(
+                final ListenableFuture<?> scheduledStart = scheduledExecutorService.schedule(
                         deployer.startDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
-                startDepList.add(scheduledStart);
 
                 // get duration based on start and end times
                 final int duration = getDuration(start, end);
 
+                final long computedEndTime = (waitTime / 1000) + Math.min(30, duration);
+
                 // Schedule deletion of this deployment based on duration + time until start of the dep
-                final ScheduledFuture scheduledEnd = scheduledExecutorService.schedule(
-                        deployer.endDeployment(deployment), (waitTime / 1000) + duration, TimeUnit.SECONDS);
+                final SettableFuture<Boolean> onComplete = SettableFuture.create();
+                scheduledStart.addListener(() -> {
+                    final ListenableScheduledFuture<?> deletion =
+                            scheduledExecutorService.schedule(deployer.endDeployment(deployment),
+                            30, TimeUnit.SECONDS);
+                    deletion.addListener(() -> onComplete.set(true), scheduledExecutorService);
+                }, scheduledExecutorService);
+                deletions.add(onComplete);
 
                 maxStart = Math.max(maxStart, waitTime / 1000);
-                maxEnd = Math.max(maxEnd, (waitTime / 1000) + duration);
+                maxEnd = Math.max(maxEnd, computedEndTime);
 
                 // Add to a list to enable keeping the test active until deletion
-                endDepList.add(scheduledEnd);
-
                 taskCount++;
             }
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
 
-        LOG.info("All tasks launched. The latest application will start at {}s, and the last deletion" +
-                 " will happen at {}s. Sleeping for {}s before teardown.", maxStart / 1000, maxEnd, maxStart / 100);
-        Thread.sleep((long) maxStart + 60000);
-        deleteAllRunningPods(client);
+        LOG.info("All tasks launched ({} pods total). The latest application will start at {}s, and the last deletion" +
+                 " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart,
+                maxEnd, maxEnd);
+
+        final List<Object> objects = Futures.successfulAsList(deletions).get();
+        assert objects.size() != 0;
     }
 
     private Deployment getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,

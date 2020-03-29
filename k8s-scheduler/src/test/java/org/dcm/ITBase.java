@@ -9,7 +9,9 @@ package org.dcm;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.apps.DeploymentList;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
@@ -21,7 +23,6 @@ import java.io.File;
 import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Predicate;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -47,16 +48,12 @@ public class ITBase {
     }
 
     public void deleteAllRunningPods(final DefaultKubernetesClient client) throws Exception {
-        final List<Deployment> deployments = client.apps().deployments().inNamespace(TEST_NAMESPACE)
-                .list().getItems();
-        for (final Deployment deployment: deployments) {
-            client.apps().deployments().inNamespace(TEST_NAMESPACE).delete(deployment);
-        }
-        final List<Pod> pods = client.pods().inNamespace(TEST_NAMESPACE)
-                .list().getItems();
-        for (final Pod pod: pods) {
-            client.pods().inNamespace(TEST_NAMESPACE).delete(pod);
-        }
+        final DeploymentList deployments = client.apps().deployments().inNamespace(TEST_NAMESPACE)
+                .list();
+        client.resourceList(deployments).inNamespace(TEST_NAMESPACE).withGracePeriod(0).delete();
+        final PodList pods = client.pods().inNamespace(TEST_NAMESPACE)
+                .list();
+        client.resourceList(pods).inNamespace(TEST_NAMESPACE).withGracePeriod(0).delete();
         waitUntil(client, (n) -> hasDrained(client));
     }
 

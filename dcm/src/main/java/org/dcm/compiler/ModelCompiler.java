@@ -358,16 +358,19 @@ public class ModelCompiler {
                 final Expr function;
                 final String functionNameStr = functionCall.getName().toString().toUpperCase(Locale.US);
                 final MonoidFunction.Function functionType = MonoidFunction.Function.valueOf(functionNameStr);
-                if (functionCall.getArguments().size() == 1) {
-                    final List<Expr> arithmeticExpression =
-                            processArithmeticExpression(functionCall.getArguments().get(0),
-                                                        tablesReferencedInView,
-                                                        isAggregate);
-                    assert arithmeticExpression.size() == 1;
-                    final Expr argument = arithmeticExpression.get(0);
-                    function = new MonoidFunction(functionType, argument);
+                if (functionCall.getArguments().size() >= 1) {
+                    final List<Expr> arguments = functionCall.getArguments().stream()
+                            .map(e -> {
+                                final List<Expr> arithmeticExpression =
+                                        processArithmeticExpression(e,
+                                                tablesReferencedInView,
+                                                isAggregate);
+                                assert arithmeticExpression.size() == 1;
+                                return arithmeticExpression.get(0);
+                            }).collect(Collectors.toList());
+                    function = new MonoidFunction(functionType, arguments);
                 } else if (functionCall.getArguments().isEmpty() &&
-                            "count".equalsIgnoreCase(functionCall.getName().getSuffix())) {
+                        "count".equalsIgnoreCase(functionCall.getName().getSuffix())) {
                     // The presto parser does not consider count(*) as a function with a single
                     // argument "*", but instead treats it as a function without any arguments.
                     // The parser code therefore has this special case behavior when it

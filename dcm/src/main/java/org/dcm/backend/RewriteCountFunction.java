@@ -33,7 +33,7 @@ class RewriteCountFunction {
         @Override
         protected Expr visitMonoidFunction(final MonoidFunction function, @Nullable final Void context) {
             if (function.getFunction().equals(MonoidFunction.Function.COUNT)) {
-                if (!(function.getArgument() instanceof ColumnIdentifier)) {
+                if (!(function.getArgument().get(0) instanceof ColumnIdentifier)) {
                     throw new IllegalStateException("RewriteCountFunction is only safe to use on column identifiers");
                 }
                 final MonoidFunction newFunction = new MonoidFunction(MonoidFunction.Function.SUM,

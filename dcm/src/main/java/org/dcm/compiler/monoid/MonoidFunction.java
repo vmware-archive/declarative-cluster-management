@@ -7,23 +7,29 @@
 package org.dcm.compiler.monoid;
 
 import javax.annotation.Nullable;
+import java.util.List;
 
 public class MonoidFunction extends Expr {
     private final Function function;
-    private final Expr argument;
+    private final List<Expr> argument;
 
     public MonoidFunction(final Function function, final Expr argument) {
+        this.function = function;
+        this.argument = List.of(argument);
+    }
+
+    public MonoidFunction(final Function function, final List<Expr> argument) {
         this.function = function;
         this.argument = argument;
     }
 
     public MonoidFunction(final Function function, final Expr argument, final String alias) {
         this.function = function;
-        this.argument = argument;
+        this.argument = List.of(argument);
         setAlias(alias);
     }
 
-    public Expr getArgument() {
+    public List<Expr> getArgument() {
         return argument;
     }
 
@@ -51,6 +57,7 @@ public class MonoidFunction extends Expr {
         MAX,
         ALL_DIFFERENT,
         ALL_EQUAL,
-        INCREASING
+        INCREASING,
+        CAPACITY_CONSTRAINT
     }
 }

@@ -103,4 +103,26 @@ public class SchedulerIT extends ITBase {
         stateSync.shutdown();
         scheduler.shutdown();
     }
+
+
+    @Test()
+    @Timeout(60 /* seconds */)
+    public void testSmallTrace() throws Exception {
+        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "ORTOOLS", true, "");
+        final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
+
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient), 50, 1000);
+        stateSync.startProcessingEvents();
+
+        // Add a new one
+        final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
+        final KubernetesPodDeployer deployer = new KubernetesPodDeployer(fabricClient, "default");
+        workloadGeneratorIT.runTrace(fabricClient, "test-data.txt", deployer, "dcm-scheduler",
+                100, 50, 100, 1000000);
+        stateSync.shutdown();
+        scheduler.shutdown();
+    }
+
 }

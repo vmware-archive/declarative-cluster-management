@@ -36,6 +36,7 @@ import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
 import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
+import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -191,11 +192,11 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         for (int i = 0; i < numPods; i++) {
-            handler.onAdd(newPod("p" + i));
+            handler.onAddSync(newPod("p" + i));
         }
 
         // All pod additions have completed
@@ -248,7 +249,7 @@ public class SchedulerTest {
             } else {
                 podsWithoutLabels.add(podName);
             }
-            handler.onAdd(newPod(podName, "Pending", selectorLabels, Collections.emptyMap()));
+            handler.onAddSync(newPod(podName, "Pending", selectorLabels, Collections.emptyMap()));
         }
 
         // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
@@ -273,7 +274,7 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // First, we check if the computed intermediate view is correct
@@ -363,7 +364,7 @@ public class SchedulerTest {
                 pod.getSpec().getAffinity().getNodeAffinity()
                    .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes, some of which have labels described by nodeLabelsInput,
@@ -390,7 +391,7 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // First, we check if the computed intermediate views are correct
@@ -542,7 +543,7 @@ public class SchedulerTest {
             } else {
                 pod.getMetadata().setLabels(Collections.singletonMap("dummyKey", "dummyValue"));
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes
@@ -556,7 +557,7 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
@@ -760,7 +761,7 @@ public class SchedulerTest {
             pod.getSpec().getContainers().get(0)
                 .getResources()
                 .setRequests(resourceRequests);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes and one system pod per node
@@ -768,7 +769,8 @@ public class SchedulerTest {
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
+            node.getStatus().getCapacity().put("cpu",
+                                               new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(nodeMemoryCapacities.get(i))));
             nodeResourceEventHandler.onAdd(node);
 
@@ -778,13 +780,15 @@ public class SchedulerTest {
             final String status = "Running";
             pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName(nodeName);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
         if (feasible) {
+            System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN).fetch());
+            System.out.println(conn.selectFrom(Tables.NODE_INFO).fetch());
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
             final List<String> nodes = result.stream()
@@ -853,7 +857,7 @@ public class SchedulerTest {
             if (tolerations.get(i).size() != 0) {
                 pod.getSpec().setTolerations(tolerations.get(i));
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes
@@ -868,7 +872,7 @@ public class SchedulerTest {
             final String podName = "system-pod-n" + i;
             final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName("n" + i);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
@@ -1014,9 +1018,49 @@ public class SchedulerTest {
         DebugUtils.dbLoad(conn);
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         System.out.println(results);
+    }
+
+
+    /*
+     * Make sure that the scheduler places all pending pods even though it may attempt to place only a subset
+     * of them at a time
+     */
+    @Test
+    public void testPlaceAllPendingPodsRegardlessOfBatchSize() {
+        final DSLContext conn = Scheduler.setupDb();
+        final List<String> policies = Policies.getDefaultPolicies();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final int numNodes = 5;
+        final int numPods = 200;
+        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
+        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        emitter.map(eventHandler::handle).subscribe();
+
+        for (int i = 0; i < numNodes; i++) {
+            nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
+                                           Collections.emptyList()));
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
+        }
+
+        for (int i = 0; i < numPods; i++) {
+            handler.onAddSync(newPod("p" + i));
+        }
+
+        // All pod additions have completed
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(conn));
+        final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
+        fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
     }
 
 
@@ -1105,7 +1149,7 @@ public class SchedulerTest {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();
-        quantityMap.put("cpu", new Quantity("10"));
+        quantityMap.put("cpu", new Quantity("10", "m"));
         quantityMap.put("memory", new Quantity("1000"));
         quantityMap.put("ephemeral-storage", new Quantity("1000"));
         quantityMap.put("pods", new Quantity("100"));

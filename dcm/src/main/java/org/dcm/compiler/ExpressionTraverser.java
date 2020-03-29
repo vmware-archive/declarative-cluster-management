@@ -72,7 +72,8 @@ class ExpressionTraverser extends DefaultTraversalVisitor<Void, Void> {
     @Override
     protected Void visitFunctionCall(final FunctionCall node, final Void context) {
         if (node.getArguments().size() == 1
-            || (node.getArguments().isEmpty() && "count".equalsIgnoreCase(node.getName().getSuffix()))) {
+            || (node.getArguments().isEmpty() && "count".equalsIgnoreCase(node.getName().getSuffix()))
+            || (node.getArguments().size() == 4 && node.getName().getSuffix().equals("capacity_constraint"))) {
             stack.push(node);
         } else {
             throw new RuntimeException("I don't know what do with the following node: " + node);

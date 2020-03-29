@@ -413,6 +413,7 @@ public class Model {
      * Scans tables to update the data associated with the model
      */
     private void updateDataFields() {
+        final long updateData = System.nanoTime();
         for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
             final Table<? extends Record> table = entry.getKey();
             final IRTable irTable = entry.getValue();
@@ -424,7 +425,6 @@ public class Model {
             LOG.info("updateDataFields for table {} took {}ns to fetch from DB, and {}ns to reflect in IRTables",
                      table.getName(), (select - start), (System.nanoTime() - updateValues));
         }
-        final long updateData = System.nanoTime();
         compiler.updateData(irContext, backend);
         LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
     }
