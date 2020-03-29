@@ -10,6 +10,7 @@ import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
+import com.github.davidmoten.rx2.flowable.Transformers;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -106,8 +107,8 @@ public final class Scheduler {
                     && podEvent.getPod().getSpec().getSchedulerName().equals(
                     Scheduler.SCHEDULER_NAME)
             )
-//            .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
-            .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
+            .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
+//            .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
             .filter(podEvents -> !podEvents.isEmpty())
             .observeOn(Schedulers.from(Executors.newSingleThreadExecutor(namedThreadFactory)))
             .subscribe(
@@ -124,11 +125,9 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        while (conn.fetchCount(Tables.PODS_TO_ASSIGN) != 0) {
-            if (conn.fetchCount(Tables.PODS_TO_ASSIGN) == 0) {
-                LOG.error("Solver invoked when there were no new pods to schedule");
-                return;
-            }
+        int fetchCount = conn.fetchCount(Tables.PODS_TO_ASSIGN);
+        while (fetchCount != 0) {
+            LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
 
             final long now = System.nanoTime();
@@ -161,6 +160,11 @@ public final class Scheduler {
                             }
                     ));
             LOG.info("Done with bindings");
+            fetchCount = conn.fetchCount(Tables.PODS_TO_ASSIGN);
+            if (fetchCount == 0) {
+                LOG.error("No new pods to schedule");
+                return;
+            }
         }
     }
 
