@@ -68,6 +68,7 @@ public abstract class ViewUpdater {
 
         this.connection = connection;
         // this key is connection-specific and allows us to separate records received from the DB for different models
+
         this.key = String.format("KEY%d", connection.hashCode());
         mapRecordsFromDB.computeIfAbsent(this.key, m -> new ArrayList<>());
 

@@ -40,11 +40,11 @@ public class SchedulerIT extends ITBase {
     @Test()
     @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple conn = Scheduler.setupDb();
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, "");
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn.getDbCtx());
         scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient), 50, 1000);
         stateSync.startProcessingEvents();
 
@@ -69,11 +69,11 @@ public class SchedulerIT extends ITBase {
     @Test()
     @Timeout(60 /* seconds */)
     public void testAffinityAntiAffinity() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple conn = Scheduler.setupDb();
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, "");
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn.getDbCtx());
         scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient),  50, 1000);
         stateSync.startProcessingEvents();
 
@@ -108,11 +108,11 @@ public class SchedulerIT extends ITBase {
     @Test()
     @Timeout(60 /* seconds */)
     public void testSmallTrace() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple conn = Scheduler.setupDb();
         final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "ORTOOLS", true, "");
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn.getDbCtx());
         scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient), 50, 1000);
         stateSync.startProcessingEvents();
 

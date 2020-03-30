@@ -27,6 +27,8 @@ import org.apache.commons.cli.ParseException;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.backend.OrToolsSolver;
 import org.dcm.k8s.generated.Tables;
+import org.dcm.viewupdater.H2Updater;
+import org.dcm.viewupdater.ViewUpdater;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -69,6 +71,7 @@ public final class Scheduler {
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
 
+    private final Connection jdbcConn;
     private final DSLContext conn;
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
@@ -80,8 +83,26 @@ public final class Scheduler {
     @Nullable private Disposable subscription;
     private final ThreadFactory namedThreadFactory =
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
+    private final List<String> baseTables = List.of("NODE_INFO",
+                                                    "POD_INFO",
+                                                    "POD_PORTS_REQUEST",
+                                                    "CONTAINER_HOST_PORTS",
+                                                    "POD_NODE_SELECTOR_LABELS",
+                                                    "POD_AFFINITY_MATCH_EXPRESSIONS",
+                                                    "POD_ANTI_AFFINITY_MATCH_EXPRESSIONS",
+                                                    "POD_LABELS",
+                                                    "NODE_LABELS",
+                                                    "VOLUME_LABELS",
+                                                    "POD_BY_SERVICE",
+                                                    "SERVICE_AFFINITY_LABELS",
+                                                    "LABELS_TO_CHECK_FOR_PRESENCE",
+                                                    "NODE_TAINTS",
+                                                    "POD_TOLERATIONS",
+                                                    "NODE_IMAGES",
+                                                    "POD_IMAGES",
+                                                    "BATCH_SIZE");
 
-    Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
+    Scheduler(final ConnectionTuple connectionTuple, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
@@ -91,13 +112,15 @@ public final class Scheduler {
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
-        this.conn = conn;
+        this.jdbcConn = connectionTuple.getJdbcConn();
+        this.conn = connectionTuple.getDbCtx();
         this.model = createDcmModel(conn, solverToUse, policies);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
     void startScheduler(final Flowable<PodEvent> eventStream, final IPodToNodeBinder binder, final int batchCount,
                         final long batchTimeMs) {
+        final ViewUpdater updater = new H2Updater(jdbcConn, conn, model.getIRTables(), baseTables);
         final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(conn);
         subscription = eventStream
             .map(podEventsToDatabase::handle)
@@ -108,7 +131,6 @@ public final class Scheduler {
                     Scheduler.SCHEDULER_NAME)
             )
             .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
-//            .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
             .filter(podEvents -> !podEvents.isEmpty())
             .observeOn(Schedulers.from(Executors.newSingleThreadExecutor(namedThreadFactory)))
             .subscribe(
@@ -202,7 +224,7 @@ public final class Scheduler {
      * Sets up a private, in-memory database.
      */
     @VisibleForTesting
-    static DSLContext setupDb() {
+    static ConnectionTuple setupDb() {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/scheduler_tables.sql");
@@ -223,9 +245,27 @@ public final class Scheduler {
                     .omitEmptyStrings()
                     .splitToList(schemaAsString);
             semiColonSeparated.forEach(using::execute);
-            return using;
+            return new ConnectionTuple(conn, using);
         } catch (final SQLException | IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    static class ConnectionTuple {
+        private final Connection jdbcConn;
+        private final DSLContext dbCtx;
+
+        ConnectionTuple(final Connection jdbcConn, final DSLContext dbCtx) {
+            this.jdbcConn = jdbcConn;
+            this.dbCtx = dbCtx;
+        }
+
+        public Connection getJdbcConn() {
+            return jdbcConn;
+        }
+
+        public DSLContext getDbCtx() {
+            return dbCtx;
         }
     }
 
@@ -246,7 +286,7 @@ public final class Scheduler {
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
 
-        final DSLContext conn = setupDb();
+        final ConnectionTuple conn = setupDb();
         final Scheduler scheduler = new Scheduler(conn,
                 Policies.getDefaultPolicies(),
                 cmd.getOptionValue("solver"),
@@ -258,7 +298,7 @@ public final class Scheduler {
                  kubernetesClient.getConfiguration().getMasterUrl());
 
         final KubernetesStateSync stateSync = new KubernetesStateSync(kubernetesClient);
-        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn.getDbCtx());
         final KubernetesBinder binder = new KubernetesBinder(kubernetesClient);
         scheduler.startScheduler(eventStream, binder,
                                  Integer.parseInt(cmd.getOptionValue("batch-size")),

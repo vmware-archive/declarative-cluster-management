@@ -76,7 +76,8 @@ public class SchedulerTest {
      */
     @Test
     public void testDeleteCascade() {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final PodEventsToDatabase handler = new PodEventsToDatabase(conn);
         final String podName = "p1";
         final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.singletonMap("k", "v"));
@@ -96,7 +97,8 @@ public class SchedulerTest {
     public void testQoS(final List<Integer> cpuRequests, final List<Integer> cpuLimit,
                         final List<Integer> memoryRequests, final List<Integer> memoryLimit,
                         final PodEventsToDatabase.QosClass expected) {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final PodEventsToDatabase handler = new PodEventsToDatabase(conn);
 
         final Pod pod = newPod("pod1", "Pending", Collections.emptyMap(), Collections.emptyMap());
@@ -168,7 +170,8 @@ public class SchedulerTest {
     @ParameterizedTest
     @MethodSource("conditions")
     public void testSchedulerNodePredicates(final String type, final String status) {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final List<String> policies = Policies.from(Policies.nodePredicates());
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
         final int numNodes = 5;
@@ -200,7 +203,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "MNZ-CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
@@ -223,7 +226,8 @@ public class SchedulerTest {
     @MethodSource("nodeSelectorConditions")
     public void testPodNodeSelector(final Set<String> podsToMatch, final Set<String> podsPartialMatch,
                                     final Set<String> nodesToMatch, final Set<String> nodesPartialMatch) {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
@@ -301,7 +305,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "MNZ-CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -336,7 +340,8 @@ public class SchedulerTest {
     public void testPodToNodeAffinity(final List<NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
                                       final boolean shouldBeAffineToLabelledNodes,
                                       final boolean shouldBeAffineToRemainingNodes) {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
@@ -430,7 +435,7 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "MNZ-CHUFFED", true, "");
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
@@ -501,7 +506,8 @@ public class SchedulerTest {
                                                    final boolean conditionToLabelledPods,
                                                    final boolean conditionToRemainingPods,
                                                    final boolean cannotBePlacedAnywhere) {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final int numPods = 4;
         final int numPodsToModify = 3;
         final int numNodes = 3;
@@ -563,7 +569,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "ORTOOLS", true, "");
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
@@ -738,7 +744,8 @@ public class SchedulerTest {
                                   final Predicate<List<String>> assertOn, final boolean feasible) {
         assertEquals(cpuRequests.size(), memoryRequests.size());
         assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
@@ -785,7 +792,7 @@ public class SchedulerTest {
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "ORTOOLS", true, "");
         if (feasible) {
             System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN).fetch());
             System.out.println(conn.selectFrom(Tables.NODE_INFO).fetch());
@@ -840,7 +847,8 @@ public class SchedulerTest {
     public void testTaintsAndTolerations(final String displayName, final List<List<Toleration>> tolerations,
                                          final List<List<Taint>> taints, final Predicate<List<String>> assertOn,
                                          final boolean feasible) {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
@@ -876,7 +884,7 @@ public class SchedulerTest {
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "MNZ-CHUFFED", true, "");
 
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
@@ -1013,12 +1021,13 @@ public class SchedulerTest {
     @Test
     @Disabled
     public void testNoConstraintPods() {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final List<String> policies = Policies.getDefaultPolicies();
         DebugUtils.dbLoad(conn);
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "MNZ-CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         System.out.println(results);
     }
@@ -1030,7 +1039,8 @@ public class SchedulerTest {
      */
     @Test
     public void testPlaceAllPendingPodsRegardlessOfBatchSize() {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
+        final DSLContext conn = connTuple.getDbCtx();
         final List<String> policies = Policies.getDefaultPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
         final int numNodes = 5;
@@ -1057,7 +1067,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "ORTOOLS", true, "");
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(conn));
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));

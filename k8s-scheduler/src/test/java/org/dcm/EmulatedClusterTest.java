@@ -39,17 +39,17 @@ class EmulatedClusterTest {
     @Test
     @Disabled
     public void runTraceLocally() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
+        final Scheduler.ConnectionTuple conn = Scheduler.setupDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final int numNodes = 1000;
 
         // Add all nodes
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn.getDbCtx());
 
         final List<String> policies = Policies.getDefaultPolicies();
         final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
-        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(conn), 100, 500);
+        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(conn.getDbCtx()), 100, 500);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
