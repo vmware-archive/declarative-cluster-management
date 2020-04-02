@@ -57,9 +57,6 @@
                     <additionalClasspathElements>
                         <additionalClasspathElement>${basedir}/lib</additionalClasspathElement>
                     </additionalClasspathElements>
-                    <systemPropertyVariables>
-                        <java.library.path>${basedir}/lib</java.library.path>
-                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>
