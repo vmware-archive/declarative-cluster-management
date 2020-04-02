@@ -22,7 +22,7 @@ create table pod_info
 (
   pod_name varchar(100) not null primary key,
   status varchar(36) not null,
-  node_name varchar(36) null,
+  node_name varchar(36),
   namespace varchar(100) not null,
   cpu_request bigint not null,
   memory_request bigint not null,

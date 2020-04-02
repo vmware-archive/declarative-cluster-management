@@ -291,7 +291,7 @@ public class ModelCompiler {
 
         for (final GroupingElement element: groupingElements) {
             assert element instanceof SimpleGroupBy;
-            final List<Expression> columnExpressions = ((SimpleGroupBy) element).getColumnExpressions();
+            final List<Expression> columnExpressions = ((SimpleGroupBy) element).getExpressions();
             assert !columnExpressions.isEmpty();
 
             for (final Expression columnExpression : columnExpressions) {

@@ -14,6 +14,10 @@ import com.github.davidmoten.rx2.flowable.Transformers;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.vmware.ddlog.ir.DDlogProgram;
+import com.vmware.ddlog.translator.Translator;
+import ddlogapi.DDlogAPI;
+import ddlogapi.DDlogException;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.reactivex.Flowable;
@@ -43,6 +47,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -101,6 +108,7 @@ public final class Scheduler {
                                                     "NODE_IMAGES",
                                                     "POD_IMAGES",
                                                     "BATCH_SIZE");
+    private final ViewUpdater ddlogViewUpdater;
 
     Scheduler(final ConnectionTuple connectionTuple, final List<String> policies, final String solverToUse, final boolean debugMode,
               final String fznFlags) {
@@ -115,12 +123,12 @@ public final class Scheduler {
         this.jdbcConn = connectionTuple.getJdbcConn();
         this.conn = connectionTuple.getDbCtx();
         this.model = createDcmModel(conn, solverToUse, policies);
+        this.ddlogViewUpdater = new H2Updater(jdbcConn, conn, model.getIRTables(), baseTables);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
     void startScheduler(final Flowable<PodEvent> eventStream, final IPodToNodeBinder binder, final int batchCount,
                         final long batchTimeMs) {
-        final ViewUpdater updater = new H2Updater(jdbcConn, conn, model.getIRTables(), baseTables);
         final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(conn);
         subscription = eventStream
             .map(podEventsToDatabase::handle)
@@ -192,6 +200,7 @@ public final class Scheduler {
 
     Result<? extends Record> runOneLoop() {
         final Timer.Context updateDataTimer = updateDataTimes.time();
+        ddlogViewUpdater.flushUpdates();
         model.updateData();
         updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();
@@ -247,6 +256,49 @@ public final class Scheduler {
             semiColonSeparated.forEach(using::execute);
             return new ConnectionTuple(conn, using);
         } catch (final SQLException | IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Sets up a private, in-memory database.
+     */
+    @VisibleForTesting
+    static void setupDlogDb() {
+        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/simplified_scheduler_tables.sql");
+        try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
+                StandardCharsets.UTF_8))) {
+            final Translator t = new Translator(null);
+            final String schemaAsString = tables.lines()
+                    .filter(line -> !line.startsWith("--")) // remove SQL comments
+                    .collect(Collectors.joining("\n"));
+            final List<String> semiColonSeparated = Splitter.on(";")
+                    .trimResults()
+                    .omitEmptyStrings()
+                    .splitToList(schemaAsString);
+            semiColonSeparated // remove SQL comments
+                    .forEach(s -> {
+                        System.out.println(s);
+                        t.translateSqlStatement(s);
+                    });
+            final DDlogProgram dDlogProgram = t.getDDlogProgram();
+            final String ddlogProgramAsString = dDlogProgram.toString();
+            final String filename = "program.dl";
+            final Path path = Files.writeString(Paths.get(filename), ddlogProgramAsString);
+            path.toFile().deleteOnExit();
+            try {
+                final DDlogAPI dDlogAPI = Translator.compileAndLoad(filename,
+                                         "/Users/lsuresh/code/mbudiu-ddlog/",
+                        "/Users/lsuresh/code/mbudiu-ddlog/sql/lib/");
+                dDlogAPI.enableCpuProfiling(true);
+            } catch (DDlogException e) {
+                e.printStackTrace();
+            } catch (NoSuchFieldException e) {
+                e.printStackTrace();
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            }
+        } catch (final IOException e) {
             throw new RuntimeException(e);
         }
     }

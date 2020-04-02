@@ -40,6 +40,7 @@ import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.jooq.RowCountQuery;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -71,6 +72,14 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 @ExtendWith({})
 public class SchedulerTest {
+    /*
+     * Double checks that delete cascades work.
+     */
+    @Test
+    public void testDdlog() {
+        Scheduler.setupDlogDb();
+    }
+
     /*
      * Double checks that delete cascades work.
      */
