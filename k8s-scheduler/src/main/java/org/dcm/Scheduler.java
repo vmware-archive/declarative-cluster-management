@@ -82,7 +82,7 @@ public final class Scheduler {
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
-              final String fznFlags) {
+              final int numThreads) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
                 StandardCharsets.UTF_8))) {
@@ -92,7 +92,7 @@ public final class Scheduler {
             throw new RuntimeException(e);
         }
         this.conn = conn;
-        this.model = createDcmModel(conn, solverToUse, policies);
+        this.model = createDcmModel(conn, solverToUse, policies, numThreads);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
@@ -183,7 +183,8 @@ public final class Scheduler {
     /**
      * Instantiates a DCM model based on the configured policies.
      */
-    private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies) {
+    private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies,
+                                 final int numThreads) {
         switch (solverToUse) {
             case "MNZ-CHUFFED":
                 final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
@@ -191,7 +192,7 @@ public final class Scheduler {
                 final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
                 return Model.buildModel(conn, solver, policies);
             case "ORTOOLS":
-                final OrToolsSolver orToolsSolver = new OrToolsSolver();
+                final OrToolsSolver orToolsSolver = new OrToolsSolver(numThreads);
                 return Model.buildModel(conn, orToolsSolver, policies);
             default:
                 throw new IllegalArgumentException(solverToUse);
@@ -251,7 +252,7 @@ public final class Scheduler {
                 Policies.getDefaultPolicies(),
                 cmd.getOptionValue("solver"),
                 Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
-                cmd.getOptionValue("fzn-flags"));
+                Integer.parseInt(cmd.getOptionValue("numThreads")));
 
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",

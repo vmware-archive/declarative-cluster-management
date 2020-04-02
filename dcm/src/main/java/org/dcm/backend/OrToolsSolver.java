@@ -93,6 +93,7 @@ import java.util.stream.Stream;
  */
 public class OrToolsSolver implements ISolverBackend {
     public static final String OR_TOOLS_LIB_ENV = "OR_TOOLS_LIB";
+    private static final int NUM_THREADS_DEFAULT = 4;
     private static final String GENERATED_BACKEND_CLASS_FILE_PATH = "/tmp";
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
@@ -114,6 +115,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
     private final TupleGen tupleGen = new TupleGen();
     private final OutputIR outputIR = new OutputIR();
+    private final int numThreads;
 
     static {
         Preconditions.checkNotNull(System.getenv(OR_TOOLS_LIB_ENV));
@@ -122,6 +124,14 @@ public class OrToolsSolver implements ISolverBackend {
 
     @Nullable private IGeneratedBackend generatedBackend;
     @Nullable private IRContext context = null;
+
+    public OrToolsSolver() {
+        this.numThreads = NUM_THREADS_DEFAULT;
+    }
+
+    public OrToolsSolver(final int numThreads) {
+        this.numThreads = numThreads;
+    }
 
     @Override
     public Map<IRTable, Result<? extends Record>> runSolver(final DSLContext dbCtx,
@@ -893,7 +903,7 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement("final $1T solver = new $1T()", CpSolver.class)
                .addStatement("solver.getParameters().setLogSearchProgress(true)")
                .addStatement("solver.getParameters().setCpModelProbingLevel(0)")
-               .addStatement("solver.getParameters().setNumSearchWorkers(4)")
+               .addStatement("solver.getParameters().setNumSearchWorkers($L)", numThreads)
                .addStatement("solver.getParameters().setMaxTimeInSeconds(1)")
                .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
                .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")

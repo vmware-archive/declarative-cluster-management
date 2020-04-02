@@ -71,6 +71,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 @ExtendWith({})
 public class SchedulerTest {
+    private final int numThreads = 1;
+
     /*
      * Double checks that delete cascades work.
      */
@@ -200,7 +202,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
@@ -301,7 +303,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -430,7 +432,7 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
@@ -563,7 +565,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, numThreads);
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
@@ -785,7 +787,7 @@ public class SchedulerTest {
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, numThreads);
         if (feasible) {
             System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN).fetch());
             System.out.println(conn.selectFrom(Tables.NODE_INFO).fetch());
@@ -876,7 +878,7 @@ public class SchedulerTest {
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
 
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
@@ -1018,7 +1020,7 @@ public class SchedulerTest {
         DebugUtils.dbLoad(conn);
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
         final Result<? extends Record> results = scheduler.runOneLoop();
         System.out.println(results);
     }
@@ -1057,7 +1059,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, "");
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, numThreads);
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(conn));
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
