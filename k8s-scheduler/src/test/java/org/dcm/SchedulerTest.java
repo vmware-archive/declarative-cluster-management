@@ -1020,9 +1020,11 @@ public class SchedulerTest {
         DebugUtils.dbLoad(conn);
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
-        final Result<? extends Record> results = scheduler.runOneLoop();
-        System.out.println(results);
+        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, numThreads);
+        for (int i = 0; i < 100; i++) {
+            final Result<? extends Record> results = scheduler.runOneLoop();
+            System.out.println(results);
+        }
     }
 
 
