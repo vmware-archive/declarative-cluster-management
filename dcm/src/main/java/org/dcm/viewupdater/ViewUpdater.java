@@ -1,11 +1,13 @@
 package org.dcm.viewupdater;
 
-import com.google.common.base.Preconditions;
+import ddlogapi.DDlogAPI;
 import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogRecord;
 import org.dcm.IRTable;
+import org.jooq.CreateTableAsStep;
 import org.jooq.DSLContext;
 import org.jooq.Field;
+import org.jooq.Query;
 import org.jooq.Record;
 import org.jooq.Table;
 
@@ -36,7 +38,7 @@ public abstract class ViewUpdater {
     private final DSLContext dbCtx;
     private final Map<String, Map<DDlogCommand.Kind, PreparedStatement>> preparedQueries = new HashMap<>();
     private final DDlogUpdater updater;
-    private final Map<String, IRTable> irTables;
+    private final Map<String, Table<?>> tableMap;
     private final List<LocalDDlogCommand> recordsFromDDLog = new ArrayList<>();
     private final Map<String, Integer> recordsReceived = new HashMap<>();
 
@@ -45,44 +47,39 @@ public abstract class ViewUpdater {
     private static final String STRING_TYPE = "java.lang.String";
     private static final String BOOLEAN_TYPE = "java.lang.Boolean";
     private static final String LONG_TYPE = "java.lang.Long";
-    private static final String DDLOG_MODEL_ENV = "DDLOG_MODEL_ENV";
 
     // connection prefix (per model) -> <List of DDlogRecords per table, per model>
     // correct use requires that a new connection is used for every model
     static Map<String, List<LocalDDlogCommand>> mapRecordsFromDB = new ConcurrentHashMap<>();
 
-    static {
-        Preconditions.checkNotNull(System.getenv(DDLOG_MODEL_ENV));
-        System.load(System.getenv(DDLOG_MODEL_ENV));
-    }
-
     /**
      * @param connection: a connection to the DB used to build prepared statements
      * @param dbCtx: database context, mainly used to create triggers.
      * @param baseTables: the tables we build triggers for
-     * @param irTables: the datastructure that gives us schema for the "base" and "view" tables
      */
 
     public ViewUpdater(final Connection connection, final DSLContext dbCtx,
-                       final List<String> baseTables, final Map<String, IRTable> irTables) {
-
+                       final List<String> baseTables, final DDlogAPI api) {
         this.connection = connection;
         // this key is connection-specific and allows us to separate records received from the DB for different models
 
         this.key = String.format("KEY%d", connection.hashCode());
         mapRecordsFromDB.computeIfAbsent(this.key, m -> new ArrayList<>());
 
-        this.irTables = irTables;
         this.baseTables = baseTables;
         this.dbCtx = dbCtx;
-        this.updater = new DDlogUpdater(this::receiveUpdateFromDDlog, irTables);
+        this.tableMap = new HashMap<>();
+        for (final Table<?> table: dbCtx.meta().getTables()) {
+            tableMap.put(table.getName().toUpperCase(Locale.US), table);
+            final Query query = dbCtx.ddl(table).queries()[0];
+        }
+        this.updater = new DDlogUpdater(this::receiveUpdateFromDDlog, tableMap, api);
     }
 
     private String generatePreparedQueryString(final String dataType, final DDlogCommand.Kind commandKind) {
         final StringBuilder stringBuilder = new StringBuilder();
-        final IRTable irTable = irTables.get(dataType);
-        final Table<? extends Record> table = irTable.getTable();
-        final Field[] fields = table.fields();
+        final Table<? extends Record> table = tableMap.get(dataType);
+        final Field<?>[] fields = table.fields();
         if (commandKind == DDlogCommand.Kind.Insert) {
             stringBuilder.append(String.format("insert into %s values ( %n", dataType));
             // for the first fields.length values, use a comma after the ?. No need to put a comma after the last ?
@@ -100,13 +97,15 @@ public abstract class ViewUpdater {
     void createDBTriggers() {
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
-            if (irTables.containsKey(tableName)) {
+//            if (irTables.containsKey(tableName)) {
                 final String [] operations = {"UPDATE", "INSERT", "DELETE"};
                 for (final String op: operations) {
                     final String triggerName = String.format("%s_TRIGGER_%s_%s", key, tableName, op);
-                    dbCtx.execute(String.format("CREATE TRIGGER %s BEFORE %s ON %s FOR EACH ROW CALL \"%s\"",
-                            triggerName, op, tableName, triggerClassName));
-                }
+                    final String triggerStatement =
+                            String.format("CREATE TRIGGER %s BEFORE %s ON %s FOR EACH ROW CALL \"%s\"",
+                                          triggerName, op, tableName, triggerClassName);
+                    final int execute = dbCtx.execute(triggerStatement);
+//                }
             }
         }
     }
@@ -117,9 +116,8 @@ public abstract class ViewUpdater {
         final String tableName = record.getStructName();
 
         // we only hold records for tables we have in the DB and none others.
-        if (irTables.containsKey(tableName)) {
-            final IRTable irTable = irTables.get(tableName);
-            final Table<? extends Record> table = irTable.getTable();
+        if (tableMap.containsKey(tableName)) {
+            final Table<? extends Record> table = tableMap.get(tableName);
 
             int fieldIndex = 0;
             for (final Field<?> field : table.fields()) {

@@ -12,6 +12,7 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.github.davidmoten.rx2.flowable.Transformers;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.ddlog.ir.DDlogProgram;
@@ -123,7 +124,8 @@ public final class Scheduler {
         this.jdbcConn = connectionTuple.getJdbcConn();
         this.conn = connectionTuple.getDbCtx();
         this.model = createDcmModel(conn, solverToUse, policies);
-        this.ddlogViewUpdater = new H2Updater(jdbcConn, conn, model.getIRTables(), baseTables);
+        final DDlogAPI api = setupDlogDb();
+        this.ddlogViewUpdater = new H2Updater(jdbcConn, conn, baseTables, api);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
@@ -264,7 +266,7 @@ public final class Scheduler {
      * Sets up a private, in-memory database.
      */
     @VisibleForTesting
-    static void setupDlogDb() {
+    static DDlogAPI setupDlogDb() {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/simplified_scheduler_tables.sql");
         try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
                 StandardCharsets.UTF_8))) {
@@ -278,25 +280,22 @@ public final class Scheduler {
                     .splitToList(schemaAsString);
             semiColonSeparated // remove SQL comments
                     .forEach(s -> {
-                        System.out.println(s);
                         t.translateSqlStatement(s);
                     });
             final DDlogProgram dDlogProgram = t.getDDlogProgram();
             final String ddlogProgramAsString = dDlogProgram.toString();
             final String filename = "program.dl";
             final Path path = Files.writeString(Paths.get(filename), ddlogProgramAsString);
+            System.out.println(ddlogProgramAsString);
             path.toFile().deleteOnExit();
             try {
-                final DDlogAPI dDlogAPI = Translator.compileAndLoad(filename,
-                                         "/Users/lsuresh/code/mbudiu-ddlog/",
-                        "/Users/lsuresh/code/mbudiu-ddlog/sql/lib/");
-                dDlogAPI.enableCpuProfiling(true);
-            } catch (DDlogException e) {
-                e.printStackTrace();
-            } catch (NoSuchFieldException e) {
-                e.printStackTrace();
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
+                final String ddlogHome = System.getenv("DDLOG_HOME");
+                final DDlogAPI ddlogAPI = Translator.compileAndLoad(filename,
+                        ddlogHome, ddlogHome + "/sql/lib");
+                Preconditions.checkNotNull(ddlogAPI);
+                return ddlogAPI;
+            } catch (DDlogException | NoSuchFieldException | IllegalAccessException e) {
+                throw new RuntimeException(e);
             }
         } catch (final IOException e) {
             throw new RuntimeException(e);

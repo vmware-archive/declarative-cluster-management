@@ -40,7 +40,6 @@ import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
-import org.jooq.RowCountQuery;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -1033,10 +1032,10 @@ public class SchedulerTest {
         final Scheduler.ConnectionTuple connTuple = Scheduler.setupDb();
         final DSLContext conn = connTuple.getDbCtx();
         final List<String> policies = Policies.getDefaultPolicies();
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "ORTOOLS", true, "");
         DebugUtils.dbLoad(conn);
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(connTuple, policies, "MNZ-CHUFFED", true, "");
         final Result<? extends Record> results = scheduler.runOneLoop();
         System.out.println(results);
     }

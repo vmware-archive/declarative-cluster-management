@@ -2,8 +2,8 @@ package org.dcm.viewupdater;
 
 import com.google.common.base.Splitter;
 import com.google.common.collect.Iterables;
+import ddlogapi.DDlogAPI;
 import ddlogapi.DDlogCommand;
-import org.dcm.IRTable;
 import org.h2.api.Trigger;
 import org.jooq.DSLContext;
 
@@ -12,14 +12,12 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 public class H2Updater extends ViewUpdater {
 
-    public H2Updater(final Connection connection,
-                     final DSLContext dbCtx, final Map<String, IRTable> irTables,
-                     final List<String> baseTables) {
-        super(connection, dbCtx, baseTables, irTables);
+    public H2Updater(final Connection connection, final DSLContext dbCtx,
+                     final List<String> baseTables, final DDlogAPI api) {
+        super(connection, dbCtx, baseTables, api);
         triggerClassName = H2Updater.InnerH2Updater.class.getName();
         createDBTriggers();
     }

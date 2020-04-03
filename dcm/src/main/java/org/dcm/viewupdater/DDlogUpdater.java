@@ -5,20 +5,20 @@ import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogException;
 import ddlogapi.DDlogRecCommand;
 import ddlogapi.DDlogRecord;
-import org.dcm.IRTable;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Table;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
 public class DDlogUpdater {
-    private final DDlogAPI API;
+    private final DDlogAPI api;
     private final Map<String, Integer> tableIDMap;
-    private final Map<String, IRTable> irTables;
+    private final Map<String, Table<?>> tableMap;
     private final Consumer<DDlogCommand<DDlogRecord>> consumer;
 
     static final String INTEGER_TYPE = "java.lang.Integer";
@@ -26,46 +26,45 @@ public class DDlogUpdater {
     static final String BOOLEAN_TYPE = "java.lang.Boolean";
     static final String LONG_TYPE = "java.lang.Long";
 
-    public DDlogUpdater(final Consumer<DDlogCommand<DDlogRecord>> consumer, final Map<String, IRTable> irTables) {
-        final int ddlogWorkerThreads = 2;
-        final boolean storeDataInDDlogBackgroundProgram = false;
-        try {
-            API = new DDlogAPI(ddlogWorkerThreads, null, storeDataInDDlogBackgroundProgram);
-        } catch (final DDlogException e) {
-            throw new RuntimeException(e);
-        }
-
+    public DDlogUpdater(final Consumer<DDlogCommand<DDlogRecord>> consumer, final Map<String, Table<?>> tableMap,
+                        final DDlogAPI api) {
+        this.api = api;
         this.consumer = consumer;
         this.tableIDMap = new HashMap<>();
-        this.irTables = irTables;
+        this.tableMap = tableMap;
     }
 
     private DDlogRecord toDDlogRecord(final String tableName, final Object[] args) {
         final DDlogRecord[] recordsArray = new DDlogRecord[args.length];
-        final IRTable irTable = irTables.get(tableName);
-        final Table<? extends Record> table = irTable.getTable();
+        final Table<? extends Record> table = tableMap.get(tableName);
 
         int fieldIndex = 0;
         for (final Field<?> field : table.fields()) {
             final Class<?> cls = field.getType();
             try {
-                switch (cls.getName()) {
-                    case BOOLEAN_TYPE:
-                        recordsArray[fieldIndex] = new DDlogRecord((Boolean) args[fieldIndex]);
-                        break;
-                    case INTEGER_TYPE:
-                        recordsArray[fieldIndex] = new DDlogRecord((Integer) args[fieldIndex]);
-                        break;
-                    case LONG_TYPE:
-                        recordsArray[fieldIndex] = new DDlogRecord((Long) args[fieldIndex]);
-                        break;
-                    case STRING_TYPE:
-                        recordsArray[fieldIndex] = new DDlogRecord(args[fieldIndex].toString().trim());
-                        break;
-                    default:
-                        throw new RuntimeException(
-                                String.format("Unknown datatype %s of field %s in table %s while sending DB data to " +
-                                        "DDLog", args[fieldIndex].getClass().getName(), field.getName(), tableName));
+                // Handle nullable columns here
+                if (args[fieldIndex] == null) {
+                    recordsArray[fieldIndex] = DDlogRecord.makeStruct("std.None", new DDlogRecord[0]);
+                }
+                else {
+                    switch (cls.getName()) {
+                        case BOOLEAN_TYPE:
+                            recordsArray[fieldIndex] = maybeOption(field, new DDlogRecord((Boolean) args[fieldIndex]));
+                            break;
+                        case INTEGER_TYPE:
+                            recordsArray[fieldIndex] = maybeOption(field, new DDlogRecord((Integer) args[fieldIndex]));
+                            break;
+                        case LONG_TYPE:
+                            recordsArray[fieldIndex] = maybeOption(field, new DDlogRecord((Long) args[fieldIndex]));
+                            break;
+                        case STRING_TYPE:
+                            recordsArray[fieldIndex] = maybeOption(field, new DDlogRecord((String) args[fieldIndex]));
+                            break;
+                        default:
+                            throw new RuntimeException(String.format("Unknown datatype %s of field %s in table %s" +
+                                    " while sending DB data to DDLog", args[fieldIndex].getClass().getName(),
+                                    field.getName(), tableName));
+                    }
                 }
             } catch (final DDlogException e) {
                 throw new RuntimeException(e);
@@ -74,9 +73,23 @@ public class DDlogUpdater {
         }
 
         try {
-            return DDlogRecord.makeStruct(tableName, recordsArray);
-        } catch (final DDlogException e) {
+            return DDlogRecord.makeStruct("T" + tableName.toLowerCase(Locale.US), recordsArray);
+        } catch (final DDlogException | NullPointerException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public DDlogRecord maybeOption(final Field<?> field, final DDlogRecord record) {
+        if (field.getDataType().nullable()) {
+            try {
+                final DDlogRecord[] arr = new DDlogRecord[1];
+                arr[0] = record;
+                return DDlogRecord.makeStruct("std.Some", arr);
+            } catch (final DDlogException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            return record;
         }
     }
 
@@ -89,11 +102,12 @@ public class DDlogUpdater {
             final List<Object> cmd = command.values;
 
             int id;
-            if (!tableIDMap.containsKey(tableName)) {
-                id = API.getTableId(tableName);
-                tableIDMap.put(tableName, id);
+            final String ddlogTableName = "R" + tableName.toLowerCase(Locale.US);
+            if (!tableIDMap.containsKey(ddlogTableName)) {
+                id = api.getTableId(ddlogTableName);
+                tableIDMap.put(ddlogTableName, id);
             }
-            id = tableIDMap.get(tableName);
+            id = tableIDMap.get(ddlogTableName);
 
             ddlogCommands[commandIndex] =
                     new DDlogRecCommand(command.command, id, toDDlogRecord(tableName, cmd.toArray()));
@@ -101,17 +115,18 @@ public class DDlogUpdater {
         }
 
         try {
-            API.transactionStart();
-            API.applyUpdates(ddlogCommands);
-            API.transactionCommitDumpChanges(consumer);
+            api.transactionStart();
+            api.applyUpdates(ddlogCommands);
+            api.transactionCommitDumpChanges(consumer);
         } catch (final DDlogException e) {
+            System.out.println(tableIDMap);
             throw new RuntimeException(e);
         }
     }
 
     public void close() {
         try {
-            API.stop();
+            api.stop();
         } catch (final DDlogException e) {
             throw new RuntimeException(e);
         }
