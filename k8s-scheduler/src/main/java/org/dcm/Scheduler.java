@@ -158,6 +158,7 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
+        ddlogViewUpdater.flushUpdates();
         int fetchCount = conn.fetchCount(Tables.PODS_TO_ASSIGN);
         while (fetchCount != 0) {
             LOG.info("Fetchcount is {}", fetchCount);
@@ -193,7 +194,6 @@ public final class Scheduler {
                             }
                     ));
             LOG.info("Done with bindings");
-            ddlogViewUpdater.flushUpdates();
             fetchCount = conn.fetchCount(Tables.PODS_TO_ASSIGN);
             if (fetchCount == 0) {
                 LOG.error("No new pods to schedule");
@@ -203,6 +203,7 @@ public final class Scheduler {
     }
 
     Result<? extends Record> runOneLoop() {
+        ddlogViewUpdater.flushUpdates();
         final Timer.Context updateDataTimer = updateDataTimes.time();
         model.updateData();
         updateDataTimer.stop();
