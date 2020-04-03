@@ -97,29 +97,29 @@ public class DDlogUpdater {
         final int commandsSize = commands.size();
         final DDlogRecCommand[] ddlogCommands = new DDlogRecCommand[commandsSize];
         int commandIndex = 0;
-        for (final LocalDDlogCommand command : commands) {
-            final String tableName = command.tableName;
-            final List<Object> cmd = command.values;
-
-            int id;
-            final String ddlogTableName = "R" + tableName.toLowerCase(Locale.US);
-            if (!tableIDMap.containsKey(ddlogTableName)) {
-                id = api.getTableId(ddlogTableName);
-                tableIDMap.put(ddlogTableName, id);
-            }
-            id = tableIDMap.get(ddlogTableName);
-
-            ddlogCommands[commandIndex] =
-                    new DDlogRecCommand(command.command, id, toDDlogRecord(tableName, cmd.toArray()));
-            commandIndex++;
-        }
-
         try {
+            for (final LocalDDlogCommand command : commands) {
+                final String tableName = command.tableName;
+                final List<Object> cmd = command.values;
+
+                int id;
+                final String ddlogTableName = "R" + tableName.toLowerCase(Locale.US);
+                if (!tableIDMap.containsKey(ddlogTableName)) {
+                    id = api.getTableId(ddlogTableName);
+                    tableIDMap.put(ddlogTableName, id);
+                }
+                id = tableIDMap.get(ddlogTableName);
+
+                ddlogCommands[commandIndex] =
+                        new DDlogRecCommand(command.command, id, toDDlogRecord(tableName, cmd.toArray()));
+                commandIndex++;
+            }
+
             api.transactionStart();
             api.applyUpdates(ddlogCommands);
             api.transactionCommitDumpChanges(consumer);
-        } catch (final DDlogException e) {
-            System.out.println(tableIDMap);
+        } catch (final Exception e) {
+            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }

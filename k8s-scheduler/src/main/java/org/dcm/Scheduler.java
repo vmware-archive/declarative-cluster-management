@@ -91,7 +91,7 @@ public final class Scheduler {
     @Nullable private Disposable subscription;
     private final ThreadFactory namedThreadFactory =
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
-    private final List<String> baseTables = List.of("NODE_INFO",
+    private static final List<String> baseTables = List.of("NODE_INFO",
                                                     "POD_INFO",
                                                     "POD_PORTS_REQUEST",
                                                     "CONTAINER_HOST_PORTS",
@@ -147,6 +147,7 @@ public final class Scheduler {
                 podEvents -> {
                     podsPerSchedulingEvent.update(podEvents.size());
                     LOG.info("Received the following {} events: {}", podEvents.size(), podEvents);
+                    ddlogViewUpdater.flushUpdates();
                     scheduleAllPendingPods(binder);
                 },
                 e -> {
@@ -192,6 +193,7 @@ public final class Scheduler {
                             }
                     ));
             LOG.info("Done with bindings");
+            ddlogViewUpdater.flushUpdates();
             fetchCount = conn.fetchCount(Tables.PODS_TO_ASSIGN);
             if (fetchCount == 0) {
                 LOG.error("No new pods to schedule");
@@ -202,7 +204,6 @@ public final class Scheduler {
 
     Result<? extends Record> runOneLoop() {
         final Timer.Context updateDataTimer = updateDataTimes.time();
-        ddlogViewUpdater.flushUpdates();
         model.updateData();
         updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();

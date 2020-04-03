@@ -761,6 +761,10 @@ public class SchedulerTest {
         final int numPods = cpuRequests.size();
         final int numNodes = nodeCpuCapacities.size();
 
+        final List<String> policies = Policies.from(Policies.nodePredicates(),
+                Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
+        final Scheduler scheduler = new Scheduler(connTuple, policies, "ORTOOLS", true, "");
+
         // Add pending pods
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
@@ -798,18 +802,12 @@ public class SchedulerTest {
             handler.onAddSync(pod);
         }
 
-        final List<String> policies = Policies.from(Policies.nodePredicates(),
-                                                    Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(connTuple, policies, "ORTOOLS", true, "");
         if (feasible) {
-            System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN).fetch());
-            System.out.println(conn.selectFrom(Tables.NODE_INFO).fetch());
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
             final List<String> nodes = result.stream()
                                             .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
                                             .collect(Collectors.toList());
-            System.out.println(nodes);
             assertTrue(assertOn.test(nodes));
         } else {
             assertThrows(ModelException.class, scheduler::runOneLoop);

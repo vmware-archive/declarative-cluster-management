@@ -3,17 +3,16 @@ package org.dcm.viewupdater;
 import ddlogapi.DDlogAPI;
 import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogRecord;
-import org.dcm.IRTable;
-import org.jooq.CreateTableAsStep;
 import org.jooq.DSLContext;
 import org.jooq.Field;
-import org.jooq.Query;
 import org.jooq.Record;
 import org.jooq.Table;
+import org.jooq.exception.DataAccessException;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -41,6 +40,8 @@ public abstract class ViewUpdater {
     private final Map<String, Table<?>> tableMap;
     private final List<LocalDDlogCommand> recordsFromDDLog = new ArrayList<>();
     private final Map<String, Integer> recordsReceived = new HashMap<>();
+    private final DDlogAPI api;
+    private final Map<String, List<String>> tableTypeMap = new HashMap<>();
 
     private static final String BIGINT_TYPE = "java.math.BigInteger";
     private static final String INTEGER_TYPE = "java.lang.Integer";
@@ -69,10 +70,25 @@ public abstract class ViewUpdater {
         this.baseTables = baseTables;
         this.dbCtx = dbCtx;
         this.tableMap = new HashMap<>();
+        // XXX: this is specific to H2
+        final List<String> viewNames = dbCtx.fetch("select table_name from information_schema.views")
+                                            .getValues("TABLE_NAME", String.class);
         for (final Table<?> table: dbCtx.meta().getTables()) {
             tableMap.put(table.getName().toUpperCase(Locale.US), table);
-            final Query query = dbCtx.ddl(table).queries()[0];
+
+            if (viewNames.contains(table.getName())) {
+                final String ddlForView = dbCtx.ddl(table).queries()[0].getSQL();
+                try {
+                    System.out.println(String.format("drop view %s cascade", table.getQualifiedName()));
+                    dbCtx.execute(String.format("drop view %s cascade", table.getQualifiedName()));
+                } catch (final DataAccessException e) {
+                    System.out.println(e.getLocalizedMessage());
+                }
+                System.out.println(ddlForView);
+                dbCtx.execute(ddlForView);
+            }
         }
+        this.api = api;
         this.updater = new DDlogUpdater(this::receiveUpdateFromDDlog, tableMap, api);
     }
 
@@ -113,7 +129,8 @@ public abstract class ViewUpdater {
     private void receiveUpdateFromDDlog(final DDlogCommand<DDlogRecord> command) {
         final List<Object> objects = new ArrayList<>();
         final DDlogRecord record = command.value();
-        final String tableName = record.getStructName();
+        final String ddlogRelationName = api.getTableName(command.relid());
+        final String tableName = ddlogRelationName.substring(1).toUpperCase(Locale.US);
 
         // we only hold records for tables we have in the DB and none others.
         if (tableMap.containsKey(tableName)) {
@@ -123,23 +140,27 @@ public abstract class ViewUpdater {
             for (final Field<?> field : table.fields()) {
                 final Class<?> cls = field.getType();
                 final DDlogRecord f = record.getStructField(fieldIndex);
-                switch (cls.getName()) {
-                    case BOOLEAN_TYPE:
-                        objects.add(f.getBoolean());
-                        break;
-                    case INTEGER_TYPE:
-                        objects.add(f.getInt());
-                        break;
-                    case LONG_TYPE:
-                        objects.add(f.getInt().longValue());
-                        break;
-                    case STRING_TYPE:
-                        objects.add(f.getString());
-                        break;
-                    default:
-                        throw new RuntimeException(
-                                String.format("Unknown datatype %s of field %s in table %s in update received from " +
-                                        "DDLog", f.getClass().getName(), field.getName(), tableName));
+                if (f.isStruct() && f.getStructName().equals("std.None")) {
+                    objects.add(null);
+                } else {
+                    switch (cls.getName()) {
+                        case BOOLEAN_TYPE:
+                            objects.add(f.getBoolean());
+                            break;
+                        case INTEGER_TYPE:
+                            objects.add(f.getInt());
+                            break;
+                        case LONG_TYPE:
+                            objects.add(f.getInt().longValue());
+                            break;
+                        case STRING_TYPE:
+                            objects.add(f.getString());
+                            break;
+                        default:
+                            throw new RuntimeException(
+                                    String.format("Unknown datatype %s of field %s in table %s in update received from " +
+                                            "DDLog", f.getClass().getName(), field.getName(), tableName));
+                    }
                 }
                 fieldIndex = fieldIndex + 1;
             }
@@ -176,27 +197,53 @@ public abstract class ViewUpdater {
         try {
             final PreparedStatement query = preparedQueries.get(tableName).get(command.command);
             int fieldIndex = 1;
-            for (final Object item: command.values) {
-                switch (item.getClass().getName()) {
-                    case BIGINT_TYPE:
-                        query.setInt(fieldIndex, ((java.math.BigInteger) item).intValue());
-                        break;
-                    case LONG_TYPE:
+            for (final Field<?> field: tableMap.get(tableName).fields()) {
+                final Object item = command.values.get(fieldIndex - 1);
+                if (item == null) {
+                    switch (field.getType().getName()) {
+                        case BIGINT_TYPE:
+                            query.setNull(fieldIndex, Types.BIGINT);
+                            break;
+                        case LONG_TYPE:
+                            query.setNull(fieldIndex, Types.NUMERIC);
+                            break;
+                        case INTEGER_TYPE:
+                            query.setNull(fieldIndex, Types.INTEGER);
+                            break;
+                        case BOOLEAN_TYPE:
+                            query.setNull(fieldIndex, Types.BOOLEAN);
+                            break;
+                        case STRING_TYPE:
+                            query.setNull(fieldIndex, Types.VARCHAR);
+                            break;
+                        default:
+                            throw new RuntimeException(String.format("Unknown datatype %s of field %s in table %s when " +
+                                            "writing data returned from DDlog to DB",
+                                    item.getClass().getName(), item.getClass().getName(), tableName));
+                    }
+                }
+                else {
+                    switch (item.getClass().getName()) {
+                        case BIGINT_TYPE:
+                            query.setInt(fieldIndex, ((java.math.BigInteger) item).intValue());
+                            break;
+                        case LONG_TYPE:
                             query.setLong(fieldIndex, (Long) item);
-                        break;
-                    case INTEGER_TYPE:
-                        query.setInt(fieldIndex, (Integer) item);
-                        break;
-                    case BOOLEAN_TYPE:
-                        query.setBoolean(fieldIndex, (Boolean) item);
-                        break;
-                    case STRING_TYPE:
-                        query.setString(fieldIndex, (String) item);
-                        break;
-                    default:
-                        throw new RuntimeException(String.format("Unknown datatype %s of field %s in table %s when " +
-                                        "writing data returned from DDlog to DB",
-                                item.getClass().getName(), item.getClass().getName(), tableName));
+                            break;
+                        case INTEGER_TYPE:
+                            query.setInt(fieldIndex, (Integer) item);
+                            break;
+                        case BOOLEAN_TYPE:
+                            query.setBoolean(fieldIndex, (Boolean) item);
+                            break;
+                        case STRING_TYPE:
+                            query.setString(fieldIndex, (String) item);
+                            break;
+                        default:
+                            throw new RuntimeException(String.format("Unknown datatype %s of field %s in table %s when " +
+                                            "writing data returned from DDlog to DB",
+                                    item.getClass().getName(), item.getClass().getName(), tableName));
+                    }
                 }
                 fieldIndex = fieldIndex + 1;
             }
