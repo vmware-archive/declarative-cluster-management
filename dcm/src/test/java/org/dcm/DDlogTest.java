@@ -1,25 +1,5 @@
 package org.dcm;
 
-import org.dcm.viewupdater.H2Updater;
-import org.dcm.viewupdater.ViewUpdater;
-import org.jooq.DSLContext;
-import org.jooq.Record;
-import org.jooq.Result;
-import org.jooq.SQLDialect;
-import org.junit.jupiter.api.Test;
-
-import java.io.File;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-
-import static org.jooq.impl.DSL.using;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 public class DDlogTest {
 
 //    @Test
@@ -247,7 +227,7 @@ public class DDlogTest {
 //
 //    /**
 //     * Builds a Model for a test case, making sure to:
-//     * - Build initial model (without hand-written constraints) on the first run. Note: the test FAILS on this scenario
+//     * - Build initial model (without hand-written constraints) on the 1st run. Note: the test FAILS on this scenario
 //     * - Build the model with an already existing file. You should edit that file in between runs.
 //     *
 //     * @param dbCtx    Connection to the DB

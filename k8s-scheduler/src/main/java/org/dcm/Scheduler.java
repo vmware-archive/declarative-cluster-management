@@ -91,7 +91,7 @@ public final class Scheduler {
     @Nullable private Disposable subscription;
     private final ThreadFactory namedThreadFactory =
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
-    private static final List<String> baseTables = List.of("NODE_INFO",
+    private static final List<String> BASE_TABLES = List.of("NODE_INFO",
                                                     "POD_INFO",
                                                     "POD_PORTS_REQUEST",
                                                     "CONTAINER_HOST_PORTS",
@@ -111,8 +111,8 @@ public final class Scheduler {
                                                     "BATCH_SIZE");
     private final ViewUpdater ddlogViewUpdater;
 
-    Scheduler(final ConnectionTuple connectionTuple, final List<String> policies, final String solverToUse, final boolean debugMode,
-              final String fznFlags) {
+    Scheduler(final ConnectionTuple connectionTuple, final List<String> policies, final String solverToUse,
+              final boolean debugMode, final String fznFlags) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
                 StandardCharsets.UTF_8))) {
@@ -125,7 +125,7 @@ public final class Scheduler {
         this.conn = connectionTuple.getDbCtx();
         this.model = createDcmModel(conn, solverToUse, policies);
         final DDlogAPI api = setupDlogDb();
-        this.ddlogViewUpdater = new H2Updater(jdbcConn, conn, baseTables, api);
+        this.ddlogViewUpdater = new H2Updater(jdbcConn, conn, BASE_TABLES, api);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
@@ -295,7 +295,7 @@ public final class Scheduler {
                         ddlogHome, ddlogHome + "/sql/lib");
                 Preconditions.checkNotNull(ddlogAPI);
                 return ddlogAPI;
-            } catch (DDlogException | NoSuchFieldException | IllegalAccessException e) {
+            } catch (final DDlogException | NoSuchFieldException | IllegalAccessException e) {
                 throw new RuntimeException(e);
             }
         } catch (final IOException e) {

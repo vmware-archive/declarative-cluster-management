@@ -21,7 +21,6 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.reactivex.processors.PublishProcessor;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 

@@ -41,7 +41,6 @@ public abstract class ViewUpdater {
     private final List<LocalDDlogCommand> recordsFromDDLog = new ArrayList<>();
     private final Map<String, Integer> recordsReceived = new HashMap<>();
     private final DDlogAPI api;
-    private final Map<String, List<String>> tableTypeMap = new HashMap<>();
 
     private static final String BIGINT_TYPE = "java.math.BigInteger";
     private static final String INTEGER_TYPE = "java.lang.Integer";
@@ -58,12 +57,10 @@ public abstract class ViewUpdater {
      * @param dbCtx: database context, mainly used to create triggers.
      * @param baseTables: the tables we build triggers for
      */
-
     public ViewUpdater(final Connection connection, final DSLContext dbCtx,
                        final List<String> baseTables, final DDlogAPI api) {
         this.connection = connection;
         // this key is connection-specific and allows us to separate records received from the DB for different models
-
         this.key = String.format("KEY%d", connection.hashCode());
         mapRecordsFromDB.computeIfAbsent(this.key, m -> new ArrayList<>());
 
@@ -113,16 +110,14 @@ public abstract class ViewUpdater {
     void createDBTriggers() {
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
-//            if (irTables.containsKey(tableName)) {
                 final String [] operations = {"UPDATE", "INSERT", "DELETE"};
                 for (final String op: operations) {
                     final String triggerName = String.format("%s_TRIGGER_%s_%s", key, tableName, op);
                     final String triggerStatement =
                             String.format("CREATE TRIGGER %s BEFORE %s ON %s FOR EACH ROW CALL \"%s\"",
                                           triggerName, op, tableName, triggerClassName);
-                    final int execute = dbCtx.execute(triggerStatement);
-//                }
-            }
+                    dbCtx.execute(triggerStatement);
+                }
         }
     }
 
@@ -158,8 +153,8 @@ public abstract class ViewUpdater {
                             break;
                         default:
                             throw new RuntimeException(
-                                    String.format("Unknown datatype %s of field %s in table %s in update received from " +
-                                            "DDLog", f.getClass().getName(), field.getName(), tableName));
+                                String.format("Unknown datatype %s of field %s in table %s in update received from " +
+                                        "DDLog", f.getClass().getName(), field.getName(), tableName));
                     }
                 }
                 fieldIndex = fieldIndex + 1;
@@ -217,9 +212,10 @@ public abstract class ViewUpdater {
                             query.setNull(fieldIndex, Types.VARCHAR);
                             break;
                         default:
-                            throw new RuntimeException(String.format("Unknown datatype %s of field %s in table %s when " +
-                                            "writing data returned from DDlog to DB",
-                                    item.getClass().getName(), item.getClass().getName(), tableName));
+                            throw new RuntimeException(
+                                    String.format("Unknown datatype %s of field %s in table %s when " +
+                                                  "writing data returned from DDlog to DB",
+                                            field.getType().getName(), field.getName(), tableName));
                     }
                 }
                 else {
@@ -240,8 +236,9 @@ public abstract class ViewUpdater {
                             query.setString(fieldIndex, (String) item);
                             break;
                         default:
-                            throw new RuntimeException(String.format("Unknown datatype %s of field %s in table %s when " +
-                                            "writing data returned from DDlog to DB",
+                            throw new RuntimeException(
+                                    String.format("Unknown datatype %s of field %s in table %s when " +
+                                                  "writing data returned from DDlog to DB",
                                     item.getClass().getName(), item.getClass().getName(), tableName));
                     }
                 }

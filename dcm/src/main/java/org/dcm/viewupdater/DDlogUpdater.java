@@ -118,8 +118,7 @@ public class DDlogUpdater {
             api.transactionStart();
             api.applyUpdates(ddlogCommands);
             api.transactionCommitDumpChanges(consumer);
-        } catch (final Exception e) {
-            e.printStackTrace();
+        } catch (final DDlogException e) {
             throw new RuntimeException(e);
         }
     }

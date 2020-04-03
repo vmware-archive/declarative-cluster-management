@@ -9,7 +9,6 @@ package org.dcm;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.reactivex.Flowable;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
