@@ -32,7 +32,6 @@ import org.apache.commons.cli.ParseException;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.backend.OrToolsSolver;
 import org.dcm.k8s.generated.Tables;
-import org.dcm.viewupdater.H2Updater;
 import org.dcm.viewupdater.ViewUpdater;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -125,7 +124,7 @@ public final class Scheduler {
         this.conn = connectionTuple.getDbCtx();
         this.model = createDcmModel(conn, solverToUse, policies);
         final DDlogAPI api = setupDlogDb();
-        this.ddlogViewUpdater = new H2Updater(jdbcConn, conn, BASE_TABLES, api);
+        this.ddlogViewUpdater = new ViewUpdater(jdbcConn, conn, BASE_TABLES, api);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 

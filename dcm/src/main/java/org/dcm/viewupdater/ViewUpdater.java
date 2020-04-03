@@ -1,8 +1,13 @@
 package org.dcm.viewupdater;
 
+import com.google.common.base.Splitter;
+import com.google.common.collect.Iterables;
 import ddlogapi.DDlogAPI;
 import ddlogapi.DDlogCommand;
+import ddlogapi.DDlogException;
+import ddlogapi.DDlogRecCommand;
 import ddlogapi.DDlogRecord;
+import org.h2.api.Trigger;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Record;
@@ -28,16 +33,16 @@ import java.util.stream.Collectors;
  * "flushUpdates". Then, these updates are passed to DDlog, that incrementally computes views on them and returns
  * updates. Finally, we push these updates back to the DB.
  */
-public abstract class ViewUpdater {
-    String triggerClassName;
+public class ViewUpdater {
+    private static final String TRIGGER_CLASS_NAME = InnerH2Updater.class.getName();
     final String key;
 
     private final Connection connection;
     private final List<String> baseTables;
     private final DSLContext dbCtx;
     private final Map<String, Map<DDlogCommand.Kind, PreparedStatement>> preparedQueries = new HashMap<>();
-    private final DDlogUpdater updater;
     private final Map<String, Table<?>> tableMap;
+    private final Map<String, Integer> tableIDMap = new HashMap<>();
     private final List<LocalDDlogCommand> recordsFromDDLog = new ArrayList<>();
     private final Map<String, Integer> recordsReceived = new HashMap<>();
     private final DDlogAPI api;
@@ -86,7 +91,7 @@ public abstract class ViewUpdater {
             }
         }
         this.api = api;
-        this.updater = new DDlogUpdater(this::receiveUpdateFromDDlog, tableMap, api);
+        createDBTriggers();
     }
 
     private String generatePreparedQueryString(final String dataType, final DDlogCommand.Kind commandKind) {
@@ -110,14 +115,14 @@ public abstract class ViewUpdater {
     void createDBTriggers() {
         for (final String entry : baseTables) {
             final String tableName = entry.toUpperCase(Locale.US);
-                final String [] operations = {"UPDATE", "INSERT", "DELETE"};
-                for (final String op: operations) {
-                    final String triggerName = String.format("%s_TRIGGER_%s_%s", key, tableName, op);
-                    final String triggerStatement =
-                            String.format("CREATE TRIGGER %s BEFORE %s ON %s FOR EACH ROW CALL \"%s\"",
-                                          triggerName, op, tableName, triggerClassName);
-                    dbCtx.execute(triggerStatement);
-                }
+            final String [] operations = {"UPDATE", "INSERT", "DELETE"};
+            for (final String op: operations) {
+                final String triggerName = String.format("%s_TRIGGER_%s_%s", key, tableName, op);
+                final String triggerStatement =
+                        String.format("CREATE TRIGGER %s BEFORE %s ON %s FOR EACH ROW CALL \"%s\"",
+                                      triggerName, op, tableName, TRIGGER_CLASS_NAME);
+                dbCtx.execute(triggerStatement);
+            }
         }
     }
 
@@ -164,7 +169,7 @@ public abstract class ViewUpdater {
     }
 
     public void flushUpdates() {
-        updater.sendUpdatesToDDlog(mapRecordsFromDB.get(key));
+        sendUpdatesToDDlog(mapRecordsFromDB.get(key));
 
         for (final LocalDDlogCommand command : recordsFromDDLog) {
             final String tableName = command.tableName;
@@ -266,10 +271,157 @@ public abstract class ViewUpdater {
 
     public void close() {
         try {
-            updater.close();
+            api.stop();
             connection.close();
-        } catch (final SQLException e) {
+        } catch (final SQLException | DDlogException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+
+    private DDlogRecord toDDlogRecord(final String tableName, final Object[] args) {
+        final DDlogRecord[] recordsArray = new DDlogRecord[args.length];
+        final Table<? extends Record> table = tableMap.get(tableName);
+
+        int fieldIndex = 0;
+        for (final Field<?> field : table.fields()) {
+            final Class<?> cls = field.getType();
+            try {
+                // Handle nullable columns here
+                if (args[fieldIndex] == null) {
+                    recordsArray[fieldIndex] = DDlogRecord.makeStruct("std.None", new DDlogRecord[0]);
+                }
+                else {
+                    switch (cls.getName()) {
+                        case BOOLEAN_TYPE:
+                            recordsArray[fieldIndex] = maybeOption(field, new DDlogRecord((Boolean) args[fieldIndex]));
+                            break;
+                        case INTEGER_TYPE:
+                            recordsArray[fieldIndex] = maybeOption(field, new DDlogRecord((Integer) args[fieldIndex]));
+                            break;
+                        case LONG_TYPE:
+                            recordsArray[fieldIndex] = maybeOption(field, new DDlogRecord((Long) args[fieldIndex]));
+                            break;
+                        case STRING_TYPE:
+                            recordsArray[fieldIndex] = maybeOption(field, new DDlogRecord((String) args[fieldIndex]));
+                            break;
+                        default:
+                            throw new RuntimeException(String.format("Unknown datatype %s of field %s in table %s" +
+                                            " while sending DB data to DDLog", args[fieldIndex].getClass().getName(),
+                                    field.getName(), tableName));
+                    }
+                }
+            } catch (final DDlogException e) {
+                throw new RuntimeException(e);
+            }
+            fieldIndex = fieldIndex + 1;
+        }
+
+        try {
+            return DDlogRecord.makeStruct("T" + tableName.toLowerCase(Locale.US), recordsArray);
+        } catch (final DDlogException | NullPointerException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public DDlogRecord maybeOption(final Field<?> field, final DDlogRecord record) {
+        if (field.getDataType().nullable()) {
+            try {
+                final DDlogRecord[] arr = new DDlogRecord[1];
+                arr[0] = record;
+                return DDlogRecord.makeStruct("std.Some", arr);
+            } catch (final DDlogException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            return record;
+        }
+    }
+
+    public void sendUpdatesToDDlog(final List<LocalDDlogCommand> commands) {
+        final int commandsSize = commands.size();
+        final DDlogRecCommand[] ddlogCommands = new DDlogRecCommand[commandsSize];
+        int commandIndex = 0;
+        try {
+            for (final LocalDDlogCommand command : commands) {
+                final String tableName = command.tableName;
+                final List<Object> cmd = command.values;
+
+                int id;
+                final String ddlogTableName = "R" + tableName.toLowerCase(Locale.US);
+                if (!tableIDMap.containsKey(ddlogTableName)) {
+                    id = api.getTableId(ddlogTableName);
+                    tableIDMap.put(ddlogTableName, id);
+                }
+                id = tableIDMap.get(ddlogTableName);
+
+                ddlogCommands[commandIndex] =
+                        new DDlogRecCommand(command.command, id, toDDlogRecord(tableName, cmd.toArray()));
+                commandIndex++;
+            }
+
+            api.transactionStart();
+            api.applyUpdates(ddlogCommands);
+            api.transactionCommitDumpChanges(this::receiveUpdateFromDDlog);
+        } catch (final DDlogException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    public static class InnerH2Updater implements Trigger {
+        private String tableName;
+        private String key;
+        private int type;
+
+        public InnerH2Updater() {
+
+        }
+
+        @Override
+        public void init(final Connection connection, final String schemaName, final String triggerName,
+                         final String tableName, final boolean before, final int type) throws SQLException {
+            this.tableName = tableName;
+            this.key = Iterables.get(Splitter.on('_').split(triggerName), 0);
+            this.type = type;
+        }
+
+        @Override
+        public void fire(final Connection connection, final Object[] oldRow,
+                         final Object[] newRow) throws SQLException {
+            mapRecordsFromDB.computeIfAbsent(key, m -> new ArrayList<>());
+            switch (type) {
+                case Trigger.INSERT : {
+                    mapRecordsFromDB.get(key)
+                            .add(new LocalDDlogCommand(DDlogCommand.Kind.Insert, tableName, newRow));
+                    break;
+                }
+                case Trigger.DELETE : {
+                    mapRecordsFromDB.get(key)
+                            .add(new LocalDDlogCommand(DDlogCommand.Kind.DeleteVal, tableName, oldRow));
+                    break;
+                }
+                case Trigger.UPDATE : {
+                    mapRecordsFromDB.get(key)
+                            .add(new LocalDDlogCommand(DDlogCommand.Kind.DeleteVal, tableName, oldRow));
+                    mapRecordsFromDB.get(key)
+                            .add(new LocalDDlogCommand(DDlogCommand.Kind.Insert, tableName, newRow));
+                    break;
+                } default: {
+                    throw new RuntimeException("Unknown trigger type received from H2: "
+                            + type + " oldRow: " + Arrays.toString(oldRow) + " newRow " + Arrays.toString(newRow));
+                }
+            }
+        }
+
+        @Override
+        public void close() throws SQLException {
+
+        }
+
+        @Override
+        public void remove() throws SQLException {
+
         }
     }
 }
