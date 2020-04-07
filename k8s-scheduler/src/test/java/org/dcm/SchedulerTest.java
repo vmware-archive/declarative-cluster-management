@@ -74,12 +74,27 @@ public class SchedulerTest {
     private final int numThreads = 1;
 
     /*
+     *
+     */
+    @Test
+    public void testMultipleConnections() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn1 = dbConnectionPool.getConnectionToDb();
+        conn1.insertInto(Tables.BATCH_SIZE).values(1).execute();
+        assertEquals(1, conn1.fetchCount(Tables.BATCH_SIZE));
+
+        final DSLContext connNew = dbConnectionPool.getConnectionToDb();
+        assertEquals(1, connNew.fetchCount(Tables.BATCH_SIZE));
+    }
+
+    /*
      * Double checks that delete cascades work.
      */
     @Test
     public void testDeleteCascade() {
-        final DSLContext conn = Scheduler.setupDb();
-        final PodEventsToDatabase handler = new PodEventsToDatabase(conn);
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final PodEventsToDatabase handler = new PodEventsToDatabase(dbConnectionPool);
         final String podName = "p1";
         final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.singletonMap("k", "v"));
         handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
@@ -98,8 +113,9 @@ public class SchedulerTest {
     public void testQoS(final List<Integer> cpuRequests, final List<Integer> cpuLimit,
                         final List<Integer> memoryRequests, final List<Integer> memoryLimit,
                         final PodEventsToDatabase.QosClass expected) {
-        final DSLContext conn = Scheduler.setupDb();
-        final PodEventsToDatabase handler = new PodEventsToDatabase(conn);
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final PodEventsToDatabase handler = new PodEventsToDatabase(dbConnectionPool);
 
         final Pod pod = newPod("pod1", "Pending", Collections.emptyMap(), Collections.emptyMap());
         pod.getSpec().setContainers(new ArrayList<>());
@@ -170,15 +186,16 @@ public class SchedulerTest {
     @ParameterizedTest
     @MethodSource("conditions")
     public void testSchedulerNodePredicates(final String type, final String status) {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.from(Policies.nodePredicates());
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final int numNodes = 5;
         final int numPods = 10;
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         emitter.map(eventHandler::handle).subscribe();
 
         // We pick a random node from [0, numNodes) to assign all pods to.
@@ -202,7 +219,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
@@ -225,10 +242,11 @@ public class SchedulerTest {
     @MethodSource("nodeSelectorConditions")
     public void testPodNodeSelector(final Set<String> podsToMatch, final Set<String> podsPartialMatch,
                                     final Set<String> nodesToMatch, final Set<String> nodesPartialMatch) {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         emitter.map(eventHandler::handle).subscribe();
 
         final int numPods = 10;
@@ -256,7 +274,7 @@ public class SchedulerTest {
 
         // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
         final Set<String> nodesWithoutLabels = new HashSet<>();
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Map<String, String> nodeLabels = new HashMap<>();
@@ -303,7 +321,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -338,10 +356,11 @@ public class SchedulerTest {
     public void testPodToNodeAffinity(final List<NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
                                       final boolean shouldBeAffineToLabelledNodes,
                                       final boolean shouldBeAffineToRemainingNodes) {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         emitter.map(eventHandler::handle).subscribe();
 
         final int numPods = 10;
@@ -371,7 +390,7 @@ public class SchedulerTest {
 
         // Add all nodes, some of which have labels described by nodeLabelsInput,
         // whereas others have a different set of labels
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final Set<String> nodesToAssign = ThreadLocalRandom.current()
                                                          .ints(numNodesToModify, 0, numNodes)
                                                          .mapToObj(i -> "n" + i)
@@ -432,7 +451,7 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
@@ -503,14 +522,14 @@ public class SchedulerTest {
                                                    final boolean conditionToLabelledPods,
                                                    final boolean conditionToRemainingPods,
                                                    final boolean cannotBePlacedAnywhere) {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final int numPods = 4;
         final int numPodsToModify = 3;
         final int numNodes = 3;
 
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         emitter.map(eventHandler::handle).subscribe();
 
         final List<String> allPods = IntStream.range(0, numPods)
@@ -549,7 +568,7 @@ public class SchedulerTest {
         }
 
         // Add all nodes
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
@@ -565,7 +584,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
@@ -740,10 +759,11 @@ public class SchedulerTest {
                                   final Predicate<List<String>> assertOn, final boolean feasible) {
         assertEquals(cpuRequests.size(), memoryRequests.size());
         assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         emitter.map(eventHandler::handle).subscribe();
         final int numPods = cpuRequests.size();
         final int numNodes = nodeCpuCapacities.size();
@@ -767,7 +787,7 @@ public class SchedulerTest {
         }
 
         // Add all nodes and one system pod per node
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
@@ -787,7 +807,7 @@ public class SchedulerTest {
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
         if (feasible) {
             System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN).fetch());
             System.out.println(conn.selectFrom(Tables.NODE_INFO).fetch());
@@ -842,10 +862,10 @@ public class SchedulerTest {
     public void testTaintsAndTolerations(final String displayName, final List<List<Toleration>> tolerations,
                                          final List<List<Taint>> taints, final Predicate<List<String>> assertOn,
                                          final boolean feasible) {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         emitter.map(eventHandler::handle).subscribe();
 
         final int numPods = tolerations.size();
@@ -863,7 +883,7 @@ public class SchedulerTest {
         }
 
         // Add all nodes
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
@@ -878,7 +898,7 @@ public class SchedulerTest {
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
 
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
@@ -1015,12 +1035,13 @@ public class SchedulerTest {
     @Test
     @Disabled
     public void testNoConstraintPods() {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
         DebugUtils.dbLoad(conn);
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
         for (int i = 0; i < 100; i++) {
             final Result<? extends Record> results = scheduler.runOneLoop();
             System.out.println(results);
@@ -1034,15 +1055,16 @@ public class SchedulerTest {
      */
     @Test
     public void testPlaceAllPendingPodsRegardlessOfBatchSize() {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
-        final int numNodes = 5;
-        final int numPods = 200;
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final int numNodes = 500;
+        final int numPods = 100000;
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         emitter.map(eventHandler::handle).subscribe();
 
         for (int i = 0; i < numNodes; i++) {
@@ -1061,8 +1083,8 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, numThreads);
-        scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(conn));
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
+        scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
     }

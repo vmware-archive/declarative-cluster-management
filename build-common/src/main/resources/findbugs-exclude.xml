@@ -50,4 +50,9 @@
         <Class name="org.dcm.backend.OrToolsSolver$ExprToStrVisitor" />
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
     </Match>
+
+    <!--  False positives due to try-with-resources pattern  -->
+    <Match>
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE" />
+    </Match>
 </FindBugsFilter>

@@ -9,7 +9,6 @@ package org.dcm;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.reactivex.Flowable;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -40,11 +39,11 @@ public class SchedulerIT extends ITBase {
     @Test()
     @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
-        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "ORTOOLS", true, 4);
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, Policies.getDefaultPolicies(), "ORTOOLS", true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(dbConnectionPool);
         scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient), 50, 1000);
         stateSync.startProcessingEvents();
 
@@ -69,11 +68,12 @@ public class SchedulerIT extends ITBase {
     @Test()
     @Timeout(60 /* seconds */)
     public void testAffinityAntiAffinity() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
-        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, 4);
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, Policies.getDefaultPolicies(),
+                                       "MNZ-CHUFFED", true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(dbConnectionPool);
         scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient),  50, 1000);
         stateSync.startProcessingEvents();
 
@@ -108,11 +108,11 @@ public class SchedulerIT extends ITBase {
     @Test()
     @Timeout(60 /* seconds */)
     public void testSmallTrace() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
-        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "ORTOOLS", true, 4);
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, Policies.getDefaultPolicies(), "ORTOOLS", true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(dbConnectionPool);
         scheduler.startScheduler(eventStream, new KubernetesBinder(fabricClient), 50, 1000);
         stateSync.startProcessingEvents();
 

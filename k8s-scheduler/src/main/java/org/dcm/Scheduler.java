@@ -11,8 +11,6 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.github.davidmoten.rx2.flowable.Transformers;
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Splitter;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -30,7 +28,6 @@ import org.dcm.k8s.generated.Tables;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
-import org.jooq.SQLDialect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,12 +38,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ThreadFactory;
@@ -55,7 +48,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
-import static org.jooq.impl.DSL.using;
 
 /**
  * A Kubernetes scheduler that assigns pods to nodes. To use this, make sure to indicate
@@ -69,7 +61,6 @@ public final class Scheduler {
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
 
-    private final DSLContext conn;
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
     private final Meter solverInvocations = metrics.meter("solverInvocations");
@@ -81,9 +72,10 @@ public final class Scheduler {
     private final ThreadFactory namedThreadFactory =
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
     private final PodEventsToDatabase podEventsToDatabase;
+    private final DBConnectionPool dbConnectionPool;
 
-    Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
-              final int numThreads) {
+    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> policies, final String solverToUse,
+              final boolean debugMode, final int numThreads) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
                 StandardCharsets.UTF_8))) {
@@ -92,9 +84,9 @@ public final class Scheduler {
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
-        this.conn = conn;
-        this.podEventsToDatabase = new PodEventsToDatabase(conn);
-        this.model = createDcmModel(conn, solverToUse, policies, numThreads);
+        this.dbConnectionPool = dbConnectionPool;
+        this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
+        this.model = createDcmModel(dbConnectionPool.getConnectionToDb(), solverToUse, policies, numThreads);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
@@ -120,13 +112,16 @@ public final class Scheduler {
                 },
                 e -> {
                     LOG.error("Received exception. Dumping DB state to /tmp/", e);
-                    DebugUtils.dbDump(conn);
+                    DebugUtils.dbDump(dbConnectionPool.getConnectionToDb());
                 }
             );
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        int fetchCount = conn.fetchCount(Tables.PODS_TO_ASSIGN);
+        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN);
+        if (fetchCount == 0) {
+            LOG.info("Fetchcount is {}", fetchCount);
+        }
         while (fetchCount != 0) {
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
@@ -141,17 +136,19 @@ public final class Scheduler {
                 final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
                 final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
                 LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
-                conn.update(Tables.POD_INFO)
-                        .set(Tables.POD_INFO.NODE_NAME, nodeName)
-                        .where(Tables.POD_INFO.POD_NAME.eq(podName))
-                        .execute();
-
-                podEventsToDatabase.reflectPodRequestsInNodeTable(nodeName, r.get(Tables.PODS_TO_ASSIGN.CPU_REQUEST),
-                                                                 r.get(Tables.PODS_TO_ASSIGN.MEMORY_REQUEST),
-                                                                 r.get(Tables.PODS_TO_ASSIGN.EPHEMERAL_STORAGE_REQUEST),
-                                                                 PodEvent.Action.UPDATED);
+                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+                    conn.update(Tables.POD_INFO)
+                            .set(Tables.POD_INFO.NODE_NAME, nodeName)
+                            .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                            .execute();
+                    podEventsToDatabase.reflectPodRequestsInNodeTable(nodeName,
+                            r.get(Tables.PODS_TO_ASSIGN.CPU_REQUEST),
+                            r.get(Tables.PODS_TO_ASSIGN.MEMORY_REQUEST),
+                            r.get(Tables.PODS_TO_ASSIGN.EPHEMERAL_STORAGE_REQUEST),
+                            PodEvent.Action.UPDATED);
+                }
                 LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
-                        podName, batch, totalTime);
+                         podName, batch, totalTime);
             });
             LOG.info("Done with updates");
             // Next, issue bind requests for pod -> node_name
@@ -166,7 +163,7 @@ public final class Scheduler {
                             }
                     ));
             LOG.info("Done with bindings");
-            fetchCount = conn.fetchCount(Tables.PODS_TO_ASSIGN);
+            fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN);
             if (fetchCount == 0) {
                 LOG.error("No new pods to schedule");
                 return;
@@ -205,37 +202,6 @@ public final class Scheduler {
         }
     }
 
-    /**
-     * Sets up a private, in-memory database.
-     */
-    @VisibleForTesting
-    static DSLContext setupDb() {
-        final Properties properties = new Properties();
-        properties.setProperty("foreign_keys", "true");
-        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/scheduler_tables.sql");
-        try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
-                                                                                    StandardCharsets.UTF_8))) {
-            // Create a fresh database
-            final String connectionURL = "jdbc:h2:mem:;create=true";
-            final Connection conn = DriverManager.getConnection(connectionURL, properties);
-            final DSLContext using = using(conn, SQLDialect.H2);
-            using.execute("create schema curr");
-            using.execute("set schema curr");
-
-            final String schemaAsString = tables.lines()
-                    .filter(line -> !line.startsWith("--")) // remove SQL comments
-                    .collect(Collectors.joining("\n"));
-            final List<String> semiColonSeparated = Splitter.on(";")
-                    .trimResults()
-                    .omitEmptyStrings()
-                    .splitToList(schemaAsString);
-            semiColonSeparated.forEach(using::execute);
-            return using;
-        } catch (final SQLException | IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     void shutdown() {
         assert subscription != null;
         subscription.dispose();
@@ -253,7 +219,7 @@ public final class Scheduler {
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
 
-        final DSLContext conn = setupDb();
+        final DBConnectionPool conn = new DBConnectionPool();
         final Scheduler scheduler = new Scheduler(conn,
                 Policies.getDefaultPolicies(),
                 cmd.getOptionValue("solver"),

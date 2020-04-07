@@ -21,7 +21,6 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.reactivex.processors.PublishProcessor;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -39,17 +38,17 @@ class EmulatedClusterTest {
     @Test
     @Disabled
     public void runTraceLocally() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final int numNodes = 1000;
 
         // Add all nodes
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
 
         final List<String> policies = Policies.getDefaultPolicies();
-        final Scheduler scheduler = new Scheduler(conn, policies, "ORTOOLS", true, 4);
-        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(conn), 100, 500);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, 4);
+        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(dbConnectionPool), 100, 500);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());

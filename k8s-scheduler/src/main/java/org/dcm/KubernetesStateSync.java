@@ -16,7 +16,6 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import io.reactivex.Flowable;
 import io.reactivex.processors.PublishProcessor;
-import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,11 +27,11 @@ class KubernetesStateSync {
         this.sharedInformerFactory = client.informers();
     }
 
-    Flowable<PodEvent> setupInformersAndPodEventStream(final DSLContext conn) {
+    Flowable<PodEvent> setupInformersAndPodEventStream(final DBConnectionPool dbConnectionPool) {
 
         final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
-        nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(conn));
+        nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(dbConnectionPool));
 
         // Pod informer
         final SharedIndexInformer<Pod> podInformer = sharedInformerFactory

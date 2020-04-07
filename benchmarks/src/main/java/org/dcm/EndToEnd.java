@@ -21,7 +21,6 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.reactivex.processors.PublishProcessor;
-import org.jooq.DSLContext;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -65,17 +64,17 @@ public class EndToEnd {
 
         @Setup(Level.Iteration)
         public void setUp() {
-            final DSLContext conn = Scheduler.setupDb();
+            final DBConnectionPool dbConnectionPool = new DBConnectionPool();
             emitter = PublishProcessor.create();
             handler = new PodResourceEventHandler(emitter);
-            binder = new EmulatedPodToNodeBinder(conn);
+            binder = new EmulatedPodToNodeBinder(dbConnectionPool);
             final int numNodes = 1000;
 
             // Add all nodes
-            final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+            final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
 
             final List<String> policies = Policies.getDefaultPolicies();
-            final Scheduler scheduler = new Scheduler(conn, policies, solverToUse, true, numThreads);
+            final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, true, numThreads);
             scheduler.startScheduler(emitter, binder, 100, 500);
             for (int i = 0; i < numNodes; i++) {
                 final String nodeName = "n" + i;

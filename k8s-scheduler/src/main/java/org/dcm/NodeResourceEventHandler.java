@@ -31,16 +31,17 @@ import java.util.Optional;
  */
 class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     private static final Logger LOG = LoggerFactory.getLogger(NodeResourceEventHandler.class);
-    private final DSLContext conn;
+    private final DBConnectionPool dbConnectionPool;
 
-    NodeResourceEventHandler(final DSLContext conn) {
-        this.conn = conn;
+    NodeResourceEventHandler(final DBConnectionPool dbConnectionPool) {
+        this.dbConnectionPool = dbConnectionPool;
     }
 
 
     @Override
     public void onAdd(final Node node) {
         final long now = System.nanoTime();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final NodeInfoRecord nodeInfoRecord = conn.newRecord(Tables.NODE_INFO);
         updateNodeRecord(nodeInfoRecord, node);
         addNodeLabels(conn, node);
@@ -53,6 +54,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     public void onUpdate(final Node oldNode, final Node newNode) {
         final long now = System.nanoTime();
         final boolean hasChanged = hasChanged(oldNode, newNode);
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         if (hasChanged) {
             // TODO: relax this assumption by setting up update cascades for node_info.name FK references
             Preconditions.checkArgument(newNode.getMetadata().getName().equals(oldNode.getMetadata().getName()));
@@ -93,6 +95,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     @Override
     public void onDelete(final Node node, final boolean b) {
         final long now = System.nanoTime();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         deleteNode(node, conn);
         LOG.info("{} node deleted in {}ms", node.getMetadata().getName(), (System.nanoTime() - now));
     }

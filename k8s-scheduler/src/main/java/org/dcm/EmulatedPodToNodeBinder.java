@@ -24,12 +24,12 @@ import java.util.concurrent.Executors;
  */
 public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedPodToNodeBinder.class);
-    private final DSLContext conn;
+    private final DBConnectionPool dbConnectionPool;
     private final ExecutorService executorService = Executors.newScheduledThreadPool(5);
     private final Map<String, SettableFuture<Boolean>> waitForPodBinding = new HashMap<>();
 
-    EmulatedPodToNodeBinder(final DSLContext conn) {
-        this.conn = conn;
+    EmulatedPodToNodeBinder(final DBConnectionPool dbConnectionPool) {
+        this.dbConnectionPool = dbConnectionPool;
     }
 
     @Override
@@ -37,11 +37,14 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
         LOG.info("Binding {}/pod:{} to node:{}", namespace, podName, nodeName);
 
         // Mimic a binding notification
-        executorService.execute(() ->
-            conn.update(Tables.POD_INFO)
-                .set(Tables.POD_INFO.STATUS, "Running")
-                .where(Tables.POD_INFO.POD_NAME.eq(podName))
-                .execute()
+        executorService.execute(() -> {
+            try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+                conn.update(Tables.POD_INFO)
+                        .set(Tables.POD_INFO.STATUS, "Running")
+                        .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                        .execute();
+                }
+            }
         );
         if (waitForPodBinding.containsKey(podName)) {
             waitForPodBinding.get(podName).set(true);
