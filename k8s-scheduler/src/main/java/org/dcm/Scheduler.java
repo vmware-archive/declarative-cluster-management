@@ -118,10 +118,7 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN);
-        if (fetchCount == 0) {
-            LOG.info("Fetchcount is {}", fetchCount);
-        }
+        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
         while (fetchCount != 0) {
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
@@ -131,11 +128,12 @@ public final class Scheduler {
             final long totalTime = System.nanoTime() - now;
             solverInvocations.mark();
 
+            fetchCount -= podsToAssignUpdated.size();
+
             // First, locally update the node_name entries for pods
             podsToAssignUpdated.parallelStream().forEach(r -> {
                 final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
                 final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
-                LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
                     conn.update(Tables.POD_INFO)
                             .set(Tables.POD_INFO.NODE_NAME, nodeName)
@@ -163,11 +161,6 @@ public final class Scheduler {
                             }
                     ));
             LOG.info("Done with bindings");
-            fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN);
-            if (fetchCount == 0) {
-                LOG.error("No new pods to schedule");
-                return;
-            }
         }
     }
 
