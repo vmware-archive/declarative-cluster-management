@@ -1059,8 +1059,8 @@ public class SchedulerTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        final int numNodes = 500;
-        final int numPods = 100000;
+        final int numNodes = 50;
+        final int numPods = 102;
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
