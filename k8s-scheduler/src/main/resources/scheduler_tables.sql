@@ -15,7 +15,11 @@ create table node_info
   cpu_allocatable bigint not null,
   memory_allocatable bigint not null,
   ephemeral_storage_allocatable bigint not null,
-  pods_allocatable bigint not null
+  pods_allocatable bigint not null,
+  cpu_allocated bigint not null,
+  memory_allocated bigint not null,
+  ephemeral_storage_allocated bigint not null,
+  pods_allocated bigint not null
 );
 
 create table pod_info
@@ -350,21 +354,17 @@ select *, count(*) over (partition by pod_name) as num_matches from inter_pod_an
 create view spare_capacity_per_node as
 select * from
     (select node_info.name as name,
-           cast(node_info.cpu_allocatable - sum(pod_info.cpu_request) as integer) as cpu_remaining,
-           cast(node_info.memory_allocatable - sum(pod_info.memory_request) as integer) as memory_remaining,
-           cast(node_info.pods_allocatable - sum(pod_info.pods_request) as integer) as pods_remaining
+       cast(node_info.cpu_allocatable - node_info.cpu_allocated as integer) as cpu_remaining,
+       cast(node_info.memory_allocatable - node_info.memory_allocated as integer) as memory_remaining,
+       cast(node_info.pods_allocatable - node_info.pods_allocated as integer) as pods_remaining
     from node_info
-    join pod_info
-         on pod_info.node_name = node_info.name and pod_info.node_name != 'null'
     where node_info.unschedulable = false and
           node_info.memory_pressure = false and
           node_info.out_of_disk = false and
           node_info.disk_pressure = false and
           node_info.pid_pressure = false and
           node_info.network_unavailable = false and
-          node_info.ready = true
-    group by node_info.name, node_info.cpu_allocatable,
-             node_info.memory_allocatable, node_info.pods_allocatable)
+          node_info.ready = true)
 where cpu_remaining > 0 and memory_remaining > 0 and pods_remaining > 0;
 
 -- Taints and tolerations

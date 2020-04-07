@@ -20,6 +20,7 @@ import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -161,7 +162,17 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         nodeInfoRecord.setMemoryAllocatable(memoryAllocatable);
         nodeInfoRecord.setEphemeralStorageAllocatable(ephemeralStorageAllocatable);
         nodeInfoRecord.setPodsAllocatable(podsAllocatable);
+
+        // These entries are updated by us on every pod arrival/departure
+        nodeInfoRecord.setCpuAllocated(zeroIfNull(nodeInfoRecord.getCpuAllocated()));
+        nodeInfoRecord.setMemoryAllocated(zeroIfNull(nodeInfoRecord.getMemoryAllocated()));
+        nodeInfoRecord.setEphemeralStorageAllocated(zeroIfNull(nodeInfoRecord.getEphemeralStorageAllocated()));
+        nodeInfoRecord.setPodsAllocated(zeroIfNull(nodeInfoRecord.getPodsAllocated()));
         nodeInfoRecord.store();
+    }
+
+    private long zeroIfNull(@Nullable final Long value) {
+        return value == null ? 0 : value;
     }
 
     private boolean hasChanged(final Node oldNode, final Node newNode) {

@@ -80,6 +80,7 @@ public final class Scheduler {
     @Nullable private Disposable subscription;
     private final ThreadFactory namedThreadFactory =
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
+    private final PodEventsToDatabase podEventsToDatabase;
 
     Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
               final int numThreads) {
@@ -92,13 +93,13 @@ public final class Scheduler {
             throw new RuntimeException(e);
         }
         this.conn = conn;
+        this.podEventsToDatabase = new PodEventsToDatabase(conn);
         this.model = createDcmModel(conn, solverToUse, policies, numThreads);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
     void startScheduler(final Flowable<PodEvent> eventStream, final IPodToNodeBinder binder, final int batchCount,
                         final long batchTimeMs) {
-        final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(conn);
         subscription = eventStream
             .map(podEventsToDatabase::handle)
             .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
@@ -144,6 +145,11 @@ public final class Scheduler {
                         .set(Tables.POD_INFO.NODE_NAME, nodeName)
                         .where(Tables.POD_INFO.POD_NAME.eq(podName))
                         .execute();
+
+                podEventsToDatabase.reflectPodRequestsInNodeTable(nodeName, r.get(Tables.PODS_TO_ASSIGN.CPU_REQUEST),
+                                                                 r.get(Tables.PODS_TO_ASSIGN.MEMORY_REQUEST),
+                                                                 r.get(Tables.PODS_TO_ASSIGN.EPHEMERAL_STORAGE_REQUEST),
+                                                                 PodEvent.Action.UPDATED);
                 LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
                         podName, batch, totalTime);
             });

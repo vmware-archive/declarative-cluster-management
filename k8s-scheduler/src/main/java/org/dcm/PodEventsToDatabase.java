@@ -21,7 +21,9 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
 import org.dcm.k8s.generated.Tables;
+import org.dcm.k8s.generated.tables.records.NodeInfoRecord;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
+import org.dcm.k8s.generated.tables.records.PodsToAssignRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Table;
@@ -31,6 +33,8 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.stream.Collectors;
 
 
@@ -39,6 +43,7 @@ import java.util.stream.Collectors;
  */
 class PodEventsToDatabase {
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
+    private final Set<String> podRequestsReflectedInDatabase = new ConcurrentSkipListSet<>();
     private final DSLContext conn;
 
     private enum Operators {
@@ -85,6 +90,20 @@ class PodEventsToDatabase {
         LOG.info("Deleting pod {}", pod.getMetadata().getName());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
+
+        // If the pod had a CPU/memory/storage request, update the node table accordingly
+        if (pod.getSpec().getNodeName() != null) {
+            final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
+                    .map(Container::getResources)
+                    .collect(Collectors.toList());
+            final long cpuRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "cpu");
+            final long memoryRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "memory");
+            final long ephemeralStorageRequest =
+                    (long) Utils.resourceRequirementSum(resourceRequirements, "ephemeral-storage");
+            reflectPodRequestsInNodeTable(pod.getSpec().getNodeName(), cpuRequest, memoryRequest,
+                                          ephemeralStorageRequest, PodEvent.Action.DELETED);
+            podRequestsReflectedInDatabase.remove(pod.getMetadata().getName());
+        }
         conn.deleteFrom(Tables.POD_INFO)
                 .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
                 .execute();
@@ -119,6 +138,13 @@ class PodEventsToDatabase {
         podInfoRecord.setMemoryRequest(memoryRequest);
         podInfoRecord.setEphemeralStorageRequest(ephemeralStorageRequest);
         podInfoRecord.setPodsRequest(podsRequest);
+
+        if (pod.getSpec().getNodeName() != null &&
+                podRequestsReflectedInDatabase.add(pod.getMetadata().getName())) {
+            reflectPodRequestsInNodeTable(pod.getSpec().getNodeName(), cpuRequest, memoryRequest,
+                                          ephemeralStorageRequest, PodEvent.Action.ADDED);
+        }
+
         // The first owner reference is used to break symmetries.
         final List<OwnerReference> owners = pod.getMetadata().getOwnerReferences();
         final String ownerName = (owners == null || owners.size() == 0) ? "" : owners.get(0).getName();
@@ -355,6 +381,26 @@ class PodEventsToDatabase {
             return QosClass.Guaranteed;
         }
         return QosClass.Burstable;
+    }
+
+    void reflectPodRequestsInNodeTable(final PodsToAssignRecord record, final PodEvent.Action action) {
+        reflectPodRequestsInNodeTable(record.getControllable_NodeName(), record.getCpuRequest(),
+                                      record.getMemoryRequest(), record.getEphemeralStorageRequest(), action);
+    }
+
+    void reflectPodRequestsInNodeTable(final String nodeName, final long cpu, final long mem,
+                                       final long ephemeralStorage, final PodEvent.Action action) {
+        final int modified = action.equals(PodEvent.Action.DELETED) ? -1 : 1;
+        // If the pod had a CPU/memory/storage request, update the node table accordingly
+        final NodeInfoRecord nodeInfoRecord = conn.selectFrom(Tables.NODE_INFO)
+                .where(Tables.NODE_INFO.NAME.eq(nodeName))
+                .fetchOne();
+        nodeInfoRecord.setCpuAllocated(nodeInfoRecord.getCpuAllocated() + (modified * cpu));
+        nodeInfoRecord.setMemoryAllocated(nodeInfoRecord.getMemoryAllocated() + (modified * mem));
+        nodeInfoRecord.setEphemeralStorageAllocated(nodeInfoRecord.getEphemeralStorageAllocated()
+                                                    + (modified * ephemeralStorage));
+        nodeInfoRecord.setEphemeralStorageAllocated(nodeInfoRecord.getEphemeralStorageAllocated() + modified);
+        nodeInfoRecord.store();
     }
 
     enum QosClass {

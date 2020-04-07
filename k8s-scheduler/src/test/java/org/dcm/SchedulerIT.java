@@ -41,7 +41,7 @@ public class SchedulerIT extends ITBase {
     @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
         final DSLContext conn = Scheduler.setupDb();
-        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, 4);
+        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "ORTOOLS", true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);

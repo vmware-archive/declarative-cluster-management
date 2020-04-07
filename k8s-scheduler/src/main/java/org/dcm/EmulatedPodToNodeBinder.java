@@ -43,7 +43,9 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
                 .where(Tables.POD_INFO.POD_NAME.eq(podName))
                 .execute()
         );
-        waitForPodBinding.get(podName).set(true);
+        if (waitForPodBinding.containsKey(podName)) {
+            waitForPodBinding.get(podName).set(true);
+        }
     }
 
     public ListenableFuture<Boolean> waitForPodBinding(final String podname) {
