@@ -77,8 +77,8 @@
                              -XepAllErrorsAsWarnings
                              -Xep:Finally:OFF
                              -XepExcludedPaths:(.*/annotations/org/dcm/generated/.*|.*/org/dcm/k8s/generated/.*)
-                             -implicit
                         </arg>
+                        <arg>-implicit:class</arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
