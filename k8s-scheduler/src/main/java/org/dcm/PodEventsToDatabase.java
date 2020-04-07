@@ -44,7 +44,7 @@ import java.util.stream.Collectors;
 class PodEventsToDatabase {
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
     private final Set<String> podRequestsReflectedInDatabase = new ConcurrentSkipListSet<>();
-    private final DSLContext conn;
+    private final DBConnectionPool dbConnectionPool;
 
     private enum Operators {
         In,
@@ -53,8 +53,8 @@ class PodEventsToDatabase {
         DoesNotExists
     }
 
-    PodEventsToDatabase(final DSLContext conn) {
-        this.conn = conn;
+    PodEventsToDatabase(final DBConnectionPool dbConnectionPool) {
+        this.dbConnectionPool = dbConnectionPool;
     }
 
     PodEvent handle(final PodEvent event) {
@@ -76,14 +76,16 @@ class PodEventsToDatabase {
 
     private void addPod(final Pod pod) {
         LOG.info("Adding pod {}", pod.getMetadata().getName());
-        final PodInfoRecord newPodInfoRecord = conn.newRecord(Tables.POD_INFO);
-        updatePodRecord(newPodInfoRecord, pod);
-        updateContainerInfoForPod(pod, conn);
-        updatePodNodeSelectorLabels(pod, conn);
-        updatePodLabels(conn, pod);
-        // updateVolumeInfoForPod(pod, pvcToPv, conn);
-        updatePodTolerations(pod, conn);
-        updatePodAffinity(pod, conn);
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            final PodInfoRecord newPodInfoRecord = conn.newRecord(Tables.POD_INFO);
+            updatePodRecord(newPodInfoRecord, pod);
+            updateContainerInfoForPod(pod, conn);
+            updatePodNodeSelectorLabels(pod, conn);
+            updatePodLabels(conn, pod);
+            // updateVolumeInfoForPod(pod, pvcToPv, conn);
+            updatePodTolerations(pod, conn);
+            updatePodAffinity(pod, conn);
+        }
     }
 
     private void deletePod(final Pod pod) {
@@ -104,21 +106,25 @@ class PodEventsToDatabase {
                                           ephemeralStorageRequest, PodEvent.Action.DELETED);
             podRequestsReflectedInDatabase.remove(pod.getMetadata().getName());
         }
-        conn.deleteFrom(Tables.POD_INFO)
-                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
-                .execute();
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            conn.deleteFrom(Tables.POD_INFO)
+                    .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                    .execute();
+        }
     }
 
     private void updatePod(final Pod pod) {
-        final PodInfoRecord existingPodInfoRecord = conn.selectFrom(Tables.POD_INFO)
-                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
-                .fetchOne();
-        if (existingPodInfoRecord == null) {
-            LOG.trace("Pod {} does not exist. Skipping", pod.getMetadata().getName());
-            return;
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            final PodInfoRecord existingPodInfoRecord = conn.selectFrom(Tables.POD_INFO)
+                    .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                    .fetchOne();
+            if (existingPodInfoRecord == null) {
+                LOG.trace("Pod {} does not exist. Skipping", pod.getMetadata().getName());
+                return;
+            }
+            LOG.trace("Updating pod {}", pod.getMetadata().getName());
+            updatePodRecord(existingPodInfoRecord, pod);
         }
-        LOG.trace("Updating pod {}", pod.getMetadata().getName());
-        updatePodRecord(existingPodInfoRecord, pod);
     }
 
     private void updatePodRecord(final PodInfoRecord podInfoRecord, final Pod pod) {
@@ -331,10 +337,12 @@ class PodEventsToDatabase {
             final int numMatchExpressions =  term.getLabelSelector().getMatchExpressions().size();
             for (final LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
                 matchExpressionNumber += 1;
-                for (final String value: expr.getValues()) {
-                    conn.insertInto(table)
+                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+                    for (final String value : expr.getValues()) {
+                        conn.insertInto(table)
                             .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
                                     expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute();
+                    }
                 }
             }
             termNumber += 1;
@@ -392,15 +400,17 @@ class PodEventsToDatabase {
                                        final long ephemeralStorage, final PodEvent.Action action) {
         final int modified = action.equals(PodEvent.Action.DELETED) ? -1 : 1;
         // If the pod had a CPU/memory/storage request, update the node table accordingly
-        final NodeInfoRecord nodeInfoRecord = conn.selectFrom(Tables.NODE_INFO)
-                .where(Tables.NODE_INFO.NAME.eq(nodeName))
-                .fetchOne();
-        nodeInfoRecord.setCpuAllocated(nodeInfoRecord.getCpuAllocated() + (modified * cpu));
-        nodeInfoRecord.setMemoryAllocated(nodeInfoRecord.getMemoryAllocated() + (modified * mem));
-        nodeInfoRecord.setEphemeralStorageAllocated(nodeInfoRecord.getEphemeralStorageAllocated()
-                                                    + (modified * ephemeralStorage));
-        nodeInfoRecord.setEphemeralStorageAllocated(nodeInfoRecord.getEphemeralStorageAllocated() + modified);
-        nodeInfoRecord.store();
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            final NodeInfoRecord nodeInfoRecord = conn.selectFrom(Tables.NODE_INFO)
+                    .where(Tables.NODE_INFO.NAME.eq(nodeName))
+                    .fetchOne();
+            nodeInfoRecord.setCpuAllocated(nodeInfoRecord.getCpuAllocated() + (modified * cpu));
+            nodeInfoRecord.setMemoryAllocated(nodeInfoRecord.getMemoryAllocated() + (modified * mem));
+            nodeInfoRecord.setEphemeralStorageAllocated(nodeInfoRecord.getEphemeralStorageAllocated()
+                    + (modified * ephemeralStorage));
+            nodeInfoRecord.setEphemeralStorageAllocated(nodeInfoRecord.getEphemeralStorageAllocated() + modified);
+            nodeInfoRecord.store();
+        }
     }
 
     enum QosClass {

@@ -204,13 +204,10 @@ public class Model {
         final Meta dslMeta = dslContext.meta();
         final List<Table<?>> tables = new ArrayList<>();
         for (final Table<?> t : dslMeta.getTables()) {
-            // skip if table not on current schema
-            if (!t.getSchema().getName().equals(CURRENT_SCHEMA)) {
-                continue;
-            }
-            // If there are no constraints, access all tables. Else, only access the tables that are referenced
-            // by the constraints.
-            if (constraints.size() == 0 || accessedTableNames.contains(t.getName())) {
+            // If there are no constraints, access all tables in the CURR schema.
+            // Else, only access the tables that are referenced by the constraints.
+            if ((constraints.size() == 0 && t.getSchema().getName().equals(CURRENT_SCHEMA))
+                    || accessedTableNames.contains(t.getName())) {
                 tables.add(t);
 
                 // Also add tables referenced by foreign keys.
