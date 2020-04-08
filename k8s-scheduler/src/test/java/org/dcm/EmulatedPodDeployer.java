@@ -57,9 +57,9 @@ public class EmulatedPodDeployer implements IPodDeployer {
         @Override
         public void run() {
             final String deploymentName = deployment.getMetadata().getName();
-            LOG.info("Creating deployment (name:{}, schedulerName:{}) at {}",
+            LOG.info("Creating deployment (name:{}, schedulerName:{}, replicas:{}) at {}",
                     deploymentName, deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    System.currentTimeMillis());
+                    deployment.getSpec().getReplicas(), System.currentTimeMillis());
 
             for (int i = 0; i < deployment.getSpec().getReplicas(); i++) {
                 final Pod pod = new Pod();
@@ -77,7 +77,7 @@ public class EmulatedPodDeployer implements IPodDeployer {
                 pod.setSpec(spec);
                 pod.setStatus(status);
                 pods.computeIfAbsent(deploymentName, (k) -> new ArrayList<>()).add(pod);
-                resourceEventHandler.onAddSync(pod);
+                resourceEventHandler.onAdd(pod);
             }
         }
     }
@@ -91,9 +91,9 @@ public class EmulatedPodDeployer implements IPodDeployer {
 
         @Override
         public void run() {
-            LOG.info("Terminating deployment (name:{}, schedulerName:{}) at {}",
+            LOG.info("Terminating deployment (name:{}, schedulerName:{}, replicas:{}) at {}",
                 deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                System.currentTimeMillis());
+                deployment.getSpec().getReplicas(), System.currentTimeMillis());
             final List<Pod> podsList = pods.get(deployment.getMetadata().getName());
             Preconditions.checkNotNull(podsList);
             for (final Pod pod: podsList) {

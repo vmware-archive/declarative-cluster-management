@@ -57,7 +57,7 @@ class EmulatedClusterTest {
 
         final List<String> policies = Policies.getDefaultPolicies();
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, 4);
-        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(dbConnectionPool), 100, 500);
+        scheduler.startScheduler(emitter, new EmulatedPodToNodeBinder(dbConnectionPool), 100, 50);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
