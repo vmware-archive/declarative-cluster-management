@@ -28,6 +28,7 @@ import org.dcm.k8s.generated.Tables;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.jooq.Update;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +39,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -131,23 +133,26 @@ public final class Scheduler {
             fetchCount -= podsToAssignUpdated.size();
 
             // First, locally update the node_name entries for pods
-            podsToAssignUpdated.parallelStream().forEach(r -> {
-                final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
-                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                    conn.update(Tables.POD_INFO)
-                            .set(Tables.POD_INFO.NODE_NAME, nodeName)
-                            .where(Tables.POD_INFO.POD_NAME.eq(podName))
-                            .execute();
-                    podEventsToDatabase.reflectPodRequestsInNodeTable(nodeName,
+            try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+                final List<Update<?>> updates = new ArrayList<>();
+                podsToAssignUpdated.forEach(r -> {
+                    final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
+                    final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                    updates.add(
+                        conn.update(Tables.POD_INFO)
+                                .set(Tables.POD_INFO.NODE_NAME, nodeName)
+                                .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                    );
+                    updates.add(podEventsToDatabase.reflectPodRequestsInNodeTable(nodeName,
                             r.get(Tables.PODS_TO_ASSIGN.CPU_REQUEST),
                             r.get(Tables.PODS_TO_ASSIGN.MEMORY_REQUEST),
                             r.get(Tables.PODS_TO_ASSIGN.EPHEMERAL_STORAGE_REQUEST),
-                            PodEvent.Action.UPDATED);
-                }
-                LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
-                         podName, batch, totalTime);
-            });
+                            PodEvent.Action.UPDATED));
+                    LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
+                             podName, batch, totalTime);
+                });
+                conn.batch(updates).execute();
+            }
             LOG.info("Done with updates");
             // Next, issue bind requests for pod -> node_name
             podsToAssignUpdated

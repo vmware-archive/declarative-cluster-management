@@ -21,15 +21,26 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
 import org.dcm.k8s.generated.Tables;
+import org.dcm.k8s.generated.tables.NodeInfo;
+import org.dcm.k8s.generated.tables.PodInfo;
 import org.dcm.k8s.generated.tables.records.NodeInfoRecord;
+import org.dcm.k8s.generated.tables.records.PodImagesRecord;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
-import org.dcm.k8s.generated.tables.records.PodsToAssignRecord;
+import org.dcm.k8s.generated.tables.records.PodLabelsRecord;
+import org.dcm.k8s.generated.tables.records.PodNodeSelectorLabelsRecord;
+import org.dcm.k8s.generated.tables.records.PodTolerationsRecord;
 import org.jooq.DSLContext;
+import org.jooq.Insert;
+import org.jooq.InsertOnDuplicateSetMoreStep;
+import org.jooq.Query;
 import org.jooq.Record;
 import org.jooq.Table;
+import org.jooq.Update;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -77,14 +88,15 @@ class PodEventsToDatabase {
     private void addPod(final Pod pod) {
         LOG.info("Adding pod {}", pod.getMetadata().getName());
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            final PodInfoRecord newPodInfoRecord = conn.newRecord(Tables.POD_INFO);
-            updatePodRecord(newPodInfoRecord, pod);
-            updateContainerInfoForPod(pod, conn);
-            updatePodNodeSelectorLabels(pod, conn);
-            updatePodLabels(conn, pod);
+            final List<Query> inserts = new ArrayList<>();
+            inserts.addAll(updatePodRecord(pod, conn));
+            inserts.addAll(updateContainerInfoForPod(pod, conn));
+            inserts.addAll(updatePodNodeSelectorLabels(pod, conn));
+            inserts.addAll(updatePodLabels(conn, pod));
             // updateVolumeInfoForPod(pod, pvcToPv, conn);
-            updatePodTolerations(pod, conn);
-            updatePodAffinity(pod, conn);
+            inserts.addAll(updatePodTolerations(pod, conn));
+            inserts.addAll(updatePodAffinity(pod, conn));
+            conn.batch(inserts).execute();
         }
     }
 
@@ -94,6 +106,7 @@ class PodEventsToDatabase {
         // a delete cascade
 
         // If the pod had a CPU/memory/storage request, update the node table accordingly
+        final List<Query> inserts = new ArrayList<>();
         if (pod.getSpec().getNodeName() != null) {
             final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
                     .map(Container::getResources)
@@ -102,14 +115,14 @@ class PodEventsToDatabase {
             final long memoryRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "memory");
             final long ephemeralStorageRequest =
                     (long) Utils.resourceRequirementSum(resourceRequirements, "ephemeral-storage");
-            reflectPodRequestsInNodeTable(pod.getSpec().getNodeName(), cpuRequest, memoryRequest,
-                                          ephemeralStorageRequest, PodEvent.Action.DELETED);
+            inserts.add(reflectPodRequestsInNodeTable(pod.getSpec().getNodeName(), cpuRequest, memoryRequest,
+                                          ephemeralStorageRequest, PodEvent.Action.DELETED));
             podRequestsReflectedInDatabase.remove(pod.getMetadata().getName());
         }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            conn.deleteFrom(Tables.POD_INFO)
-                    .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
-                    .execute();
+            inserts.add(conn.deleteFrom(Tables.POD_INFO)
+                        .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName())));
+            conn.batch(inserts).execute();
         }
     }
 
@@ -123,11 +136,13 @@ class PodEventsToDatabase {
                 return;
             }
             LOG.trace("Updating pod {}", pod.getMetadata().getName());
-            updatePodRecord(existingPodInfoRecord, pod);
+            final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
+            conn.batch(insertOrUpdate).execute();
         }
     }
 
-    private void updatePodRecord(final PodInfoRecord podInfoRecord, final Pod pod) {
+    private List<Query> updatePodRecord(final Pod pod, final DSLContext conn) {
+        final List<Query> inserts = new ArrayList<>();
         final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
                 .collect(Collectors.toList());
@@ -136,57 +151,106 @@ class PodEventsToDatabase {
         final long ephemeralStorageRequest =
                 (long) Utils.resourceRequirementSum(resourceRequirements, "ephemeral-storage");
         final long podsRequest = 1;
-        podInfoRecord.setPodName(pod.getMetadata().getName());
-        podInfoRecord.setStatus(pod.getStatus().getPhase());
-        podInfoRecord.setNodeName(pod.getSpec().getNodeName());
-        podInfoRecord.setNamespace(pod.getMetadata().getNamespace());
-        podInfoRecord.setCpuRequest(cpuRequest);
-        podInfoRecord.setMemoryRequest(memoryRequest);
-        podInfoRecord.setEphemeralStorageRequest(ephemeralStorageRequest);
-        podInfoRecord.setPodsRequest(podsRequest);
-
-        if (pod.getSpec().getNodeName() != null &&
-                podRequestsReflectedInDatabase.add(pod.getMetadata().getName())) {
-            reflectPodRequestsInNodeTable(pod.getSpec().getNodeName(), cpuRequest, memoryRequest,
-                                          ephemeralStorageRequest, PodEvent.Action.ADDED);
-        }
 
         // The first owner reference is used to break symmetries.
         final List<OwnerReference> owners = pod.getMetadata().getOwnerReferences();
         final String ownerName = (owners == null || owners.size() == 0) ? "" : owners.get(0).getName();
-        podInfoRecord.setOwnerName(ownerName);
-        podInfoRecord.setCreationTimestamp(pod.getMetadata().getCreationTimestamp());
-
         final boolean hasNodeSelector = hasNodeSelector(pod);
-        podInfoRecord.setHasNodeSelectorLabels(hasNodeSelector);
+
+        final boolean hasPodAffinityRequirements;
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
-            podInfoRecord.setHasPodAffinityRequirements(pod.getSpec().getAffinity().getPodAffinity()
-                    .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0);
+            hasPodAffinityRequirements = pod.getSpec().getAffinity().getPodAffinity()
+                                            .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0;
         } else {
-            podInfoRecord.setHasPodAffinityRequirements(false);
+            hasPodAffinityRequirements = false;
         }
 
+        final boolean hasPodAntiAffinityRequirements;
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAntiAffinity() != null) {
-            podInfoRecord.setHasPodAntiAffinityRequirements(pod.getSpec().getAffinity().getPodAntiAffinity()
-                    .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0);
+            hasPodAntiAffinityRequirements = pod.getSpec().getAffinity().getPodAntiAffinity()
+                                                .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0;
         } else {
-            podInfoRecord.setHasPodAntiAffinityRequirements(false);
+            hasPodAntiAffinityRequirements = false;
         }
 
-        // We cap the max priority to 100 to prevent overflow issues in the solver
-        podInfoRecord.setPriority(Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(),
-                100));
+        final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
 
-        // This field is important because while we injest info about all pods, we only make scheduling decisions
-        // for pods that have dcm-scheduler as their name
-        podInfoRecord.setSchedulername(pod.getSpec().getSchedulerName());
+        if (pod.getSpec().getNodeName() != null &&
+                podRequestsReflectedInDatabase.add(pod.getMetadata().getName())) {
+            inserts.add(
+                reflectPodRequestsInNodeTable(pod.getSpec().getNodeName(), cpuRequest, memoryRequest,
+                        ephemeralStorageRequest, PodEvent.Action.ADDED)
+            );
+        }
 
-        // Compute equivalent class similar to what the default scheduler does
-        podInfoRecord.setEquivalenceClass(equivalenceClassHash(pod));
+        final PodInfo p = Tables.POD_INFO;
+        final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
+                p.POD_NAME,
+                p.STATUS,
+                p.NODE_NAME,
+                p.NAMESPACE,
+                p.CPU_REQUEST,
+                p.MEMORY_REQUEST,
+                p.EPHEMERAL_STORAGE_REQUEST,
+                p.PODS_REQUEST,
+                p.OWNER_NAME,
+                p.CREATION_TIMESTAMP,
+                p.HAS_NODE_SELECTOR_LABELS,
+                p.HAS_POD_AFFINITY_REQUIREMENTS,
+                p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
+                p.PRIORITY,
+                p.SCHEDULERNAME,
+                p.EQUIVALENCE_CLASS,
+                p.QOS_CLASS)
+                .values(pod.getMetadata().getName(),
+                        pod.getStatus().getPhase(),
+                        pod.getSpec().getNodeName(),
+                        pod.getMetadata().getNamespace(),
+                        cpuRequest,
+                        memoryRequest,
+                        ephemeralStorageRequest,
+                        podsRequest,
+                        ownerName,
+                        pod.getMetadata().getCreationTimestamp(),
+                        hasNodeSelector,
+                        hasPodAffinityRequirements,
+                        hasPodAntiAffinityRequirements,
+                        priority,
+                        pod.getSpec().getSchedulerName(),
+                        equivalenceClassHash(pod),
+                        getQosClass(resourceRequirements).toString()
+                )
+                .onDuplicateKeyUpdate()
+                .set(p.POD_NAME, pod.getMetadata().getName())
+                .set(p.STATUS, pod.getStatus().getPhase())
+                .set(p.NODE_NAME, pod.getSpec().getNodeName())
+                .set(p.NAMESPACE, pod.getMetadata().getNamespace())
+                .set(p.CPU_REQUEST, cpuRequest)
+                .set(p.MEMORY_REQUEST, memoryRequest)
+                .set(p.EPHEMERAL_STORAGE_REQUEST, ephemeralStorageRequest)
+                .set(p.PODS_REQUEST, podsRequest)
 
-        // QoS classes are defined based on the requests/limits configured for containers in the pod
-        podInfoRecord.setQosClass(getQosClass(resourceRequirements).toString());
-        podInfoRecord.store(); // upsert
+                // The first owner reference is used to break symmetries.
+                .set(p.OWNER_NAME, ownerName)
+                .set(p.CREATION_TIMESTAMP, pod.getMetadata().getCreationTimestamp())
+                .set(p.HAS_NODE_SELECTOR_LABELS, hasNodeSelector)
+                .set(p.HAS_POD_AFFINITY_REQUIREMENTS, hasPodAffinityRequirements)
+                .set(p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS, hasPodAntiAffinityRequirements)
+
+                // We cap the max priority to 100 to prevent overflow issues in the solver
+                .set(p.PRIORITY, priority)
+
+                // This field is important because while we injest info about all pods, we only make scheduling
+                // decisions for pods that have dcm-scheduler as their name
+                .set(p.SCHEDULERNAME, pod.getSpec().getSchedulerName())
+
+                // Compute equivalent class similar to what the default scheduler does
+                .set(p.EQUIVALENCE_CLASS, equivalenceClassHash(pod))
+
+                // QoS classes are defined based on the requests/limits configured for containers in the pod
+                .set(p.QOS_CLASS, getQosClass(resourceRequirements).toString());
+        inserts.add(podInfoInsert);
+        return inserts;
     }
 
     private boolean hasNodeSelector(final Pod pod) {
@@ -201,7 +265,8 @@ class PodEventsToDatabase {
                 .getNodeSelectorTerms().size() > 0);
     }
 
-    private void updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
+    private List<Insert<PodImagesRecord>> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
+        final List<Insert<PodImagesRecord>> podImages = new ArrayList<>();
         for (final Container container: pod.getSpec().getContainers()) {
             if (container.getPorts() == null || container.getPorts().isEmpty()) {
                 continue;
@@ -226,11 +291,14 @@ class PodEventsToDatabase {
                                     portInfo.getProtocol()).execute();
                 }
             }
-            conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getName(), container.getImage()).execute();
+            podImages.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getName(), container.getImage()));
         }
+        return podImages;
     }
 
-    private void updatePodNodeSelectorLabels(final Pod pod, final DSLContext conn) {
+    private List<Insert<PodNodeSelectorLabelsRecord>> updatePodNodeSelectorLabels(final Pod pod,
+                                                                                  final DSLContext conn) {
+        final List<Insert<PodNodeSelectorLabelsRecord>> podNodeSelectorLabels = new ArrayList<>();
         // Update pod_node_selector_labels table
         final Map<String, String> nodeSelector = pod.getSpec().getNodeSelector();
         if (nodeSelector != null) {
@@ -243,46 +311,48 @@ class PodEventsToDatabase {
                 matchExpression += 1;
                 final String labelKey = entry.getKey();
                 final String labelValue = entry.getValue();
+                podNodeSelectorLabels.add(
                 conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
                         .values(pod.getMetadata().getName(), term, matchExpression, numMatchExpressions,
-                                labelKey, Operators.In.toString(), labelValue)
-                        .execute();
+                                labelKey, Operators.In.toString(), labelValue));
             }
         }
+        return podNodeSelectorLabels;
     }
 
-    private void updatePodLabels(final DSLContext conn, final Pod pod) {
+    private List<Insert<PodLabelsRecord>> updatePodLabels(final DSLContext conn, final Pod pod) {
         // Update pod_labels table. This will be used for managing affinities, I think?
         final Map<String, String> labels = pod.getMetadata().getLabels();
         if (labels != null) {
-            final String formatString = "insert into pod_labels values ('%s', '%s', '%s')";
-            labels.forEach(
-                    (k, v) -> {
-                        // TODO: investigate
-                        conn.execute(String.format(formatString, pod.getMetadata().getName(), k, v));
-                    }
-            );
+            return labels.entrySet().stream().map(
+                    (label) -> conn.insertInto(Tables.POD_LABELS)
+                         .values(pod.getMetadata().getName(), label.getKey(), label.getValue())
+            ).collect(Collectors.toList());
         }
+        return Collections.emptyList();
     }
 
-    private void updatePodTolerations(final Pod pod, final DSLContext conn) {
+    private List<Insert<PodTolerationsRecord>> updatePodTolerations(final Pod pod, final DSLContext conn) {
         if (pod.getSpec().getTolerations() == null) {
-            return;
+            return Collections.emptyList();
         }
+        final List<Insert<PodTolerationsRecord>> inserts = new ArrayList<>();
         for (final Toleration toleration: pod.getSpec().getTolerations()) {
-            conn.insertInto(Tables.POD_TOLERATIONS)
+            inserts.add(conn.insertInto(Tables.POD_TOLERATIONS)
                     .values(pod.getMetadata().getName(),
                             toleration.getKey(),
                             toleration.getValue(),
                             toleration.getEffect() == null ? "Equal" : toleration.getEffect(),
-                            toleration.getOperator()).execute();
+                            toleration.getOperator()));
         }
+        return Collections.unmodifiableList(inserts);
     }
 
-    private void updatePodAffinity(final Pod pod, final DSLContext conn) {
+    private List<Insert<?>> updatePodAffinity(final Pod pod, final DSLContext conn) {
+        final List<Insert<?>> inserts = new ArrayList<>();
         final Affinity affinity = pod.getSpec().getAffinity();
         if (affinity == null) {
-            return;
+            return Collections.emptyList();
         }
 
         // Node affinity
@@ -302,14 +372,18 @@ class PodEventsToDatabase {
 
                     if (expr.getValues() != null) {
                         for (final String value : expr.getValues()) {
-                            conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                    .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
-                                            numMatchExpressions, expr.getKey(), expr.getOperator(), value).execute();
+                            inserts.add(
+                                conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                        .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                                numMatchExpressions, expr.getKey(), expr.getOperator(), value)
+                            );
                         }
                     } else {
-                        conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
-                                        numMatchExpressions, expr.getKey(), expr.getOperator(), null).execute();
+                        inserts.add(
+                            conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                    numMatchExpressions, expr.getKey(), expr.getOperator(), null)
+                        );
                     }
                 }
                 termNumber += 1;
@@ -318,19 +392,25 @@ class PodEventsToDatabase {
 
         // Pod affinity
         if (affinity.getPodAffinity() != null) {
-            insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod,
-                    affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution());
+            inserts.addAll(
+                    insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod,
+                    affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
+            );
         }
 
         // Pod Anti affinity
         if (affinity.getPodAntiAffinity() != null) {
-            insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod,
-                    affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution());
+            inserts.addAll(
+                insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod,
+                    affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
+            );
         }
+        return Collections.unmodifiableList(inserts);
     }
 
-    private <T extends Record> void insertPodAffinityTerms(final Table<T> table, final Pod pod,
+    private <T extends Record> List<Insert<?>> insertPodAffinityTerms(final Table<T> table, final Pod pod,
                                                            final List<PodAffinityTerm> terms) {
+        final List<Insert<?>> inserts = new ArrayList<>();
         int termNumber = 0;
         for (final PodAffinityTerm term: terms) {
             int matchExpressionNumber = 0;
@@ -339,14 +419,18 @@ class PodEventsToDatabase {
                 matchExpressionNumber += 1;
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
                     for (final String value : expr.getValues()) {
-                        conn.insertInto(table)
-                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
-                                    expr.getKey(), expr.getOperator(), value, term.getTopologyKey()).execute();
+                        inserts.add(
+                            conn.insertInto(table)
+                                .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                        numMatchExpressions, expr.getKey(), expr.getOperator(), value,
+                                        term.getTopologyKey())
+                        );
                     }
                 }
             }
             termNumber += 1;
         }
+        return inserts;
     }
 
     private long equivalenceClassHash(final Pod pod) {
@@ -391,25 +475,19 @@ class PodEventsToDatabase {
         return QosClass.Burstable;
     }
 
-    void reflectPodRequestsInNodeTable(final PodsToAssignRecord record, final PodEvent.Action action) {
-        reflectPodRequestsInNodeTable(record.getControllable_NodeName(), record.getCpuRequest(),
-                                      record.getMemoryRequest(), record.getEphemeralStorageRequest(), action);
-    }
-
-    void reflectPodRequestsInNodeTable(final String nodeName, final long cpu, final long mem,
-                                       final long ephemeralStorage, final PodEvent.Action action) {
+    Update<NodeInfoRecord> reflectPodRequestsInNodeTable(final String nodeName, final long cpu, final long mem,
+                                                         final long ephemeralStorage, final PodEvent.Action action) {
         final int modified = action.equals(PodEvent.Action.DELETED) ? -1 : 1;
         // If the pod had a CPU/memory/storage request, update the node table accordingly
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            final NodeInfoRecord nodeInfoRecord = conn.selectFrom(Tables.NODE_INFO)
-                    .where(Tables.NODE_INFO.NAME.eq(nodeName))
-                    .fetchOne();
-            nodeInfoRecord.setCpuAllocated(nodeInfoRecord.getCpuAllocated() + (modified * cpu));
-            nodeInfoRecord.setMemoryAllocated(nodeInfoRecord.getMemoryAllocated() + (modified * mem));
-            nodeInfoRecord.setEphemeralStorageAllocated(nodeInfoRecord.getEphemeralStorageAllocated()
-                    + (modified * ephemeralStorage));
-            nodeInfoRecord.setEphemeralStorageAllocated(nodeInfoRecord.getEphemeralStorageAllocated() + modified);
-            nodeInfoRecord.store();
+            final NodeInfo nodeInfo = Tables.NODE_INFO;
+            return conn.update(nodeInfo)
+                        .set(nodeInfo.CPU_ALLOCATED, nodeInfo.CPU_ALLOCATED.plus(modified * cpu))
+                        .set(nodeInfo.MEMORY_ALLOCATED, nodeInfo.MEMORY_ALLOCATED.plus(modified * mem))
+                        .set(nodeInfo.EPHEMERAL_STORAGE_ALLOCATED,
+                                nodeInfo.EPHEMERAL_STORAGE_ALLOCATED.plus(modified * ephemeralStorage))
+                        .set(nodeInfo.PODS_ALLOCATED, nodeInfo.PODS_ALLOCATED.plus(modified))
+                        .where(nodeInfo.NAME.eq(nodeName));
         }
     }
 
