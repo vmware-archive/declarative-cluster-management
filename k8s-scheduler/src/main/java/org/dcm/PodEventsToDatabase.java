@@ -24,7 +24,6 @@ import org.dcm.k8s.generated.Tables;
 import org.dcm.k8s.generated.tables.NodeInfo;
 import org.dcm.k8s.generated.tables.PodInfo;
 import org.dcm.k8s.generated.tables.records.NodeInfoRecord;
-import org.dcm.k8s.generated.tables.records.PodImagesRecord;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.dcm.k8s.generated.tables.records.PodLabelsRecord;
 import org.dcm.k8s.generated.tables.records.PodNodeSelectorLabelsRecord;
@@ -265,8 +264,8 @@ class PodEventsToDatabase {
                 .getNodeSelectorTerms().size() > 0);
     }
 
-    private List<Insert<PodImagesRecord>> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
-        final List<Insert<PodImagesRecord>> podImages = new ArrayList<>();
+    private List<Insert<?>> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
+        final List<Insert<?>> inserts = new ArrayList<>();
         for (final Container container: pod.getSpec().getContainers()) {
             if (container.getPorts() == null || container.getPorts().isEmpty()) {
                 continue;
@@ -275,25 +274,25 @@ class PodEventsToDatabase {
                 // This pod has been assigned to a node already. We therefore update the set of host-ports in
                 // use at this node
                 if (pod.getSpec().getNodeName() != null && portInfo.getHostPort() != null) {
-                    conn.insertInto(Tables.CONTAINER_HOST_PORTS)
-                            .values(pod.getSpec().getNodeName(),
-                                    portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
-                                    portInfo.getHostPort(),
-                                    portInfo.getProtocol()).execute();
+                    inserts.add(conn.insertInto(Tables.CONTAINER_HOST_PORTS)
+                                .values(pod.getSpec().getNodeName(),
+                                        portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
+                                        portInfo.getHostPort(),
+                                        portInfo.getProtocol()));
                 }
                 // This pod is yet to be assigned to a host, but it has a hostPort requirement. We record
                 // this in the pod_ports_request table
                 else if (pod.getStatus().getPhase().equals("") && portInfo.getHostPort() != null) {
-                    conn.insertInto(Tables.POD_PORTS_REQUEST)
-                            .values(pod.getMetadata().getName(),
-                                    portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
-                                    portInfo.getHostPort(),
-                                    portInfo.getProtocol()).execute();
+                    inserts.add(conn.insertInto(Tables.POD_PORTS_REQUEST)
+                                .values(pod.getMetadata().getName(),
+                                        portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
+                                        portInfo.getHostPort(),
+                                        portInfo.getProtocol()));
                 }
             }
-            podImages.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getName(), container.getImage()));
+            inserts.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getName(), container.getImage()));
         }
-        return podImages;
+        return inserts;
     }
 
     private List<Insert<PodNodeSelectorLabelsRecord>> updatePodNodeSelectorLabels(final Pod pod,
