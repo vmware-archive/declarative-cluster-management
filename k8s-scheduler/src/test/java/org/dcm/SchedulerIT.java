@@ -70,7 +70,7 @@ public class SchedulerIT extends ITBase {
     public void testAffinityAntiAffinity() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final Scheduler scheduler = new Scheduler(dbConnectionPool, Policies.getDefaultPolicies(),
-                                       "MNZ-CHUFFED", true, 4);
+                                       "ORTOOLS", true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(dbConnectionPool);
