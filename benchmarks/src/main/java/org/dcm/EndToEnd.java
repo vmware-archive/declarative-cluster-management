@@ -82,7 +82,7 @@ public class EndToEnd {
                 node.getStatus().getCapacity().put("cpu", new Quantity("8"));
                 node.getStatus().getCapacity().put("memory", new Quantity("6000"));
                 node.getStatus().getCapacity().put("pods", new Quantity("110"));
-                nodeResourceEventHandler.onAdd(node);
+                nodeResourceEventHandler.onAddSync(node);
 
                 // Add one system pod per node
                 final String podName = "system-pod-" + nodeName;
