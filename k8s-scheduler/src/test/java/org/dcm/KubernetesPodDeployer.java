@@ -45,9 +45,10 @@ public class KubernetesPodDeployer implements IPodDeployer {
 
         @Override
         public void run() {
-            LOG.info("Creating deployment (name:{}, schedulerName:{}) with masterUrl {} at {}",
+            LOG.info("Creating deployment (name:{}, schedulerName:{}, replicas:{}) with masterUrl {} at {}",
                     deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    fabricClient.getConfiguration().getMasterUrl(), System.currentTimeMillis());
+                    deployment.getSpec().getReplicas(), fabricClient.getConfiguration().getMasterUrl(),
+                    System.currentTimeMillis());
             fabricClient.apps().deployments().inNamespace(namespace)
                     .create(this.deployment);
         }
