@@ -6,7 +6,6 @@
 
 package org.dcm;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.reactivex.processors.PublishProcessor;
@@ -15,7 +14,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 
 
 /**
@@ -26,13 +24,18 @@ import java.util.concurrent.ThreadFactory;
 class PodResourceEventHandler implements ResourceEventHandler<Pod> {
     private static final Logger LOG = LoggerFactory.getLogger(PodResourceEventHandler.class);
     private final PublishProcessor<PodEvent> flowable;
-    private final ThreadFactory namedThreadFactory =
-            new ThreadFactoryBuilder().setNameFormat("flowable-thread-%d").build();
-    private final ExecutorService service = Executors.newFixedThreadPool(10, namedThreadFactory);
+    private final ExecutorService service;
 
     PodResourceEventHandler(final PublishProcessor<PodEvent> flowable) {
         this.flowable = flowable;
+        this.service = Executors.newCachedThreadPool();
     }
+
+    PodResourceEventHandler(final PublishProcessor<PodEvent> flowable, final ExecutorService service) {
+        this.flowable = flowable;
+        this.service = service;
+    }
+
 
     public void onAddSync(final Pod pod) {
         LOG.info("{} pod add received", pod.getMetadata().getName());

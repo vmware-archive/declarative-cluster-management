@@ -30,6 +30,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 
@@ -39,14 +41,34 @@ import java.util.stream.Collectors;
 class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     private static final Logger LOG = LoggerFactory.getLogger(NodeResourceEventHandler.class);
     private final DBConnectionPool dbConnectionPool;
+    private final ExecutorService service;
 
     NodeResourceEventHandler(final DBConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
+        this.service = Executors.newCachedThreadPool();
     }
 
+    NodeResourceEventHandler(final DBConnectionPool dbConnectionPool, final ExecutorService service) {
+        this.dbConnectionPool = dbConnectionPool;
+        this.service = service;
+    }
 
     @Override
     public void onAdd(final Node node) {
+        service.execute(() -> onAddSync(node));
+    }
+
+    @Override
+    public void onUpdate(final Node oldNode, final Node newNode) {
+        service.execute(() -> onUpdateSync(oldNode, newNode));
+    }
+
+    @Override
+    public void onDelete(final Node node, final boolean deletedFinalStateUnknown) {
+        service.execute(() -> onDeleteSync(node, deletedFinalStateUnknown));
+    }
+
+    public void onAddSync(final Node node) {
         final long now = System.nanoTime();
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> queries = new ArrayList<>();
@@ -59,8 +81,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         LOG.info("{} node added in {}ms", node.getMetadata().getName(), (System.nanoTime() - now));
     }
 
-    @Override
-    public void onUpdate(final Node oldNode, final Node newNode) {
+    public void onUpdateSync(final Node oldNode, final Node newNode) {
         final long now = System.nanoTime();
         final boolean hasChanged = hasChanged(oldNode, newNode);
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
@@ -101,11 +122,11 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                 hasChanged ? "updated" : "not updated", (System.nanoTime() - now));
     }
 
-    @Override
-    public void onDelete(final Node node, final boolean b) {
+    public void onDeleteSync(final Node node, final boolean b) {
         final long now = System.nanoTime();
-        final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        deleteNode(node, conn);
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            deleteNode(node, conn);
+        }
         LOG.info("{} node deleted in {}ms", node.getMetadata().getName(), (System.nanoTime() - now));
     }
 
