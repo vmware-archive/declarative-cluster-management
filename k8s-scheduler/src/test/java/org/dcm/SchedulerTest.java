@@ -760,7 +760,6 @@ public class SchedulerTest {
         assertEquals(cpuRequests.size(), memoryRequests.size());
         assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
         final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
@@ -809,14 +808,11 @@ public class SchedulerTest {
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
         if (feasible) {
-            System.out.println(conn.selectFrom(Tables.PODS_TO_ASSIGN).fetch());
-            System.out.println(conn.selectFrom(Tables.NODE_INFO).fetch());
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
             final List<String> nodes = result.stream()
                                             .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
                                             .collect(Collectors.toList());
-            System.out.println(nodes);
             assertTrue(assertOn.test(nodes));
         } else {
             assertThrows(ModelException.class, scheduler::runOneLoop);
@@ -1039,7 +1035,6 @@ public class SchedulerTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
         DebugUtils.dbLoad(conn);
-
         // All pod additions have completed
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
         for (int i = 0; i < 100; i++) {

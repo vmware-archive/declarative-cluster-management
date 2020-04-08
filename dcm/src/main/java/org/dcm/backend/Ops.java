@@ -442,6 +442,9 @@ public class Ops {
 
         final long[] domainArr = domain.stream().mapToLong(encoder::toLong).toArray();
         final Domain domainT = Domain.fromValues(domainArr);
+        if (domainArr.length == 0) {
+            throw new RuntimeException("Empty domain for capacity constraint " + demands + " " + capacities);
+        }
 
         for (int i = 0; i < numTasks; i++) {
             model.addLinearExpressionInDomain(taskToNodeAssignment[i], domainT);

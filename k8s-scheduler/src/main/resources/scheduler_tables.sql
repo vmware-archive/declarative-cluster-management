@@ -222,8 +222,7 @@ select
   equivalence_class,
   qos_class
 from pod_info
-where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler'
-order by creation_timestamp;
+where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler';
 
 -- This view is updated dynamically to change the limit. This
 -- pattern is required because there is no clean way to enforce
