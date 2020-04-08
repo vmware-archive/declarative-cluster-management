@@ -43,7 +43,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -119,9 +118,10 @@ public final class Scheduler {
             );
     }
 
+    @SuppressWarnings("unchecked")
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
         int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
-        while (fetchCount != 0) {
+        while (fetchCount > 0) {
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
 
@@ -155,16 +155,7 @@ public final class Scheduler {
             }
             LOG.info("Done with updates");
             // Next, issue bind requests for pod -> node_name
-            podsToAssignUpdated
-                    .forEach((record) -> ForkJoinPool.commonPool().execute(
-                            () -> {
-                                final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                                final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
-                                final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
-                                LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
-                                binder.bindOne(namespace, podName, nodeName);
-                            }
-                    ));
+            binder.bindManyAsnc(podsToAssignUpdated);
             LOG.info("Done with bindings");
         }
     }

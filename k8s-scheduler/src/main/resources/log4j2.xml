@@ -14,7 +14,7 @@
     <Loggers>
         <Logger name="org.jooq.Constants" additivity="false" level="OFF">
         </Logger>
-        <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="debug">
+        <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="info">
             <AppenderRef ref="console" />
         </Logger>
         <Logger name="org.dcm.EmulatedPodDeployer" additivity="false" level="info">

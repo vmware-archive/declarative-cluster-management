@@ -28,7 +28,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
     PodResourceEventHandler(final PublishProcessor<PodEvent> flowable) {
         this.flowable = flowable;
-        this.service = Executors.newCachedThreadPool();
+        this.service = Executors.newFixedThreadPool(10);
     }
 
     PodResourceEventHandler(final PublishProcessor<PodEvent> flowable, final ExecutorService service) {
@@ -38,7 +38,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
 
     public void onAddSync(final Pod pod) {
-        LOG.info("{} pod add received", pod.getMetadata().getName());
+        LOG.debug("{} pod add received", pod.getMetadata().getName());
         flowable.onNext(new PodEvent(PodEvent.Action.ADDED, pod)); // might be better to add pods in a batch
     }
 

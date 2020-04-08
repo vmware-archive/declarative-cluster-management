@@ -6,10 +6,19 @@
 
 package org.dcm;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.api.model.Binding;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import org.dcm.k8s.generated.Tables;
+import org.jooq.Record;
+import org.jooq.Result;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ThreadFactory;
 
 
 /**
@@ -17,12 +26,14 @@ import io.fabric8.kubernetes.client.KubernetesClient;
  */
 class KubernetesBinder implements IPodToNodeBinder {
     private final KubernetesClient client;
+    private final ThreadFactory namedThreadFactory =
+            new ThreadFactoryBuilder().setNameFormat("bind-thread-%d").build();
+    private final ExecutorService service = Executors.newFixedThreadPool(10, namedThreadFactory);
 
     KubernetesBinder(final KubernetesClient client) {
         this.client = client;
     }
 
-    @Override
     public void bindOne(final String namespace, final String podName, final String nodeName) {
         final Binding binding = new Binding();
         final ObjectReference target = new ObjectReference();
@@ -34,5 +45,18 @@ class KubernetesBinder implements IPodToNodeBinder {
         binding.setTarget(target);
         binding.setMetadata(meta);
         client.bindings().inNamespace(namespace).create(binding);
+    }
+
+    @Override
+    public void bindManyAsnc(final Result<? extends Record> records) {
+        ForkJoinPool.commonPool().execute(() -> records.forEach(
+                r -> service.execute(() -> {
+                    final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
+                    final String namespace = r.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
+                    final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                    bindOne(namespace, podName, nodeName);
+                }
+            )
+        ));
     }
 }

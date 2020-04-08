@@ -6,6 +6,7 @@
 
 package org.dcm;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
@@ -28,6 +29,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 
 /**
@@ -40,11 +44,16 @@ class EmulatedClusterTest {
     public void runTraceLocally() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+        final ThreadFactory namedThreadFactory =
+                new ThreadFactoryBuilder().setNameFormat("flowable-thread-%d").build();
+        final ExecutorService service = Executors.newFixedThreadPool(10, namedThreadFactory);
+
+        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter, service);
         final int numNodes = 1000;
 
         // Add all nodes
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool,
+                                                                                               service);
 
         final List<String> policies = Policies.getDefaultPolicies();
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, 4);

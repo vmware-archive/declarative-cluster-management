@@ -45,7 +45,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
 
     NodeResourceEventHandler(final DBConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
-        this.service = Executors.newCachedThreadPool();
+        this.service = Executors.newFixedThreadPool(10);
     }
 
     NodeResourceEventHandler(final DBConnectionPool dbConnectionPool, final ExecutorService service) {
