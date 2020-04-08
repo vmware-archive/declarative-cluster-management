@@ -205,6 +205,8 @@ public final class Scheduler {
                 "Scheduler batch interval");
         options.addRequiredOption("m", "solver", true,
                 "Solver to use: MNZ-CHUFFED, ORTOOLS");
+        options.addRequiredOption("t", "num-threads", true,
+                "Number of threads to use for or-tools");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
 
@@ -213,7 +215,7 @@ public final class Scheduler {
                 Policies.getDefaultPolicies(),
                 cmd.getOptionValue("solver"),
                 Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
-                Integer.parseInt(cmd.getOptionValue("numThreads")));
+                Integer.parseInt(cmd.getOptionValue("num-threads")));
 
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",
