@@ -39,7 +39,7 @@ class DBConnectionPool {
         this.databaseName = UUID.randomUUID().toString();
         setupDb();
         final HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(String.format("jdbc:h2:mem:%s;", databaseName));
+        config.setJdbcUrl(String.format("jdbc:h2:mem:%s;LOG=0;UNDO_LOG=0", databaseName));
         config.addDataSourceProperty("cachePrepStmts", "true");
         config.addDataSourceProperty("prepStmtCacheSize", "250");
         config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
@@ -58,7 +58,7 @@ class DBConnectionPool {
         try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
                 StandardCharsets.UTF_8))) {
             // Create a fresh database
-            final String connectionURL = String.format("jdbc:h2:mem:%s;create=true", databaseName);
+            final String connectionURL = String.format("jdbc:h2:mem:%s;create=true;LOG=0", databaseName);
             final Connection conn = DriverManager.getConnection(connectionURL, properties);
             final DSLContext using = using(conn, SQLDialect.H2);
             final String schemaAsString = tables.lines()
