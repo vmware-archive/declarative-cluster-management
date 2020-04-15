@@ -12,6 +12,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
+import org.jooq.conf.Settings;
 
 import javax.sql.DataSource;
 import java.io.BufferedReader;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 import static org.jooq.impl.DSL.using;
 
 class DBConnectionPool {
+    private static final Settings JOOQ_SETTING = new Settings().withExecuteLogging(false);
     private final String databaseName;
     private final DataSource ds;
 
@@ -77,6 +79,6 @@ class DBConnectionPool {
      */
     @VisibleForTesting
     DSLContext getConnectionToDb() {
-        return using(ds, SQLDialect.H2);
+        return using(ds, SQLDialect.H2, JOOQ_SETTING);
     }
 }
