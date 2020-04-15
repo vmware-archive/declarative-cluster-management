@@ -5,7 +5,7 @@
   ~ SPDX-License-Identifier: BSD-2
   -->
 
-<Configuration status="DEBUG">
+<Configuration status="INFO">
     <Appenders>
         <Console name="console" target="SYSTEM_OUT">
             <PatternLayout pattern="%highlight{%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n}"/>
@@ -13,6 +13,8 @@
     </Appenders>
     <Loggers>
         <Logger name="org.jooq.Constants" additivity="false" level="OFF">
+        </Logger>
+        <Logger name="org.jooq.tools.LoggerListener" additivity="false" level="off">
         </Logger>
         <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="info">
             <AppenderRef ref="console" />

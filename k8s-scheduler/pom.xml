@@ -52,7 +52,7 @@
         <dependency>
             <groupId>org.jooq</groupId>
             <artifactId>jooq-meta-extensions</artifactId>
-            <version>3.12.1</version>
+            <version>3.13.1</version>
         </dependency>
         <dependency>
             <groupId>commons-cli</groupId>
@@ -127,7 +127,7 @@
             <plugin>
                 <groupId>org.jooq</groupId>
                 <artifactId>jooq-codegen-maven</artifactId>
-                <version>3.12.1</version>
+                <version>3.13.1</version>
                 <executions>
                     <execution>
                         <goals>
