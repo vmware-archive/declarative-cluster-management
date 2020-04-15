@@ -97,7 +97,7 @@ public class OpsTests {
         ops.increasing(entries);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
 
         for (int i = 0; i < entries.size() - 1; i++) {
             assertTrue(solver.value(entries.get(i)) <= solver.value(entries.get(i + 1)));
