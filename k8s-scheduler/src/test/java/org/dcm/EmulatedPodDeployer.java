@@ -7,7 +7,6 @@
 package org.dcm;
 
 import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.RateLimiter;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -29,7 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class EmulatedPodDeployer implements IPodDeployer {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedPodDeployer.class);
-    private final RateLimiter limiter = RateLimiter.create(10);
     private final PodResourceEventHandler resourceEventHandler;
     private final String namespace;
     private final Map<String, List<Pod>> pods = new ConcurrentHashMap<>();
@@ -79,7 +77,6 @@ public class EmulatedPodDeployer implements IPodDeployer {
                 pod.setSpec(spec);
                 pod.setStatus(status);
                 pods.computeIfAbsent(deploymentName, (k) -> new ArrayList<>()).add(pod);
-                limiter.acquire();
                 resourceEventHandler.onAdd(pod);
             }
         }

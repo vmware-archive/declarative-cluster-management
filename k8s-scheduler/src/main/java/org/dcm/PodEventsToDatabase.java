@@ -85,7 +85,7 @@ class PodEventsToDatabase {
     }
 
     private void addPod(final Pod pod) {
-        LOG.info("Adding pod {}", pod.getMetadata().getName());
+        LOG.trace("Adding pod {}", pod.getMetadata().getName());
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> inserts = new ArrayList<>();
             inserts.addAll(updatePodRecord(pod, conn));
@@ -100,7 +100,7 @@ class PodEventsToDatabase {
     }
 
     private void deletePod(final Pod pod) {
-        LOG.info("Deleting pod {}", pod.getMetadata().getName());
+        LOG.trace("Deleting pod {}", pod.getMetadata().getName());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
 
