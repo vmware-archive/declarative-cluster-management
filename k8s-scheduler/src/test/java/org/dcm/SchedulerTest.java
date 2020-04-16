@@ -34,7 +34,6 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
-import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
@@ -193,10 +192,8 @@ public class SchedulerTest {
         final int numNodes = 5;
         final int numPods = 10;
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        emitter.map(eventHandler::handle).subscribe();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         // We pick a random node from [0, numNodes) to assign all pods to.
         final int nodeToAssignTo = ThreadLocalRandom.current().nextInt(numNodes);
@@ -244,10 +241,9 @@ public class SchedulerTest {
                                     final Set<String> nodesToMatch, final Set<String> nodesPartialMatch) {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        emitter.map(eventHandler::handle).subscribe();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final int numPods = 10;
         final int numNodes = 10;
@@ -358,10 +354,9 @@ public class SchedulerTest {
                                       final boolean shouldBeAffineToRemainingNodes) {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        emitter.map(eventHandler::handle).subscribe();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final int numPods = 10;
         final int numNodes = 100;
@@ -527,10 +522,9 @@ public class SchedulerTest {
         final int numPodsToModify = 3;
         final int numNodes = 3;
 
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        emitter.map(eventHandler::handle).subscribe();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final List<String> allPods = IntStream.range(0, numPods)
                 .mapToObj(i -> "p" + i)
@@ -760,10 +754,9 @@ public class SchedulerTest {
         assertEquals(cpuRequests.size(), memoryRequests.size());
         assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        emitter.map(eventHandler::handle).subscribe();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
         final int numPods = cpuRequests.size();
         final int numNodes = nodeCpuCapacities.size();
 
@@ -859,10 +852,9 @@ public class SchedulerTest {
                                          final List<List<Taint>> taints, final Predicate<List<String>> assertOn,
                                          final boolean feasible) {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        emitter.map(eventHandler::handle).subscribe();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final int numPods = tolerations.size();
         final int numNodes = taints.size();
@@ -1057,10 +1049,9 @@ public class SchedulerTest {
         final int numNodes = 50;
         final int numPods = 102;
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(emitter);
+
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        emitter.map(eventHandler::handle).subscribe();
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         for (int i = 0; i < numNodes; i++) {
             nodeResourceEventHandler.onAddSync(addNode("n" + i, Collections.emptyMap(),
