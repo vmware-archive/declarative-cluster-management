@@ -15,14 +15,13 @@ import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
-import io.reactivex.Flowable;
-import io.reactivex.processors.PublishProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.function.Consumer;
 
 class KubernetesStateSync {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesStateSync.class);
@@ -35,8 +34,8 @@ class KubernetesStateSync {
         this.sharedInformerFactory = client.informers();
     }
 
-    Flowable<PodEvent> setupInformersAndPodEventStream(final DBConnectionPool dbConnectionPool) {
-
+    void setupInformersAndPodEventStream(final DBConnectionPool dbConnectionPool,
+                                                       final Consumer<PodEvent> podEventNotification) {
         final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
         nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(dbConnectionPool, service));
@@ -44,12 +43,9 @@ class KubernetesStateSync {
         // Pod informer
         final SharedIndexInformer<Pod> podInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Pod.class, PodList.class, 30000);
-        final PublishProcessor<PodEvent> podEventPublishProcessor = PublishProcessor.create();
-        podInformer.addEventHandler(new PodResourceEventHandler(podEventPublishProcessor, service));
+        podInformer.addEventHandler(new PodResourceEventHandler(podEventNotification, service));
 
         LOG.info("Instantiated node and pod informers. Starting them all now.");
-
-        return podEventPublishProcessor;
     }
 
     void startProcessingEvents() {

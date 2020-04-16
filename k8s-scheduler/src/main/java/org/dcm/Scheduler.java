@@ -6,16 +6,12 @@
 
 package org.dcm;
 
-import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.reactivex.Flowable;
-import io.reactivex.disposables.Disposable;
-import io.reactivex.schedulers.Schedulers;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -31,7 +27,6 @@ import org.jooq.Update;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -41,7 +36,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -64,15 +61,14 @@ public final class Scheduler {
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
     private final Meter solverInvocations = metrics.meter("solverInvocations");
-    private final Histogram podsPerSchedulingEvent =
-            metrics.histogram(name(Scheduler.class, "pods-per-scheduling-attempt"));
     private final Timer updateDataTimes = metrics.timer(name(Scheduler.class, "updateDataTimes"));
     private final Timer solveTimes = metrics.timer(name(Scheduler.class, "solveTimes"));
-    @Nullable private Disposable subscription;
     private final ThreadFactory namedThreadFactory =
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
     private final PodEventsToDatabase podEventsToDatabase;
     private final DBConnectionPool dbConnectionPool;
+    private final ExecutorService scheduler = Executors.newSingleThreadExecutor(namedThreadFactory);
+    private final LinkedBlockingDeque<Boolean> notificationQueue = new LinkedBlockingDeque<>();
 
     Scheduler(final DBConnectionPool dbConnectionPool, final List<String> policies, final String solverToUse,
               final boolean debugMode, final int numThreads) {
@@ -90,31 +86,58 @@ public final class Scheduler {
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
-    void startScheduler(final Flowable<PodEvent> eventStream, final IPodToNodeBinder binder, final int batchCount,
-                        final long batchTimeMs) {
-        subscription = eventStream
-            .map(podEventsToDatabase::handle)
-            .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
-                    && podEvent.getPod().getStatus().getPhase().equals("Pending")
-                    && podEvent.getPod().getSpec().getNodeName() == null
-                    && podEvent.getPod().getSpec().getSchedulerName().equals(
-                    Scheduler.SCHEDULER_NAME)
-            )
-//            .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
-            .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
-            .filter(podEvents -> !podEvents.isEmpty())
-            .observeOn(Schedulers.from(Executors.newSingleThreadExecutor(namedThreadFactory)))
-            .subscribe(
-                podEvents -> {
-                    podsPerSchedulingEvent.update(podEvents.size());
-                    LOG.info("Received the following {} events: {}", podEvents.size(), podEvents);
-                    scheduleAllPendingPods(binder);
-                },
-                e -> {
-                    LOG.error("Received exception. Dumping DB state to /tmp/", e);
-                    DebugUtils.dbDump(dbConnectionPool.getConnectionToDb());
+    void handlePodEvent(final PodEvent podEvent) {
+        podEventsToDatabase.handle(podEvent);
+        if (podEvent.getAction().equals(PodEvent.Action.ADDED)
+            && podEvent.getPod().getStatus().getPhase().equals("Pending")
+            && podEvent.getPod().getSpec().getNodeName() == null
+            && podEvent.getPod().getSpec().getSchedulerName().equals(
+            Scheduler.SCHEDULER_NAME)) {
+            notificationQueue.add(true);
+        }
+    }
+
+    void startScheduler(final IPodToNodeBinder binder, final int batchCount, final long batchTimeMs) {
+        scheduler.execute(
+                () -> {
+                    while (!Thread.currentThread().isInterrupted()) {
+                        try {
+                            notificationQueue.take();
+                            LOG.info("Attempting schedule");
+                            scheduleAllPendingPods(binder);
+                        } catch (final InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        } catch (final ModelException e) {
+                            LOG.error("Received Model Exception. Dumping DB state to /tmp/", e);
+                            DebugUtils.dbDump(dbConnectionPool.getConnectionToDb());
+                        }
+                    }
                 }
-            );
+        );
+//        subscription = eventStream
+//            .map(podEventsToDatabase::handle)
+//            .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
+//                    && podEvent.getPod().getStatus().getPhase().equals("Pending")
+//                    && podEvent.getPod().getSpec().getNodeName() == null
+//                    && podEvent.getPod().getSpec().getSchedulerName().equals(
+//                    Scheduler.SCHEDULER_NAME)
+//            )
+////            .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
+//            .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
+//            .filter(podEvents -> !podEvents.isEmpty())
+//            .observeOn(Schedulers.from(Executors.newSingleThreadExecutor(namedThreadFactory)))
+//            .subscribe(
+//                podEvents -> {
+//                    podsPerSchedulingEvent.update(podEvents.size());
+//                    LOG.info("Received the following {} events: {}", podEvents.size(), podEvents);
+//                    scheduleAllPendingPods(binder);
+//                },
+//                e -> {
+//                    LOG.error("Received exception. Dumping DB state to /tmp/", e);
+//                    DebugUtils.dbDump(dbConnectionPool.getConnectionToDb());
+//                }
+//            );
     }
 
     @SuppressWarnings("unchecked")
@@ -190,9 +213,9 @@ public final class Scheduler {
         }
     }
 
-    void shutdown() {
-        assert subscription != null;
-        subscription.dispose();
+    void shutdown() throws InterruptedException {
+        scheduler.shutdownNow();
+        scheduler.awaitTermination(100, TimeUnit.SECONDS);
     }
 
     public static void main(final String[] args) throws InterruptedException, ParseException {
@@ -221,10 +244,9 @@ public final class Scheduler {
                  kubernetesClient.getConfiguration().getMasterUrl());
 
         final KubernetesStateSync stateSync = new KubernetesStateSync(kubernetesClient);
-        final Flowable<PodEvent> eventStream = stateSync.setupInformersAndPodEventStream(conn);
+        stateSync.setupInformersAndPodEventStream(conn, scheduler::handlePodEvent);
         final KubernetesBinder binder = new KubernetesBinder(kubernetesClient);
-        scheduler.startScheduler(eventStream, binder,
-                                 Integer.parseInt(cmd.getOptionValue("batch-size")),
+        scheduler.startScheduler(binder, Integer.parseInt(cmd.getOptionValue("batch-size")),
                                  Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
         stateSync.startProcessingEvents();
         Thread.currentThread().join();

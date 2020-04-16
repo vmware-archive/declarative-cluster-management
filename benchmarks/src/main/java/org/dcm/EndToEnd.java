@@ -20,7 +20,6 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
-import io.reactivex.processors.PublishProcessor;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -58,15 +57,12 @@ public class EndToEnd {
 
     @State(Scope.Benchmark)
     public static class BenchmarkState {
-        @Nullable PublishProcessor<PodEvent> emitter = null;
         @Nullable PodResourceEventHandler handler = null;
         @Nullable EmulatedPodToNodeBinder binder = null;
 
         @Setup(Level.Iteration)
         public void setUp() {
             final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-            emitter = PublishProcessor.create();
-            handler = new PodResourceEventHandler(emitter);
             binder = new EmulatedPodToNodeBinder(dbConnectionPool);
             final int numNodes = 1000;
 
@@ -75,7 +71,8 @@ public class EndToEnd {
 
             final List<String> policies = Policies.getDefaultPolicies();
             final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, true, numThreads);
-            scheduler.startScheduler(emitter, binder, 100, 500);
+            handler = new PodResourceEventHandler(scheduler::handlePodEvent);
+            scheduler.startScheduler(binder, 100, 500);
             for (int i = 0; i < numNodes; i++) {
                 final String nodeName = "n" + i;
                 final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
