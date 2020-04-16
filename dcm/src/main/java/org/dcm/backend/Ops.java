@@ -453,9 +453,10 @@ public class Ops {
             throw new RuntimeException("Empty domain for capacity constraint " + demands + " " + capacities);
         }
 
+        final Domain intervalRange = Domain.fromFlatIntervals(new long[] {domainT.min() + 1, domainT.max() + 1});
         for (int i = 0; i < numTasks; i++) {
             model.addLinearExpressionInDomain(taskToNodeAssignment[i], domainT);
-            final IntVar intervalEnd = model.newIntVar(domainT.min() + 1, domainT.max() + 1, "");
+            final IntVar intervalEnd = model.newIntVarFromDomain(intervalRange, "");
 
             // interval with start as taskToNodeAssignment and size of 1
             tasksIntervals[i] = model.newIntervalVar(taskToNodeAssignment[i],
