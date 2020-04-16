@@ -6,10 +6,12 @@
 
 package org.dcm;
 
-import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 
 /**
@@ -27,46 +29,48 @@ public class KubernetesPodDeployer implements IPodDeployer {
     }
 
     @Override
-    public Runnable startDeployment(final Deployment deployment) {
+    public Runnable startDeployment(final List<Pod> deployment) {
         return new StartDeployment(deployment);
     }
 
     @Override
-    public Runnable endDeployment(final Deployment deployment) {
+    public Runnable endDeployment(final List<Pod> deployment) {
         return new EndDeployment(deployment);
     }
 
     private class StartDeployment implements Runnable {
-        Deployment deployment;
+        final List<Pod> deployment;
 
-        StartDeployment(final Deployment dep) {
+        StartDeployment(final List<Pod> dep) {
             this.deployment = dep;
         }
 
         @Override
         public void run() {
+            final Pod firstPodInDeployment = deployment.get(0);
             LOG.info("Creating deployment (name:{}, schedulerName:{}, replicas:{}) with masterUrl {} at {}",
-                    deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    deployment.getSpec().getReplicas(), fabricClient.getConfiguration().getMasterUrl(),
+                    firstPodInDeployment.getMetadata().getName(), firstPodInDeployment.getSpec().getSchedulerName(),
+                    deployment.size(), fabricClient.getConfiguration().getMasterUrl(),
                     System.currentTimeMillis());
-            fabricClient.apps().deployments().inNamespace(namespace)
-                    .create(this.deployment);
+            deployment.forEach(p -> fabricClient.pods().inNamespace(namespace).create(p));
         }
     }
 
     private class EndDeployment implements Runnable {
-        Deployment deployment;
+        final List<Pod> deployment;
 
-        EndDeployment(final Deployment dep) {
+        EndDeployment(final List<Pod> dep) {
             this.deployment = dep;
         }
 
         @Override
         public void run() {
+            final Pod firstPodInDeployment = deployment.get(0);
             LOG.info("Terminating deployment (name:{}, schedulerName:{}) with masterUrl {} at {}",
-                    deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
+                    firstPodInDeployment.getMetadata().getName(), firstPodInDeployment.getSpec().getSchedulerName(),
                     fabricClient.getConfiguration().getMasterUrl(), System.currentTimeMillis());
-            fabricClient.resource(deployment).inNamespace(namespace).withGracePeriod(0).delete();
+            fabricClient.pods().inNamespace(namespace)
+                               .delete(deployment);
         }
     }
 }

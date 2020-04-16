@@ -6,7 +6,9 @@
 
 package org.dcm;
 
-import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.Pod;
+
+import java.util.List;
 
 /**
  * An interface used by WorkloadGeneratorIT.runTrace() to create and delete pod deployments. It allows
@@ -14,7 +16,7 @@ import io.fabric8.kubernetes.api.model.apps.Deployment;
  */
 public interface IPodDeployer {
 
-    Runnable startDeployment(final Deployment deployment);
+    Runnable startDeployment(final List<Pod> deployment);
 
-    Runnable endDeployment(final Deployment deployment);
+    Runnable endDeployment(final List<Pod> deployment);
 }
