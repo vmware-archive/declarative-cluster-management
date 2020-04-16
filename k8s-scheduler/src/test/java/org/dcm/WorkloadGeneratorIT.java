@@ -18,7 +18,6 @@ import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
-import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
@@ -42,6 +41,7 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -210,11 +210,11 @@ class WorkloadGeneratorIT extends ITBase {
                 final int end = Integer.parseInt(parts[3]) / timeScaleDown;
                 final float cpu = Float.parseFloat(parts[4].replace(">", "")) / cpuScaleDown;
                 final float mem = Float.parseFloat(parts[5].replace(">", "")) / memScaleDown;
-                final int vmCount = Math.max(20, Integer.parseInt(parts[6].replace(">", "")));
+                final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
                 // generate a deployment's details based on cpu, mem requirements
-                final Deployment deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);
-                totalPods += deployment.getSpec().getReplicas();
+                final List<Pod> deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount);
+                totalPods += deployment.size();
 
                 if (Integer.parseInt(parts[2]) > startTimeCutOff) { // window in seconds
                     break;
@@ -262,32 +262,35 @@ class WorkloadGeneratorIT extends ITBase {
         assert objects.size() != 0;
     }
 
-    private Deployment getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,
+    private List<Pod> getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,
                                      final float mem, final int count, final int taskCount) {
-        final URL url = getClass().getClassLoader().getResource("app-no-constraints.yml");
+        final URL url = getClass().getClassLoader().getResource("pod-only.yml");
         assertNotNull(url);
         final File file = new File(url.getFile());
 
         // Load the template file and update its contents to generate a new deployment template
-        final Deployment deployment = client.apps().deployments().load(file).get();
-        deployment.getSpec().getTemplate().getSpec().setSchedulerName(schedulerName);
-        final String appName = "app-" + taskCount;
-        deployment.getMetadata().setName(appName);
-        deployment.getSpec().setReplicas(count);
+        final List<Pod> podsToCreate = IntStream.range(0, count)
+                .mapToObj(podCount -> {
+                    final Pod pod = client.pods().load(file).get();
+                    pod.getSpec().setSchedulerName(schedulerName);
+                    final String appName = "app-" + taskCount;
+                    pod.getMetadata().setName(appName + "-" + podCount);
 
-        final List<Container> containerList = deployment.getSpec().getTemplate().getSpec().getContainers();
-        for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
-            final Container container = iter.next();
-            final ResourceRequirements resReq = new ResourceRequirements();
-            final Map<String, Quantity> reqs = new HashMap<>();
-            reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
-            reqs.put("memory", new Quantity(Float.toString(mem)));
-            resReq.setRequests(reqs);
-            container.setResources(resReq);
-            iter.set(container);
-        }
-        deployment.getSpec().getTemplate().getSpec().setContainers(containerList);
-        return deployment;
+                    final List<Container> containerList = pod.getSpec().getContainers();
+                    for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
+                        final Container container = iter.next();
+                        final ResourceRequirements resReq = new ResourceRequirements();
+                        final Map<String, Quantity> reqs = new HashMap<>();
+                        reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
+                        reqs.put("memory", new Quantity(Float.toString(mem)));
+                        resReq.setRequests(reqs);
+                        container.setResources(resReq);
+                        iter.set(container);
+                    }
+                    return pod;
+                })
+                .collect(Collectors.toList());
+        return podsToCreate;
     }
 
     private int getDuration(final int startTime, int endTime) {

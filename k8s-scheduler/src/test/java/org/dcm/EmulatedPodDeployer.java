@@ -7,12 +7,10 @@
 package org.dcm;
 
 import com.google.common.base.Preconditions;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.PodStatus;
-import io.fabric8.kubernetes.api.model.apps.Deployment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,42 +36,39 @@ public class EmulatedPodDeployer implements IPodDeployer {
     }
 
     @Override
-    public Runnable startDeployment(final Deployment deployment) {
+    public Runnable startDeployment(final List<Pod> deployment) {
         return new StartDeployment(deployment);
     }
 
     @Override
-    public Runnable endDeployment(final Deployment deployment) {
+    public Runnable endDeployment(final List<Pod> deployment) {
         return new EndDeployment(deployment);
     }
 
     private class StartDeployment implements Runnable {
-        Deployment deployment;
+        List<Pod> deployment;
 
-        StartDeployment(final Deployment dep) {
+        StartDeployment(final List<Pod> dep) {
             this.deployment = dep;
         }
 
         @Override
         public void run() {
-            final String deploymentName = deployment.getMetadata().getName();
+            final Pod firstPodInDeployment = deployment.get(0);
+            final String deploymentName = firstPodInDeployment.getMetadata().getName();
             LOG.info("Creating deployment (name:{}, schedulerName:{}, replicas:{}) at {}",
-                    deploymentName, deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                    deployment.getSpec().getReplicas(), System.currentTimeMillis());
+                    deploymentName, firstPodInDeployment.getSpec().getSchedulerName(),
+                    deployment.size(), System.currentTimeMillis());
 
-            for (int i = 0; i < deployment.getSpec().getReplicas(); i++) {
-                final Pod pod = new Pod();
-                final ObjectMeta meta = new ObjectMeta();
-                meta.setName(deploymentName + "-" + i);
-                meta.setCreationTimestamp("" + System.currentTimeMillis());
-                meta.setNamespace(namespace);
+            for (final Pod pod: deployment) {
+                pod.getMetadata().setCreationTimestamp("" + System.currentTimeMillis());
+                pod.getMetadata().setNamespace(namespace);
                 final OwnerReference reference = new OwnerReference();
                 reference.setName(deploymentName);
-                meta.setOwnerReferences(List.of(reference));
-                final PodSpec spec = deployment.getSpec().getTemplate().getSpec();
+                pod.getMetadata().setOwnerReferences(List.of(reference));
+                final PodSpec spec = pod.getSpec();
                 final PodStatus status = new PodStatus();
                 status.setPhase("Pending");
-                pod.setMetadata(meta);
                 pod.setSpec(spec);
                 pod.setStatus(status);
                 pods.computeIfAbsent(deploymentName, (k) -> new ArrayList<>()).add(pod);
@@ -83,18 +78,19 @@ public class EmulatedPodDeployer implements IPodDeployer {
     }
 
     private class EndDeployment implements Runnable {
-        Deployment deployment;
+        List<Pod> deployment;
 
-        EndDeployment(final Deployment dep) {
+        EndDeployment(final List<Pod> dep) {
             this.deployment = dep;
         }
 
         @Override
         public void run() {
+            final Pod firstPodOfDeployment = deployment.get(0);
             LOG.info("Terminating deployment (name:{}, schedulerName:{}, replicas:{}) at {}",
-                deployment.getMetadata().getName(), deployment.getSpec().getTemplate().getSpec().getSchedulerName(),
-                deployment.getSpec().getReplicas(), System.currentTimeMillis());
-            final List<Pod> podsList = pods.get(deployment.getMetadata().getName());
+                    firstPodOfDeployment.getMetadata().getName(), firstPodOfDeployment.getSpec().getSchedulerName(),
+                    deployment.size(), System.currentTimeMillis());
+            final List<Pod> podsList = pods.get(firstPodOfDeployment.getMetadata().getName());
             Preconditions.checkNotNull(podsList);
             for (final Pod pod: podsList) {
                 resourceEventHandler.onDeleteSync(pod, false);
