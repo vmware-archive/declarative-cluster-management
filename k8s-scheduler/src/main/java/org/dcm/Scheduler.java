@@ -115,29 +115,6 @@ public final class Scheduler {
                     }
                 }
         );
-//        subscription = eventStream
-//            .map(podEventsToDatabase::handle)
-//            .filter(podEvent -> podEvent.getAction().equals(PodEvent.Action.ADDED)
-//                    && podEvent.getPod().getStatus().getPhase().equals("Pending")
-//                    && podEvent.getPod().getSpec().getNodeName() == null
-//                    && podEvent.getPod().getSpec().getSchedulerName().equals(
-//                    Scheduler.SCHEDULER_NAME)
-//            )
-////            .compose(Transformers.buffer(batchCount, batchTimeMs, TimeUnit.MILLISECONDS))
-//            .buffer(batchTimeMs, TimeUnit.MILLISECONDS, batchCount)
-//            .filter(podEvents -> !podEvents.isEmpty())
-//            .observeOn(Schedulers.from(Executors.newSingleThreadExecutor(namedThreadFactory)))
-//            .subscribe(
-//                podEvents -> {
-//                    podsPerSchedulingEvent.update(podEvents.size());
-//                    LOG.info("Received the following {} events: {}", podEvents.size(), podEvents);
-//                    scheduleAllPendingPods(binder);
-//                },
-//                e -> {
-//                    LOG.error("Received exception. Dumping DB state to /tmp/", e);
-//                    DebugUtils.dbDump(dbConnectionPool.getConnectionToDb());
-//                }
-//            );
     }
 
     @SuppressWarnings("unchecked")
