@@ -258,7 +258,8 @@ class WorkloadGeneratorIT extends ITBase {
                  " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart,
                 maxEnd, maxEnd);
 
-        final List<Object> objects = Futures.successfulAsList(deletions).get();
+        final List<Object> objects = Futures.successfulAsList(deletions).get(maxEnd + 100, TimeUnit.SECONDS);
+
         assert objects.size() != 0;
     }
 
