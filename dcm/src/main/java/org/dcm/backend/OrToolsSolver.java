@@ -6,7 +6,6 @@
 
 package org.dcm.backend;
 
-import com.esotericsoftware.reflectasm.ConstructorAccess;
 import com.google.common.base.CaseFormat;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
@@ -64,6 +63,8 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.io.StringWriter;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -1032,12 +1033,13 @@ public class OrToolsSolver implements ISolverBackend {
             // Loading the class
             final Class<?> cls = Class.forName(String.format("org.dcm.backend.%s", GENERATED_BACKEND_NAME), true,
                                                classLoader);
-            final ConstructorAccess<?> access = ConstructorAccess.get(cls);
-            generatedBackend = (IGeneratedBackend) access.newInstance();
+            final Constructor<?> declaredConstructor = cls.getDeclaredConstructor();
+            generatedBackend = (IGeneratedBackend) declaredConstructor.newInstance();
             final StringWriter writer = new StringWriter();
             javaFile.writeTo(writer);
             return Collections.singletonList(writer.toString());
-        } catch (final IOException | ClassNotFoundException e) {
+        } catch (final IOException | ClassNotFoundException | InstantiationException
+                      | InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
     }
