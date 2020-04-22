@@ -27,12 +27,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URL;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -42,8 +41,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * To run these specific tests, pass a `schedulerName` property to maven, for example:
@@ -184,7 +181,6 @@ class WorkloadGeneratorIT extends ITBase {
                   final String schedulerName, final int cpuScaleDown, final int memScaleDown, final int timeScaleDown,
                   final int startTimeCutOff)
             throws Exception {
-        assertNotNull(schedulerName);
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
                  " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{}", schedulerName, cpuScaleDown, memScaleDown,
                                                                       timeScaleDown, startTimeCutOff);
@@ -199,7 +195,7 @@ class WorkloadGeneratorIT extends ITBase {
         int totalPods = 0;
 
         try (final BufferedReader reader = new BufferedReader(new InputStreamReader(inStream,
-                Charset.forName("UTF8")))) {
+                StandardCharsets.UTF_8))) {
             String line;
             int taskCount = 0;
             final long startTime = System.currentTimeMillis();
@@ -259,36 +255,36 @@ class WorkloadGeneratorIT extends ITBase {
                 maxEnd, maxEnd);
 
         final List<Object> objects = Futures.successfulAsList(deletions).get(maxEnd + 100, TimeUnit.SECONDS);
-
         assert objects.size() != 0;
     }
 
     private List<Pod> getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,
                                      final float mem, final int count, final int taskCount) {
-        final URL url = getClass().getClassLoader().getResource("pod-only.yml");
-        assertNotNull(url);
-        final File file = new File(url.getFile());
-
         // Load the template file and update its contents to generate a new deployment template
         final List<Pod> podsToCreate = IntStream.range(0, count)
                 .mapToObj(podCount -> {
-                    final Pod pod = client.pods().load(file).get();
-                    pod.getSpec().setSchedulerName(schedulerName);
-                    final String appName = "app-" + taskCount;
-                    pod.getMetadata().setName(appName + "-" + podCount);
+                    try (final InputStream fileStream =
+                                 getClass().getClassLoader().getResourceAsStream("pod-only.yml")) {
+                        final Pod pod = client.pods().load(fileStream).get();
+                        pod.getSpec().setSchedulerName(schedulerName);
+                        final String appName = "app-" + taskCount;
+                        pod.getMetadata().setName(appName + "-" + podCount);
 
-                    final List<Container> containerList = pod.getSpec().getContainers();
-                    for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
-                        final Container container = iter.next();
-                        final ResourceRequirements resReq = new ResourceRequirements();
-                        final Map<String, Quantity> reqs = new HashMap<>();
-                        reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
-                        reqs.put("memory", new Quantity(Float.toString(mem)));
-                        resReq.setRequests(reqs);
-                        container.setResources(resReq);
-                        iter.set(container);
+                        final List<Container> containerList = pod.getSpec().getContainers();
+                        for (ListIterator<Container> iter = containerList.listIterator(); iter.hasNext(); ) {
+                            final Container container = iter.next();
+                            final ResourceRequirements resReq = new ResourceRequirements();
+                            final Map<String, Quantity> reqs = new HashMap<>();
+                            reqs.put("cpu", new Quantity(cpu * 1000 + "m"));
+                            reqs.put("memory", new Quantity(Float.toString(mem)));
+                            resReq.setRequests(reqs);
+                            container.setResources(resReq);
+                            iter.set(container);
+                        }
+                        return pod;
+                    } catch (final IOException e) {
+                        throw new RuntimeException(e);
                     }
-                    return pod;
                 })
                 .collect(Collectors.toList());
         return podsToCreate;

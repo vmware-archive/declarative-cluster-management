@@ -21,8 +21,6 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,8 +36,6 @@ import java.util.concurrent.ThreadFactory;
  */
 class EmulatedClusterTest {
 
-    @Test
-    @Disabled
     public void runTraceLocally() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
 
@@ -51,7 +47,7 @@ class EmulatedClusterTest {
 
         // Add all nodes
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool,
-                                                                                               service);
+                service);
 
         final List<String> policies = Policies.getDefaultPolicies();
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, 4);
@@ -78,15 +74,15 @@ class EmulatedClusterTest {
             pod.getSpec().setNodeName(nodeName);
             handler.onAddSync(pod);
         }
-        final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
+        final WorkloadGeneratorIT replay = new WorkloadGeneratorIT();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
-        workloadGeneratorIT.runTrace(client, "v2-cropped.txt", deployer, "dcm-scheduler",
-                          100, 50, 100, 1000000);
+        replay.runTrace(client, "v2-cropped.txt", deployer, "dcm-scheduler",
+                100, 50, 100, 2000);
     }
 
-    private Node addNode(final String nodeName, final Map<String, String> labels,
-                         final List<NodeCondition> conditions) {
+    private static Node addNode(final String nodeName, final Map<String, String> labels,
+                                final List<NodeCondition> conditions) {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();
@@ -110,8 +106,8 @@ class EmulatedClusterTest {
         return node;
     }
 
-    private Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
-                       final Map<String, String> labels) {
+    private static Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
+                              final Map<String, String> labels) {
         final Pod pod = new Pod();
         final ObjectMeta meta = new ObjectMeta();
         meta.setName(podName);
@@ -141,5 +137,11 @@ class EmulatedClusterTest {
         pod.setSpec(spec);
         pod.setStatus(status);
         return pod;
+    }
+
+    public static void main(final String[] args) throws Exception {
+        final EmulatedClusterTest emulatedClusterTest = new EmulatedClusterTest();
+        emulatedClusterTest.runTraceLocally();
+        System.exit(0); // need this to make sure all threads correctly shut down
     }
 }
