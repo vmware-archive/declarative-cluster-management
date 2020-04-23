@@ -21,6 +21,12 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Options;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -35,15 +41,16 @@ import java.util.concurrent.ThreadFactory;
  * Tests that replay cluster traces in process without the involvement of a Kubernetes cluster.
  */
 class EmulatedClusterTest {
+    private static final Logger LOG = LoggerFactory.getLogger(EmulatedClusterTest.class);
 
-    public void runTraceLocally() throws Exception {
+    public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
+                                final int memScaleDown, final int timeScaleDown, final int startTimeCutOff)
+            throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
 
         final ThreadFactory namedThreadFactory =
                 new ThreadFactoryBuilder().setNameFormat("flowable-thread-%d").build();
         final ExecutorService service = Executors.newFixedThreadPool(10, namedThreadFactory);
-
-        final int numNodes = 1000;
 
         // Add all nodes
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool,
@@ -77,8 +84,8 @@ class EmulatedClusterTest {
         final WorkloadGeneratorIT replay = new WorkloadGeneratorIT();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
-        replay.runTrace(client, "v2-cropped.txt", deployer, "dcm-scheduler",
-                100, 50, 100, 2000);
+        replay.runTrace(client, traceFileName, deployer, "dcm-scheduler",
+                        cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff);
     }
 
     private static Node addNode(final String nodeName, final Map<String, String> labels,
@@ -141,7 +148,33 @@ class EmulatedClusterTest {
 
     public static void main(final String[] args) throws Exception {
         final EmulatedClusterTest emulatedClusterTest = new EmulatedClusterTest();
-        emulatedClusterTest.runTraceLocally();
-        System.exit(0); // need this to make sure all threads correctly shut down
+        final Options options = new Options();
+
+        options.addRequiredOption("n", "numNodes", true,
+                        "Number of nodes in experiment");
+        options.addRequiredOption("f", "traceFile", true,
+                        "Trace file to use from k8s-scheduler/src/test/resources/");
+        options.addRequiredOption("c", "cpuScaleDown", true,
+                        "Factor by which to scale down CPU resource demands for pods");
+        options.addRequiredOption("m", "memScaleDown", true,
+                        "Factor by which to scale down Memory resource demands for pods");
+        options.addRequiredOption("t", "timeScaleDown", true,
+                        "Factor by which to scale down arrival rate for pods");
+        options.addRequiredOption("s", "startTimeCutOff", true,
+                        "N, where we replay first N seconds of trace");
+        final CommandLineParser parser = new DefaultParser();
+        final CommandLine cmd = parser.parse(options, args);
+        final int numNodes = Integer.parseInt(cmd.getOptionValue("numNodes"));
+        final String traceFile = cmd.getOptionValue("traceFile");
+        final int cpuScaleDown = Integer.parseInt(cmd.getOptionValue("cpuScaleDown"));
+        final int memScaleDown = Integer.parseInt(cmd.getOptionValue("memScaleDown"));
+        final int timeScaleDown = Integer.parseInt(cmd.getOptionValue("timeScaleDown"));
+        final int startTimeCutOff = Integer.parseInt(cmd.getOptionValue("startTimeCutOff"));
+        LOG.info("Running experiment with parameters: numNodes:{}, traceFile:{}, cpuScaleDown:{}, " +
+                    "memScaleDown:{}, timeScaleDown:{}, startTimeCutOff:{}", numNodes, traceFile, cpuScaleDown,
+                memScaleDown, timeScaleDown, startTimeCutOff);
+        emulatedClusterTest.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
+                                            startTimeCutOff);
+        System.exit(0); // without this, there are non-daemon threads that prevent JVM shutdown
     }
 }
