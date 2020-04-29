@@ -95,6 +95,7 @@ import java.util.stream.Stream;
 public class OrToolsSolver implements ISolverBackend {
     public static final String OR_TOOLS_LIB_ENV = "OR_TOOLS_LIB";
     private static final int NUM_THREADS_DEFAULT = 4;
+    private static final int MAX_TIME_IN_SECONDS = 1;
     private static final String GENERATED_BACKEND_CLASS_FILE_PATH = "/tmp";
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
@@ -117,6 +118,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final TupleGen tupleGen = new TupleGen();
     private final OutputIR outputIR = new OutputIR();
     private final int numThreads;
+    private final int maxTimeInSeconds;
 
     static {
         Preconditions.checkNotNull(System.getenv(OR_TOOLS_LIB_ENV));
@@ -126,12 +128,28 @@ public class OrToolsSolver implements ISolverBackend {
     @Nullable private IGeneratedBackend generatedBackend;
     @Nullable private IRContext context = null;
 
-    public OrToolsSolver() {
-        this.numThreads = NUM_THREADS_DEFAULT;
+    private OrToolsSolver(final int numThreads, final int maxTimeInSeconds) {
+        this.numThreads = numThreads;
+        this.maxTimeInSeconds = maxTimeInSeconds;
     }
 
-    public OrToolsSolver(final int numThreads) {
-        this.numThreads = numThreads;
+    public static class Builder {
+        private int numThreads = NUM_THREADS_DEFAULT;
+        private int maxTimeInSeconds = MAX_TIME_IN_SECONDS;
+
+        public Builder setNumThreads(final int numThreads) {
+            this.numThreads = numThreads;
+            return this;
+        }
+
+        public Builder setMaxTimeInSeconds(final int maxTimeInSeconds) {
+            this.maxTimeInSeconds = maxTimeInSeconds;
+            return this;
+        }
+
+        public OrToolsSolver build() {
+            return new OrToolsSolver(numThreads, maxTimeInSeconds);
+        }
     }
 
     @Override
@@ -905,7 +923,7 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement("solver.getParameters().setLogSearchProgress(true)")
                .addStatement("solver.getParameters().setCpModelProbingLevel(0)")
                .addStatement("solver.getParameters().setNumSearchWorkers($L)", numThreads)
-               .addStatement("solver.getParameters().setMaxTimeInSeconds(1)")
+               .addStatement("solver.getParameters().setMaxTimeInSeconds($L)", maxTimeInSeconds)
                .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
                .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
                .addStatement("final Map<IRTable, Result<? extends Record>> result = new $T<>()", HashMap.class)

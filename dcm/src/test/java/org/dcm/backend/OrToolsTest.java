@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 public class OrToolsTest {
 
     static {
-        new OrToolsSolver(); // causes or-tools library to be loaded
+        final OrToolsSolver.Builder builder = new OrToolsSolver.Builder(); // causes or-tools library to be loaded
+        System.out.println(builder);
     }
 
     @Test

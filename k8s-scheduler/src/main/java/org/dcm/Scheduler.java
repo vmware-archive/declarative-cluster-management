@@ -53,6 +53,7 @@ import static com.codahale.metrics.MetricRegistry.name;
 public final class Scheduler {
     private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
     private static final String MINIZINC_MODEL_PATH = "/tmp";
+    private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
 
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
@@ -72,6 +73,11 @@ public final class Scheduler {
 
     Scheduler(final DBConnectionPool dbConnectionPool, final List<String> policies, final String solverToUse,
               final boolean debugMode, final int numThreads) {
+        this(dbConnectionPool, policies, solverToUse, debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
+    }
+
+    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> policies, final String solverToUse,
+              final boolean debugMode, final int numThreads, final int solverMaxTimeInSeconds) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
                 StandardCharsets.UTF_8))) {
@@ -82,7 +88,8 @@ public final class Scheduler {
         }
         this.dbConnectionPool = dbConnectionPool;
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
-        this.model = createDcmModel(dbConnectionPool.getConnectionToDb(), solverToUse, policies, numThreads);
+        this.model = createDcmModel(dbConnectionPool.getConnectionToDb(), solverToUse, policies, numThreads,
+                                    solverMaxTimeInSeconds);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
@@ -120,6 +127,9 @@ public final class Scheduler {
     @SuppressWarnings("unchecked")
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
         int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
+
+        System.out.println(dbConnectionPool.getConnectionToDb()
+                .fetch("explain select * from inter_pod_affinity_matches").get(0).get(0));
         while (fetchCount > 0) {
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
@@ -175,7 +185,7 @@ public final class Scheduler {
      * Instantiates a DCM model based on the configured policies.
      */
     private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies,
-                                 final int numThreads) {
+                                 final int numThreads, final int solverMaxTimeInSeconds) {
         switch (solverToUse) {
             case "MNZ-CHUFFED":
                 final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
@@ -183,7 +193,9 @@ public final class Scheduler {
                 final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
                 return Model.buildModel(conn, solver, policies);
             case "ORTOOLS":
-                final OrToolsSolver orToolsSolver = new OrToolsSolver(numThreads);
+                final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
+                                                     .setNumThreads(numThreads)
+                                                     .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
                 return Model.buildModel(conn, orToolsSolver, policies);
             default:
                 throw new IllegalArgumentException(solverToUse);

@@ -1872,7 +1872,7 @@ public class ModelTest {
                 final MinizincSolver minizincSolver = new MinizincSolver(modelFile, dataFile, new Conf());
                 return Model.buildModel(conn, minizincSolver, views);
             case OrToolsSolver:
-                final OrToolsSolver orToolsSolver = new OrToolsSolver();
+                final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder().build();
                 return Model.buildModel(conn, orToolsSolver, views);
             default:
                 throw new IllegalArgumentException(solverBackend.toString());

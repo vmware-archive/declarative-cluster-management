@@ -23,7 +23,9 @@ import java.util.concurrent.ThreadLocalRandom;
 public class OrToolsIntervalsTest {
 
     static {
-        new OrToolsSolver(); // causes or-tools library to be loaded
+        // causes or-tools library to be loaded
+        final OrToolsSolver builder = new OrToolsSolver.Builder().build();
+        System.out.println(builder);
     }
 
     @Test
