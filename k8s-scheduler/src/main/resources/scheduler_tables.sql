@@ -351,20 +351,21 @@ select *, count(*) over (partition by pod_name) as num_matches from inter_pod_an
 
 -- Spare capacity
 create view spare_capacity_per_node as
-select * from
-    (select node_info.name as name,
-       cast(node_info.cpu_allocatable - node_info.cpu_allocated as integer) as cpu_remaining,
-       cast(node_info.memory_allocatable - node_info.memory_allocated as integer) as memory_remaining,
-       cast(node_info.pods_allocatable - node_info.pods_allocated as integer) as pods_remaining
-    from node_info
-    where node_info.unschedulable = false and
-          node_info.memory_pressure = false and
-          node_info.out_of_disk = false and
-          node_info.disk_pressure = false and
-          node_info.pid_pressure = false and
-          node_info.network_unavailable = false and
-          node_info.ready = true)
-where cpu_remaining > 0 and memory_remaining > 0 and pods_remaining > 0;
+select name as name,
+  cpu_allocatable - cpu_allocated as cpu_remaining,
+  memory_allocatable - memory_allocated as memory_remaining,
+  pods_allocatable - pods_allocated as pods_remaining
+from node_info
+where unschedulable = false and
+      memory_pressure = false and
+      out_of_disk = false and
+      disk_pressure = false and
+      pid_pressure = false and
+      network_unavailable = false and
+      ready = true and
+      cpu_allocated < cpu_allocatable and
+      memory_allocated <  memory_allocatable and
+      pods_allocated < pods_allocatable;
 
 -- Taints and tolerations
 create view pods_that_tolerate_node_taints as
