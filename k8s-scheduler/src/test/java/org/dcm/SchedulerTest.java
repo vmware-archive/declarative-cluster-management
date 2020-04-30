@@ -73,7 +73,98 @@ public class SchedulerTest {
     private final int numThreads = 1;
 
     /*
-     *
+     * Test our simulation of a materialized view by adding and removing pods, and checking whether
+     * node_info is correctly updated
+     */
+    @Test
+    public void testTriggers() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final PodEventsToDatabase eventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
+        final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
+
+        for (int i = 0; i < 10; i++) {
+            final String nodeName = "n" + i;
+            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu",
+                    new Quantity(String.valueOf(100)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(100)));
+            nodeHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String systemPodName = "system-pod-" + nodeName;
+            final Pod systemPod;
+            final String status = "Running";
+            systemPod = newPod(systemPodName, status, Collections.emptyMap(), Collections.emptyMap());
+            systemPod.getSpec().setNodeName(nodeName);
+            nodeHandler.onAddSync(node);
+            eventsToDatabase.handle(new PodEvent(PodEvent.Action.ADDED, systemPod));
+        }
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final Runnable checkThatResourcesNotReflected = () -> conn.selectFrom(Tables.NODE_INFO).fetch()
+                                        .forEach(r -> {
+                                            assertEquals(r.getCpuAllocated(), 0);
+                                            assertEquals(r.getMemoryAllocated(), 0);
+                                            assertEquals(r.getEphemeralStorageAllocated(), 0);
+                                            assertEquals(r.getPodsAllocated(), 1);
+                                        });
+        final Runnable checkThatResourcesReflected = () -> conn.selectFrom(Tables.NODE_INFO).fetch()
+                        .forEach(r -> {
+                            if (!r.getName().equals("n5")) {
+                                assertEquals(r.getCpuAllocated(), 0);
+                                assertEquals(r.getMemoryAllocated(), 0);
+                                assertEquals(r.getEphemeralStorageAllocated(), 0);
+                                assertEquals(r.getPodsAllocated(), 1);
+                            } else {
+                                assertEquals(r.getCpuAllocated(), 10000);
+                                assertEquals(r.getMemoryAllocated(), 1);
+                                assertEquals(r.getEphemeralStorageAllocated(), 0);
+                                assertEquals(r.getPodsAllocated(), 2);
+                            }
+                        });
+
+        final String podName = "p";
+        final Pod pod;
+        final Map<String, Quantity> resourceRequests = new HashMap<>();
+        resourceRequests.put("cpu", new Quantity(String.valueOf(10)));
+        resourceRequests.put("memory", new Quantity(String.valueOf(1)));
+        resourceRequests.put("pods", new Quantity("1"));
+        pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+
+        // Assumes that there is only one container
+        pod.getSpec().getContainers().get(0)
+                .getResources()
+                .setRequests(resourceRequests);
+        // Add the pending pod
+        eventsToDatabase.handle(new PodEvent(PodEvent.Action.ADDED, pod));
+        checkThatResourcesNotReflected.run();
+
+        // Update a property other than node name
+        conn.update(Tables.POD_INFO).set(Tables.POD_INFO.PRIORITY, 10)
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .execute();
+        checkThatResourcesNotReflected.run();
+
+        // Update the pending pod to run on n5
+        conn.update(Tables.POD_INFO).set(Tables.POD_INFO.NODE_NAME, "n5")
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .execute();
+        checkThatResourcesReflected.run();
+
+        // Again, update a property other than node name
+        conn.update(Tables.POD_INFO).set(Tables.POD_INFO.PRIORITY, 10)
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .execute();
+        checkThatResourcesReflected.run();
+
+        // Remove the node
+        conn.delete(Tables.POD_INFO)
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .execute();
+        checkThatResourcesNotReflected.run();
+    }
+
+    /*
+     * Test if multiple connections from our connection pool see each other's changes
      */
     @Test
     public void testMultipleConnections() {

@@ -21,30 +21,30 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
 import org.dcm.k8s.generated.Tables;
-import org.dcm.k8s.generated.tables.NodeInfo;
 import org.dcm.k8s.generated.tables.PodInfo;
-import org.dcm.k8s.generated.tables.records.NodeInfoRecord;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.dcm.k8s.generated.tables.records.PodLabelsRecord;
 import org.dcm.k8s.generated.tables.records.PodNodeSelectorLabelsRecord;
 import org.dcm.k8s.generated.tables.records.PodTolerationsRecord;
+import org.h2.api.Trigger;
 import org.jooq.DSLContext;
 import org.jooq.Insert;
 import org.jooq.InsertOnDuplicateSetMoreStep;
 import org.jooq.Query;
 import org.jooq.Record;
 import org.jooq.Table;
-import org.jooq.Update;
+import org.jooq.exception.DataAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.stream.Collectors;
 
 
@@ -53,7 +53,6 @@ import java.util.stream.Collectors;
  */
 class PodEventsToDatabase {
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
-    private final Set<String> podRequestsReflectedInDatabase = new ConcurrentSkipListSet<>();
     private final DBConnectionPool dbConnectionPool;
 
     private enum Operators {
@@ -63,8 +62,75 @@ class PodEventsToDatabase {
         DoesNotExists
     }
 
+
     PodEventsToDatabase(final DBConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            conn.execute("create or replace trigger nodeInfoResourceUpdateOnInsert " +
+                         "after insert on pod_info for each row " +
+                         "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
+            conn.execute("create or replace trigger nodeInfoResourceUpdateOnUpdate " +
+                         "after update on pod_info for each row " +
+                         "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
+            conn.execute("create or replace trigger nodeInfoResourceUpdateOnDelete " +
+                          "after delete on pod_info for each row " +
+                          "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
+        } catch (final DataAccessException e) {
+            LOG.error(e.getLocalizedMessage());
+        }
+    }
+
+    /**
+     * This trigger is used to incrementally reflect pod resource requests in the corresponding
+     * node tables.
+     */
+    public static class NodeInfoIncrementalUpdate implements Trigger {
+
+        @Override
+        public void init(final Connection connection, final String s,
+                         final String s1, final String s2, final boolean b, final int i) {
+        }
+
+        @Override
+        public void fire(final Connection connection, final Object[] oldRow, final Object[] newRow)
+                         throws SQLException {
+            try (final PreparedStatement stmt = connection.prepareStatement(
+                    "update node_info set node_info.cpu_allocated = node_info.cpu_allocated + ?," +
+                     "node_info.memory_allocated = node_info.memory_allocated + ?," +
+                     "node_info.ephemeral_storage_allocated = node_info.ephemeral_storage_allocated + ?," +
+                     "node_info.pods_allocated = node_info.pods_allocated + ? " +
+                     "where node_info.name = ?")) {
+                final boolean isInsert = (oldRow == null && newRow != null && newRow[2] != null);
+                final boolean isDeletion = (oldRow != null && newRow == null && oldRow[2] != null);
+                final boolean isNodeNameUpdate =
+                        oldRow != null && newRow != null && oldRow[2] == null && newRow[2] != null;
+                if (isDeletion) {
+                    applyPodInfoUpdateAgainstNode(stmt, oldRow, (String) oldRow[2], true);
+                } else if (isInsert || isNodeNameUpdate) {
+                    applyPodInfoUpdateAgainstNode(stmt, newRow, (String) newRow[2], false);
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        public void remove() {
+        }
+
+        private void applyPodInfoUpdateAgainstNode(final PreparedStatement statement, final Object[] row,
+                                                   final String nodeName, final boolean isDeletion)
+                                                   throws SQLException {
+            final int sign = isDeletion ? -1 : 1;
+            statement.setLong(1, sign * ((long) row[4])); // CPU_REQUEST
+            statement.setLong(2, sign * ((long) row[5])); // MEMORY_REQUEST
+            statement.setLong(3, sign * ((long) row[6])); // EPHEMERAL_STORAGE_REQUEST
+            statement.setLong(4, sign * ((long) row[7])); // PODS_REQUEST
+            statement.setString(5, nodeName);
+            statement.execute();
+        }
     }
 
     PodEvent handle(final PodEvent event) {
@@ -103,25 +169,9 @@ class PodEventsToDatabase {
         LOG.trace("Deleting pod {}", pod.getMetadata().getName());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
-
-        // If the pod had a CPU/memory/storage request, update the node table accordingly
-        final List<Query> inserts = new ArrayList<>();
-        if (pod.getSpec().getNodeName() != null) {
-            final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
-                    .map(Container::getResources)
-                    .collect(Collectors.toList());
-            final long cpuRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "cpu");
-            final long memoryRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "memory");
-            final long ephemeralStorageRequest =
-                    (long) Utils.resourceRequirementSum(resourceRequirements, "ephemeral-storage");
-            inserts.add(reflectPodRequestsInNodeTable(pod.getSpec().getNodeName(), cpuRequest, memoryRequest,
-                                          ephemeralStorageRequest, PodEvent.Action.DELETED));
-            podRequestsReflectedInDatabase.remove(pod.getMetadata().getName());
-        }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            inserts.add(conn.deleteFrom(Tables.POD_INFO)
-                        .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName())));
-            conn.batch(inserts).execute();
+            conn.deleteFrom(Tables.POD_INFO)
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName())).execute();
         }
     }
 
@@ -173,15 +223,6 @@ class PodEventsToDatabase {
         }
 
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
-
-        if (pod.getSpec().getNodeName() != null &&
-                podRequestsReflectedInDatabase.add(pod.getMetadata().getName())) {
-            inserts.add(
-                reflectPodRequestsInNodeTable(pod.getSpec().getNodeName(), cpuRequest, memoryRequest,
-                        ephemeralStorageRequest, PodEvent.Action.ADDED)
-            );
-        }
-
         final PodInfo p = Tables.POD_INFO;
         final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
                 p.POD_NAME,
@@ -472,22 +513,6 @@ class PodEventsToDatabase {
             return QosClass.Guaranteed;
         }
         return QosClass.Burstable;
-    }
-
-    Update<NodeInfoRecord> reflectPodRequestsInNodeTable(final String nodeName, final long cpu, final long mem,
-                                                         final long ephemeralStorage, final PodEvent.Action action) {
-        final int modified = action.equals(PodEvent.Action.DELETED) ? -1 : 1;
-        // If the pod had a CPU/memory/storage request, update the node table accordingly
-        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            final NodeInfo nodeInfo = Tables.NODE_INFO;
-            return conn.update(nodeInfo)
-                        .set(nodeInfo.CPU_ALLOCATED, nodeInfo.CPU_ALLOCATED.plus(modified * cpu))
-                        .set(nodeInfo.MEMORY_ALLOCATED, nodeInfo.MEMORY_ALLOCATED.plus(modified * mem))
-                        .set(nodeInfo.EPHEMERAL_STORAGE_ALLOCATED,
-                                nodeInfo.EPHEMERAL_STORAGE_ALLOCATED.plus(modified * ephemeralStorage))
-                        .set(nodeInfo.PODS_ALLOCATED, nodeInfo.PODS_ALLOCATED.plus(modified))
-                        .where(nodeInfo.NAME.eq(nodeName));
-        }
     }
 
     enum QosClass {

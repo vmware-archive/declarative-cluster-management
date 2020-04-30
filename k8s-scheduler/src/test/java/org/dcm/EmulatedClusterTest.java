@@ -65,8 +65,8 @@ class EmulatedClusterTest {
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu", new Quantity("8"));
-            node.getStatus().getCapacity().put("memory", new Quantity("6000"));
+            node.getStatus().getCapacity().put("cpu", new Quantity("2"));
+            node.getStatus().getCapacity().put("memory", new Quantity("2000"));
             node.getStatus().getCapacity().put("pods", new Quantity("110"));
             nodeResourceEventHandler.onAddSync(node);
 

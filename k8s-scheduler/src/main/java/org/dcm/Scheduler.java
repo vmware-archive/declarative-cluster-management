@@ -127,9 +127,6 @@ public final class Scheduler {
     @SuppressWarnings("unchecked")
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
         int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
-
-        System.out.println(dbConnectionPool.getConnectionToDb()
-                .fetch("explain select * from inter_pod_affinity_matches").get(0).get(0));
         while (fetchCount > 0) {
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
@@ -152,11 +149,6 @@ public final class Scheduler {
                                 .set(Tables.POD_INFO.NODE_NAME, nodeName)
                                 .where(Tables.POD_INFO.POD_NAME.eq(podName))
                     );
-                    updates.add(podEventsToDatabase.reflectPodRequestsInNodeTable(nodeName,
-                            r.get(Tables.PODS_TO_ASSIGN.CPU_REQUEST),
-                            r.get(Tables.PODS_TO_ASSIGN.MEMORY_REQUEST),
-                            r.get(Tables.PODS_TO_ASSIGN.EPHEMERAL_STORAGE_REQUEST),
-                            PodEvent.Action.UPDATED));
                     LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
                              podName, batch, totalTime);
                 });
