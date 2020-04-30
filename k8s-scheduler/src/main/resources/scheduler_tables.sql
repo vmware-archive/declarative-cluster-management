@@ -262,6 +262,7 @@ join node_labels
             and pod_node_selector_labels.label_key = node_labels.label_key)
         or (pod_node_selector_labels.label_operator = 'NotIn')
         or (pod_node_selector_labels.label_operator = 'DoesNotExist')
+where pods_to_assign.has_node_selector_labels = true
 group by pods_to_assign.pod_name,  node_labels.node_name, pod_node_selector_labels.term,
          pod_node_selector_labels.label_operator, pod_node_selector_labels.num_match_expressions
 having case pod_node_selector_labels.label_operator
@@ -296,6 +297,7 @@ join pod_labels
         or (pod_affinity_match_expressions.label_operator = 'DoesNotExist')
 join pod_info
         on pod_labels.pod_name = pod_info.pod_name
+where pods_to_assign.has_pod_affinity_requirements = true
 group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_affinity_match_expressions.label_selector,
          pod_affinity_match_expressions.topology_key, pod_affinity_match_expressions.label_operator,
          pod_affinity_match_expressions.num_match_expressions, pod_info.node_name
@@ -334,6 +336,7 @@ join pod_labels
         or (pod_anti_affinity_match_expressions.label_operator = 'DoesNotExist')
 join pod_info
         on pod_labels.pod_name = pod_info.pod_name
+where pods_to_assign.has_pod_anti_affinity_requirements = true
 group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_anti_affinity_match_expressions.label_selector,
          pod_anti_affinity_match_expressions.topology_key, pod_anti_affinity_match_expressions.label_operator,
          pod_anti_affinity_match_expressions.num_match_expressions, pod_info.node_name
