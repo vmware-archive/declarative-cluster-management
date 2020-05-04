@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
  *
  * SPDX-License-Identifier: BSD-2
  */
@@ -8,8 +8,6 @@ package org.dcm;
 
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
-import io.reactivex.Flowable;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -40,13 +38,12 @@ public class SchedulerIT extends ITBase {
     @Test()
     @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
-        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, "");
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, Policies.getDefaultPolicies(), "ORTOOLS", true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, 50, 1000);
-        scheduler.startScheduler(eventStream, fabricClient);
+        stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);
+        scheduler.startScheduler(new KubernetesBinder(fabricClient), 50, 1000);
         stateSync.startProcessingEvents();
 
         // Add a new one
@@ -58,7 +55,7 @@ public class SchedulerIT extends ITBase {
                     .create(deployment);
 
         final int newPodsToCreate = deployment.getSpec().getReplicas();
-        waitUntil((n) -> hasNRunningPods(newPodsToCreate));
+        waitUntil(fabricClient, (n) -> hasNRunningPods(newPodsToCreate));
         final List<Pod> items =
                 fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
         assertEquals(newPodsToCreate, items.size());
@@ -70,13 +67,13 @@ public class SchedulerIT extends ITBase {
     @Test()
     @Timeout(60 /* seconds */)
     public void testAffinityAntiAffinity() throws Exception {
-        final DSLContext conn = Scheduler.setupDb();
-        final Scheduler scheduler = new Scheduler(conn, Policies.getDefaultPolicies(), "MNZ-CHUFFED", true, "");
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, Policies.getDefaultPolicies(),
+                                       "ORTOOLS", true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
-        final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn, 50, 1000);
-        scheduler.startScheduler(eventStream, fabricClient);
+        stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);
+        scheduler.startScheduler(new KubernetesBinder(fabricClient),  50, 1000);
         stateSync.startProcessingEvents();
 
         // Add a new one
@@ -88,7 +85,7 @@ public class SchedulerIT extends ITBase {
         final String webStoreName = webStoreExample.getMetadata().getName();
 
         final int newPodsToCreate = cacheExample.getSpec().getReplicas() + webStoreExample.getSpec().getReplicas();
-        waitUntil((n) -> hasNRunningPods(newPodsToCreate));
+        waitUntil(fabricClient, (n) -> hasNRunningPods(newPodsToCreate));
         final List<Pod> items = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
         assertEquals(newPodsToCreate, items.size());
         items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
@@ -105,4 +102,26 @@ public class SchedulerIT extends ITBase {
         stateSync.shutdown();
         scheduler.shutdown();
     }
+
+
+    @Test()
+    @Timeout(60 /* seconds */)
+    public void testSmallTrace() throws Exception {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, Policies.getDefaultPolicies(), "ORTOOLS", true, 4);
+        final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
+
+        stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);
+        scheduler.startScheduler(new KubernetesBinder(fabricClient), 50, 1000);
+        stateSync.startProcessingEvents();
+
+        // Add a new one
+        final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
+        final KubernetesPodDeployer deployer = new KubernetesPodDeployer(fabricClient, "default");
+        workloadGeneratorIT.runTrace(fabricClient, "test-data.txt", deployer, "dcm-scheduler",
+                100, 50, 100, 1000000);
+        stateSync.shutdown();
+        scheduler.shutdown();
+    }
+
 }

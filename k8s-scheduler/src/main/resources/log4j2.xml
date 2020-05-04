@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
+  ~
+  ~ SPDX-License-Identifier: BSD-2
+  -->
+
 <Configuration status="INFO">
     <Appenders>
         <Console name="console" target="SYSTEM_OUT">
@@ -8,7 +14,12 @@
     <Loggers>
         <Logger name="org.jooq.Constants" additivity="false" level="OFF">
         </Logger>
-        <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="debug">
+        <Logger name="org.jooq.tools.LoggerListener" additivity="false" level="off">
+        </Logger>
+        <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="info">
+            <AppenderRef ref="console" />
+        </Logger>
+        <Logger name="org.dcm.EmulatedPodDeployer" additivity="false" level="info">
             <AppenderRef ref="console" />
         </Logger>
         <Root level="info" additivity="false">

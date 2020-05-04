@@ -1,3 +1,9 @@
+<!--
+  ~ Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
+  ~
+  ~ SPDX-License-Identifier: BSD-2
+  -->
+
 <FindBugsFilter>
     <Match>
         <Class name="ComprehensionRewriter" />
@@ -33,11 +39,20 @@
         <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME" />
     </Match>
     <Match>
+        <Class name="org.dcm.backend.OrToolsSolver"/>
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
+    </Match>
+    <Match>
         <Class name="org.dcm.Scheduler" />
         <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME" />
     </Match>
     <Match>
         <Class name="org.dcm.backend.OrToolsSolver$ExprToStrVisitor" />
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
+    </Match>
+
+    <!--  False positives due to try-with-resources pattern  -->
+    <Match>
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE" />
     </Match>
 </FindBugsFilter>

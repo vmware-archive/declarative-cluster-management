@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
  *
  * SPDX-License-Identifier: BSD-2
  */
@@ -234,6 +234,11 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("input_parameters", ret);
         writeTemplateToFile(dataTemplate, dataFile, templateVars);
         return ret;
+    }
+
+    @Override
+    public boolean needsGroupTables() {
+        return true;
     }
 
     private List<MonoidComprehension> comprehensionRewritePipeline(final MonoidComprehension comprehension,

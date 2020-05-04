@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
  *
  * SPDX-License-Identifier: BSD-2
  */
@@ -34,17 +34,19 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
-import io.reactivex.processors.PublishProcessor;
 import org.dcm.k8s.generated.Tables;
+import org.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -68,22 +70,193 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 @ExtendWith({})
 public class SchedulerTest {
+    private final int numThreads = 1;
+
+    /*
+     * Test our simulation of a materialized view by adding and removing pods, and checking whether
+     * node_info is correctly updated
+     */
+    @Test
+    public void testTriggers() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final PodEventsToDatabase eventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
+        final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
+
+        for (int i = 0; i < 10; i++) {
+            final String nodeName = "n" + i;
+            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu",
+                    new Quantity(String.valueOf(100)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(100)));
+            nodeHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String systemPodName = "system-pod-" + nodeName;
+            final Pod systemPod;
+            final String status = "Running";
+            systemPod = newPod(systemPodName, status, Collections.emptyMap(), Collections.emptyMap());
+            systemPod.getSpec().setNodeName(nodeName);
+            nodeHandler.onAddSync(node);
+            eventsToDatabase.handle(new PodEvent(PodEvent.Action.ADDED, systemPod));
+        }
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final Runnable checkThatResourcesNotReflected = () -> conn.selectFrom(Tables.NODE_INFO).fetch()
+                                        .forEach(r -> {
+                                            assertEquals(r.getCpuAllocated(), 0);
+                                            assertEquals(r.getMemoryAllocated(), 0);
+                                            assertEquals(r.getEphemeralStorageAllocated(), 0);
+                                            assertEquals(r.getPodsAllocated(), 1);
+                                        });
+        final Runnable checkThatResourcesReflected = () -> conn.selectFrom(Tables.NODE_INFO).fetch()
+                        .forEach(r -> {
+                            if (!r.getName().equals("n5")) {
+                                assertEquals(r.getCpuAllocated(), 0);
+                                assertEquals(r.getMemoryAllocated(), 0);
+                                assertEquals(r.getEphemeralStorageAllocated(), 0);
+                                assertEquals(r.getPodsAllocated(), 1);
+                            } else {
+                                assertEquals(r.getCpuAllocated(), 10000);
+                                assertEquals(r.getMemoryAllocated(), 1);
+                                assertEquals(r.getEphemeralStorageAllocated(), 0);
+                                assertEquals(r.getPodsAllocated(), 2);
+                            }
+                        });
+
+        final String podName = "p";
+        final Pod pod;
+        final Map<String, Quantity> resourceRequests = new HashMap<>();
+        resourceRequests.put("cpu", new Quantity(String.valueOf(10)));
+        resourceRequests.put("memory", new Quantity(String.valueOf(1)));
+        resourceRequests.put("pods", new Quantity("1"));
+        pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+
+        // Assumes that there is only one container
+        pod.getSpec().getContainers().get(0)
+                .getResources()
+                .setRequests(resourceRequests);
+        // Add the pending pod
+        eventsToDatabase.handle(new PodEvent(PodEvent.Action.ADDED, pod));
+        checkThatResourcesNotReflected.run();
+
+        // Update a property other than node name
+        conn.update(Tables.POD_INFO).set(Tables.POD_INFO.PRIORITY, 10)
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .execute();
+        checkThatResourcesNotReflected.run();
+
+        // Update the pending pod to run on n5
+        conn.update(Tables.POD_INFO).set(Tables.POD_INFO.NODE_NAME, "n5")
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .execute();
+        checkThatResourcesReflected.run();
+
+        // Again, update a property other than node name
+        conn.update(Tables.POD_INFO).set(Tables.POD_INFO.PRIORITY, 10)
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .execute();
+        checkThatResourcesReflected.run();
+
+        // Remove the node
+        conn.delete(Tables.POD_INFO)
+                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .execute();
+        checkThatResourcesNotReflected.run();
+    }
+
+    /*
+     * Test if multiple connections from our connection pool see each other's changes
+     */
+    @Test
+    public void testMultipleConnections() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn1 = dbConnectionPool.getConnectionToDb();
+        conn1.insertInto(Tables.BATCH_SIZE).values(1).execute();
+        assertEquals(1, conn1.fetchCount(Tables.BATCH_SIZE));
+
+        final DSLContext connNew = dbConnectionPool.getConnectionToDb();
+        assertEquals(1, connNew.fetchCount(Tables.BATCH_SIZE));
+    }
+
     /*
      * Double checks that delete cascades work.
      */
     @Test
     public void testDeleteCascade() {
-        final DSLContext conn = Scheduler.setupDb();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final PodEventsToDatabase handler = new PodEventsToDatabase(dbConnectionPool);
         final String podName = "p1";
         final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.singletonMap("k", "v"));
-        handler.onAdd(pod);
+        handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
         assertTrue(conn.fetchExists(Tables.POD_INFO));
         assertTrue(conn.fetchExists(Tables.POD_LABELS));
-        handler.onDelete(pod, true);
+        handler.handle(new PodEvent(PodEvent.Action.DELETED, pod));
         assertFalse(conn.fetchExists(Tables.POD_INFO));
         assertFalse(conn.fetchExists(Tables.POD_LABELS));
+    }
+
+    /*
+     * Tests different QoS configurations using two containers and different requests/limits for each
+     */
+    @ParameterizedTest
+    @MethodSource("testQosConditions")
+    public void testQoS(final List<Integer> cpuRequests, final List<Integer> cpuLimit,
+                        final List<Integer> memoryRequests, final List<Integer> memoryLimit,
+                        final PodEventsToDatabase.QosClass expected) {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final PodEventsToDatabase handler = new PodEventsToDatabase(dbConnectionPool);
+
+        final Pod pod = newPod("pod1", "Pending", Collections.emptyMap(), Collections.emptyMap());
+        pod.getSpec().setContainers(new ArrayList<>());
+
+        for (int i = 0; i < 2; i++) {
+            final Map<String, Quantity> requests = new HashMap<>();
+            if (i <= cpuRequests.size() - 1) {
+                requests.put("cpu", new Quantity(String.valueOf(cpuRequests.get(i))));
+            }
+            if (i <= memoryRequests.size() - 1) {
+                requests.put("memory", new Quantity(String.valueOf(memoryRequests.get(i))));
+            }
+            requests.put("pods", new Quantity("1"));
+
+            final Map<String, Quantity> limits = new HashMap<>();
+            if (i <= cpuLimit.size() - 1) {
+                limits.put("cpu", new Quantity(String.valueOf(cpuLimit.get(i))));
+            }
+            if (i <= memoryLimit.size() - 1) {
+                limits.put("memory", new Quantity(String.valueOf(memoryLimit.get(i))));
+            }
+            limits.put("pods", new Quantity("1"));
+
+            final Container container = new Container();
+            container.setName("c" + i);
+
+            final ResourceRequirements resourceRequirements = new ResourceRequirements();
+            resourceRequirements.setRequests(requests);
+            resourceRequirements.setLimits(limits);
+            container.setResources(resourceRequirements);
+
+            pod.getSpec().getContainers().add(container);
+        }
+        handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
+
+        final List<String> results = conn.selectFrom(Tables.POD_INFO).fetch(Tables.POD_INFO.QOS_CLASS);
+        assertEquals(1, results.size());
+        assertEquals(expected.toString(), results.get(0));
+    }
+
+    public static Stream<Arguments> testQosConditions() {
+        return Stream.of(
+                Arguments.of(List.of(1, 1), List.of(1, 1), List.of(10, 10), List.of(10, 10),
+                             PodEventsToDatabase.QosClass.Guaranteed),
+                Arguments.of(List.of(2, 1), List.of(5, 1), List.of(10, 10), List.of(10, 10),
+                             PodEventsToDatabase.QosClass.Burstable),
+                Arguments.of(List.of(), List.of(), List.of(10, 10), List.of(10, 10),
+                             PodEventsToDatabase.QosClass.Burstable),
+                Arguments.of(List.of(), List.of(), List.of(), List.of(),
+                             PodEventsToDatabase.QosClass.BestEffort)
+        );
     }
 
     /*
@@ -103,15 +276,15 @@ public class SchedulerTest {
     @ParameterizedTest
     @MethodSource("conditions")
     public void testSchedulerNodePredicates(final String type, final String status) {
-        final DSLContext conn = Scheduler.setupDb();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.from(Policies.nodePredicates());
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final int numNodes = 5;
         final int numPods = 10;
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
-        emitter.subscribe();
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         // We pick a random node from [0, numNodes) to assign all pods to.
         final int nodeToAssignTo = ThreadLocalRandom.current().nextInt(numNodes);
@@ -119,16 +292,22 @@ public class SchedulerTest {
             final NodeCondition badCondition = new NodeCondition();
             badCondition.setStatus(status);
             badCondition.setType(type);
-            nodeResourceEventHandler.onAdd(addNode("n" + i, Collections.emptyMap(),
+            nodeResourceEventHandler.onAddSync(addNode("n" + i, Collections.emptyMap(),
                                            i == nodeToAssignTo ? Collections.emptyList() : List.of(badCondition)));
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
         }
 
         for (int i = 0; i < numPods; i++) {
-            handler.onAdd(newPod("p" + i));
+            handler.onAddSync(newPod("p" + i));
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
@@ -151,10 +330,11 @@ public class SchedulerTest {
     @MethodSource("nodeSelectorConditions")
     public void testPodNodeSelector(final Set<String> podsToMatch, final Set<String> podsPartialMatch,
                                     final Set<String> nodesToMatch, final Set<String> nodesPartialMatch) {
-        final DSLContext conn = Scheduler.setupDb();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
-        emitter.subscribe();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final int numPods = 10;
         final int numNodes = 10;
@@ -176,12 +356,12 @@ public class SchedulerTest {
             } else {
                 podsWithoutLabels.add(podName);
             }
-            handler.onAdd(newPod(podName, "Pending", selectorLabels, Collections.emptyMap()));
+            handler.onAddSync(newPod(podName, "Pending", selectorLabels, Collections.emptyMap()));
         }
 
         // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
         final Set<String> nodesWithoutLabels = new HashSet<>();
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Map<String, String> nodeLabels = new HashMap<>();
@@ -195,7 +375,13 @@ public class SchedulerTest {
             else {
                 nodesWithoutLabels.add(nodeName);
             }
-            nodeResourceEventHandler.onAdd(addNode(nodeName, nodeLabels, Collections.emptyList()));
+            nodeResourceEventHandler.onAddSync(addNode(nodeName, nodeLabels, Collections.emptyList()));
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
         }
 
         // First, we check if the computed intermediate view is correct
@@ -222,7 +408,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -257,10 +443,11 @@ public class SchedulerTest {
     public void testPodToNodeAffinity(final List<NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
                                       final boolean shouldBeAffineToLabelledNodes,
                                       final boolean shouldBeAffineToRemainingNodes) {
-        final DSLContext conn = Scheduler.setupDb();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
-        emitter.subscribe();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final int numPods = 10;
         final int numNodes = 100;
@@ -284,12 +471,12 @@ public class SchedulerTest {
                 pod.getSpec().getAffinity().getNodeAffinity()
                    .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes, some of which have labels described by nodeLabelsInput,
         // whereas others have a different set of labels
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final Set<String> nodesToAssign = ThreadLocalRandom.current()
                                                          .ints(numNodesToModify, 0, numNodes)
                                                          .mapToObj(i -> "n" + i)
@@ -305,7 +492,13 @@ public class SchedulerTest {
                 nodeLabels.put("dummyKey2", "dummyValue2");
                 remainingNodes.add(nodeName);
             }
-            nodeResourceEventHandler.onAdd(addNode(nodeName, nodeLabels, Collections.emptyList()));
+            nodeResourceEventHandler.onAddSync(addNode(nodeName, nodeLabels, Collections.emptyList()));
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
         }
 
         // First, we check if the computed intermediate views are correct
@@ -344,7 +537,7 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
@@ -415,14 +608,14 @@ public class SchedulerTest {
                                                    final boolean conditionToLabelledPods,
                                                    final boolean conditionToRemainingPods,
                                                    final boolean cannotBePlacedAnywhere) {
-        final DSLContext conn = Scheduler.setupDb();
-        final int numPods = 10;
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final int numPods = 4;
         final int numPodsToModify = 3;
-        final int numNodes = 10;
+        final int numNodes = 3;
 
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
-        emitter.subscribe();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final List<String> allPods = IntStream.range(0, numPods)
                 .mapToObj(i -> "p" + i)
@@ -456,21 +649,27 @@ public class SchedulerTest {
             } else {
                 pod.getMetadata().setLabels(Collections.singletonMap("dummyKey", "dummyValue"));
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            nodeResourceEventHandler.onAdd(node);
+            nodeResourceEventHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
         }
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
@@ -593,10 +792,10 @@ public class SchedulerTest {
                 // NotIn
                 argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
                 argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
                 argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
                 argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
 
                 // DoesNotExist
                 argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false),
@@ -645,10 +844,10 @@ public class SchedulerTest {
                                   final Predicate<List<String>> assertOn, final boolean feasible) {
         assertEquals(cpuRequests.size(), memoryRequests.size());
         assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
-        final DSLContext conn = Scheduler.setupDb();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
-        emitter.subscribe();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
         final int numPods = cpuRequests.size();
         final int numNodes = nodeCpuCapacities.size();
 
@@ -667,17 +866,18 @@ public class SchedulerTest {
             pod.getSpec().getContainers().get(0)
                 .getResources()
                 .setRequests(resourceRequests);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes and one system pod per node
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
+            node.getStatus().getCapacity().put("cpu",
+                                               new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(nodeMemoryCapacities.get(i))));
-            nodeResourceEventHandler.onAdd(node);
+            nodeResourceEventHandler.onAddSync(node);
 
             // Add one system pod per node
             final String podName = "system-pod-" + nodeName;
@@ -685,12 +885,12 @@ public class SchedulerTest {
             final String status = "Running";
             pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
             pod.getSpec().setNodeName(nodeName);
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
@@ -727,18 +927,13 @@ public class SchedulerTest {
 
                 Arguments.of("Only memory requests, and all pods must go to n3",
                         List.of(0, 0, 0, 0, 0), List.of(10, 10, 10, 10, 10),
-                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 50, 0), true, false,
+                        List.of(1, 1, 1, 1, 1), List.of(1, 1, 1, 50, 1), true, false,
                         onlyN3MustBeAssignedNewPods, true),
 
-                Arguments.of("No resource requests: pods will be spread out by soft constraint (no hard constraint)",
-                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0),
-                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0), false, true,
-                        onePodPerNode, true),
-
-                Arguments.of("No resource requests: pods will be spread out by soft constraint (with hard constraint)",
-                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0),
-                        List.of(0, 0, 0, 0, 0), List.of(0, 0, 0, 0, 0), true, true,
-                        onePodPerNode, true)
+                Arguments.of("Only memory requests, only soft constraints, pods must be spread out",
+                        List.of(0, 0, 0), List.of(10, 10, 10),
+                        List.of(1, 1, 1, 1, 1), List.of(100, 100, 100, 100, 100), false, true,
+                        onePodPerNode , true)
         );
     }
 
@@ -747,10 +942,10 @@ public class SchedulerTest {
     public void testTaintsAndTolerations(final String displayName, final List<List<Toleration>> tolerations,
                                          final List<List<Taint>> taints, final Predicate<List<String>> assertOn,
                                          final boolean feasible) {
-        final DSLContext conn = Scheduler.setupDb();
-        final PublishProcessor<PodEvent> emitter = PublishProcessor.create();
-        final PodResourceEventHandler handler = new PodResourceEventHandler(conn, emitter);
-        emitter.subscribe();
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final int numPods = tolerations.size();
         final int numNodes = taints.size();
@@ -763,20 +958,26 @@ public class SchedulerTest {
             if (tolerations.get(i).size() != 0) {
                 pod.getSpec().setTolerations(tolerations.get(i));
             }
-            handler.onAdd(pod);
+            handler.onAddSync(pod);
         }
 
         // Add all nodes
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(conn);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             node.getSpec().setTaints(taints.get(i));
-            nodeResourceEventHandler.onAdd(node);
+            nodeResourceEventHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(conn, policies, "MNZ-CHUFFED", true, "");
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
 
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
@@ -907,6 +1108,65 @@ public class SchedulerTest {
         );
     }
 
+    /*
+     * This represents a workload where we are slow
+     */
+    @Test
+    @Disabled
+    public void testNoConstraintPods() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final List<String> policies = Policies.getDefaultPolicies();
+        DebugUtils.dbLoad(conn);
+        // All pod additions have completed
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
+        for (int i = 0; i < 100; i++) {
+            final Result<? extends Record> results = scheduler.runOneLoop();
+            System.out.println(results);
+        }
+    }
+
+
+    /*
+     * Make sure that the scheduler places all pending pods even though it may attempt to place only a subset
+     * of them at a time
+     */
+    @Test
+    public void testPlaceAllPendingPodsRegardlessOfBatchSize() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final List<String> policies = Policies.getDefaultPolicies();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final int numNodes = 50;
+        final int numPods = 102;
+        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        for (int i = 0; i < numNodes; i++) {
+            nodeResourceEventHandler.onAddSync(addNode("n" + i, Collections.emptyMap(),
+                                           Collections.emptyList()));
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
+        }
+
+        for (int i = 0; i < numPods; i++) {
+            handler.onAddSync(newPod("p" + i));
+        }
+
+        // All pod additions have completed
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
+        scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
+        final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
+        fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
+    }
+
+
     private static Map<String, String> map(final String k1, final String v1) {
         return Collections.singletonMap(k1, v1);
     }
@@ -992,7 +1252,7 @@ public class SchedulerTest {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();
-        quantityMap.put("cpu", new Quantity("10"));
+        quantityMap.put("cpu", new Quantity("10", "m"));
         quantityMap.put("memory", new Quantity("1000"));
         quantityMap.put("ephemeral-storage", new Quantity("1000"));
         quantityMap.put("pods", new Quantity("100"));

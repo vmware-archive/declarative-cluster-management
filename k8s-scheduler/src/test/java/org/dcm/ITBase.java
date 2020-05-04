@@ -1,5 +1,6 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
+ *
  * SPDX-License-Identifier: BSD-2
  */
 
@@ -8,7 +9,9 @@ package org.dcm;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.apps.DeploymentList;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
@@ -20,7 +23,6 @@ import java.io.File;
 import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Predicate;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -40,24 +42,19 @@ public class ITBase {
     }
 
     @BeforeEach
-    @Timeout(60 /* seconds */)
+    @Timeout(300 /* seconds */)
     public void deleteAllRunningPods() throws Exception {
-        final List<Deployment> deployments = fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE)
-                .list().getItems();
-        for (final Deployment deployment: deployments) {
-            fabricClient.apps().deployments().inNamespace(TEST_NAMESPACE).delete(deployment);
-        }
-        final List<Pod> pods = fabricClient.pods().inNamespace(TEST_NAMESPACE)
-                .list().getItems();
-        for (final Pod pod: pods) {
-            fabricClient.pods().inNamespace(TEST_NAMESPACE).delete(pod);
-        }
-        waitUntil((n) -> hasDrained());
+        deleteAllRunningPods(fabricClient);
     }
 
-
-    Deployment launchDeploymentFromFile(final String resourceName) {
-        return launchDeploymentFromFile(resourceName, "default-scheduler");
+    public void deleteAllRunningPods(final DefaultKubernetesClient client) throws Exception {
+        final DeploymentList deployments = client.apps().deployments().inNamespace(TEST_NAMESPACE)
+                .list();
+        client.resourceList(deployments).inNamespace(TEST_NAMESPACE).withGracePeriod(0).delete();
+        final PodList pods = client.pods().inNamespace(TEST_NAMESPACE)
+                .list();
+        client.resourceList(pods).inNamespace(TEST_NAMESPACE).withGracePeriod(0).delete();
+        waitUntil(client, (n) -> hasDrained(client));
     }
 
     Deployment launchDeploymentFromFile(final String resourceName, final String schedulerName) {
@@ -77,17 +74,17 @@ public class ITBase {
                 .count() == numPods;
     }
 
-    void waitUntil(final Predicate<Integer> condition) throws Exception {
+    void waitUntil(final DefaultKubernetesClient client, final Predicate<Integer> condition) throws Exception {
         if (condition.test(0)) {
             return;
         }
         final CountDownLatch latch = new CountDownLatch(1);
-        fabricClient.pods().inNamespace(TEST_NAMESPACE).watch(new PodConditionWatcher(condition, latch));
+        client.pods().inNamespace(TEST_NAMESPACE).watch(new PodConditionWatcher(condition, latch));
         latch.await();
     }
 
-    private boolean hasDrained() {
-        return fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems().size() == 0;
+    private boolean hasDrained(final DefaultKubernetesClient client) {
+        return client.pods().inNamespace(TEST_NAMESPACE).list().getItems().size() == 0;
     }
 
     private static class PodConditionWatcher implements Watcher<Pod> {

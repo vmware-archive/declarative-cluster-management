@@ -15,7 +15,11 @@ create table node_info
   cpu_allocatable bigint not null,
   memory_allocatable bigint not null,
   ephemeral_storage_allocatable bigint not null,
-  pods_allocatable bigint not null
+  pods_allocatable bigint not null,
+  cpu_allocated bigint not null,
+  memory_allocated bigint not null,
+  ephemeral_storage_allocated bigint not null,
+  pods_allocated bigint not null
 );
 
 create table pod_info
@@ -34,7 +38,9 @@ create table pod_info
   schedulerName varchar(50),
   has_node_selector_labels boolean not null,
   has_pod_affinity_requirements boolean not null,
-  has_pod_anti_affinity_requirements boolean not null
+  has_pod_anti_affinity_requirements boolean not null,
+  equivalence_class bigint not null,
+  qos_class varchar(10) not null
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.
@@ -212,10 +218,11 @@ select
   creation_timestamp,
   has_node_selector_labels,
   has_pod_affinity_requirements,
-  has_pod_anti_affinity_requirements
+  has_pod_anti_affinity_requirements,
+  equivalence_class,
+  qos_class
 from pod_info
-where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler'
-order by creation_timestamp;
+where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler';
 
 -- This view is updated dynamically to change the limit. This
 -- pattern is required because there is no clean way to enforce
@@ -226,7 +233,7 @@ create table batch_size
 );
 
 create view pods_to_assign as
-select * from pods_to_assign_no_limit limit 100;
+select * from pods_to_assign_no_limit limit 50;
 
 
 -- Pods with port requests
@@ -255,6 +262,7 @@ join node_labels
             and pod_node_selector_labels.label_key = node_labels.label_key)
         or (pod_node_selector_labels.label_operator = 'NotIn')
         or (pod_node_selector_labels.label_operator = 'DoesNotExist')
+where pods_to_assign.has_node_selector_labels = true
 group by pods_to_assign.pod_name,  node_labels.node_name, pod_node_selector_labels.term,
          pod_node_selector_labels.label_operator, pod_node_selector_labels.num_match_expressions
 having case pod_node_selector_labels.label_operator
@@ -289,6 +297,7 @@ join pod_labels
         or (pod_affinity_match_expressions.label_operator = 'DoesNotExist')
 join pod_info
         on pod_labels.pod_name = pod_info.pod_name
+where pods_to_assign.has_pod_affinity_requirements = true
 group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_affinity_match_expressions.label_selector,
          pod_affinity_match_expressions.topology_key, pod_affinity_match_expressions.label_operator,
          pod_affinity_match_expressions.num_match_expressions, pod_info.node_name
@@ -326,23 +335,40 @@ join pod_labels
         or (pod_anti_affinity_match_expressions.label_operator = 'NotIn')
         or (pod_anti_affinity_match_expressions.label_operator = 'DoesNotExist')
 join pod_info
-        on pod_labels.pod_name = pod_info.pod_name;
+        on pod_labels.pod_name = pod_info.pod_name
+where pods_to_assign.has_pod_anti_affinity_requirements = true
+group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_anti_affinity_match_expressions.label_selector,
+         pod_anti_affinity_match_expressions.topology_key, pod_anti_affinity_match_expressions.label_operator,
+         pod_anti_affinity_match_expressions.num_match_expressions, pod_info.node_name
+having case pod_anti_affinity_match_expressions.label_operator
+             when 'NotIn'
+                  then not(any(pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
+                               and pod_anti_affinity_match_expressions.label_value = pod_labels.label_value))
+             when 'DoesNotExist'
+                  then not(any(pod_anti_affinity_match_expressions.label_key = pod_labels.label_key))
+             else count(distinct match_expression) = pod_anti_affinity_match_expressions.num_match_expressions
+       end;
 
 create view inter_pod_anti_affinity_matches as
 select *, count(*) over (partition by pod_name) as num_matches from inter_pod_anti_affinity_matches_inner;
 
-
 -- Spare capacity
 create view spare_capacity_per_node as
-select node_info.name as name,
-       cast(node_info.cpu_allocatable - sum(pod_info.cpu_request) as integer) as cpu_remaining,
-       cast(node_info.memory_allocatable - sum(pod_info.memory_request) as integer) as memory_remaining,
-       cast(node_info.pods_allocatable - sum(pod_info.pods_request) as integer) as pods_remaining
+select name as name,
+  cpu_allocatable - cpu_allocated as cpu_remaining,
+  memory_allocatable - memory_allocated as memory_remaining,
+  pods_allocatable - pods_allocated as pods_remaining
 from node_info
-join pod_info
-     on pod_info.node_name = node_info.name and pod_info.node_name != 'null'
-group by node_info.name, node_info.cpu_allocatable,
-         node_info.memory_allocatable, node_info.pods_allocatable;
+where unschedulable = false and
+      memory_pressure = false and
+      out_of_disk = false and
+      disk_pressure = false and
+      pid_pressure = false and
+      network_unavailable = false and
+      ready = true and
+      cpu_allocated < cpu_allocatable and
+      memory_allocated <  memory_allocatable and
+      pods_allocated < pods_allocatable;
 
 -- Taints and tolerations
 create view pods_that_tolerate_node_taints as
@@ -362,3 +388,8 @@ having count(*) = A.num_taints;
 
 create view nodes_that_have_tolerations as
 select distinct node_name from node_taints;
+
+-- Avoid overloaded nodes or nodes that report being under resource pressure
+create view allowed_nodes as
+select name
+from spare_capacity_per_node;

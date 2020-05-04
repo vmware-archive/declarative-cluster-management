@@ -1,5 +1,6 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
+ *
  * SPDX-License-Identifier: BSD-2
  */
 
@@ -34,7 +35,8 @@ public class OpsTests {
 
     static {
         // Causes or-tools JNI library to be loaded
-        new OrToolsSolver();
+        final OrToolsSolver builder = new OrToolsSolver.Builder().build();
+        System.out.println(builder);
     }
 
     @Nullable private CpModel model;
@@ -96,7 +98,7 @@ public class OpsTests {
         ops.increasing(entries);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
 
         for (int i = 0; i < entries.size() - 1; i++) {
             assertTrue(solver.value(entries.get(i)) <= solver.value(entries.get(i + 1)));

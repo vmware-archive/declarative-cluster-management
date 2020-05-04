@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
  *
  * SPDX-License-Identifier: BSD-2
  */
@@ -541,32 +541,34 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
             if (expr instanceof MonoidFunction) {
                 final MonoidFunction function = (MonoidFunction) expr;
                 final String functionName = FUNCTION_STRING_MAP.get(function.getFunction());
-
-                if (function.getArgument() instanceof ColumnIdentifier) {
-                    final ColumnIdentifier argument = (ColumnIdentifier) function.getArgument();
+                Preconditions.checkArgument(function.getArgument().size() == 1);
+                final Expr argument = function.getArgument().get(0);
+                if (argument instanceof ColumnIdentifier) {
+                    final ColumnIdentifier ci = (ColumnIdentifier) argument;
                     // Minizinc does not have a 'count' function. It therefore requires us to replace
                     // 'count' with 'sum', and the argument with '1'.
-                    final String arg = MinizincString.columnNameWithIteration(argument);
+                    final String arg = MinizincString.columnNameWithIteration(ci);
                     final String op = String.format("%s([%s | %s])", functionName,
                             arg,
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
-                } else if (function.getArgument() instanceof BinaryOperatorPredicate) {
-                    final BinaryOperatorPredicate argument = (BinaryOperatorPredicate) function.getArgument();
-                    final String arg = evaluateHeadItem(argument, null);
+                } else if (argument instanceof BinaryOperatorPredicate) {
+                    final BinaryOperatorPredicate bop = (BinaryOperatorPredicate) argument;
+                    final String arg = evaluateHeadItem(bop, null);
                     final String op = String.format("%s([%s | %s])", functionName,
                             arg,
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
-                } else if (function.getArgument() instanceof MonoidLiteral) {
+                } else if (argument instanceof MonoidLiteral) {
                     final String op = String.format("%s([%s | %s])", functionName,
-                            ((MonoidLiteral) function.getArgument()).getValue(),
+                            ((MonoidLiteral) argument).getValue(),
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
                 } else {
                     // We're usually here because of unary operators like -(count(col1)) in select expressions.
-                    final Expr argument = function.getArgument();
-                    final String argumentAsString = evaluateHeadItem(argument, groupByInnerComprehensionQualifier);
+                    Preconditions.checkArgument(function.getArgument().size() == 1);
+                    final Expr arg = function.getArgument().get(0);
+                    final String argumentAsString = evaluateHeadItem(arg, groupByInnerComprehensionQualifier);
                     final String op = String.format("%s(%s)", functionName, argumentAsString);
                     operands.push(op);
                 }
@@ -625,7 +627,8 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
                 if (literals.get(0) instanceof MonoidFunction) {
                     final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
                     final MonoidFunction function = (MonoidFunction) literals.get(0);
-                    cg.visit(function.getArgument());
+                    Preconditions.checkArgument(function.getArgument().size() == 1);
+                    cg.visit(function.getArgument().get(0));
                     return ImmutableList.of(String.format("%s(%s)", function.getFunction(),
                                                                              cg.evaluateExpression().get(0)));
                 }
@@ -854,7 +857,8 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
              */
         }
         else if (expr instanceof MonoidFunction) {
-            return usesControllableVariables(((MonoidFunction) expr).getArgument());
+            Preconditions.checkArgument(((MonoidFunction) expr).getArgument().size() == 1);
+            return usesControllableVariables(((MonoidFunction) expr).getArgument().get(0));
         }
         else if (expr instanceof BinaryOperatorPredicate) {
             final BinaryOperatorPredicate predicate = (BinaryOperatorPredicate) expr;
@@ -916,7 +920,7 @@ public class MinizincCodeGenerator extends MonoidVisitor<Void, Void> {
             case MULTIPLY:
                 return "*";
             case DIVIDE:
-                return "/";
+                return "div";
             default:
                 throw new UnsupportedOperationException("Operator " + operator);
         }

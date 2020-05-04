@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
  *
  * SPDX-License-Identifier: BSD-2
  */
@@ -13,6 +13,7 @@ import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
+import com.google.common.io.Files;
 import org.dcm.backend.ISolverBackend;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.compiler.ModelCompiler;
@@ -32,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -56,30 +58,30 @@ public class Model {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
     private static final String CURRENT_SCHEMA = "CURR";
     private static final SqlParser PARSER = new SqlParser();
-    private final ParsingOptions options = new ParsingOptions();
+    private static final ParsingOptions OPTIONS = new ParsingOptions();
     private final DSLContext dbCtx;
     private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
-    private final Multimap<Table, Constraint> jooqTableConstraintMap;
+    private final Multimap<Table<?>, Constraint> jooqTableConstraintMap;
     private final ModelCompiler compiler;
     private IRContext irContext;
     private final ISolverBackend backend;
 
 
     @SuppressWarnings("unused")
-    private Model(final DSLContext dbCtx, final ISolverBackend backend,
-                  final List<Table<?>> tables, final List<String> views,
-                  final Conf conf) {
+    private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
+                  final List<String> constraints) {
+        assert !tables.isEmpty();
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
         this.backend = backend;
-        final List<CreateView> viewsInPolicy = views.stream().map(
-                view -> {
+        final List<CreateView> constraintViews = constraints.stream().map(
+                constraint -> {
                     try {
-                        return (CreateView) PARSER.createStatement(view, options);
+                        return (CreateView) PARSER.createStatement(constraint, OPTIONS);
                     } catch (final ParsingException e) {
-                        LOG.error("Could not parse view: {}", view, e);
+                        LOG.error("Could not parse view: {}", constraint, e);
                         throw e;
                     }
                 }
@@ -89,19 +91,23 @@ public class Model {
          * Identify additional views to create in the database for group bys. These views will be added to
          * the DB, and we augment the list of tables to pass to the compiler with these views.
          */
-        final List<CreateView> groupByViewsToCreate = viewsInPolicy.stream().map(view -> {
-            final ExtractGroupTable groupTable = new ExtractGroupTable();
-            return groupTable.process(view);
-        }).filter(Optional::isPresent)
-          .map(Optional::get)
-          .collect(Collectors.toList());
-        groupByViewsToCreate.forEach(view -> {
-            final String s = SqlFormatter.formatSql(view, Optional.empty());
-            dbCtx.execute(s);
-        });
-        final Set<String> createdViewNames = groupByViewsToCreate.stream().map(view -> view.getName().toString()
-                                                                                     .toUpperCase(Locale.getDefault()))
-                                                                          .collect(Collectors.toSet());
+        final Set<String> createdViewNames = new HashSet<>();
+        if (backend.needsGroupTables()) {
+            final List<CreateView> groupByViewsToCreate = constraintViews.stream().map(view -> {
+                final ExtractGroupTable groupTable = new ExtractGroupTable();
+                return groupTable.process(view);
+            }).filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .collect(Collectors.toList());
+            groupByViewsToCreate.forEach(view -> {
+                final String s = SqlFormatter.formatSql(view, Optional.empty());
+                dbCtx.execute(s);
+            });
+            final Set<String> viewsToCreate = groupByViewsToCreate.stream().map(view -> view.getName().toString()
+                                                                            .toUpperCase(Locale.getDefault()))
+                                                                            .collect(Collectors.toSet());
+            createdViewNames.addAll(viewsToCreate);
+        }
         final List<Table<?>> augmentedTableList = new ArrayList<>(tables);
         // dbCtx.meta().getTables(<name>) is buggy https://github.com/jOOQ/jOOQ/issues/7686,
         // so we're going to scan all tables and pick the ones whose names match that of the views we created.
@@ -124,114 +130,62 @@ public class Model {
 
             // remove fk constraints
             final Table<? extends Record> table = entry.getKey();
-            for (final ForeignKey fk : table.getReferences()) {
+            for (final ForeignKey<? extends Record, ?> fk : table.getReferences()) {
                 jooqTableConstraintMap.put(table, fk.constraint());
             }
         }
         irContext = new IRContext(irTables);
         compiler = new ModelCompiler(irContext);
-        compiler.compile(viewsInPolicy, backend);
+        compiler.compile(constraintViews, backend);
+    }
+
+    /**
+     * Builds a model out of dslContext, using the Minizinc solver as a backend.
+     *
+     * @param dslContext JOOQ DSLContext to use to find tables representing the model.
+     * @param constraints The hard and soft constraints, with one view per string
+     * @return An initialized Model instance
+     */
+    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
+    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> constraints) {
+        final File tempDir = Files.createTempDir();
+        final File modelFile = new File(tempDir.getPath() + "/model.mzn");
+        final File dataFile = new File(tempDir.getPath() + "/data.dzn");
+        final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
+        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, new Conf()), tables, constraints);
     }
 
 
     /**
-     * Builds a Minizinc model out of dslContext
+     * Builds a model out of dslContext, using the Minizinc solver as a backend
      *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
+     * @param dslContext JOOQ DSLContext to use to find tables representing the model.
+     * @param constraints The hard and soft constraints, with one view per string
      * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
      * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
      *                 updateData() is invoked
-     * @return An initialized Model instance with a populated modelFile
+     * @return An initialized Model instance
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> views,
+    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> constraints,
                                                 final File modelFile, final File dataFile) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, tables, views, modelFile, dataFile);
+        final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
+        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, new Conf()), tables, constraints);
     }
 
     /**
-     * Builds a Minizinc model out of dslContext
+     * Builds a model out of dslContext with the supplied solver backend.
      *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @param conf configuration object
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> views,
-                                                final File modelFile, final File dataFile, final Conf conf) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, tables, views, modelFile, dataFile, conf);
-    }
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param tables A set of tables for which the Minzinc model will be generated
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
-                                                final List<String> views, final File modelFile,
-                                                final File dataFile) {
-        return buildModel(dslContext, tables, views, modelFile, dataFile, new Conf());
-    }
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param tables A set of tables for which the Minzinc model will be generated
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @param conf configuration object
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<Table<?>> tables,
-                                                final List<String> views, final File modelFile,
-                                                final File dataFile, final Conf conf) {
-        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, conf), tables, views, conf);
-    }
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
+     * @param dslContext JOOQ DSLContext to use to find tables representing the model.
      * @param solverBackend A solver implementation. See the ISolverBackend class.
-     * @param tables A set of tables for which the Minzinc model will be generated
-     * @param conf configuration object
-     * @return An initialized Model instance with a populated modelFile
+     * @param constraints The hard and soft constraints, with one view per string
+     * @return An initialized Model instance
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
     public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
-                                                final List<Table<?>> tables, final List<String> views,
-                                                final Conf conf) {
-        return new Model(dslContext, solverBackend, tables, views, conf);
-    }
-
-
-    /**
-     * Builds a Minizinc model out of dslContext and a list of tables.
-     *
-     * @param dslContext JOOQ DSLContext from which Weave finds the tables for which a Minizinc model will be generated.
-     * @param solverBackend A solver implementation. See the ISolverBackend class.
-     * @param conf configuration object
-     * @return An initialized Model instance with a populated modelFile
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
-                                                final List<String> views, final Conf conf) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext);
-        return buildModel(dslContext, solverBackend, tables, views, conf);
+                                                final List<String> constraints) {
+        final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
+        return new Model(dslContext, solverBackend, tables, constraints);
     }
 
     /**
@@ -239,15 +193,29 @@ public class Model {
      *
      * @return list of all the tables on the CURRENT_SCHEMA
      */
-    private static List<Table<?>> getTablesFromContext(final DSLContext dslContext) {
+    private static List<Table<?>> getTablesFromContext(final DSLContext dslContext, final List<String> constraints) {
+        final Set<String> accessedTableNames = new HashSet<>();
+        constraints.forEach(constraint -> {
+            final CreateView createView = (CreateView) PARSER.createStatement(constraint, OPTIONS);
+            final ExtractAccessedTables visitor = new ExtractAccessedTables(accessedTableNames);
+            visitor.process(createView);
+        });
+
         final Meta dslMeta = dslContext.meta();
         final List<Table<?>> tables = new ArrayList<>();
         for (final Table<?> t : dslMeta.getTables()) {
-            // skip if table not on current schema
-            if (!t.getSchema().getName().equals(CURRENT_SCHEMA)) {
-                continue;
+            // If there are no constraints, access all tables in the CURR schema.
+            // Else, only access the tables that are referenced by the constraints.
+            if ((constraints.size() == 0 && t.getSchema().getName().equals(CURRENT_SCHEMA))
+                    || accessedTableNames.contains(t.getName())) {
+                tables.add(t);
+
+                // Also add tables referenced by foreign keys.
+                // TODO: this might be overly conservative
+                t.getReferences().forEach(
+                    fk -> tables.add(fk.getKey().getTable())
+                );
             }
-            tables.add(t);
         }
         return tables;
     }
@@ -372,9 +340,9 @@ public class Model {
     /**
      * Restore previously removed constraints
      */
-    private void restoreConstraints(final Multimap<Table, Constraint> constraints) {
-        for (final Map.Entry<Table, Constraint> entry : constraints.entries()) {
-            final Table table = entry.getKey();
+    private void restoreConstraints(final Multimap<Table<?>, Constraint> constraints) {
+        for (final Map.Entry<Table<?>, Constraint> entry : constraints.entries()) {
+            final Table<?> table = entry.getKey();
             final Constraint constraint = entry.getValue();
             LOG.info("Restoring constraint: {} on table: {}", constraint, table);
             dbCtx.alterTable(table).add(constraint).execute();
@@ -383,11 +351,10 @@ public class Model {
 
     /**
      * Removes existing foreign key constraints
-     * @return Returns the removed constraints per table
      */
-    private void removeConstraints(final Multimap<Table, Constraint> constraints) {
-        for (final Map.Entry<Table, Constraint> entry : constraints.entries()) {
-            final Table table = entry.getKey();
+    private void removeConstraints(final Multimap<Table<?>, Constraint> constraints) {
+        for (final Map.Entry<Table<?>, Constraint> entry : constraints.entries()) {
+            final Table<?> table = entry.getKey();
             final Constraint constraint = entry.getValue();
             LOG.info("Removing constraint: {} on table: {}", constraint, table);
             dbCtx.alterTable(table).drop(constraint).execute();
@@ -443,6 +410,7 @@ public class Model {
      * Scans tables to update the data associated with the model
      */
     private void updateDataFields() {
+        final long updateData = System.nanoTime();
         for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
             final Table<? extends Record> table = entry.getKey();
             final IRTable irTable = entry.getValue();
@@ -454,7 +422,6 @@ public class Model {
             LOG.info("updateDataFields for table {} took {}ns to fetch from DB, and {}ns to reflect in IRTables",
                      table.getName(), (select - start), (System.nanoTime() - updateValues));
         }
-        final long updateData = System.nanoTime();
         compiler.updateData(irContext, backend);
         LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
     }

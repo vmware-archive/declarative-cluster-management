@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
  *
  * SPDX-License-Identifier: BSD-2
  */
@@ -103,7 +103,11 @@ class InferType extends MonoidVisitor<String, Void> {
     @Nullable
     @Override
     protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Void context) {
-        return visit(node.getArgument(), context);
+        if (node.getFunction().equals(MonoidFunction.Function.CAPACITY_CONSTRAINT)) {
+            return "IntVar";
+        }
+        Preconditions.checkArgument(node.getArgument().size() == 1);
+        return visit(node.getArgument().get(0), context);
     }
 
     @Nullable

@@ -1,5 +1,5 @@
 <!--
-  ~ Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+  ~ Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
   ~
   ~ SPDX-License-Identifier: BSD-2
   -->
@@ -78,6 +78,7 @@
                              -Xep:Finally:OFF
                              -XepExcludedPaths:(.*/annotations/org/dcm/generated/.*|.*/org/dcm/k8s/generated/.*)
                         </arg>
+                        <arg>-implicit:class</arg>
                     </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
@@ -116,7 +117,7 @@
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
-                <version>3.1.12.2</version>
+                <version>4.0.0</version>
                 <dependencies>
                     <!-- overwrite dependency on spotbugs if you want to specify the version of spotbugs -->
                     <dependency>
@@ -127,7 +128,7 @@
                     <dependency>
                         <groupId>com.github.spotbugs</groupId>
                         <artifactId>spotbugs</artifactId>
-                        <version>3.1.12</version>
+                        <version>4.0.1</version>
                     </dependency>
                 </dependencies>
                 <configuration>
@@ -190,7 +191,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.2</version>
+                <version>0.8.5</version>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>

@@ -1,25 +1,17 @@
 /*
- * Copyright © 2018-2019 VMware, Inc. All Rights Reserved.
+ * Copyright © 2018-2020 VMware, Inc. All Rights Reserved.
  *
  * SPDX-License-Identifier: BSD-2
  */
 
 package org.dcm;
 
-import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Splitter;
-import com.google.common.collect.Lists;
-import io.fabric8.kubernetes.api.model.Binding;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.ObjectReference;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.reactivex.Flowable;
-import io.reactivex.disposables.Disposable;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -31,30 +23,28 @@ import org.dcm.k8s.generated.Tables;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
-import org.jooq.SQLDialect;
-import org.jooq.Table;
+import org.jooq.Update;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Properties;
-import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
-import static org.jooq.impl.DSL.using;
 
 /**
  * A Kubernetes scheduler that assigns pods to nodes. To use this, make sure to indicate
@@ -63,84 +53,112 @@ import static org.jooq.impl.DSL.using;
 public final class Scheduler {
     private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
     private static final String MINIZINC_MODEL_PATH = "/tmp";
+    private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
 
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
 
-    private final DSLContext conn;
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
     private final Meter solverInvocations = metrics.meter("solverInvocations");
-    private final Histogram podsPerSchedulingEvent =
-            metrics.histogram(name(Scheduler.class, "pods-per-scheduling-attempt"));
     private final Timer updateDataTimes = metrics.timer(name(Scheduler.class, "updateDataTimes"));
     private final Timer solveTimes = metrics.timer(name(Scheduler.class, "solveTimes"));
-    @Nullable private Disposable subscription;
-    private final List<Table<?>> relevantTables = Lists.newArrayList(Tables.PODS_TO_ASSIGN,
-                                                                     Tables.POD_NODE_SELECTOR_MATCHES,
-                                                                     Tables.NODE_INFO,
-                                                                     Tables.INTER_POD_AFFINITY_MATCHES,
-                                                                     Tables.INTER_POD_ANTI_AFFINITY_MATCHES,
-                                                                     Tables.SPARE_CAPACITY_PER_NODE,
-                                                                     Tables.PODS_THAT_TOLERATE_NODE_TAINTS,
-                                                                     Tables.NODES_THAT_HAVE_TOLERATIONS);
+    private final ThreadFactory namedThreadFactory =
+            new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
+    private final PodEventsToDatabase podEventsToDatabase;
+    private final DBConnectionPool dbConnectionPool;
+    private final ExecutorService scheduler = Executors.newSingleThreadExecutor(namedThreadFactory);
+    private final LinkedBlockingDeque<Boolean> notificationQueue = new LinkedBlockingDeque<>();
 
-    Scheduler(final DSLContext conn, final List<String> policies, final String solverToUse, final boolean debugMode,
-              final String fznFlags) {
+    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> policies, final String solverToUse,
+              final boolean debugMode, final int numThreads) {
+        this(dbConnectionPool, policies, solverToUse, debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
+    }
+
+    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> policies, final String solverToUse,
+              final boolean debugMode, final int numThreads, final int solverMaxTimeInSeconds) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
-                Charset.forName("UTF8")))) {
+                StandardCharsets.UTF_8))) {
             final String gitProperties = gitPropertiesFile.lines().collect(Collectors.joining(" "));
             LOG.info("Starting DCM Kubernetes scheduler. Build info: {}", gitProperties);
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
-        this.conn = conn;
-        this.model = createDcmModel(conn, solverToUse, policies, relevantTables);
-        LOG.info("Initialized scheduler:: model:{} relevantTables:{}", model, relevantTables);
+        this.dbConnectionPool = dbConnectionPool;
+        this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
+        this.model = createDcmModel(dbConnectionPool.getConnectionToDb(), solverToUse, policies, numThreads,
+                                    solverMaxTimeInSeconds);
+        LOG.info("Initialized scheduler:: model:{}", model);
     }
 
-    void startScheduler(final Flowable<List<PodEvent>> eventStream, final KubernetesClient client) {
-        subscription = eventStream.subscribe(
-            podEvents -> {
-                podsPerSchedulingEvent.update(podEvents.size());
-                LOG.info("Received the following events: {}", podEvents);
+    void handlePodEvent(final PodEvent podEvent) {
+        podEventsToDatabase.handle(podEvent);
+        if (podEvent.getAction().equals(PodEvent.Action.ADDED)
+            && podEvent.getPod().getStatus().getPhase().equals("Pending")
+            && podEvent.getPod().getSpec().getNodeName() == null
+            && podEvent.getPod().getSpec().getSchedulerName().equals(
+            Scheduler.SCHEDULER_NAME)) {
+            notificationQueue.add(true);
+        }
+    }
 
-                final int batch = batchId.incrementAndGet();
+    void startScheduler(final IPodToNodeBinder binder, final int batchCount, final long batchTimeMs) {
+        scheduler.execute(
+                () -> {
+                    while (!Thread.currentThread().isInterrupted()) {
+                        try {
+                            notificationQueue.take();
+                            LOG.info("Attempting schedule");
+                            scheduleAllPendingPods(binder);
+                        } catch (final InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        } catch (final ModelException e) {
+                            LOG.error("Received Model Exception. Dumping DB state to /tmp/", e);
+                            DebugUtils.dbDump(dbConnectionPool.getConnectionToDb());
+                        }
+                    }
+                }
+        );
+    }
 
-                final long now = System.nanoTime();
-                final Result<? extends Record> podsToAssignUpdated = runOneLoop();
-                final long totalTime = System.nanoTime() - now;
-                solverInvocations.mark();
+    @SuppressWarnings("unchecked")
+    void scheduleAllPendingPods(final IPodToNodeBinder binder) {
+        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
+        while (fetchCount > 0) {
+            LOG.info("Fetchcount is {}", fetchCount);
+            final int batch = batchId.incrementAndGet();
 
-                // First, locally update the node_name entries for pods
-                podsToAssignUpdated.parallelStream().forEach(r -> {
+            final long now = System.nanoTime();
+            final Result<? extends Record> podsToAssignUpdated = runOneLoop();
+            final long totalTime = System.nanoTime() - now;
+            solverInvocations.mark();
+
+            fetchCount -= podsToAssignUpdated.size();
+
+            // First, locally update the node_name entries for pods
+            try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+                final List<Update<?>> updates = new ArrayList<>();
+                podsToAssignUpdated.forEach(r -> {
                     final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
                     final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
-                    LOG.info("Updated POD_INFO assignment for pod:{} with node:{}", podName, nodeName);
-                    conn.update(Tables.POD_INFO)
-                            .set(Tables.POD_INFO.NODE_NAME, nodeName)
-                            .where(Tables.POD_INFO.POD_NAME.eq(podName))
-                            .execute();
+                    updates.add(
+                        conn.update(Tables.POD_INFO)
+                                .set(Tables.POD_INFO.NODE_NAME, nodeName)
+                                .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                    );
                     LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
-                            podName, batch, totalTime);
+                             podName, batch, totalTime);
                 });
-                LOG.info("Done with updates");
-                // Next, issue bind requests for pod -> node_name
-                podsToAssignUpdated
-                    .forEach((record) -> ForkJoinPool.commonPool().execute(
-                        () -> {
-                            final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                            final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
-                            final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
-                            LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
-                            bindOne(namespace, podName, nodeName, client);
-                        }
-                    ));
-                LOG.info("Done with bindings");
+                conn.batch(updates).execute();
             }
-        );
+            LOG.info("Done with updates");
+            // Next, issue bind requests for pod -> node_name
+            binder.bindManyAsnc(podsToAssignUpdated);
+            LOG.info("Done with bindings");
+        }
     }
 
     Result<? extends Record> runOneLoop() {
@@ -159,72 +177,26 @@ public final class Scheduler {
      * Instantiates a DCM model based on the configured policies.
      */
     private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies,
-                                 final List<Table<?>> tables) {
+                                 final int numThreads, final int solverMaxTimeInSeconds) {
         switch (solverToUse) {
             case "MNZ-CHUFFED":
                 final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
                 final File dataFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_data.dzn");
                 final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
-                return Model.buildModel(conn, solver, tables, policies, new Conf());
+                return Model.buildModel(conn, solver, policies);
             case "ORTOOLS":
-                final OrToolsSolver orToolsSolver = new OrToolsSolver();
-                return Model.buildModel(conn, orToolsSolver, tables, policies, new Conf());
+                final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
+                                                     .setNumThreads(numThreads)
+                                                     .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
+                return Model.buildModel(conn, orToolsSolver, policies);
             default:
                 throw new IllegalArgumentException(solverToUse);
         }
     }
 
-    /**
-     * Uses the K8s API to bind a pod to a node.
-     */
-    private void bindOne(final String namespace, final String podName, final String nodeName,
-                         final KubernetesClient client) {
-        final Binding binding = new Binding();
-        final ObjectReference target = new ObjectReference();
-        final ObjectMeta meta = new ObjectMeta();
-        target.setKind("Node");
-        target.setApiVersion("v1");
-        target.setName(nodeName);
-        meta.setName(podName);
-        binding.setTarget(target);
-        binding.setMetadata(meta);
-        client.bindings().inNamespace(namespace).create(binding);
-    }
-
-    /**
-     * Sets up a private, in-memory database.
-     */
-    @VisibleForTesting
-    static DSLContext setupDb() {
-        final Properties properties = new Properties();
-        properties.setProperty("foreign_keys", "true");
-        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/scheduler_tables.sql");
-        try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
-                Charset.forName("UTF8")))) {
-            // Create a fresh database
-            final String connectionURL = "jdbc:h2:mem:;create=true";
-            final Connection conn = DriverManager.getConnection(connectionURL, properties);
-            final DSLContext using = using(conn, SQLDialect.H2);
-            using.execute("create schema curr");
-            using.execute("set schema curr");
-
-            final String schemaAsString = tables.lines()
-                    .filter(line -> !line.startsWith("--")) // remove SQL comments
-                    .collect(Collectors.joining("\n"));
-            final List<String> semiColonSeparated = Splitter.on(";")
-                    .trimResults()
-                    .omitEmptyStrings()
-                    .splitToList(schemaAsString);
-            semiColonSeparated.forEach(using::execute);
-            return using;
-        } catch (final SQLException | IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    void shutdown() {
-        assert subscription != null;
-        subscription.dispose();
+    void shutdown() throws InterruptedException {
+        scheduler.shutdownNow();
+        scheduler.awaitTermination(100, TimeUnit.SECONDS);
     }
 
     public static void main(final String[] args) throws InterruptedException, ParseException {
@@ -236,26 +208,27 @@ public final class Scheduler {
                 "Scheduler batch interval");
         options.addRequiredOption("m", "solver", true,
                 "Solver to use: MNZ-CHUFFED, ORTOOLS");
+        options.addRequiredOption("t", "num-threads", true,
+                "Number of threads to use for or-tools");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
 
-        final DSLContext conn = setupDb();
+        final DBConnectionPool conn = new DBConnectionPool();
         final Scheduler scheduler = new Scheduler(conn,
                 Policies.getDefaultPolicies(),
                 cmd.getOptionValue("solver"),
                 Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
-                cmd.getOptionValue("fzn-flags"));
+                Integer.parseInt(cmd.getOptionValue("num-threads")));
 
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",
                  kubernetesClient.getConfiguration().getMasterUrl());
 
         final KubernetesStateSync stateSync = new KubernetesStateSync(kubernetesClient);
-        final Flowable<List<PodEvent>> eventStream =
-                stateSync.setupInformersAndPodEventStream(conn,
-                                                          Integer.parseInt(cmd.getOptionValue("batch-size")),
-                                                          Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
-        scheduler.startScheduler(eventStream, kubernetesClient);
+        stateSync.setupInformersAndPodEventStream(conn, scheduler::handlePodEvent);
+        final KubernetesBinder binder = new KubernetesBinder(kubernetesClient);
+        scheduler.startScheduler(binder, Integer.parseInt(cmd.getOptionValue("batch-size")),
+                                 Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
         stateSync.startProcessingEvents();
         Thread.currentThread().join();
     }
