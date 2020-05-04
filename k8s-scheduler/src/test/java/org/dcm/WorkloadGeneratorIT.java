@@ -203,7 +203,7 @@ class WorkloadGeneratorIT extends ITBase {
             while ((line = reader.readLine()) != null) {
                 final String[] parts = line.split(" ", 7);
                 final int start = Integer.parseInt(parts[2]) / timeScaleDown;
-                final int end = Integer.parseInt(parts[3]) / timeScaleDown;
+                // final int end = Integer.parseInt(parts[3]) / timeScaleDown;
                 final float cpu = Float.parseFloat(parts[4].replace(">", "")) / cpuScaleDown;
                 final float mem = Float.parseFloat(parts[5].replace(">", "")) / memScaleDown;
                 final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
@@ -226,16 +226,16 @@ class WorkloadGeneratorIT extends ITBase {
                         deployer.startDeployment(deployment), waitTime, TimeUnit.MILLISECONDS);
 
                 // get duration based on start and end times
-                final int duration = getDuration(start, end);
+                // final int duration = getDuration(start, end);
 
-                final long computedEndTime = (waitTime / 1000) + Math.min(30, duration);
+                final long computedEndTime = (waitTime / 1000) + 60;
 
                 // Schedule deletion of this deployment based on duration + time until start of the dep
                 final SettableFuture<Boolean> onComplete = SettableFuture.create();
                 scheduledStart.addListener(() -> {
                     final ListenableScheduledFuture<?> deletion =
                             scheduledExecutorService.schedule(deployer.endDeployment(deployment),
-                            30, TimeUnit.SECONDS);
+                            60, TimeUnit.SECONDS);
                     deletion.addListener(() -> onComplete.set(true), scheduledExecutorService);
                 }, scheduledExecutorService);
                 deletions.add(onComplete);
@@ -290,12 +290,13 @@ class WorkloadGeneratorIT extends ITBase {
         return podsToCreate;
     }
 
+    /*
     private int getDuration(final int startTime, int endTime) {
         if (endTime <= startTime) {
             endTime = startTime + 5;
         }
         return (endTime - startTime);
-    }
+    }*/
 
     private static final class LoggingPodWatcher implements Watcher<Pod> {
         private final long traceId;
