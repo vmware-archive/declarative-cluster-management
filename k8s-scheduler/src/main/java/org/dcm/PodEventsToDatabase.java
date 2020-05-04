@@ -9,6 +9,7 @@ package org.dcm;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
+import io.fabric8.kubernetes.api.model.LabelSelector;
 import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
 import io.fabric8.kubernetes.api.model.NodeSelector;
 import io.fabric8.kubernetes.api.model.NodeSelectorRequirement;
@@ -20,6 +21,7 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
+
 import org.dcm.k8s.generated.Tables;
 import org.dcm.k8s.generated.tables.PodInfo;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
@@ -42,6 +44,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,14 +57,15 @@ import java.util.stream.Collectors;
 class PodEventsToDatabase {
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
     private final DBConnectionPool dbConnectionPool;
+    boolean hasAffinityRequirements = false;
+    boolean hasAntiAffinityRequirements = false;
 
     private enum Operators {
         In,
         Exists,
         NotIn,
-        DoesNotExists
+        DoesNotExist
     }
-
 
     PodEventsToDatabase(final DBConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
@@ -154,13 +158,14 @@ class PodEventsToDatabase {
         LOG.trace("Adding pod {}", pod.getMetadata().getName());
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> inserts = new ArrayList<>();
+            final List<Insert<?>> podAffinityQueries = updatePodAffinity(pod, conn);
             inserts.addAll(updatePodRecord(pod, conn));
             inserts.addAll(updateContainerInfoForPod(pod, conn));
             inserts.addAll(updatePodNodeSelectorLabels(pod, conn));
             inserts.addAll(updatePodLabels(conn, pod));
             // updateVolumeInfoForPod(pod, pvcToPv, conn);
             inserts.addAll(updatePodTolerations(pod, conn));
-            inserts.addAll(updatePodAffinity(pod, conn));
+            inserts.addAll(podAffinityQueries);
             conn.batch(inserts).execute();
         }
     }
@@ -206,21 +211,21 @@ class PodEventsToDatabase {
         final String ownerName = (owners == null || owners.size() == 0) ? "" : owners.get(0).getName();
         final boolean hasNodeSelector = hasNodeSelector(pod);
 
-        final boolean hasPodAffinityRequirements;
-        if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
-            hasPodAffinityRequirements = pod.getSpec().getAffinity().getPodAffinity()
-                                            .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0;
-        } else {
-            hasPodAffinityRequirements = false;
-        }
-
-        final boolean hasPodAntiAffinityRequirements;
-        if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAntiAffinity() != null) {
-            hasPodAntiAffinityRequirements = pod.getSpec().getAffinity().getPodAntiAffinity()
-                                                .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0;
-        } else {
-            hasPodAntiAffinityRequirements = false;
-        }
+//        final boolean hasPodAffinityRequirements;
+//        if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
+//            hasPodAffinityRequirements = pod.getSpec().getAffinity().getPodAffinity()
+//                                            .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0;
+//        } else {
+//            hasPodAffinityRequirements = false;
+//        }
+//
+//        final boolean hasPodAntiAffinityRequirements;
+//        if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAntiAffinity() != null) {
+//            hasPodAntiAffinityRequirements = pod.getSpec().getAffinity().getPodAntiAffinity()
+//                                                .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0;
+//        } else {
+//            hasPodAntiAffinityRequirements = false;
+//        }
 
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
@@ -253,8 +258,8 @@ class PodEventsToDatabase {
                         ownerName,
                         pod.getMetadata().getCreationTimestamp(),
                         hasNodeSelector,
-                        hasPodAffinityRequirements,
-                        hasPodAntiAffinityRequirements,
+                        hasAffinityRequirements,
+                        hasAntiAffinityRequirements,
                         priority,
                         pod.getSpec().getSchedulerName(),
                         equivalenceClassHash(pod),
@@ -274,8 +279,8 @@ class PodEventsToDatabase {
                 .set(p.OWNER_NAME, ownerName)
                 .set(p.CREATION_TIMESTAMP, pod.getMetadata().getCreationTimestamp())
                 .set(p.HAS_NODE_SELECTOR_LABELS, hasNodeSelector)
-                .set(p.HAS_POD_AFFINITY_REQUIREMENTS, hasPodAffinityRequirements)
-                .set(p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS, hasPodAntiAffinityRequirements)
+                .set(p.HAS_POD_AFFINITY_REQUIREMENTS, hasAffinityRequirements)
+                .set(p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS, hasAntiAffinityRequirements)
 
                 // We cap the max priority to 100 to prevent overflow issues in the solver
                 .set(p.PRIORITY, priority)
@@ -432,19 +437,111 @@ class PodEventsToDatabase {
 
         // Pod affinity
         if (affinity.getPodAffinity() != null) {
-            inserts.addAll(
-                    insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod,
-                    affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
-            );
+            affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution().forEach(x ->
+                    LOG.debug("Before Affinity: " + x.toString()));
+        }
+        if (affinity.getPodAntiAffinity() != null) {
+            affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution().forEach(x ->
+                    LOG.debug("Before AntiAffinity: " + x.toString()));
         }
 
-        // Pod Anti affinity
-        if (affinity.getPodAntiAffinity() != null) {
-            inserts.addAll(
-                insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod,
-                    affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
-            );
+        final List<PodAffinityTerm> affinityTerms = new ArrayList<>();
+        final List<PodAffinityTerm> antiAffinityTerms = new ArrayList<>();
+
+        if (affinity.getPodAffinity() != null) {
+            final List<PodAffinityTerm> givenAffinityTerms =
+                    affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
+            final Iterator<PodAffinityTerm> affinityTermsIterator =
+                    givenAffinityTerms.iterator();
+             while (affinityTermsIterator.hasNext()) {
+                final PodAffinityTerm term = affinityTermsIterator.next();
+                if (term.getLabelSelector() != null) {
+                    final List<LabelSelectorRequirement> antiAffinityRequirements = new ArrayList<>();
+                    final List<LabelSelectorRequirement> requirements = term.getLabelSelector().getMatchExpressions();
+                    final Iterator<LabelSelectorRequirement> iterator = requirements.iterator();
+                    while (iterator.hasNext()) {
+                        final LabelSelectorRequirement requirement = iterator.next();
+                        if (requirement.getOperator().equals(Operators.DoesNotExist.toString())) {
+                            antiAffinityRequirements.add(new LabelSelectorRequirement(requirement.getKey(),
+                                    "Exists", requirement.getValues()));
+                            iterator.remove();
+                        } else if (requirement.getOperator().equals(Operators.NotIn.toString())) {
+                            antiAffinityRequirements.add(new LabelSelectorRequirement(requirement.getKey(),
+                                    "In", requirement.getValues()));
+                            iterator.remove();
+                            affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution()
+                                    .forEach(x -> LOG.debug("After removal: " + x.toString()));
+                        }
+                    }
+                    if (term.getLabelSelector().getMatchExpressions().size() == 0) {
+                        affinityTermsIterator.remove();
+                    }
+                        // we removed all conditions, remove this guy as well
+
+                    if (antiAffinityRequirements.size() > 0) { // we found some opposing requirements
+                        final LabelSelector selector = new LabelSelector();
+                        selector.setMatchExpressions(antiAffinityRequirements);
+                        antiAffinityTerms.add(new PodAffinityTerm(selector,
+                                term.getNamespaces(), term.getTopologyKey()));
+                    }
+                }
+            }
+             if (givenAffinityTerms.size() > 0) {
+                 affinityTerms.addAll(givenAffinityTerms);
+             }
         }
+
+        if (affinity.getPodAntiAffinity() != null) {
+            final List<PodAffinityTerm> givenTerms =
+                    affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
+            for (final PodAffinityTerm term: givenTerms) {
+                if (term.getLabelSelector() != null) {
+                    final List<LabelSelectorRequirement> affinityRequirements = new ArrayList<>();
+                    final List<LabelSelectorRequirement> requirements = term.getLabelSelector().getMatchExpressions();
+                    final Iterator<LabelSelectorRequirement> iterator = requirements.iterator();
+                    while (iterator.hasNext()) {
+                        final LabelSelectorRequirement requirement = iterator.next();
+                        if (requirement.getOperator().equals(Operators.DoesNotExist.toString())) {
+                            affinityRequirements.add(new LabelSelectorRequirement(requirement.getKey(),
+                                    "Exists", requirement.getValues()));
+                            iterator.remove();
+                        } else if (requirement.getOperator().equals(Operators.NotIn.toString())) {
+                            affinityRequirements.add(new LabelSelectorRequirement(requirement.getKey(),
+                                    "In", requirement.getValues()));
+                            iterator.remove();
+                        }
+                    }
+
+                    if (affinityRequirements.size() > 0) { // we found some opposing requirements
+                        final LabelSelector selector = new LabelSelector();
+                        selector.setMatchExpressions(affinityRequirements);
+                        affinityTerms.add(new PodAffinityTerm(selector,
+                                term.getNamespaces(), term.getTopologyKey()));
+                    }
+                }
+            }
+            antiAffinityTerms.addAll(givenTerms);
+        }
+
+        if (affinityTerms.size() > 0) {
+            affinityTerms.forEach(x -> LOG.debug("After Affinity: " + x.toString()));
+        }
+        if (antiAffinityTerms.size() > 0) {
+            antiAffinityTerms.forEach(x -> LOG.debug("After AntiAffinity: " + x.toString()));
+        }
+
+        if (affinityTerms.size() != 0) {
+            hasAffinityRequirements = true;
+            inserts.addAll(
+                    insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod, affinityTerms));
+        }
+
+        if (antiAffinityTerms.size() != 0) {
+            hasAntiAffinityRequirements = true;
+            inserts.addAll(
+                    insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod, antiAffinityTerms));
+        }
+
         return Collections.unmodifiableList(inserts);
     }
 
