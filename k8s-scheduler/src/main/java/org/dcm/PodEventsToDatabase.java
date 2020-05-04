@@ -168,6 +168,8 @@ class PodEventsToDatabase {
             inserts.addAll(podAffinityQueries);
             conn.batch(inserts).execute();
         }
+        hasAffinityRequirements = false;
+        hasAntiAffinityRequirements = false;
     }
 
     private void deletePod(final Pod pod) {
@@ -463,11 +465,11 @@ class PodEventsToDatabase {
                         final LabelSelectorRequirement requirement = iterator.next();
                         if (requirement.getOperator().equals(Operators.DoesNotExist.toString())) {
                             antiAffinityRequirements.add(new LabelSelectorRequirement(requirement.getKey(),
-                                    "Exists", requirement.getValues()));
+                                    Operators.DoesNotExist.toString(), requirement.getValues()));
                             iterator.remove();
                         } else if (requirement.getOperator().equals(Operators.NotIn.toString())) {
                             antiAffinityRequirements.add(new LabelSelectorRequirement(requirement.getKey(),
-                                    "In", requirement.getValues()));
+                                    Operators.In.toString(), requirement.getValues()));
                             iterator.remove();
                             affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution()
                                     .forEach(x -> LOG.debug("After removal: " + x.toString()));
@@ -492,9 +494,12 @@ class PodEventsToDatabase {
         }
 
         if (affinity.getPodAntiAffinity() != null) {
-            final List<PodAffinityTerm> givenTerms =
+            final List<PodAffinityTerm> givenAffinityTerms =
                     affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
-            for (final PodAffinityTerm term: givenTerms) {
+            final Iterator<PodAffinityTerm> affinityTermsIterator =
+                    givenAffinityTerms.iterator();
+            while (affinityTermsIterator.hasNext()) {
+                final PodAffinityTerm term = affinityTermsIterator.next();
                 if (term.getLabelSelector() != null) {
                     final List<LabelSelectorRequirement> affinityRequirements = new ArrayList<>();
                     final List<LabelSelectorRequirement> requirements = term.getLabelSelector().getMatchExpressions();
@@ -503,13 +508,17 @@ class PodEventsToDatabase {
                         final LabelSelectorRequirement requirement = iterator.next();
                         if (requirement.getOperator().equals(Operators.DoesNotExist.toString())) {
                             affinityRequirements.add(new LabelSelectorRequirement(requirement.getKey(),
-                                    "Exists", requirement.getValues()));
+                                    Operators.Exists.toString(), requirement.getValues()));
                             iterator.remove();
                         } else if (requirement.getOperator().equals(Operators.NotIn.toString())) {
                             affinityRequirements.add(new LabelSelectorRequirement(requirement.getKey(),
-                                    "In", requirement.getValues()));
+                                    Operators.In.toString(), requirement.getValues()));
                             iterator.remove();
                         }
+                    }
+
+                    if (term.getLabelSelector().getMatchExpressions().size() == 0) {
+                        affinityTermsIterator.remove();
                     }
 
                     if (affinityRequirements.size() > 0) { // we found some opposing requirements
@@ -520,7 +529,9 @@ class PodEventsToDatabase {
                     }
                 }
             }
-            antiAffinityTerms.addAll(givenTerms);
+            if (givenAffinityTerms.size() > 0) {
+                antiAffinityTerms.addAll(givenAffinityTerms);
+            }
         }
 
         if (affinityTerms.size() > 0) {
