@@ -279,37 +279,33 @@ create index pod_info_idx on pod_info (status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);
 create index node_labels_idx on node_labels (label_key, label_value);
 
--- Inter pod affinity
-create view inter_pod_affinity_matches_inner as
-select pods_to_assign.pod_name as pod_name,
-       pod_labels.pod_name as matches,
-       pod_info.node_name as node_name
-from pods_to_assign
-join pod_affinity_match_expressions
-     on pods_to_assign.pod_name = pod_affinity_match_expressions.pod_name
-join pod_labels
-        on (pod_affinity_match_expressions.label_operator = 'In'
-            and pod_affinity_match_expressions.label_key = pod_labels.label_key
-            and  pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value)))
-        or (pod_affinity_match_expressions.label_operator = 'Exists'
+CREATE VIEW INTER_POD_AFFINITY_MATCHES_INNER AS
+SELECT
+  pods_to_assign.pod_name AS pod_name,
+  pod_labels.pod_name AS matches,
+  pod_info.node_name AS node_name
+FROM
+  pods_to_assign
+  JOIN pod_affinity_match_expressions ON pods_to_assign.pod_name = pod_affinity_match_expressions.pod_name
+  JOIN pod_labels ON (
+    pod_affinity_match_expressions.label_operator = 'In'
+    AND pod_affinity_match_expressions.label_key = pod_labels.label_key
+    AND pod_affinity_match_expressions.label_value = pod_labels.label_value
+  ) or (pod_affinity_match_expressions.label_operator = 'Exists'
             and pod_affinity_match_expressions.label_key = pod_labels.label_key)
-        or (pod_affinity_match_expressions.label_operator = 'NotIn')
-        or (pod_affinity_match_expressions.label_operator = 'DoesNotExist')
-join pod_info
-        on pod_labels.pod_name = pod_info.pod_name
-where pods_to_assign.has_pod_affinity_requirements = true
-group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_affinity_match_expressions.label_selector,
-         pod_affinity_match_expressions.topology_key, pod_affinity_match_expressions.label_operator,
-         pod_affinity_match_expressions.num_match_expressions, pod_info.node_name
-having case pod_affinity_match_expressions.label_operator
-             when 'NotIn'
-                  then not(any(pod_affinity_match_expressions.label_key = pod_labels.label_key
-                               and pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value))))
-             when 'DoesNotExist'
-                  then not(any(pod_affinity_match_expressions.label_key = pod_labels.label_key))
-             else count(distinct match_expression) = pod_affinity_match_expressions.num_match_expressions
-       end;
-
+  JOIN pod_info ON pod_labels.pod_name = pod_info.pod_name
+  where pods_to_assign.has_pod_affinity_requirements = true
+GROUP BY
+  pods_to_assign.pod_name,
+  pod_labels.pod_name,
+  pod_affinity_match_expressions.label_selector,
+  pod_affinity_match_expressions.topology_key,
+  pod_affinity_match_expressions.label_operator,
+  pod_affinity_match_expressions.num_match_expressions,
+  pod_info.node_name
+HAVING
+  Count(DISTINCT match_expression) = pod_affinity_match_expressions.num_match_expressions;
+g
 create view inter_pod_affinity_matches as
 select *, count(*) over (partition by pod_name) as num_matches from inter_pod_affinity_matches_inner;
 
