@@ -89,7 +89,7 @@ create table pod_affinity_match_expressions
   num_match_expressions integer not null,
   label_key varchar(100) not null,
   label_operator varchar(30) not null,
-  label_value varchar(36) not null,
+  label_value array not null,
   topology_key varchar(100) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
@@ -103,7 +103,7 @@ create table pod_anti_affinity_match_expressions
   num_match_expressions integer not null,
   label_key varchar(100) not null,
   label_operator varchar(30) not null,
-  label_value varchar(36) not null,
+  label_value array not null,
   topology_key varchar(100) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade
 );
@@ -290,7 +290,7 @@ join pod_affinity_match_expressions
 join pod_labels
         on (pod_affinity_match_expressions.label_operator = 'In'
             and pod_affinity_match_expressions.label_key = pod_labels.label_key
-            and pod_affinity_match_expressions.label_value = pod_labels.label_value)
+            and  pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value)))
         or (pod_affinity_match_expressions.label_operator = 'Exists'
             and pod_affinity_match_expressions.label_key = pod_labels.label_key)
         or (pod_affinity_match_expressions.label_operator = 'NotIn')
@@ -304,7 +304,7 @@ group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_affinity_match_expre
 having case pod_affinity_match_expressions.label_operator
              when 'NotIn'
                   then not(any(pod_affinity_match_expressions.label_key = pod_labels.label_key
-                               and pod_affinity_match_expressions.label_value = pod_labels.label_value))
+                               and pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value))))
              when 'DoesNotExist'
                   then not(any(pod_affinity_match_expressions.label_key = pod_labels.label_key))
              else count(distinct match_expression) = pod_affinity_match_expressions.num_match_expressions
@@ -329,7 +329,7 @@ join pod_anti_affinity_match_expressions
 join pod_labels
         on (pod_anti_affinity_match_expressions.label_operator = 'In'
             and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
-            and pod_anti_affinity_match_expressions.label_value = pod_labels.label_value)
+            and pod_labels.label_value in (unnest(pod_anti_affinity_match_expressions.label_value)))
         or (pod_anti_affinity_match_expressions.label_operator = 'Exists'
             and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key)
         or (pod_anti_affinity_match_expressions.label_operator = 'NotIn')
@@ -343,7 +343,7 @@ group by pods_to_assign.pod_name,  pod_labels.pod_name, pod_anti_affinity_match_
 having case pod_anti_affinity_match_expressions.label_operator
              when 'NotIn'
                   then not(any(pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
-                               and pod_anti_affinity_match_expressions.label_value = pod_labels.label_value))
+                               and pod_labels.label_value in (unnest(pod_anti_affinity_match_expressions.label_value))))
              when 'DoesNotExist'
                   then not(any(pod_anti_affinity_match_expressions.label_key = pod_labels.label_key))
              else count(distinct match_expression) = pod_anti_affinity_match_expressions.num_match_expressions

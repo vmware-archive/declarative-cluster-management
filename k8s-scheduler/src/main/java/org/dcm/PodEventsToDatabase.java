@@ -458,14 +458,12 @@ class PodEventsToDatabase {
             for (final LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
                 matchExpressionNumber += 1;
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                    for (final String value : expr.getValues()) {
-                        inserts.add(
-                            conn.insertInto(table)
-                                .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
-                                        numMatchExpressions, expr.getKey(), expr.getOperator(), value,
-                                        term.getTopologyKey())
-                        );
-                    }
+                    inserts.add(
+                        conn.insertInto(table)
+                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                    numMatchExpressions, expr.getKey(), expr.getOperator(), expr.getValues(),
+                                    term.getTopologyKey())
+                    );
                 }
             }
             termNumber += 1;
