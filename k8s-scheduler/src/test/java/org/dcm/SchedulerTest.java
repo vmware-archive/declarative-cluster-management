@@ -101,26 +101,26 @@ public class SchedulerTest {
         }
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final Runnable checkThatResourcesNotReflected = () -> conn.selectFrom(Tables.NODE_INFO).fetch()
-                                        .forEach(r -> {
-                                            assertEquals(r.getCpuAllocated(), 0);
-                                            assertEquals(r.getMemoryAllocated(), 0);
-                                            assertEquals(r.getEphemeralStorageAllocated(), 0);
-                                            assertEquals(r.getPodsAllocated(), 1);
-                                        });
+                .forEach(r -> {
+                    assertEquals(r.getCpuAllocated(), 0);
+                    assertEquals(r.getMemoryAllocated(), 0);
+                    assertEquals(r.getEphemeralStorageAllocated(), 0);
+                    assertEquals(r.getPodsAllocated(), 1);
+                });
         final Runnable checkThatResourcesReflected = () -> conn.selectFrom(Tables.NODE_INFO).fetch()
-                        .forEach(r -> {
-                            if (!r.getName().equals("n5")) {
-                                assertEquals(r.getCpuAllocated(), 0);
-                                assertEquals(r.getMemoryAllocated(), 0);
-                                assertEquals(r.getEphemeralStorageAllocated(), 0);
-                                assertEquals(r.getPodsAllocated(), 1);
-                            } else {
-                                assertEquals(r.getCpuAllocated(), 10000);
-                                assertEquals(r.getMemoryAllocated(), 1);
-                                assertEquals(r.getEphemeralStorageAllocated(), 0);
-                                assertEquals(r.getPodsAllocated(), 2);
-                            }
-                        });
+                .forEach(r -> {
+                    if (!r.getName().equals("n5")) {
+                        assertEquals(r.getCpuAllocated(), 0);
+                        assertEquals(r.getMemoryAllocated(), 0);
+                        assertEquals(r.getEphemeralStorageAllocated(), 0);
+                        assertEquals(r.getPodsAllocated(), 1);
+                    } else {
+                        assertEquals(r.getCpuAllocated(), 10000);
+                        assertEquals(r.getMemoryAllocated(), 1);
+                        assertEquals(r.getEphemeralStorageAllocated(), 0);
+                        assertEquals(r.getPodsAllocated(), 2);
+                    }
+                });
 
         final String podName = "p";
         final Pod pod;
@@ -249,13 +249,13 @@ public class SchedulerTest {
     public static Stream<Arguments> testQosConditions() {
         return Stream.of(
                 Arguments.of(List.of(1, 1), List.of(1, 1), List.of(10, 10), List.of(10, 10),
-                             PodEventsToDatabase.QosClass.Guaranteed),
+                        PodEventsToDatabase.QosClass.Guaranteed),
                 Arguments.of(List.of(2, 1), List.of(5, 1), List.of(10, 10), List.of(10, 10),
-                             PodEventsToDatabase.QosClass.Burstable),
+                        PodEventsToDatabase.QosClass.Burstable),
                 Arguments.of(List.of(), List.of(), List.of(10, 10), List.of(10, 10),
-                             PodEventsToDatabase.QosClass.Burstable),
+                        PodEventsToDatabase.QosClass.Burstable),
                 Arguments.of(List.of(), List.of(), List.of(), List.of(),
-                             PodEventsToDatabase.QosClass.BestEffort)
+                        PodEventsToDatabase.QosClass.BestEffort)
         );
     }
 
@@ -293,7 +293,7 @@ public class SchedulerTest {
             badCondition.setStatus(status);
             badCondition.setType(type);
             nodeResourceEventHandler.onAddSync(addNode("n" + i, Collections.emptyMap(),
-                                           i == nodeToAssignTo ? Collections.emptyList() : List.of(badCondition)));
+                    i == nodeToAssignTo ? Collections.emptyList() : List.of(badCondition)));
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
@@ -316,11 +316,11 @@ public class SchedulerTest {
     @SuppressWarnings("UnusedMethod")
     private static Stream conditions() {
         return Stream.of(Arguments.of("OutOfDisk", "True"),
-                         Arguments.of("MemoryPressure", "True"),
-                         Arguments.of("DiskPressure", "True"),
-                         Arguments.of("PIDPressure", "True"),
-                         Arguments.of("NetworkUnavailable", "True"),
-                         Arguments.of("Ready", "False"));
+                Arguments.of("MemoryPressure", "True"),
+                Arguments.of("DiskPressure", "True"),
+                Arguments.of("PIDPressure", "True"),
+                Arguments.of("NetworkUnavailable", "True"),
+                Arguments.of("Ready", "False"));
     }
 
     /*
@@ -386,8 +386,8 @@ public class SchedulerTest {
 
         // First, we check if the computed intermediate view is correct
         final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
-                                                              .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
-                                                                           Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
+                .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
+                        Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
         podsToMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(p)));
         podsPartialMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(p)));
         podsWithoutLabels.forEach(p -> assertFalse(podsToNodesMap.containsKey(p)));
@@ -418,11 +418,11 @@ public class SchedulerTest {
                 assertTrue(nodesToMatch.contains(node), String.format("%s assigned to %s", pod, node));
             } else if (podsPartialMatch.contains(pod)) {
                 assertTrue(nodesToMatch.contains(node) || nodesPartialMatch.contains(node),
-                           String.format("%s assigned to %s", pod, node));
+                        String.format("%s assigned to %s", pod, node));
             } else {
                 assertTrue(nodesToMatch.contains(node)
-                        || nodesPartialMatch.contains(node)
-                        || nodesWithoutLabels.contains(node),
+                                || nodesPartialMatch.contains(node)
+                                || nodesWithoutLabels.contains(node),
                         String.format("%s assigned to %s", pod, node));
             }
         });
@@ -431,7 +431,7 @@ public class SchedulerTest {
     @SuppressWarnings("UnusedMethod")
     private static Stream nodeSelectorConditions() {
         return Stream.of(Arguments.of(Set.of("p2", "p4"), Set.of("p6"), Set.of("n4"), Set.of("n5")),
-                         Arguments.of(Set.of(), Set.of("p6"), Set.of(), Set.of("n5")));
+                Arguments.of(Set.of(), Set.of("p6"), Set.of(), Set.of("n5")));
     }
 
 
@@ -466,10 +466,10 @@ public class SchedulerTest {
             final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
             if (podsToAssign.contains(podName)) {
                 final NodeSelector selector = new NodeSelectorBuilder()
-                                                            .withNodeSelectorTerms(terms)
-                                                            .build();
+                        .withNodeSelectorTerms(terms)
+                        .build();
                 pod.getSpec().getAffinity().getNodeAffinity()
-                   .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
+                        .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
             }
             handler.onAddSync(pod);
         }
@@ -478,9 +478,9 @@ public class SchedulerTest {
         // whereas others have a different set of labels
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final Set<String> nodesToAssign = ThreadLocalRandom.current()
-                                                         .ints(numNodesToModify, 0, numNodes)
-                                                         .mapToObj(i -> "n" + i)
-                                                         .collect(Collectors.toSet());
+                .ints(numNodesToModify, 0, numNodes)
+                .mapToObj(i -> "n" + i)
+                .collect(Collectors.toSet());
         final Set<String> remainingNodes = new HashSet<>();
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
@@ -503,34 +503,34 @@ public class SchedulerTest {
 
         // First, we check if the computed intermediate views are correct
         final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
-                                                             .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
-                                                                          Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
+                .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
+                        Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
         podsToAssign.forEach(p -> assertEquals(podsToNodesMap.containsKey(p),
-                                               shouldBeAffineToLabelledNodes || shouldBeAffineToRemainingNodes));
+                shouldBeAffineToLabelledNodes || shouldBeAffineToRemainingNodes));
         podsToNodesMap.forEach(
-            (pod, nodeList) -> {
-                assertTrue(podsToAssign.contains(pod));
-                nodeList.forEach(
-                    node -> {
-                        if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
-                            assertTrue(nodesToAssign.contains(node) || remainingNodes.contains(node));
-                        }
-                        else if (shouldBeAffineToLabelledNodes) {
-                            assertTrue(nodesToAssign.contains(node));
-                        }
-                        else if (shouldBeAffineToRemainingNodes) {
-                            assertFalse(nodesToAssign.contains(node));
-                        }
-                    }
-                );
-            }
+                (pod, nodeList) -> {
+                    assertTrue(podsToAssign.contains(pod));
+                    nodeList.forEach(
+                            node -> {
+                                if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
+                                    assertTrue(nodesToAssign.contains(node) || remainingNodes.contains(node));
+                                }
+                                else if (shouldBeAffineToLabelledNodes) {
+                                    assertTrue(nodesToAssign.contains(node));
+                                }
+                                else if (shouldBeAffineToRemainingNodes) {
+                                    assertFalse(nodesToAssign.contains(node));
+                                }
+                            }
+                    );
+                }
         );
 
         assertEquals(Sets.newHashSet(conn.selectFrom(Tables.POD_NODE_SELECTOR_LABELS)
-                                .fetch("POD_NAME")),
-                     Sets.newHashSet(conn.selectFrom(Tables.POD_INFO)
-                                .where(Tables.POD_INFO.HAS_NODE_SELECTOR_LABELS.eq(true))
-                                .fetch("POD_NAME")));
+                        .fetch("POD_NAME")),
+                Sets.newHashSet(conn.selectFrom(Tables.POD_INFO)
+                        .where(Tables.POD_INFO.HAS_NODE_SELECTOR_LABELS.eq(true))
+                        .fetch("POD_NAME")));
 
         // Now test the solver itself
         final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
@@ -608,16 +608,11 @@ public class SchedulerTest {
                                                    final boolean conditionToLabelledPods,
                                                    final boolean conditionToRemainingPods,
                                                    final boolean cannotBePlacedAnywhere) {
-        // failed --> k1 DoesNotExist [l1, l2]} and labels {k1=l1}, should be affine to remaining pods Affinity {k1=l1}
-        System.out.println(label + " " + condition + " " + podLabelsInput + " "
-                + conditionToLabelledPods + "  " + conditionToRemainingPods + " " + cannotBePlacedAnywhere);
-        terms.forEach(x -> System.out.println("Printing out each term: " + x));
-
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-
         final int numPods = 4;
         final int numPodsToModify = 3;
         final int numNodes = 3;
+
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
@@ -627,7 +622,6 @@ public class SchedulerTest {
                 .collect(Collectors.toList());
         Collections.shuffle(allPods);
         final Set<String> podsToAssign = new HashSet<>(allPods.subList(0, numPodsToModify));
-        System.out.println("Pods to assign:" + podsToAssign);
 
         // If we only get one pod in podsToAssign, then that will be the only labelled pod. In cases of affinity
         // requirements, that means that that pod will not have any candidate nodes to be placed on.
@@ -673,17 +667,13 @@ public class SchedulerTest {
         }
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
-                                                    Policies.podAffinityPredicate(),
-                                                    Policies.podAntiAffinityPredicate());
-
+                Policies.podAffinityPredicate(),
+                Policies.podAntiAffinityPredicate());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
-
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
             final Result<? extends Record> result = scheduler.runOneLoop();
-            System.out.println("Printing out test result: " + result);
-
             for (final Record record: result) {
                 final String podName = record.getValue("POD_NAME", String.class);
                 final String assignedNode = record.getValue("CONTROLLABLE__NODE_NAME", String.class);
@@ -697,12 +687,6 @@ public class SchedulerTest {
                         .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
                         .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
                         .collect(Collectors.toSet());
-
-                System.out.println("Data: " +
-                        nodesAssignedToPodsWithAffinityRequirements + " "
-                        + nodesAssignedToPodsWithoutAffinityRequirements +  " "
-                        + conditionToLabelledPods + "  " + conditionToRemainingPods + " "
-                        + cannotBePlacedAnywhere + " " + assignedNode);
 
                 if (condition.equals("Affinity")) {
                     // conditionToLabelledPods => affineToLabelledPods
@@ -734,13 +718,13 @@ public class SchedulerTest {
     private static Stream testPodAffinity() {
         final String topologyKey = "kubernetes.io/hostname";
 //        final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
-//                                                       podExpr("k1", "In", "l1", "l2")));
+//                podExpr("k1", "In", "l1", "l2")));
 //        final List<PodAffinityTerm> existsTerm = List.of(term(topologyKey,
-//                                                                podExpr("k1", "Exists", "l1", "l2")));
+//                podExpr("k1", "Exists", "l1", "l2")));
         final List<PodAffinityTerm> notInTerm = List.of(term(topologyKey,
-                                                          podExpr("k1", "NotIn", "l1", "l2")));
+                podExpr("k1", "NotIn", "l1", "l2")));
         final List<PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
-                                                                   podExpr("k1", "DoesNotExist", "l1", "l2")));
+                podExpr("k1", "DoesNotExist", "l1", "l2")));
 
         return Stream.of(
                 // First, we test to see if all our operators work on their own
@@ -753,8 +737,8 @@ public class SchedulerTest {
 //                argGen("Affinity", inTerm, map("k", "l", "k1", "l1"), true, false, false),
 //                argGen("Affinity", inTerm, map("k", "l", "k1", "l2"), true, false, false),
 //                argGen("Affinity", inTerm, map("k", "l", "k1", "l3"), false, false, true),
-//
-//                 //Exists
+
+                // Exists
 //                argGen("Affinity", existsTerm, map("k1", "l1"), true, false, false),
 //                argGen("Affinity", existsTerm, map("k1", "l2"), true, false, false),
 //                argGen("Affinity", existsTerm, map("k1", "l3"), true, false, false),
@@ -765,10 +749,10 @@ public class SchedulerTest {
 //                argGen("Affinity", existsTerm, map("k", "l", "k1", "l3"), true, false, false),
 //                argGen("Affinity", existsTerm, map("k", "l", "k2", "l1"), false, false, true),
 //                argGen("Affinity", existsTerm, map("k", "l", "k2", "l2"), false, false, true),
-//                argGen("Affinity", existsTerm, map("k", "l", "k2", "l3"), false, false, true), //
+//                argGen("Affinity", existsTerm, map("k", "l", "k2", "l3"), false, false, true),
 
                 // NotIn
-                argGen("Affinity", notInTerm, map("k1", "l1"), false, true, false), // fails
+                argGen("Affinity", notInTerm, map("k1", "l1"), false, true, false),
 //                argGen("Affinity", notInTerm, map("k1", "l2"), false, true, false),
 //                argGen("Affinity", notInTerm, map("k1", "l3"), true, true, false),
 //                argGen("Affinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
@@ -776,12 +760,12 @@ public class SchedulerTest {
 //                argGen("Affinity", notInTerm, map("k", "l", "k1", "l3"), true, true, false),
 
                 // DoesNotExist
-                argGen("Affinity", notExistsTerm, map("k1", "l1"), false, true, false) //, //failed
+                argGen("Affinity", notExistsTerm, map("k1", "l1"), false, true, false),
 //                argGen("Affinity", notExistsTerm, map("k1", "l2"), false, true, false),
 //                argGen("Affinity", notExistsTerm, map("k1", "l3"), false, true, false),
 //                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
 //                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-//                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)//,
+//                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false),
 
                 // --------- Pod Anti Affinity -----------
                 // In
@@ -803,26 +787,24 @@ public class SchedulerTest {
 //                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l3"), true, false, false),
 //                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l1"), false, false, false),
 //                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l2"), false, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false)
-                //,
+//                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
 
-//                // NotIn
-//                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
-//                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
-//                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
-//                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
-//                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
-//                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
-//
-//                // DoesNotExist
-//                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false),
+                // NotIn
+                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
+
+                // DoesNotExist
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false)//,
 //                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, true, false),
 //                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, true, false),
 //                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
 //                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
 //                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
         );
-
     }
 
     private static Arguments argGen(final String scenario, final List<PodAffinityTerm> terms,
@@ -841,13 +823,13 @@ public class SchedulerTest {
                 shouldBeAffineToRemainingPods ? String.format("should be %s to remaining pods", effect) : "",
                 cannotBePlacedAnywhere ? "cannot be placed anywhere" : "",
                 !shouldBeAffineToLabelledPods && !shouldBeAffineToRemainingPods && !cannotBePlacedAnywhere
-                     ? "can be placed anywhere" : "")
+                        ? "can be placed anywhere" : "")
                 .stream().filter(e -> e.length() > 0)
                 .collect(Collectors.joining(" and "));
         final String label = String.format("%s: pods with term {%s} and labels %s, %s", scenario, termsString,
                 podLabelsInput, outcomeString);
         return Arguments.of(label, scenario, terms, podLabelsInput, shouldBeAffineToLabelledPods,
-                            shouldBeAffineToRemainingPods, cannotBePlacedAnywhere);
+                shouldBeAffineToRemainingPods, cannotBePlacedAnywhere);
     }
 
     /*
@@ -882,8 +864,8 @@ public class SchedulerTest {
 
             // Assumes that there is only one container
             pod.getSpec().getContainers().get(0)
-                .getResources()
-                .setRequests(resourceRequests);
+                    .getResources()
+                    .setRequests(resourceRequests);
             handler.onAddSync(pod);
         }
 
@@ -893,7 +875,7 @@ public class SchedulerTest {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             node.getStatus().getCapacity().put("cpu",
-                                               new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
+                    new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(nodeMemoryCapacities.get(i))));
             nodeResourceEventHandler.onAddSync(node);
 
@@ -907,14 +889,14 @@ public class SchedulerTest {
         }
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
-                                                    Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
+                Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
             final List<String> nodes = result.stream()
-                                            .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                                            .collect(Collectors.toList());
+                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                    .collect(Collectors.toList());
             assertTrue(assertOn.test(nodes));
         } else {
             assertThrows(ModelException.class, scheduler::runOneLoop);
@@ -929,9 +911,9 @@ public class SchedulerTest {
         final Predicate<List<String>> onlyN3MustBeAssignedNewPods = nodes -> Set.of("n3").equals(Set.copyOf(nodes));
         return Stream.of(
                 Arguments.of("One pod per node",
-                             List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
-                             List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
-                             onePodPerNode, true),
+                        List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
+                        List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
+                        onePodPerNode, true),
 
                 Arguments.of("p1 cannot be placed",
                         List.of(10, 11, 10, 10, 10), List.of(10, 10, 10, 10, 10),
@@ -994,7 +976,7 @@ public class SchedulerTest {
             handler.onAddSync(pod);
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
-                                                    Policies.taintsAndTolerations());
+                Policies.taintsAndTolerations());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
 
         if (feasible) {
@@ -1068,8 +1050,8 @@ public class SchedulerTest {
                         null, false),
 
                 Arguments.of("toleration k1=v1 matches taint k1:v1",
-                             List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1)),
-                             nodeGoesToN0, true),
+                        List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1)),
+                        nodeGoesToN0, true),
 
                 Arguments.of("toleration exists(k1) matches taint k1:v1",
                         List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK2V4)),
@@ -1164,7 +1146,7 @@ public class SchedulerTest {
 
         for (int i = 0; i < numNodes; i++) {
             nodeResourceEventHandler.onAddSync(addNode("n" + i, Collections.emptyMap(),
-                                           Collections.emptyList()));
+                    Collections.emptyList()));
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
@@ -1233,7 +1215,7 @@ public class SchedulerTest {
     }
 
     private Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
-                         final Map<String, String> labels) {
+                       final Map<String, String> labels) {
         final Pod pod = new Pod();
         final ObjectMeta meta = new ObjectMeta();
         meta.setName(podName);
@@ -1266,7 +1248,7 @@ public class SchedulerTest {
     }
 
     private Node addNode(final String nodeName, final Map<String, String> labels,
-                           final List<NodeCondition> conditions) {
+                         final List<NodeCondition> conditions) {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();

@@ -419,8 +419,9 @@ public class Model {
             final long select = System.nanoTime();
             irTable.updateValues(recentData);
             final long updateValues = System.nanoTime();
-            LOG.info("updateDataFields for table {} took {}ns to fetch from DB, and {}ns to reflect in IRTables",
-                     table.getName(), (select - start), (System.nanoTime() - updateValues));
+            LOG.info("updateDataFields for table {} took {} ns to fetch {} rows from DB, " +
+                            "and {} ns to reflect in IRTables",
+                     table.getName(), (select - start), recentData.size(), (System.nanoTime() - updateValues));
         }
         compiler.updateData(irContext, backend);
         LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
