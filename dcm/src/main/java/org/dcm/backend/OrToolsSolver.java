@@ -117,8 +117,10 @@ public class OrToolsSolver implements ISolverBackend {
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
     private final TupleGen tupleGen = new TupleGen();
     private final OutputIR outputIR = new OutputIR();
-    private final int numThreads;
-    private final int maxTimeInSeconds;
+    private final int configNumThreads;
+    private final int configMaxTimeInSeconds;
+    private final boolean configTryScalarProductEncoding;
+    private final boolean configUseFullReifiedConstraintsForJoinPreferences;
 
     static {
         Preconditions.checkNotNull(System.getenv(OR_TOOLS_LIB_ENV));
@@ -128,27 +130,65 @@ public class OrToolsSolver implements ISolverBackend {
     @Nullable private IGeneratedBackend generatedBackend;
     @Nullable private IRContext context = null;
 
-    private OrToolsSolver(final int numThreads, final int maxTimeInSeconds) {
-        this.numThreads = numThreads;
-        this.maxTimeInSeconds = maxTimeInSeconds;
+    private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
+                          final boolean configTryScalarProductEncoding,
+                          final boolean configUseFullReifiedConstraintsForJoinPreferences) {
+        this.configNumThreads = configNumThreads;
+        this.configMaxTimeInSeconds = configMaxTimeInSeconds;
+        this.configTryScalarProductEncoding = configTryScalarProductEncoding;
+        this.configUseFullReifiedConstraintsForJoinPreferences = configUseFullReifiedConstraintsForJoinPreferences;
     }
 
     public static class Builder {
         private int numThreads = NUM_THREADS_DEFAULT;
         private int maxTimeInSeconds = MAX_TIME_IN_SECONDS;
+        private boolean tryScalarProductEncoding = true;
+        private boolean useFullReifiedConstraintsForJoinPreferences = false;
 
+        /**
+         * Number of solver threads. Corresponds to CP-SAT's setNumSearchWorkers parameter.
+         * @param numThreads number of solver threads to use. Defaults to {@value NUM_THREADS_DEFAULT}.
+         */
         public Builder setNumThreads(final int numThreads) {
             this.numThreads = numThreads;
             return this;
         }
 
+        /**
+         * Solver timeout. If this parameter is set too low for the problem size involved, expect a ModelException
+         * for not finding a solution. Corresponds to CP-SAT's setNumSearchWorkers parameter.
+         * @param maxTimeInSeconds timeout value in seconds. Defaults to {@value MAX_TIME_IN_SECONDS}.
+         */
         public Builder setMaxTimeInSeconds(final int maxTimeInSeconds) {
             this.maxTimeInSeconds = maxTimeInSeconds;
             return this;
         }
 
+        /**
+         * Configures whether we attempt to pattern match and apply an optimization that uses scalar products
+         * in certain kinds of aggregates.
+         * @param tryScalarProductEncoding true to apply scalar product optimization. Defaults to true.
+         */
+        public Builder setTryScalarProductEncoding(final boolean tryScalarProductEncoding) {
+            this.tryScalarProductEncoding = tryScalarProductEncoding;
+            return this;
+        }
+
+        /**
+         * Configures whether we introduce full or half-reified booleans when encoding preferences for
+         * "spreading" joins.
+         * @param useFullReifiedConstraintsForJoinPreferences uses full-reified encodings if true, half-reified
+         *                                                    encodings otherwise. Defaults to false.
+         */
+        public Builder setUseFullReifiedConstraintsForJoinPreferences(final boolean
+                                                                      useFullReifiedConstraintsForJoinPreferences) {
+            this.useFullReifiedConstraintsForJoinPreferences = useFullReifiedConstraintsForJoinPreferences;
+            return this;
+        }
+
         public OrToolsSolver build() {
-            return new OrToolsSolver(numThreads, maxTimeInSeconds);
+            return new OrToolsSolver(numThreads, maxTimeInSeconds, tryScalarProductEncoding,
+                                     useFullReifiedConstraintsForJoinPreferences);
         }
     }
 
@@ -908,7 +948,8 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement("final long startTime = $T.nanoTime()", System.class)
                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
                .addStatement("final $1T encoder = new $1T()", StringEncoding.class)
-               .addStatement("final $1T o = new $1T(model, encoder)", Ops.class)
+               .addStatement("final $1T o = new $1T(model, encoder, $2L)", Ops.class,
+                             configUseFullReifiedConstraintsForJoinPreferences)
                .addCode("\n");
     }
 
@@ -922,8 +963,8 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement("final $1T solver = new $1T()", CpSolver.class)
                .addStatement("solver.getParameters().setLogSearchProgress(true)")
                .addStatement("solver.getParameters().setCpModelProbingLevel(0)")
-               .addStatement("solver.getParameters().setNumSearchWorkers($L)", numThreads)
-               .addStatement("solver.getParameters().setMaxTimeInSeconds($L)", maxTimeInSeconds)
+               .addStatement("solver.getParameters().setNumSearchWorkers($L)", configNumThreads)
+               .addStatement("solver.getParameters().setMaxTimeInSeconds($L)", configMaxTimeInSeconds)
                .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
                .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
                .addStatement("final Map<IRTable, Result<? extends Record>> result = new $T<>()", HashMap.class)
@@ -1571,7 +1612,7 @@ public class OrToolsSolver implements ISolverBackend {
         private String maybeOptimizeSumIntoScalarProduct(final Expr node, final OutputIR.Block outerBlock,
                                                          final OutputIR.Block forLoop,
                                                          final TranslationContext context) {
-            if (node instanceof BinaryOperatorPredicate) {
+            if (configTryScalarProductEncoding && node instanceof BinaryOperatorPredicate) {
                 final BinaryOperatorPredicate operation = (BinaryOperatorPredicate) node;
                 final BinaryOperatorPredicate.Operator op = operation.getOperator();
                 final Expr left = operation.getLeft();

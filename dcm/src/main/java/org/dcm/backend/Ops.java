@@ -14,6 +14,7 @@ import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
+import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,13 +29,16 @@ public class Ops {
     private final StringEncoding encoder;
     private final IntVar trueVar;
     private final IntVar falseVar;
+    private final boolean configUseFullReifiedConstraintsForJoinPreferences;
 
 
-    public Ops(final CpModel model, final StringEncoding encoding) {
+    public Ops(final CpModel model, final StringEncoding encoding,
+               final boolean configUseFullReifiedConstraintsForJoinPreferences) {
         this.model = model;
         this.encoder = encoding;
         this.trueVar = model.newConstant(1);
         this.falseVar = model.newConstant(0);
+        this.configUseFullReifiedConstraintsForJoinPreferences = configUseFullReifiedConstraintsForJoinPreferences;
     }
 
     public int sum(final List<Integer> data) {
@@ -431,9 +435,8 @@ public class Ops {
         return model.newConstant(expr);
     }
 
-    public void capacityConstraint(final List<IntVar> varsToAssign, final List<String> domain,
+    public void capacityConstraint(final List<IntVar> varsToAssign, final List<?> domain,
                                    final List<List<Integer>> demands, final List<List<Integer>> capacities) {
-        final int scale = 1000;
         // Create the variables.
         capacities.forEach(
                 vec -> Preconditions.checkArgument(domain.size() == vec.size())
@@ -441,18 +444,34 @@ public class Ops {
         demands.forEach(
                 vec -> Preconditions.checkArgument(varsToAssign.size() == vec.size())
         );
+        if (domain.size() == 0) {
+            throw new RuntimeException("Empty domain for capacity constraint " + demands + " " + capacities);
+        }
+
+        if (domain.get(0) instanceof String) {
+            final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((String) o)).toArray();
+            capacityConstraint(varsToAssign, domainArr, demands, capacities);
+        } else if (domain.get(0) instanceof Integer) {
+            final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((Integer) o)).toArray();
+            capacityConstraint(varsToAssign, domainArr, demands, capacities);
+        } else if (domain.get(0) instanceof Long) {
+            final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((Long) o)).toArray();
+            capacityConstraint(varsToAssign, domainArr, demands, capacities);
+        } else {
+            throw new RuntimeException("Unexpected type of list: " + domain);
+        }
+    }
+
+    public void capacityConstraint(final List<IntVar> varsToAssign, final long[] domainArr,
+                                   final List<List<Integer>> demands, final List<List<Integer>> capacities) {
+        final int scale = 1000;
         Preconditions.checkArgument(demands.size() == capacities.size());
 
         final IntVar[] taskToNodeAssignment = varsToAssign.toArray(IntVar[]::new);
         final int numTasks = taskToNodeAssignment.length;
         final IntervalVar[] tasksIntervals = new IntervalVar[numTasks + capacities.get(0).size()];
 
-        final long[] domainArr = domain.stream().mapToLong(encoder::toLong).toArray();
         final Domain domainT = Domain.fromValues(domainArr);
-        if (domainArr.length == 0) {
-            throw new RuntimeException("Empty domain for capacity constraint " + demands + " " + capacities);
-        }
-
         final Domain intervalRange = Domain.fromFlatIntervals(new long[] {domainT.min() + 1, domainT.max() + 1});
         for (int i = 0; i < numTasks; i++) {
             model.addLinearExpressionInDomain(taskToNodeAssignment[i], domainT);
@@ -536,16 +555,21 @@ public class Ops {
         final int maxNumBuckets = 10;
         final int bucketSize = Math.max(domainSortedByLoad.length / maxNumBuckets, 1);
 
-        Preconditions.checkArgument(domainSortedByLoad.length == domain.size());
+        Preconditions.checkArgument(domainSortedByLoad.length == domainArr.length);
         long nodesConsidered = 0;
 
         final List<IntVar> bools = new ArrayList<>();
         for (int i = 0; i < domainSortedByLoad.length; i += bucketSize) {
             final long[] subArray = Arrays.copyOfRange(domainSortedByLoad, i, i + bucketSize);
-            for (int task = 0; task < numTasks; task++) {
-                final IntVar boolVar = model.newBoolVar("");
-                model.addLinearExpressionInDomain(taskToNodeAssignment[task], Domain.fromValues(subArray))
-                        .onlyEnforceIf(boolVar);
+            for (final IntVar assignmentVar: taskToNodeAssignment) {
+                final IntVar boolVar;
+                if (configUseFullReifiedConstraintsForJoinPreferences) {
+                    boolVar = inLong(assignmentVar, Arrays.asList(ArrayUtils.toObject(subArray)));
+                } else {
+                    boolVar = model.newBoolVar("");
+                    model.addLinearExpressionInDomain(assignmentVar, Domain.fromValues(subArray))
+                            .onlyEnforceIf(boolVar);
+                }
                 bools.add(boolVar);
             }
             nodesConsidered += subArray.length;
