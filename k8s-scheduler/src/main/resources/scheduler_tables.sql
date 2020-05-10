@@ -111,6 +111,15 @@ create table pod_anti_affinity_match_expressions
 
 -- Tracks the set of labels per pod, and indicates if
 -- any of them are also node selector labels
+create table node_labels
+(
+  node_name varchar(36) not null,
+  label_key varchar(100) not null,
+  label_value varchar(36) not null,
+  foreign key(node_name) references node_info(name) on delete cascade
+);
+
+-- Tracks the set of labels per node
 create table pod_labels
 (
   pod_name varchar(100) not null,
@@ -118,15 +127,6 @@ create table pod_labels
   label_value varchar(36) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade,
   primary key(pod_name, label_key, label_value)
-);
-
--- Tracks the set of labels per node
-create table node_labels
-(
-  node_name varchar(36) not null,
-  label_key varchar(100) not null,
-  label_value varchar(36) not null,
-  foreign key(node_name) references node_info(name) on delete cascade
 );
 
 -- Volume labels
@@ -317,7 +317,7 @@ FROM
   JOIN pod_labels ON (
     pod_affinity_match_expressions.label_operator = 'In'
     and pod_affinity_match_expressions.label_key = pod_labels.label_key
-    and pod_affinity_match_expressions.label_value = pod_labels.label_value
+    and pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value))
   )
   JOIN pod_info ON pod_labels.pod_name = pod_info.pod_name
   where pods_to_assign.has_pod_affinity_requirements = true;
@@ -385,7 +385,7 @@ FROM
   JOIN pod_labels ON (
     pod_anti_affinity_match_expressions.label_operator = 'In'
     and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
-    and pod_anti_affinity_match_expressions.label_value = pod_labels.label_value
+    and pod_labels.label_value in (unnest(pod_anti_affinity_match_expressions.label_value))
   )
   JOIN pod_info ON pod_labels.pod_name = pod_info.pod_name
   where pods_to_assign.has_pod_anti_affinity_requirements = true;

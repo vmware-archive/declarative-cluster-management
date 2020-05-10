@@ -23,7 +23,6 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
-
 import org.dcm.k8s.generated.Tables;
 import org.dcm.k8s.generated.tables.PodInfo;
 import org.dcm.k8s.generated.tables.records.PodInfoRecord;
@@ -518,28 +517,29 @@ class PodEventsToDatabase {
                     if (expr.getValues() != null) {
                         for (final String value : expr.getValues()) {
                             inserts.add(
-                                    conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
-                                                    numMatchExpressions, expr.getKey(), expr.getOperator(), value)
+                                conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                        .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                                numMatchExpressions, expr.getKey(), expr.getOperator(), value)
                             );
                         }
                     } else {
                         inserts.add(
-                                conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                        .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
-                                                numMatchExpressions, expr.getKey(), expr.getOperator(), null)
+                            conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                    .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                            numMatchExpressions, expr.getKey(), expr.getOperator(), null)
                         );
                     }
                 }
                 termNumber += 1;
             }
+
         }
 
         // Pod affinity
         if (affinity.getPodAffinity() != null) {
             inserts.addAll(
                     insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod,
-                            affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
+                    affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
             );
         }
 
