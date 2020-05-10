@@ -44,7 +44,8 @@ class EmulatedClusterTest {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedClusterTest.class);
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
-                                final int memScaleDown, final int timeScaleDown, final int startTimeCutOff)
+                                final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
+                                final int affinityRequirementsProportion, final int deploymentAffinity)
             throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
 
@@ -86,8 +87,8 @@ class EmulatedClusterTest {
         final WorkloadGeneratorIT replay = new WorkloadGeneratorIT();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
-        replay.runTrace(client, traceFileName, deployer, "dcm-scheduler",
-                        cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff);
+        replay.runTrace(client, traceFileName, deployer, "dcm-scheduler", cpuScaleDown,
+                memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion, 1 == deploymentAffinity);
     }
 
     private static Node addNode(final String nodeName, final Map<String, String> labels,
@@ -164,6 +165,11 @@ class EmulatedClusterTest {
                         "Factor by which to scale down arrival rate for pods");
         options.addRequiredOption("s", "startTimeCutOff", true,
                         "N, where we replay first N seconds of trace");
+        options.addOption("p", "proportion", true,
+                "P, from 0 to 100, indicating the proportion of pods that have affinity requirements");
+        options.addOption("d", "deploymentAffinity", true,
+                "D, 1 if pods in a deployment should be affine to each other," +
+                        " 2 if pods across deployments should be affine to each other");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
         final int numNodes = Integer.parseInt(cmd.getOptionValue("numNodes"));
@@ -172,11 +178,16 @@ class EmulatedClusterTest {
         final int memScaleDown = Integer.parseInt(cmd.getOptionValue("memScaleDown"));
         final int timeScaleDown = Integer.parseInt(cmd.getOptionValue("timeScaleDown"));
         final int startTimeCutOff = Integer.parseInt(cmd.getOptionValue("startTimeCutOff"));
-        LOG.info("Running experiment with parameters: numNodes:{}, traceFile:{}, cpuScaleDown:{}, " +
-                    "memScaleDown:{}, timeScaleDown:{}, startTimeCutOff:{}", numNodes, traceFile, cpuScaleDown,
-                memScaleDown, timeScaleDown, startTimeCutOff);
+        final int affinityRequirementsProportion = Integer.parseInt(cmd.hasOption("proportion") ?
+                cmd.getOptionValue("proportion") : "0");
+        final int deploymentAffinity = Integer.parseInt(cmd.hasOption("deploymentAffinity") ?
+                cmd.getOptionValue("deploymentAffinity") : "1");
+        LOG.info("Running experiment with parameters: numNodes: {}, traceFile: {}, cpuScaleDown: {}, " +
+                    "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}, deploymentAffinity: {}",
+                numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
+                startTimeCutOff, affinityRequirementsProportion, deploymentAffinity);
         emulatedClusterTest.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
-                                            startTimeCutOff);
+                                            startTimeCutOff, affinityRequirementsProportion, deploymentAffinity);
         System.exit(0); // without this, there are non-daemon threads that prevent JVM shutdown
     }
 }
