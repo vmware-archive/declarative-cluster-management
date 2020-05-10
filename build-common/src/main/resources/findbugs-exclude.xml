@@ -50,6 +50,14 @@
         <Class name="org.dcm.backend.OrToolsSolver$ExprToStrVisitor" />
         <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE" />
     </Match>
+    <Match>
+        <Class name="org.dcm.SchedulerTest" />
+        <Bug pattern="DM_STRING_CTOR" />
+    </Match>
+    <Match>
+        <Class name="org.dcm.SchedulerTest" />
+        <Bug pattern="UC_USELESS_OBJECT" />
+    </Match>
 
     <!--  False positives due to try-with-resources pattern  -->
     <Match>

@@ -613,7 +613,6 @@ public class SchedulerTest {
         final int numPodsToModify = 3;
         final int numNodes = 3;
 
-
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
@@ -635,13 +634,13 @@ public class SchedulerTest {
                     final PodAntiAffinity podAntiAffinity = new PodAntiAffinity();
                     final List<PodAffinityTerm> podAntiAffinityTerms =
                             podAntiAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
-                    podAntiAffinityTerms.addAll(terms);
+                    podAntiAffinityTerms.addAll(deepCopyTerms(terms));
                     pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
                 } else if (condition.equals("Affinity")) {
                     final PodAffinity podAffinity = new PodAffinity();
                     final List<PodAffinityTerm> podAffinityTerms =
                             podAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
-                    podAffinityTerms.addAll(terms);
+                    podAffinityTerms.addAll(deepCopyTerms(terms));
                     pod.getSpec().getAffinity().setPodAffinity(podAffinity);
                 } else {
                     throw new IllegalArgumentException(condition);
@@ -653,9 +652,11 @@ public class SchedulerTest {
         }
 
         // Add all nodes
+        final Set<String> nodes =  new HashSet<String>();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
+            nodes.add(nodeName);
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             nodeResourceEventHandler.onAddSync(node);
 
@@ -688,6 +689,11 @@ public class SchedulerTest {
                         .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
                         .collect(Collectors.toSet());
 
+                // nodes without pods that have affinity requirements or without pods that are unlabelled
+                final Set<String> remainingNodes = new HashSet<>(nodes);
+                remainingNodes.removeAll(nodesAssignedToPodsWithAffinityRequirements);
+                remainingNodes.removeAll(nodesAssignedToPodsWithoutAffinityRequirements);
+
                 if (condition.equals("Affinity")) {
                     // conditionToLabelledPods => affineToLabelledPods
                     // conditionToRemainingPods => affineToRemainingPods
@@ -698,6 +704,12 @@ public class SchedulerTest {
                         assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
                     } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
                         assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                    } else if (podsToAssign.contains(podName)
+                            && !conditionToRemainingPods
+                            && !conditionToLabelledPods) {
+                        // the pod is alone or with an unlabelled pod
+                        assertTrue(remainingNodes.contains(assignedNode) ||
+                                nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
                     }
                 } else if (condition.equals("AntiAffinity")) {
                     // conditionToLabelledPods => antiAffineToLabelledPods
@@ -708,19 +720,46 @@ public class SchedulerTest {
                         assertFalse(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
                     } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
                         assertFalse(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                    } else if (podsToAssign.contains(podName)
+                            && !conditionToRemainingPods
+                            && !conditionToLabelledPods) {
+                        // all pods can be with the unlabelled pod
+                        assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
                     }
                 }
             }
         }
     }
 
+    private List<PodAffinityTerm> deepCopyTerms(final List<PodAffinityTerm> terms) {
+        final List<PodAffinityTerm> newTerms = new ArrayList<>();
+        for (final PodAffinityTerm term: terms) {
+            final List<LabelSelectorRequirement> listRequirements = new ArrayList<>();
+            if (term.getLabelSelector() != null && term.getLabelSelector().getMatchExpressions() != null) {
+                for (final LabelSelectorRequirement requirement : term.getLabelSelector().getMatchExpressions()) {
+                    final List<String> values = new ArrayList<>(requirement.getValues());
+                    final LabelSelectorRequirement labelSelectorRequirement =
+                            new LabelSelectorRequirement(requirement.getKey(), requirement.getOperator(), values);
+                    listRequirements.add(labelSelectorRequirement);
+                }
+                final LabelSelector labelSelector = new LabelSelector();
+                labelSelector.setMatchExpressions(listRequirements);
+                final PodAffinityTerm newTerm = new PodAffinityTerm();
+                newTerm.setLabelSelector(labelSelector);
+                newTerm.setTopologyKey(term.getTopologyKey());
+                newTerms.add(newTerm);
+            }
+        }
+        return newTerms;
+    }
+
     @SuppressWarnings("UnusedMethod")
     private static Stream testPodAffinity() {
         final String topologyKey = "kubernetes.io/hostname";
-//        final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
-//                podExpr("k1", "In", "l1", "l2")));
-//        final List<PodAffinityTerm> existsTerm = List.of(term(topologyKey,
-//                podExpr("k1", "Exists", "l1", "l2")));
+        final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
+                podExpr("k1", "In", "l1", "l2")));
+        final List<PodAffinityTerm> existsTerm = List.of(term(topologyKey,
+                podExpr("k1", "Exists", "l1", "l2")));
         final List<PodAffinityTerm> notInTerm = List.of(term(topologyKey,
                 podExpr("k1", "NotIn", "l1", "l2")));
         final List<PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
@@ -731,79 +770,79 @@ public class SchedulerTest {
 
                 // --------- Pod Affinity -----------
                 // In
-//                argGen("Affinity", inTerm, map("k1", "l1"), true, false, false),
-//                argGen("Affinity", inTerm, map("k1", "l2"), true, false, false),
-//                argGen("Affinity", inTerm, map("k1", "l3"), false, false, true),
-//                argGen("Affinity", inTerm, map("k", "l", "k1", "l1"), true, false, false),
-//                argGen("Affinity", inTerm, map("k", "l", "k1", "l2"), true, false, false),
-//                argGen("Affinity", inTerm, map("k", "l", "k1", "l3"), false, false, true),
+                argGen("Affinity", inTerm, map("k1", "l1"), true, false, false),
+                argGen("Affinity", inTerm, map("k1", "l2"), true, false, false),
+                argGen("Affinity", inTerm, map("k1", "l3"), false, false, true),
+                argGen("Affinity", inTerm, map("k", "l", "k1", "l1"), true, false, false),
+                argGen("Affinity", inTerm, map("k", "l", "k1", "l2"), true, false, false),
+                argGen("Affinity", inTerm, map("k", "l", "k1", "l3"), false, false, true),
 
                 // Exists
-//                argGen("Affinity", existsTerm, map("k1", "l1"), true, false, false),
-//                argGen("Affinity", existsTerm, map("k1", "l2"), true, false, false),
-//                argGen("Affinity", existsTerm, map("k1", "l3"), true, false, false),
-//                argGen("Affinity", existsTerm, map("k2", "l3"), false, false, true),
-//                argGen("Affinity", existsTerm, map("k2", "l1"), false, false, true),
-//                argGen("Affinity", existsTerm, map("k", "l", "k1", "l1"), true, false, false),
-//                argGen("Affinity", existsTerm, map("k", "l", "k1", "l2"), true, false, false),
-//                argGen("Affinity", existsTerm, map("k", "l", "k1", "l3"), true, false, false),
-//                argGen("Affinity", existsTerm, map("k", "l", "k2", "l1"), false, false, true),
-//                argGen("Affinity", existsTerm, map("k", "l", "k2", "l2"), false, false, true),
-//                argGen("Affinity", existsTerm, map("k", "l", "k2", "l3"), false, false, true),
+                argGen("Affinity", existsTerm, map("k1", "l1"), true, false, false),
+                argGen("Affinity", existsTerm, map("k1", "l2"), true, false, false),
+                argGen("Affinity", existsTerm, map("k1", "l3"), true, false, false),
+                argGen("Affinity", existsTerm, map("k2", "l3"), false, false, true),
+                argGen("Affinity", existsTerm, map("k2", "l1"), false, false, true),
+                argGen("Affinity", existsTerm, map("k", "l", "k1", "l1"), true, false, false),
+                argGen("Affinity", existsTerm, map("k", "l", "k1", "l2"), true, false, false),
+                argGen("Affinity", existsTerm, map("k", "l", "k1", "l3"), true, false, false),
+                argGen("Affinity", existsTerm, map("k", "l", "k2", "l1"), false, false, true),
+                argGen("Affinity", existsTerm, map("k", "l", "k2", "l2"), false, false, true),
+                argGen("Affinity", existsTerm, map("k", "l", "k2", "l3"), false, false, true),
 
                 // NotIn
-                argGen("Affinity", notInTerm, map("k1", "l1"), false, true, false),
-//                argGen("Affinity", notInTerm, map("k1", "l2"), false, true, false),
-//                argGen("Affinity", notInTerm, map("k1", "l3"), true, true, false),
-//                argGen("Affinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
-//                argGen("Affinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
-//                argGen("Affinity", notInTerm, map("k", "l", "k1", "l3"), true, true, false),
+                argGen("Affinity", notInTerm, map("k1", "l1"), false, false, false),
+                argGen("Affinity", notInTerm, map("k1", "l2"), false, false, false),
+                argGen("Affinity", notInTerm, map("k1", "l3"), true, true, false),
+                argGen("Affinity", notInTerm, map("k", "l", "k1", "l1"), false, false, false),
+                argGen("Affinity", notInTerm, map("k", "l", "k1", "l2"), false, false, false),
+                argGen("Affinity", notInTerm, map("k", "l", "k1", "l3"), true, true, false),
 
                 // DoesNotExist
                 argGen("Affinity", notExistsTerm, map("k1", "l1"), false, true, false),
-//                argGen("Affinity", notExistsTerm, map("k1", "l2"), false, true, false),
-//                argGen("Affinity", notExistsTerm, map("k1", "l3"), false, true, false),
-//                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
-//                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-//                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false),
+                argGen("Affinity", notExistsTerm, map("k1", "l2"), false, true, false),
+                argGen("Affinity", notExistsTerm, map("k1", "l3"), false, true, false),
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false),
 
                 // --------- Pod Anti Affinity -----------
                 // In
-//                argGen("AntiAffinity", inTerm, map("k1", "l1"), true, false, false),
-//                argGen("AntiAffinity", inTerm, map("k1", "l2"), true, false, false),
-//                argGen("AntiAffinity", inTerm, map("k1", "l3"), false, false, false),
-//                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l1"), true, false, false),
-//                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l2"), true, false, false),
-//                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l3"), false, false, false),
+                argGen("AntiAffinity", inTerm, map("k1", "l1"), true, false, false),
+                argGen("AntiAffinity", inTerm, map("k1", "l2"), true, false, false),
+                argGen("AntiAffinity", inTerm, map("k1", "l3"), false, false, false),
+                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l1"), true, false, false),
+                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l2"), true, false, false),
+                argGen("AntiAffinity", inTerm, map("k", "l", "k1", "l3"), false, false, false),
 
                 // Exists
-//                argGen("AntiAffinity", existsTerm, map("k1", "l1"), true, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k1", "l2"), true, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k1", "l3"), true, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k2", "l3"), false, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k2", "l1"), false, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l1"), true, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l2"), true, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l3"), true, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l1"), false, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l2"), false, false, false),
-//                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
+                argGen("AntiAffinity", existsTerm, map("k1", "l1"), true, false, false),
+                argGen("AntiAffinity", existsTerm, map("k1", "l2"), true, false, false),
+                argGen("AntiAffinity", existsTerm, map("k1", "l3"), true, false, false),
+                argGen("AntiAffinity", existsTerm, map("k2", "l3"), false, false, false),
+                argGen("AntiAffinity", existsTerm, map("k2", "l1"), false, false, false),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l1"), true, false, false),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l2"), true, false, false),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k1", "l3"), true, false, false),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l1"), false, false, false),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l2"), false, false, false),
+                argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
 
                 // NotIn
-                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, false, false),
                 argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, false, false),
                 argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, false, false),
 
                 // DoesNotExist
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false)//,
-//                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, true, false),
-//                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, true, false),
-//                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
-//                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-//                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, false, false)
         );
     }
 
