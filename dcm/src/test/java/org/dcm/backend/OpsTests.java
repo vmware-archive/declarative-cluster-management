@@ -47,7 +47,7 @@ public class OpsTests {
     public void setupOps() {
         model = new CpModel();
         encoding = new StringEncoding();
-        ops = new Ops(model, encoding);
+        ops = new Ops(model, encoding, false);
     }
 
     @Test
