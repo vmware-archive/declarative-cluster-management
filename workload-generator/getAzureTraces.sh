@@ -14,13 +14,12 @@ gunzip v2-vmtable.csv.gz
 
 for ver in v1 v2; do
 	awk -F "," -f azure-combine.awk $ver-deployment.csv $ver-subscriptions.csv $ver-vmtable.csv > $ver-temp-1.txt
-	sed -e "s/
-//g" $ver-temp-1.txt > $ver-temp-2.txt
+	sed -e "s///g" $ver-temp-1.txt > $ver-temp-2.txt
 	sort -nk2,2 -nk3,3 -nk4,4 -nk5,5 $ver-temp-2.txt > $ver-temp-3.txt 
 	cat $ver-temp-3.txt | awk '{if($4 != $5) a[$2," ",$3," ",$4," ",$5," ",$6," ",$7]+=1;}END{for (key in a) print key, a[key]}' > $ver-temp-4.txt
-	sed -e "s///g" $ver-temp-4.txt > $ver-temp-5.txt
+	sed -e "s///g" $ver-temp-4.txt > $ver-temp-5.txt
 	sort -nk3,3 -nk1,1 -nk2,2 $ver-temp-5.txt > $ver-temp-6.txt
-	sed -e "s///g" $ver-temp-6.txt > $ver-data.txt
+	sed -e "s///g" $ver-temp-6.txt > $ver-data.txt
 	rm *-temp-*
 done
 
