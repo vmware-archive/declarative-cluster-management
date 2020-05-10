@@ -480,7 +480,7 @@ class PodEventsToDatabase {
                 }
             }
             if (givenAffinityTerms.size() > 0) {
-                antiAffinityTerms.addAll(givenAffinityTerms); // put all remaining affinity terms in the affinity group
+                antiAffinityTerms.addAll(givenAffinityTerms); // put all remaining affinity terms in affinity group
             }
         }
         // now place the terms back

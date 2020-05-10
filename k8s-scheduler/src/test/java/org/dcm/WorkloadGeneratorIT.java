@@ -191,7 +191,7 @@ class WorkloadGeneratorIT extends ITBase {
                 startTimeCutOff, 0, false);
     }
 
-    void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
+    void  runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
                   final String schedulerName, final int cpuScaleDown, final int memScaleDown,
                   final int timeScaleDown, final int startTimeCutOff, final int affinityProportion,
                   final boolean deploymentAffinity)
@@ -230,7 +230,8 @@ class WorkloadGeneratorIT extends ITBase {
                 boolean createAffinityRequirements = false;
                 if (r.nextInt(numberOfDeployments)
                         < ((double) numberOfDeployments * (double) affinityProportion) / 100) {
-                    // trying to introduce randomness in this process
+                    // randomly choose a deployment to add affinity requirements
+                    // relying on Random class to provide a uniform distribution of numbers between 0 and #ofDeployments
                     createAffinityRequirements = true;
                 }
 

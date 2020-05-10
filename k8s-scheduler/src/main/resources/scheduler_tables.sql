@@ -117,7 +117,7 @@ create table pod_labels
   label_key varchar(100) not null,
   label_value varchar(36) not null,
   foreign key(pod_name) references pod_info(pod_name) on delete cascade,
-  PRIMARY KEY(pod_name, label_key, label_value)
+  primary key(pod_name, label_key, label_value)
 );
 
 -- Tracks the set of labels per node
@@ -348,7 +348,6 @@ select *, count(*) over (partition by pod_name) as num_matches from inter_pod_af
 create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_name);
 create index pod_anti_affinity_match_expressions_idx on pod_anti_affinity_match_expressions (pod_name);
 create index pod_labels_idx on pod_labels (label_key, label_value);
--- create index pod_labels_idx on pod_labels (label_key);
 
 CREATE VIEW inter_pod_anti_affinity_matches_inner_exists AS
 SELECT
