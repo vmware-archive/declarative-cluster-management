@@ -25,8 +25,6 @@ import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Options;
-import org.jooq.Record;
-import org.jooq.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,12 +84,6 @@ class EmulatedClusterTest {
             pod.getSpec().setNodeName(nodeName);
             handler.onAddSync(pod);
         }
-
-        final long start =  System.nanoTime();
-        final Result<Record> result = dbConnectionPool.getConnectionToDb().fetch("select * from node_info;");
-        final long end =  System.nanoTime();
-        System.out.println("Time to pull out " + result.size() + " " + (end - start));
-
         final WorkloadGeneratorIT replay = new WorkloadGeneratorIT();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
