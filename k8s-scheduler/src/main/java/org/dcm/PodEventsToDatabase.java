@@ -59,9 +59,8 @@ class PodEventsToDatabase {
         In,
         Exists,
         NotIn,
-        DoesNotExists
+        DoesNotExist
     }
-
 
     PodEventsToDatabase(final DBConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
@@ -206,20 +205,41 @@ class PodEventsToDatabase {
         final String ownerName = (owners == null || owners.size() == 0) ? "" : owners.get(0).getName();
         final boolean hasNodeSelector = hasNodeSelector(pod);
 
-        final boolean hasPodAffinityRequirements;
+        boolean hasPodAffinityRequirements = false;
+        boolean hasPodAntiAffinityRequirements = false;
+
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
-            hasPodAffinityRequirements = pod.getSpec().getAffinity().getPodAffinity()
-                                            .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0;
-        } else {
-            hasPodAffinityRequirements = false;
+            final List<PodAffinityTerm> terms = pod.getSpec().getAffinity().getPodAffinity()
+                    .getRequiredDuringSchedulingIgnoredDuringExecution();
+            for (final PodAffinityTerm term: terms) {
+                final List<LabelSelectorRequirement> requirements = term.getLabelSelector().getMatchExpressions();
+                for (final LabelSelectorRequirement requirement: requirements) {
+                    final String operator = requirement.getOperator();
+                    if (operator.equals(Operators.In.toString()) || operator.equals(Operators.Exists.toString())) {
+                        hasPodAffinityRequirements = true;
+                    } else if (operator.equals(Operators.NotIn.toString()) ||
+                            operator.equals(Operators.DoesNotExist.toString())) {
+                        hasPodAntiAffinityRequirements = true;
+                    }
+                }
+            }
         }
 
-        final boolean hasPodAntiAffinityRequirements;
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAntiAffinity() != null) {
-            hasPodAntiAffinityRequirements = pod.getSpec().getAffinity().getPodAntiAffinity()
-                                                .getRequiredDuringSchedulingIgnoredDuringExecution().size() > 0;
-        } else {
-            hasPodAntiAffinityRequirements = false;
+            final List<PodAffinityTerm> terms = pod.getSpec().getAffinity().getPodAntiAffinity()
+                    .getRequiredDuringSchedulingIgnoredDuringExecution();
+            for (final PodAffinityTerm term: terms) {
+                final List<LabelSelectorRequirement> requirements = term.getLabelSelector().getMatchExpressions();
+                for (final LabelSelectorRequirement requirement: requirements) {
+                    final String operator = requirement.getOperator();
+                    if (operator.equals(Operators.In.toString()) || operator.equals(Operators.Exists.toString())) {
+                        hasPodAntiAffinityRequirements = true;
+                    } else if (operator.equals(Operators.NotIn.toString()) ||
+                            operator.equals(Operators.DoesNotExist.toString())) {
+                        hasPodAffinityRequirements = true;
+                    }
+                }
+            }
         }
 
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
@@ -428,28 +448,33 @@ class PodEventsToDatabase {
                 }
                 termNumber += 1;
             }
+
         }
 
         // Pod affinity
         if (affinity.getPodAffinity() != null) {
             inserts.addAll(
-                    insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod,
-                    affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
+                    insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS,
+                            Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod,
+                            affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
             );
         }
 
         // Pod Anti affinity
         if (affinity.getPodAntiAffinity() != null) {
             inserts.addAll(
-                insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod,
-                    affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
+                    insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS,
+                            Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod,
+                            affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
             );
         }
         return Collections.unmodifiableList(inserts);
     }
 
-    private <T extends Record> List<Insert<?>> insertPodAffinityTerms(final Table<T> table, final Pod pod,
-                                                           final List<PodAffinityTerm> terms) {
+    private <T extends Record> List<Insert<?>> insertPodAffinityTerms(final Table<?> table,
+                                                                      final Table<?> antiTable,
+                                                                      final Pod pod,
+                                                                      final List<PodAffinityTerm> terms) {
         final List<Insert<?>> inserts = new ArrayList<>();
         int termNumber = 0;
         for (final PodAffinityTerm term: terms) {
@@ -458,10 +483,25 @@ class PodEventsToDatabase {
             for (final LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
                 matchExpressionNumber += 1;
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+                    Table<?> finalTable;
+                    String operator;
+                    if (expr.getOperator().equals(Operators.In.toString()) ||
+                            expr.getOperator().equals(Operators.Exists.toString())) {
+                        finalTable = table;
+                        operator = expr.getOperator();
+                    } else {
+                        finalTable = antiTable;
+                        if (expr.getOperator().equals(Operators.DoesNotExist.toString())) {
+                            operator = Operators.Exists.toString();
+                        } else {
+                            operator = Operators.In.toString();
+                        }
+                    }
+
                     inserts.add(
-                        conn.insertInto(table)
+                        conn.insertInto(finalTable)
                             .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
-                                    numMatchExpressions, expr.getKey(), expr.getOperator(), expr.getValues(),
+                                    numMatchExpressions, expr.getKey(), operator, expr.getValues(),
                                     term.getTopologyKey())
                     );
                 }
