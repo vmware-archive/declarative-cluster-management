@@ -370,6 +370,16 @@ class WorkloadGeneratorIT extends ITBase {
             // this would cause all pods across deployments with the same labels to be affine to each other
             labels[0] = "key" + taskCount;
             labels[1] = "value" + taskCount;
+<<<<<<< HEAD
+=======
+        }
+        return labels;
+    }
+
+    private int getDuration(final int startTime, int endTime) {
+        if (endTime <= startTime) {
+            endTime = startTime + 5;
+>>>>>>> ee296d873c32d473694318a48ce044f8522e27de
         }
         return labels;
     }
