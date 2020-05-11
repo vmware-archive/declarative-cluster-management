@@ -613,7 +613,6 @@ public class SchedulerTest {
         final int numPodsToModify = 3;
         final int numNodes = 3;
 
-
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
@@ -653,9 +652,11 @@ public class SchedulerTest {
         }
 
         // Add all nodes
+        final Set<String> nodes =  new HashSet<String>();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
+            nodes.add(nodeName);
             final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             nodeResourceEventHandler.onAddSync(node);
 
@@ -688,6 +689,11 @@ public class SchedulerTest {
                         .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
                         .collect(Collectors.toSet());
 
+                // nodes without pods that have affinity requirements or without pods that are unlabelled
+                final Set<String> remainingNodes = new HashSet<>(nodes);
+                remainingNodes.removeAll(nodesAssignedToPodsWithAffinityRequirements);
+                remainingNodes.removeAll(nodesAssignedToPodsWithoutAffinityRequirements);
+
                 if (condition.equals("Affinity")) {
                     // conditionToLabelledPods => affineToLabelledPods
                     // conditionToRemainingPods => affineToRemainingPods
@@ -697,7 +703,9 @@ public class SchedulerTest {
                     } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
                         assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
                     } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
-                        assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                        // the pod is alone or with an unlabelled pod
+                        assertTrue(remainingNodes.contains(assignedNode) ||
+                                nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
                     }
                 } else if (condition.equals("AntiAffinity")) {
                     // conditionToLabelledPods => antiAffineToLabelledPods
@@ -708,6 +716,11 @@ public class SchedulerTest {
                         assertFalse(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
                     } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
                         assertFalse(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                    } else if (podsToAssign.contains(podName)
+                            && !conditionToRemainingPods
+                            && !conditionToLabelledPods) {
+                        // all pods can be with the unlabelled pod
+                        assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
                     }
                 }
             }
@@ -790,20 +803,20 @@ public class SchedulerTest {
                 argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
 
                 // NotIn
-                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, false, false),
                 argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, false, false),
                 argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, false, false),
 
                 // DoesNotExist
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, false, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, false, false)
         );
     }
 
