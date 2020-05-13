@@ -187,13 +187,13 @@ class WorkloadGeneratorIT extends ITBase {
                 startTimeCutOff, 0);
     }
 
-    void  runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
+    void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
                   final String schedulerName, final int cpuScaleDown, final int memScaleDown,
                   final int timeScaleDown, final int startTimeCutOff, final int affinityProportion)
             throws Exception {
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
-                 " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{}", schedulerName, cpuScaleDown, memScaleDown,
-                                                                      timeScaleDown, startTimeCutOff);
+                 " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{} AffinityProportion:{}",
+                 schedulerName, cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff, affinityProportion);
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
@@ -222,13 +222,8 @@ class WorkloadGeneratorIT extends ITBase {
                 final float mem = Float.parseFloat(parts[5].replace(">", "")) / memScaleDown;
                 final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
-                boolean createAffinityRequirements = false;
-                if (r.nextInt(numberOfDeployments)
-                        < ((double) numberOfDeployments * (double) affinityProportion) / 100) {
-                    // randomly choose a deployment to add affinity requirements
-                    // relying on Random class to provide a uniform distribution of numbers between 0 and #ofDeployments
-                    createAffinityRequirements = true;
-                }
+                // randomly choose a deployment to add affinity requirements
+                final boolean createAffinityRequirements = r.nextInt(100) < affinityProportion;
 
                 // generate a deployment's details based on cpu, mem requirements
                 final List<Pod> deployment = getDeployment(client, schedulerName, cpu, mem, vmCount,
@@ -305,7 +300,8 @@ class WorkloadGeneratorIT extends ITBase {
                                  getClass().getClassLoader().getResourceAsStream(podFile)) {
                         final Pod pod = client.pods().load(fileStream).get();
                         pod.getSpec().setSchedulerName(schedulerName);
-                        final String appName = "app-" + taskCount;
+                        final String appName = String.format("app%s-%s", createAffinityRequirements ? "aff" : "",
+                                                             taskCount);
                         pod.getMetadata().setName(appName + "-" + podCount);
 
                         if (createAffinityRequirements) {

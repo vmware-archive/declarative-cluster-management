@@ -9,8 +9,8 @@ mkdir -p $TRACE_DIR/$GIT_REV
 
 for numNodes in 500 5000 10000;
 do
-   startTimeCutOff=600000
-   java -cp k8s-scheduler/target/k8s-scheduler-1.0-SNAPSHOT-tests.jar:k8s-scheduler/target/k8s-dcm-scheduler.jar org.dcm.EmulatedClusterTest -n $numNodes -f v2-cropped.txt -c 100 -m 50 -t 100 -s $startTimeCutOff &> /tmp/out
+   startTimeCutOff=200000
+   java -cp k8s-scheduler/target/k8s-scheduler-1.0-SNAPSHOT-tests.jar:k8s-scheduler/target/k8s-dcm-scheduler.jar org.dcm.EmulatedClusterTest -n $numNodes -f v2-cropped.txt -c 100 -m 200 -t 100 -s $startTimeCutOff &> /tmp/out
    
    expId=`date +%s`
    mkdir -p $TRACE_DIR/$GIT_REV/$expId

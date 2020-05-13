@@ -167,9 +167,6 @@ class EmulatedClusterTest {
                         "N, where we replay first N seconds of trace");
         options.addOption("p", "proportion", true,
                 "P, from 0 to 100, indicating the proportion of pods that have affinity requirements");
-        options.addOption("d", "deploymentAffinity", true,
-                "D, 1 if pods in a deployment should be affine to each other," +
-                        " 2 if pods across deployments should be affine to each other");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
         final int numNodes = Integer.parseInt(cmd.getOptionValue("numNodes"));
@@ -179,7 +176,8 @@ class EmulatedClusterTest {
         final int timeScaleDown = Integer.parseInt(cmd.getOptionValue("timeScaleDown"));
         final int startTimeCutOff = Integer.parseInt(cmd.getOptionValue("startTimeCutOff"));
         final int affinityRequirementsProportion = Integer.parseInt(cmd.hasOption("proportion") ?
-                cmd.getOptionValue("proportion") : "0");
+                                                                    cmd.getOptionValue("proportion") : "0");
+        assert affinityRequirementsProportion >= 0 && affinityRequirementsProportion <= 100;
         LOG.info("Running experiment with parameters: numNodes: {}, traceFile: {}, cpuScaleDown: {}, " +
                     "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}",
                 numNodes, traceFile, cpuScaleDown, memScaleDown,
