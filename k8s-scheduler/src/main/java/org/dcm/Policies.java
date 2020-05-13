@@ -69,24 +69,23 @@ class Policies {
                                   "where pods_to_assign.has_pod_affinity_requirements = false or " +
 
             // Affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are affine to it
-            // from inter_pod_affinity_matches. We get this latter set of pending pods by joining
-            // inter_pod_affinity_matches with pods_to_assign (inner).
+            // from inter_pod_affinity_matches_pending. We get this latter set of pending pods by joining
+            // inter_pod_affinity_matches_pending with pods_to_assign (inner).
             "      (pods_to_assign.controllable__node_name in " +
             "         (select b.controllable__node_name" +
             "          from pods_to_assign as b" +
-            "          join inter_pod_affinity_matches" +
-            "           on inter_pod_affinity_matches.pod_name = pods_to_assign.pod_name" +
-            "           and inter_pod_affinity_matches.matches = b.pod_name" +
+            "          join inter_pod_affinity_matches_pending" +
+            "           on inter_pod_affinity_matches_pending.pod_name = pods_to_assign.pod_name" +
+            "           and inter_pod_affinity_matches_pending.matches = b.pod_name" +
                         // If the pod is affine only to itself and no others, it can be placed anywhere
-            "           and (num_matches = 1 or inter_pod_affinity_matches.matches != pods_to_assign.pod_name)" +
-            "           and inter_pod_affinity_matches.node_name is null))" + // pending pods
+            "       and (num_matches = 1 or inter_pod_affinity_matches_pending.matches != pods_to_assign.pod_name)))" +
+                // pending pods
 
-            // Affinity to running pods...
+                // Affinity to running pods...
             "   or pods_to_assign.controllable__node_name in " +
-            "         (select inter_pod_affinity_matches.node_name " +
-            "          from inter_pod_affinity_matches " +
-            "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
-            "          and inter_pod_affinity_matches.node_name is not null)"; // running pods
+            "         (select inter_pod_affinity_matches_scheduled.node_name " +
+            "          from inter_pod_affinity_matches_scheduled " +
+            "          where pods_to_assign.pod_name = inter_pod_affinity_matches_scheduled.pod_name)"; // running pods
         return new Policy("InterPodAffinity", constraint);
     }
 
@@ -99,27 +98,26 @@ class Policies {
         final String constraint = "create view constraint_pod_anti_affinity as " +
             "select * " +
             "from pods_to_assign " +
-            "where pods_to_assign.has_pod_anti_affinity_requirements = false or " +
+            "where pods_to_assign.has_pod_anti_affinity_requirements = false or (" +
 
-            // Affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are affine to it
-            // from inter_pod_affinity_matches. We get this latter set of pending pods by joining
-            // inter_pod_affinity_matches with pods_to_assign (inner).
+            // Anti-affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are
+            // anti-affine to it from inter_pod_anti_affinity_matches_pending. We get this latter set of
+            // pending pods by joining inter_pod_anti_affinity_matches_pending with pods_to_assign (inner).
             "      (pods_to_assign.controllable__node_name not in " +
             "         (select b.controllable__node_name" +
             "          from pods_to_assign as b" +
-            "          join inter_pod_anti_affinity_matches" +
-            "           on inter_pod_anti_affinity_matches.pod_name = pods_to_assign.pod_name" +
-            "           and inter_pod_anti_affinity_matches.matches != pods_to_assign.pod_name" +
+            "          join inter_pod_anti_affinity_matches_pending" +
+            "           on inter_pod_anti_affinity_matches_pending.pod_name = pods_to_assign.pod_name" +
+            "           and inter_pod_anti_affinity_matches_pending.matches != pods_to_assign.pod_name" +
                         // next clause assumes that a pod cannot be anti-affine to itself
-            "           and inter_pod_anti_affinity_matches.matches = b.pod_name" +
-            "           and inter_pod_anti_affinity_matches.node_name is null))" + // pending pods
+            "           and inter_pod_anti_affinity_matches_pending.matches = b.pod_name))" + // pending pods
 
-            // Affinity to running pods...
-            "   or pods_to_assign.controllable__node_name in " +
-            "         (select inter_pod_affinity_matches.node_name " +
-            "          from inter_pod_affinity_matches " +
-            "          where pods_to_assign.pod_name = inter_pod_affinity_matches.pod_name " +
-            "          and inter_pod_affinity_matches.node_name is not null)"; // running pods
+            // Anti-affinity to running pods...
+            "  and pods_to_assign.controllable__node_name not in " +
+            "         (select inter_pod_anti_affinity_matches_scheduled.node_name " +
+            "          from inter_pod_anti_affinity_matches_scheduled " +
+            "          where pods_to_assign.pod_name = inter_pod_anti_affinity_matches_scheduled.pod_name)" +
+            ")"; // running pods
         return new Policy("InterPodAntiAffinity", constraint);
     }
 

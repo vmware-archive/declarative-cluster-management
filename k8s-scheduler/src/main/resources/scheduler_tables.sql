@@ -225,6 +225,26 @@ select
 from pod_info
 where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler';
 
+create view assigned_pods as
+select
+  pod_name,
+  status,
+  node_name,
+  namespace,
+  cpu_request,
+  memory_request,
+  ephemeral_storage_request,
+  pods_request,
+  owner_name,
+  creation_timestamp,
+  has_node_selector_labels,
+  has_pod_affinity_requirements,
+  has_pod_anti_affinity_requirements,
+  equivalence_class,
+  qos_class
+from pod_info
+where node_name is not null;
+
 -- This view is updated dynamically to change the limit. This
 -- pattern is required because there is no clean way to enforce
 -- a dynamic "LIMIT" clause.
@@ -281,7 +301,27 @@ create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_na
 create index node_labels_idx on node_labels (label_key, label_value);
 
 -- Inter pod affinity
-create view inter_pod_affinity_matches_inner_exists as
+create view inter_pod_affinity_matches_inner_exists_pending as
+select
+  pods_to_assign_A.pod_name as pods_to_assign_pod_name,
+  pod_labels.pod_name as pod_labels_pod_name,
+  pod_affinity_match_expressions.label_selector,
+  pod_affinity_match_expressions.topology_key,
+  pod_affinity_match_expressions.label_operator,
+  pod_affinity_match_expressions.num_match_expressions,
+  pod_affinity_match_expressions.match_expression,
+  pods_to_assign_B.controllable__node_name as node_name
+from
+  pods_to_assign as pods_to_assign_A
+  join pod_affinity_match_expressions on pods_to_assign_A.pod_name = pod_affinity_match_expressions.pod_name
+  join pod_labels on (
+    pod_affinity_match_expressions.label_operator = 'Exists'
+    and pod_affinity_match_expressions.label_key = pod_labels.label_key
+  )
+  join pods_to_assign as pods_to_assign_B on pod_labels.pod_name = pods_to_assign_B.pod_name
+  where pods_to_assign_A.has_pod_affinity_requirements = true;
+
+create view inter_pod_affinity_matches_inner_exists_scheduled as
 select
   pods_to_assign.pod_name as pods_to_assign_pod_name,
   pod_labels.pod_name as pod_labels_pod_name,
@@ -290,7 +330,7 @@ select
   pod_affinity_match_expressions.label_operator,
   pod_affinity_match_expressions.num_match_expressions,
   pod_affinity_match_expressions.match_expression,
-  pod_info.node_name
+  assigned_pods.node_name
 from
   pods_to_assign
   join pod_affinity_match_expressions on pods_to_assign.pod_name = pod_affinity_match_expressions.pod_name
@@ -298,10 +338,31 @@ from
     pod_affinity_match_expressions.label_operator = 'Exists'
     and pod_affinity_match_expressions.label_key = pod_labels.label_key
   )
-  join pod_info on pod_labels.pod_name = pod_info.pod_name
+  join assigned_pods on pod_labels.pod_name = assigned_pods.pod_name
   where pods_to_assign.has_pod_affinity_requirements = true;
 
-create view inter_pod_affinity_matches_inner_in as
+create view inter_pod_affinity_matches_inner_in_pending as
+select
+  pods_to_assign_A.pod_name as pods_to_assign_pod_name,
+  pod_labels.pod_name as pod_labels_pod_name,
+  pod_affinity_match_expressions.label_selector,
+  pod_affinity_match_expressions.topology_key,
+  pod_affinity_match_expressions.label_operator,
+  pod_affinity_match_expressions.num_match_expressions,
+  pod_affinity_match_expressions.match_expression,
+  pods_to_assign_B.controllable__node_name as node_name
+from
+  pods_to_assign as pods_to_assign_A
+  join pod_affinity_match_expressions on pods_to_assign_A.pod_name = pod_affinity_match_expressions.pod_name
+  join pod_labels on (
+    pod_affinity_match_expressions.label_operator = 'In'
+    and pod_affinity_match_expressions.label_key = pod_labels.label_key
+    and pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value))
+  )
+  join pods_to_assign as pods_to_assign_B on pod_labels.pod_name = pods_to_assign_B.pod_name
+  where pods_to_assign_A.has_pod_affinity_requirements = true;
+
+create view inter_pod_affinity_matches_inner_in_scheduled as
 select
   pods_to_assign.pod_name as pods_to_assign_pod_name,
   pod_labels.pod_name as pod_labels_pod_name,
@@ -310,7 +371,7 @@ select
   pod_affinity_match_expressions.label_operator,
   pod_affinity_match_expressions.num_match_expressions,
   pod_affinity_match_expressions.match_expression,
-  pod_info.node_name
+  assigned_pods.node_name
 from
   pods_to_assign
   join pod_affinity_match_expressions on pods_to_assign.pod_name = pod_affinity_match_expressions.pod_name
@@ -319,18 +380,18 @@ from
     and pod_affinity_match_expressions.label_key = pod_labels.label_key
     and pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value))
   )
-  join pod_info on pod_labels.pod_name = pod_info.pod_name
+  join assigned_pods on pod_labels.pod_name = assigned_pods.pod_name
   where pods_to_assign.has_pod_affinity_requirements = true;
 
-create view inter_pod_affinity_matches_inner as
+create view inter_pod_affinity_matches_inner_pending as
 select
   pods_to_assign_pod_name as pod_name,
   pod_labels_pod_name as matches,
   node_name as node_name
 from
-  ((select * from inter_pod_affinity_matches_inner_in)
+  ((select * from inter_pod_affinity_matches_inner_in_pending)
     union
-      (select * from inter_pod_affinity_matches_inner_exists))
+      (select * from inter_pod_affinity_matches_inner_exists_pending))
 group by
   pods_to_assign_pod_name,
   pod_labels_pod_name,
@@ -342,14 +403,57 @@ group by
 having
   count(distinct match_expression) = num_match_expressions;
 
-create view inter_pod_affinity_matches as
-select *, count(*) over (partition by pod_name) as num_matches from inter_pod_affinity_matches_inner;
+create view inter_pod_affinity_matches_inner_scheduled as
+select
+  pods_to_assign_pod_name as pod_name,
+  pod_labels_pod_name as matches,
+  node_name as node_name
+from
+  ((select * from inter_pod_affinity_matches_inner_in_scheduled)
+    union
+      (select * from inter_pod_affinity_matches_inner_exists_scheduled))
+group by
+  pods_to_assign_pod_name,
+  pod_labels_pod_name,
+  label_selector,
+  topology_key,
+  label_operator,
+  num_match_expressions,
+  node_name
+having
+  count(distinct match_expression) = num_match_expressions;
+
+create view inter_pod_affinity_matches_pending as
+select *, count(*) over (partition by pod_name) as num_matches from inter_pod_affinity_matches_inner_pending;
+
+create view inter_pod_affinity_matches_scheduled as
+select *, count(*) over (partition by pod_name) as num_matches from inter_pod_affinity_matches_inner_scheduled;
 
 create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_name);
 create index pod_anti_affinity_match_expressions_idx on pod_anti_affinity_match_expressions (pod_name);
 create index pod_labels_idx on pod_labels (label_key, label_value);
 
-create view inter_pod_anti_affinity_matches_inner_exists as
+create view inter_pod_anti_affinity_matches_inner_exists_pending as
+select
+  pods_to_assign_A.pod_name as pods_to_assign_pod_name,
+  pod_labels.pod_name as pod_labels_pod_name,
+  pod_anti_affinity_match_expressions.label_selector,
+  pod_anti_affinity_match_expressions.topology_key,
+  pod_anti_affinity_match_expressions.label_operator,
+  pod_anti_affinity_match_expressions.num_match_expressions,
+  pod_anti_affinity_match_expressions.match_expression,
+  pods_to_assign_B.controllable__node_name as node_name
+from
+  pods_to_assign as pods_to_assign_A
+  join pod_anti_affinity_match_expressions on pods_to_assign_A.pod_name = pod_anti_affinity_match_expressions.pod_name
+  join pod_labels on (
+    pod_anti_affinity_match_expressions.label_operator = 'Exists'
+    and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
+  )
+  join pods_to_assign as pods_to_assign_B on pod_labels.pod_name = pods_to_assign_B.pod_name
+  where pods_to_assign_A.has_pod_anti_affinity_requirements = true;
+
+create view inter_pod_anti_affinity_matches_inner_exists_scheduled as
 select
   pods_to_assign.pod_name as pods_to_assign_pod_name,
   pod_labels.pod_name as pod_labels_pod_name,
@@ -358,7 +462,7 @@ select
   pod_anti_affinity_match_expressions.label_operator,
   pod_anti_affinity_match_expressions.num_match_expressions,
   pod_anti_affinity_match_expressions.match_expression,
-  pod_info.node_name
+  assigned_pods.node_name
 from
   pods_to_assign
   join pod_anti_affinity_match_expressions on pods_to_assign.pod_name = pod_anti_affinity_match_expressions.pod_name
@@ -366,10 +470,31 @@ from
     pod_anti_affinity_match_expressions.label_operator = 'Exists'
     and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
   )
-  join pod_info on pod_labels.pod_name = pod_info.pod_name
+  join assigned_pods on pod_labels.pod_name = assigned_pods.pod_name
   where pods_to_assign.has_pod_anti_affinity_requirements = true;
 
-create view inter_pod_anti_affinity_matches_inner_in as
+create view inter_pod_anti_affinity_matches_inner_in_pending as
+select
+  pods_to_assign_A.pod_name as pods_to_assign_pod_name,
+  pod_labels.pod_name as pod_labels_pod_name,
+  pod_anti_affinity_match_expressions.label_selector,
+  pod_anti_affinity_match_expressions.topology_key,
+  pod_anti_affinity_match_expressions.label_operator,
+  pod_anti_affinity_match_expressions.num_match_expressions,
+  pod_anti_affinity_match_expressions.match_expression,
+  pods_to_assign_A.controllable__node_name as node_name
+from
+  pods_to_assign as pods_to_assign_A
+  join pod_anti_affinity_match_expressions on pods_to_assign_A.pod_name = pod_anti_affinity_match_expressions.pod_name
+  join pod_labels on (
+    pod_anti_affinity_match_expressions.label_operator = 'In'
+    and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
+    and pod_labels.label_value in (unnest(pod_anti_affinity_match_expressions.label_value))
+  )
+  join pods_to_assign as pods_to_assign_B on pod_labels.pod_name = pods_to_assign_B.pod_name
+  where pods_to_assign_A.has_pod_anti_affinity_requirements = true;
+
+create view inter_pod_anti_affinity_matches_inner_in_scheduled as
 select
   pods_to_assign.pod_name as pods_to_assign_pod_name,
   pod_labels.pod_name as pod_labels_pod_name,
@@ -378,7 +503,7 @@ select
   pod_anti_affinity_match_expressions.label_operator,
   pod_anti_affinity_match_expressions.num_match_expressions,
   pod_anti_affinity_match_expressions.match_expression,
-  pod_info.node_name
+  assigned_pods.node_name
 from
   pods_to_assign
   join pod_anti_affinity_match_expressions on pods_to_assign.pod_name = pod_anti_affinity_match_expressions.pod_name
@@ -387,18 +512,18 @@ from
     and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
     and pod_labels.label_value in (unnest(pod_anti_affinity_match_expressions.label_value))
   )
-  join pod_info on pod_labels.pod_name = pod_info.pod_name
+  join assigned_pods on pod_labels.pod_name = assigned_pods.pod_name
   where pods_to_assign.has_pod_anti_affinity_requirements = true;
 
-create view inter_pod_anti_affinity_matches_inner as
+create view inter_pod_anti_affinity_matches_inner_pending as
 select
   pods_to_assign_pod_name as pod_name,
   pod_labels_pod_name as matches,
   node_name as node_name
 from
-  ((select * from inter_pod_anti_affinity_matches_inner_in)
+  ((select * from inter_pod_anti_affinity_matches_inner_in_pending)
     union
-      (select * from inter_pod_anti_affinity_matches_inner_exists))
+      (select * from inter_pod_anti_affinity_matches_inner_exists_pending))
 group by
   pods_to_assign_pod_name,
   pod_labels_pod_name,
@@ -410,8 +535,31 @@ group by
 having
   count(distinct match_expression) = num_match_expressions;
 
-create view inter_pod_anti_affinity_matches as
-select *, count(*) over (partition by pod_name) as num_matches from inter_pod_anti_affinity_matches_inner;
+create view inter_pod_anti_affinity_matches_inner_scheduled as
+select
+  pods_to_assign_pod_name as pod_name,
+  pod_labels_pod_name as matches,
+  node_name as node_name
+from
+  ((select * from inter_pod_anti_affinity_matches_inner_in_scheduled)
+    union
+      (select * from inter_pod_anti_affinity_matches_inner_exists_scheduled))
+group by
+  pods_to_assign_pod_name,
+  pod_labels_pod_name,
+  label_selector,
+  topology_key,
+  label_operator,
+  num_match_expressions,
+  node_name
+having
+  count(distinct match_expression) = num_match_expressions;
+
+create view inter_pod_anti_affinity_matches_pending as
+select *, count(*) over (partition by pod_name) as num_matches from inter_pod_anti_affinity_matches_inner_pending;
+
+create view inter_pod_anti_affinity_matches_scheduled as
+select *, count(*) over (partition by pod_name) as num_matches from inter_pod_anti_affinity_matches_inner_scheduled;
 
 -- Spare capacity
 create view spare_capacity_per_node as
