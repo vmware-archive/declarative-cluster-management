@@ -17,6 +17,6 @@ do
    cp /tmp/out $TRACE_DIR/$GIT_REV/$expId/workload_output
    cp /tmp/out $TRACE_DIR/$GIT_REV/$expId/dcm_scheduler_trace
 
-   echo "workload,schedulerName,solver,kubeconfig,dcmGitBranch,dcmGitCommitId,numNodes,startTimeCutOff,percentageOfNodesToScoreValue" > $TRACE_DIR/$GIT_REV/$expId/metadata
-   echo "v2-cropped.txt,dcm-scheduler,ORTOOLS,local,$GIT_BRANCH,$GIT_REV,$numNodes,$startTimeCutOff,0" >> $TRACE_DIR/$GIT_REV/$expId/metadata
+   echo "workload,schedulerName,solver,kubeconfig,dcmGitBranch,dcmGitCommitId,numNodes,startTimeCutOff,percentageOfNodesToScoreValue,timeScaleDown" > $TRACE_DIR/$GIT_REV/$expId/metadata
+   echo "v2-cropped.txt,dcm-scheduler,ORTOOLS,local,$GIT_BRANCH,$GIT_REV,$numNodes,$startTimeCutOff,0,100" >> $TRACE_DIR/$GIT_REV/$expId/metadata
 done
