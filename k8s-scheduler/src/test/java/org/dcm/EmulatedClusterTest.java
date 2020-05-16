@@ -45,7 +45,7 @@ class EmulatedClusterTest {
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
-                                final int affinityRequirementsProportion)
+                                final int podAffinityProportion, final int nodeRange, final int nodeAffinityProportion)
             throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
 
@@ -65,7 +65,12 @@ class EmulatedClusterTest {
         scheduler.startScheduler(new EmulatedPodToNodeBinder(dbConnectionPool), 100, 50);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
-            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+
+            final Map<String, String> labels = new HashMap<>();
+            final int label = i % nodeRange;
+            labels.put("app" + label, "store" + label);
+
+            final Node node = addNode(nodeName, labels, Collections.emptyList());
             node.getStatus().getCapacity().put("cpu", new Quantity("2"));
             node.getStatus().getCapacity().put("memory", new Quantity("2000"));
             node.getStatus().getCapacity().put("pods", new Quantity("110"));
@@ -87,8 +92,8 @@ class EmulatedClusterTest {
         final WorkloadGeneratorIT replay = new WorkloadGeneratorIT();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
-        replay.runTrace(client, traceFileName, deployer, "dcm-scheduler", cpuScaleDown,
-                memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion);
+        replay.runTrace(client, traceFileName, deployer, "dcm-scheduler", cpuScaleDown, memScaleDown,
+                timeScaleDown, startTimeCutOff, podAffinityProportion, nodeAffinityProportion, nodeRange);
     }
 
     private static Node addNode(final String nodeName, final Map<String, String> labels,
@@ -165,8 +170,14 @@ class EmulatedClusterTest {
                         "Factor by which to scale down arrival rate for pods");
         options.addRequiredOption("s", "startTimeCutOff", true,
                         "N, where we replay first N seconds of trace");
-        options.addOption("p", "proportion", true,
-                "P, from 0 to 100, indicating the proportion of pods that have affinity requirements");
+        options.addOption("pp", "podAffinityProportion", true,
+                "P, from 0 to 100, indicating the proportion of pods that have pod affinity requirements");
+        options.addOption("i", "nodeRange", true,
+              "I, range from 1 to 100, indicating the number of nodes that should have a specific label.\n" +
+                      "Then, we have groups of N/R nodes, where each group has R nodes that all have the same label.");
+        options.addOption("np", "nodeAffinityProportion", true,
+              "NP, range from 0 to 100, indicating the proportion of pods that have node affinity requirements\n");
+
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
         final int numNodes = Integer.parseInt(cmd.getOptionValue("numNodes"));
@@ -175,15 +186,22 @@ class EmulatedClusterTest {
         final int memScaleDown = Integer.parseInt(cmd.getOptionValue("memScaleDown"));
         final int timeScaleDown = Integer.parseInt(cmd.getOptionValue("timeScaleDown"));
         final int startTimeCutOff = Integer.parseInt(cmd.getOptionValue("startTimeCutOff"));
-        final int affinityRequirementsProportion = Integer.parseInt(cmd.hasOption("proportion") ?
-                                                                    cmd.getOptionValue("proportion") : "0");
-        assert affinityRequirementsProportion >= 0 && affinityRequirementsProportion <= 100;
+        final int podAffinityProportion = Integer.parseInt(cmd.hasOption("podAffinityProportion") ?
+                                                                    cmd.getOptionValue("podAffinityProportion") : "0");
+        final int nodeRange = Integer.parseInt(cmd.hasOption("nodeRange") ?
+                cmd.getOptionValue("nodeRange") : "1");
+        final int nodeAffinityProportion = Integer.parseInt(cmd.hasOption("nodeAffinityProportion") ?
+                cmd.getOptionValue("nodeAffinityProportion") : "0");
+        assert podAffinityProportion >= 0 && podAffinityProportion <= 100;
+        assert nodeAffinityProportion >= 0 && nodeAffinityProportion <= 100;
+        assert nodeRange >= 1 && nodeRange <= 100;
         LOG.info("Running experiment with parameters: numNodes: {}, traceFile: {}, cpuScaleDown: {}, " +
-                    "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}",
-                numNodes, traceFile, cpuScaleDown, memScaleDown,
-                timeScaleDown, startTimeCutOff, affinityRequirementsProportion);
+                    "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, podAffinityProportion: {}, " +
+                     "nodeAffinityProportion: {}, nodeRange: {}",
+                numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff,
+                podAffinityProportion, nodeAffinityProportion, nodeRange);
         emulatedClusterTest.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
-                                            startTimeCutOff, affinityRequirementsProportion);
+                                            startTimeCutOff, podAffinityProportion, nodeRange, nodeAffinityProportion);
         System.exit(0); // without this, there are non-daemon threads that prevent JVM shutdown
     }
 }

@@ -16,8 +16,12 @@ import com.google.common.util.concurrent.SettableFuture;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeAffinity;
+import io.fabric8.kubernetes.api.model.NodeSelectorTerm;
+import io.fabric8.kubernetes.api.model.NodeSelectorRequirement;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodAffinityTerm;
+import io.fabric8.kubernetes.api.model.PodAntiAffinity;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
@@ -184,16 +188,19 @@ class WorkloadGeneratorIT extends ITBase {
                   final String schedulerName, final int cpuScaleDown, final int memScaleDown,
                   final int timeScaleDown, final int startTimeCutOff) throws Exception {
         runTrace(client, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
-                startTimeCutOff, 0);
+                startTimeCutOff, 0, 0, 1);
     }
 
     void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
                   final String schedulerName, final int cpuScaleDown, final int memScaleDown,
-                  final int timeScaleDown, final int startTimeCutOff, final int affinityProportion)
+                  final int timeScaleDown, final int startTimeCutOff, final int podAffinityProportion,
+                  final int nodeAffinityProportion, final int nodeRange)
             throws Exception {
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
-                 " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{} AffinityProportion:{}",
-                 schedulerName, cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff, affinityProportion);
+                 "MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{} " +
+                        "PodAffinityProportion:{} NodeAffinityProportion:{} nodeRange:{}",
+                 schedulerName, cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff,
+                podAffinityProportion, nodeAffinityProportion, nodeRange);
 
         // Load data from file
         final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
@@ -211,7 +218,8 @@ class WorkloadGeneratorIT extends ITBase {
             String line;
             int taskCount = 0;
             final long startTime = System.currentTimeMillis();
-            final Random r = new Random(1L); // providing deterministic seed
+            final Random podRandomGenerator = new Random(1L); // providing deterministic seed
+            final Random nodeRandomGenerator = new Random(2L); // providing deterministic seed
             System.out.println("Starting at " + startTime + " with " + numberOfDeployments + " deployments");
 
             while ((line = reader.readLine()) != null) {
@@ -223,11 +231,12 @@ class WorkloadGeneratorIT extends ITBase {
                 final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
                 // randomly choose a deployment to add affinity requirements
-                final boolean createAffinityRequirements = r.nextInt(100) < affinityProportion;
+                final boolean podAffinityRequirements = podRandomGenerator.nextInt(100) < podAffinityProportion;
+                final boolean nodeAffinityRequirements = nodeRandomGenerator.nextInt(100) < nodeAffinityProportion;
 
                 // generate a deployment's details based on cpu, mem requirements
-                final List<Pod> deployment = getDeployment(client, schedulerName, cpu, mem, vmCount,
-                        taskCount, createAffinityRequirements);
+                final List<Pod> deployment = getDeployment(client, schedulerName, cpu, mem, vmCount, taskCount,
+                        podAffinityRequirements, nodeAffinityRequirements, nodeRange);
                 totalPods += deployment.size();
 
                 if (Integer.parseInt(parts[2]) > startTimeCutOff) { // window in seconds
@@ -291,40 +300,25 @@ class WorkloadGeneratorIT extends ITBase {
 
     private List<Pod> getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,
                                     final float mem, final int count, final int taskCount,
-                                    final boolean createAffinityRequirements) {
+                                    final boolean createPodAffinityRequirements,
+                                    final boolean createNodeAffinityRequirements, final int nodeRange) {
         // Load the template file and update its contents to generate a new deployment template
-        final String podFile = createAffinityRequirements ? "pod-with-affinity.yml" : "pod-only.yml";
+        final String podFile = createPodAffinityRequirements || createNodeAffinityRequirements ?
+                "pod-with-affinity.yml" : "pod-only.yml";
         final List<Pod> podsToCreate = IntStream.range(0, count)
                 .mapToObj(podCount -> {
                     try (final InputStream fileStream =
                                  getClass().getClassLoader().getResourceAsStream(podFile)) {
                         final Pod pod = client.pods().load(fileStream).get();
                         pod.getSpec().setSchedulerName(schedulerName);
-                        final String appName = String.format("app%s-%s", createAffinityRequirements ? "aff" : "",
-                                                             taskCount);
+                        final String appName = String.format("app%s-%s-%s",
+                                createPodAffinityRequirements ? "podAff" : "",
+                                createNodeAffinityRequirements ? "nodeAff" : "", taskCount);
                         pod.getMetadata().setName(appName + "-" + podCount);
 
-                        if (createAffinityRequirements) {
-                            // creating anti-affinity affinity requirements, with In operator
-                            final Map<String, String> labels = pod.getMetadata().getLabels();
-                            final Map<String, String> newLabels = new HashMap<>();
-                            for (final Map.Entry<String, String> entry: labels.entrySet()) {
-                                newLabels.put(entry.getKey() + taskCount, entry.getValue() + taskCount);
-                            }
-                            pod.getMetadata().setLabels(newLabels);
-
-                            final List<PodAffinityTerm> podAffinityTerms = pod.getSpec().getAffinity()
-                                    .getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
-                            for (final PodAffinityTerm term: podAffinityTerms) {
-                                final List<LabelSelectorRequirement> requirements =
-                                        term.getLabelSelector().getMatchExpressions();
-                                for (final LabelSelectorRequirement requirement: requirements) {
-                                    requirement.setKey(requirement.getKey() + taskCount);
-                                    final List<String> newValues = new ArrayList<>();
-                                    requirement.getValues().forEach(v -> newValues.add(v + taskCount));
-                                    requirement.setValues(newValues);
-                                }
-                            }
+                        if (createPodAffinityRequirements || createNodeAffinityRequirements) {
+                            setPodAffinityRequirements(pod, createPodAffinityRequirements,
+                                    createNodeAffinityRequirements, taskCount, nodeRange);
                         }
 
                         final List<Container> containerList = pod.getSpec().getContainers();
@@ -345,6 +339,55 @@ class WorkloadGeneratorIT extends ITBase {
                 })
                 .collect(Collectors.toList());
         return podsToCreate;
+    }
+
+    private void setPodAffinityRequirements(final Pod pod, final boolean createPodAffinityRequirements,
+                                            final boolean createNodeAffinityRequirements,
+                                            final int taskCount, final int nodeRange) {
+        // creating pod anti-affinity requirements, with In operator
+        if (createPodAffinityRequirements) {
+            final Map<String, String> labels = pod.getMetadata().getLabels();
+            final Map<String, String> newLabels = new HashMap<>();
+            for (final Map.Entry<String, String> entry: labels.entrySet()) {
+                newLabels.put(entry.getKey() + taskCount, entry.getValue() + taskCount);
+            } 
+            pod.getMetadata().setLabels(newLabels);
+            final List<PodAffinityTerm> podAffinityTerms = pod.getSpec().getAffinity()
+                    .getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
+            for (final PodAffinityTerm term: podAffinityTerms) {
+                final List<LabelSelectorRequirement> requirements =
+                        term.getLabelSelector().getMatchExpressions();
+                for (final LabelSelectorRequirement requirement: requirements) {
+                    requirement.setKey(requirement.getKey() + taskCount);
+                    final List<String> newValues = new ArrayList<>();
+                    requirement.getValues().forEach(v -> newValues.add(v + taskCount));
+                    requirement.setValues(newValues);
+                }
+            }
+        } else if (createNodeAffinityRequirements) {
+            // drop old condition
+            pod.getSpec().getAffinity().setPodAntiAffinity(new PodAntiAffinity());
+        }
+
+        if (createNodeAffinityRequirements) {
+            // creating node affinity requirements, with In operator // ensure that the label is <= numNodeGroups
+            final int label = taskCount % nodeRange;
+            final List<NodeSelectorTerm> terms =
+                    pod.getSpec().getAffinity().getNodeAffinity()
+                            .getRequiredDuringSchedulingIgnoredDuringExecution().getNodeSelectorTerms();
+            for (final NodeSelectorTerm term: terms) {
+                final List<NodeSelectorRequirement> requirements =
+                        term.getMatchExpressions();
+                for (final NodeSelectorRequirement requirement: requirements) {
+                    requirement.setKey(requirement.getKey() + label);
+                    final List<String> newValues = new ArrayList<>();
+                    requirement.getValues().forEach(v -> newValues.add(v + label));
+                    requirement.setValues(newValues);
+                }
+            }
+        } else if (createPodAffinityRequirements) { // drop old condition
+            pod.getSpec().getAffinity().setNodeAffinity(new NodeAffinity());
+        }
     }
 
     private static final class LoggingPodWatcher implements Watcher<Pod> {

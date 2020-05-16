@@ -36,7 +36,8 @@ create table pod_info
   creation_timestamp varchar(100) not null,
   priority integer not null,
   schedulerName varchar(50),
-  has_node_selector_labels boolean not null,
+  has_node_affinity_requirements boolean not null,
+  has_node_anti_affinity_requirements boolean not null,
   has_pod_affinity_requirements boolean not null,
   has_pod_anti_affinity_requirements boolean not null,
   equivalence_class bigint not null,
@@ -126,7 +127,8 @@ create table node_labels
   node_name varchar(36) not null,
   label_key varchar(100) not null,
   label_value varchar(36) not null,
-  foreign key(node_name) references node_info(name) on delete cascade
+  foreign key(node_name) references node_info(name) on delete cascade,
+  primary key(node_name, label_key, label_value)
 );
 
 -- Volume labels
@@ -217,7 +219,8 @@ select
   pods_request,
   owner_name,
   creation_timestamp,
-  has_node_selector_labels,
+  has_node_affinity_requirements,
+  has_node_anti_affinity_requirements,
   has_pod_affinity_requirements,
   has_pod_anti_affinity_requirements,
   equivalence_class,
@@ -237,7 +240,8 @@ select
   pods_request,
   owner_name,
   creation_timestamp,
-  has_node_selector_labels,
+  has_node_affinity_requirements,
+  has_node_anti_affinity_requirements,
   has_pod_affinity_requirements,
   has_pod_anti_affinity_requirements,
   equivalence_class,
@@ -268,7 +272,7 @@ join pod_ports_request
      on pod_ports_request.pod_name = pods_to_assign.pod_name;
 
 -- Pod node selectors
-create view pod_node_selector_matches as
+create view pod_affine_node_selector_matches as
 select pods_to_assign.pod_name as pod_name,
        node_labels.node_name as node_name
 from pods_to_assign
@@ -281,20 +285,28 @@ join node_labels
             and pod_node_selector_labels.label_value = node_labels.label_value)
         or (pod_node_selector_labels.label_operator = 'Exists'
             and pod_node_selector_labels.label_key = node_labels.label_key)
-        or (pod_node_selector_labels.label_operator = 'NotIn')
-        or (pod_node_selector_labels.label_operator = 'DoesNotExist')
-where pods_to_assign.has_node_selector_labels = true
+where pods_to_assign.has_node_affinity_requirements = true
 group by pods_to_assign.pod_name,  node_labels.node_name, pod_node_selector_labels.term,
          pod_node_selector_labels.label_operator, pod_node_selector_labels.num_match_expressions
-having case pod_node_selector_labels.label_operator
-            when 'NotIn'
-                 then not(any(pod_node_selector_labels.label_key = node_labels.label_key
-                              and pod_node_selector_labels.label_value = node_labels.label_value))
-            when 'DoesNotExist'
-                 then not(any(pod_node_selector_labels.label_key = node_labels.label_key))
-            else count(distinct match_expression) = pod_node_selector_labels.num_match_expressions
-       end;
+having count(distinct match_expression) = pod_node_selector_labels.num_match_expressions;
 
+create view pod_anti_affine_node_selector_matches as
+select pods_to_assign.pod_name as pod_name,
+       node_labels.node_name as node_name
+from pods_to_assign
+join pod_node_selector_labels
+     on pods_to_assign.pod_name = pod_node_selector_labels.pod_name
+join node_labels
+        on
+           (pod_node_selector_labels.label_operator = 'NotIn'
+            and pod_node_selector_labels.label_key = node_labels.label_key
+            and pod_node_selector_labels.label_value = node_labels.label_value)
+        or (pod_node_selector_labels.label_operator = 'DoesNotExist'
+            and pod_node_selector_labels.label_key = node_labels.label_key)
+where pods_to_assign.has_node_anti_affinity_requirements = true
+group by pods_to_assign.pod_name,  node_labels.node_name, pod_node_selector_labels.term,
+         pod_node_selector_labels.label_operator, pod_node_selector_labels.num_match_expressions;
+-- having count(distinct match_expression) = pod_node_selector_labels.num_match_expressions;
 
 create index pod_info_idx on pod_info (status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);

@@ -385,9 +385,9 @@ public class SchedulerTest {
         }
 
         // First, we check if the computed intermediate view is correct
-        final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
-                                                              .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
-                                                                           Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
+        final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_AFFINE_NODE_SELECTOR_MATCHES)
+                .fetchGroups(Tables.POD_AFFINE_NODE_SELECTOR_MATCHES.POD_NAME,
+                        Tables.POD_AFFINE_NODE_SELECTOR_MATCHES.NODE_NAME);
         podsToMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(p)));
         podsPartialMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(p)));
         podsWithoutLabels.forEach(p -> assertFalse(podsToNodesMap.containsKey(p)));
@@ -404,7 +404,8 @@ public class SchedulerTest {
         }
 
         // Now test the solver itself
-        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
+        final List<String> policies = Policies.from(Policies.nodePredicates(),
+                                                    Policies.nodeAffinitySelectorPredicate());
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
@@ -502,38 +503,77 @@ public class SchedulerTest {
         }
 
         // First, we check if the computed intermediate views are correct
-        final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
-                                                             .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
-                                                                          Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
-        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.containsKey(p),
-                                               shouldBeAffineToLabelledNodes || shouldBeAffineToRemainingNodes));
-        podsToNodesMap.forEach(
-            (pod, nodeList) -> {
-                assertTrue(podsToAssign.contains(pod));
-                nodeList.forEach(
-                    node -> {
-                        if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
-                            assertTrue(nodesToAssign.contains(node) || remainingNodes.contains(node));
-                        }
-                        else if (shouldBeAffineToLabelledNodes) {
-                            assertTrue(nodesToAssign.contains(node));
-                        }
-                        else if (shouldBeAffineToRemainingNodes) {
-                            assertFalse(nodesToAssign.contains(node));
-                        }
+        final Map<String, List<String>> podsToAntiAffineNodesMap;
+        final String operator = terms.get(0).getMatchExpressions().get(0).getOperator();
+        if (operator.equals("In") || operator.equals("Exists")) {
+            podsToAntiAffineNodesMap = conn.selectFrom(Tables.POD_AFFINE_NODE_SELECTOR_MATCHES)
+                    .fetchGroups(Tables.POD_AFFINE_NODE_SELECTOR_MATCHES.POD_NAME,
+                            Tables.POD_AFFINE_NODE_SELECTOR_MATCHES.NODE_NAME);
+            podsToAssign.forEach(p -> assertEquals(podsToAntiAffineNodesMap.containsKey(p),
+                    shouldBeAffineToLabelledNodes || shouldBeAffineToRemainingNodes));
+            podsToAntiAffineNodesMap.forEach(
+                    (pod, nodeList) -> {
+                        assertTrue(podsToAssign.contains(pod));
+                        nodeList.forEach(
+                                node -> {
+                                    if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
+                                        assertTrue(nodesToAssign.contains(node) || remainingNodes.contains(node));
+                                    }
+                                    else if (shouldBeAffineToLabelledNodes) {
+                                        assertTrue(nodesToAssign.contains(node));
+                                    }
+                                    else if (shouldBeAffineToRemainingNodes) {
+                                        assertFalse(nodesToAssign.contains(node));
+                                    }
+                                }
+                        );
                     }
-                );
-            }
-        );
+            );
 
-        assertEquals(Sets.newHashSet(conn.selectFrom(Tables.POD_NODE_SELECTOR_LABELS)
-                                .fetch("POD_NAME")),
-                     Sets.newHashSet(conn.selectFrom(Tables.POD_INFO)
-                                .where(Tables.POD_INFO.HAS_NODE_SELECTOR_LABELS.eq(true))
-                                .fetch("POD_NAME")));
+            assertEquals(Sets.newHashSet(conn.selectFrom(Tables.POD_NODE_SELECTOR_LABELS)
+                            .fetch("POD_NAME")),
+                    Sets.newHashSet(conn.selectFrom(Tables.POD_INFO)
+                            .where(Tables.POD_INFO.HAS_NODE_AFFINITY_REQUIREMENTS.eq(true))
+                            .fetch("POD_NAME")));
+        } else {
+            // this map contains all nodes we are anti-affine to
+            podsToAntiAffineNodesMap = conn.selectFrom(Tables.POD_ANTI_AFFINE_NODE_SELECTOR_MATCHES)
+                    .fetchGroups(Tables.POD_ANTI_AFFINE_NODE_SELECTOR_MATCHES.POD_NAME,
+                            Tables.POD_ANTI_AFFINE_NODE_SELECTOR_MATCHES.NODE_NAME);
+
+            podsToAssign.forEach(p -> assertEquals(podsToAntiAffineNodesMap.containsKey(p),
+                    !shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes));
+            podsToAntiAffineNodesMap.forEach(
+                    (pod, nodeList) -> {
+                        assertTrue(podsToAssign.contains(pod));
+                        nodeList.forEach(
+                                antiAffineNode -> {
+                                    if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
+                                        assertFalse(nodesToAssign.contains(antiAffineNode) ||
+                                                remainingNodes.contains(antiAffineNode));
+                                    }
+                                    else if (shouldBeAffineToLabelledNodes) {
+                                        assertFalse(nodesToAssign.contains(antiAffineNode));
+                                    }
+                                    else if (shouldBeAffineToRemainingNodes) {
+                                        assertFalse(remainingNodes.contains(antiAffineNode));
+                                    }
+                                }
+                        );
+                    }
+            );
+
+            assertEquals(Sets.newHashSet(conn.selectFrom(Tables.POD_NODE_SELECTOR_LABELS)
+                            .fetch("POD_NAME")),
+                    Sets.newHashSet(conn.selectFrom(Tables.POD_INFO)
+                            .where(Tables.POD_INFO.HAS_NODE_ANTI_AFFINITY_REQUIREMENTS.eq(true))
+                            .fetch("POD_NAME")));
+        }
 
         // Now test the solver itself
-        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
+        final List<String> policies = Policies.from(Policies.nodePredicates(),
+                Policies.nodeAffinitySelectorPredicate(),
+                Policies.nodeAntiAffinitySelectorPredicate());
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2

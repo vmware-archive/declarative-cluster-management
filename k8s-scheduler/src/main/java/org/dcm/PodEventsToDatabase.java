@@ -42,9 +42,11 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -60,6 +62,11 @@ class PodEventsToDatabase {
         Exists,
         NotIn,
         DoesNotExist
+    }
+
+    private enum AffinityType {
+        Affinity,
+        AntiAffinity
     }
 
     PodEventsToDatabase(final DBConnectionPool dbConnectionPool) {
@@ -203,7 +210,8 @@ class PodEventsToDatabase {
         // The first owner reference is used to break symmetries.
         final List<OwnerReference> owners = pod.getMetadata().getOwnerReferences();
         final String ownerName = (owners == null || owners.size() == 0) ? "" : owners.get(0).getName();
-        final boolean hasNodeSelector = hasNodeSelector(pod);
+        final boolean hasNodeAffinityRequirements = hasNodeAffinityRequirements(pod, AffinityType.Affinity);
+        final boolean hasNodeAntiAffinityRequirements = hasNodeAffinityRequirements(pod, AffinityType.AntiAffinity);
 
         boolean hasPodAffinityRequirements = false;
         boolean hasPodAntiAffinityRequirements = false;
@@ -255,7 +263,8 @@ class PodEventsToDatabase {
                 p.PODS_REQUEST,
                 p.OWNER_NAME,
                 p.CREATION_TIMESTAMP,
-                p.HAS_NODE_SELECTOR_LABELS,
+                p.HAS_NODE_AFFINITY_REQUIREMENTS,
+                p.HAS_NODE_ANTI_AFFINITY_REQUIREMENTS,
                 p.HAS_POD_AFFINITY_REQUIREMENTS,
                 p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
                 p.PRIORITY,
@@ -272,7 +281,8 @@ class PodEventsToDatabase {
                         podsRequest,
                         ownerName,
                         pod.getMetadata().getCreationTimestamp(),
-                        hasNodeSelector,
+                        hasNodeAffinityRequirements,
+                        hasNodeAntiAffinityRequirements,
                         hasPodAffinityRequirements,
                         hasPodAntiAffinityRequirements,
                         priority,
@@ -293,7 +303,8 @@ class PodEventsToDatabase {
                 // The first owner reference is used to break symmetries.
                 .set(p.OWNER_NAME, ownerName)
                 .set(p.CREATION_TIMESTAMP, pod.getMetadata().getCreationTimestamp())
-                .set(p.HAS_NODE_SELECTOR_LABELS, hasNodeSelector)
+                .set(p.HAS_NODE_AFFINITY_REQUIREMENTS, hasNodeAffinityRequirements)
+                .set(p.HAS_NODE_ANTI_AFFINITY_REQUIREMENTS, hasNodeAntiAffinityRequirements)
                 .set(p.HAS_POD_AFFINITY_REQUIREMENTS, hasPodAffinityRequirements)
                 .set(p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS, hasPodAntiAffinityRequirements)
 
@@ -313,16 +324,53 @@ class PodEventsToDatabase {
         return inserts;
     }
 
-    private boolean hasNodeSelector(final Pod pod) {
-        final PodSpec podSpec = pod.getSpec();
-        return  (podSpec.getNodeSelector() != null && podSpec.getNodeSelector().size() > 0)
-                || (podSpec.getAffinity() != null
-                && podSpec.getAffinity().getNodeAffinity() != null
-                && podSpec.getAffinity().getNodeAffinity()
-                .getRequiredDuringSchedulingIgnoredDuringExecution() != null
-                && podSpec.getAffinity().getNodeAffinity()
-                .getRequiredDuringSchedulingIgnoredDuringExecution()
-                .getNodeSelectorTerms().size() > 0);
+    private boolean hasNodeAffinityRequirements(final Pod pod, final AffinityType searchingFor) {
+        if (searchingFor.equals(AffinityType.Affinity)) { // looking for affinity requirements
+            final PodSpec podSpec = pod.getSpec();
+            if (podSpec.getNodeSelector() != null && podSpec.getNodeSelector().size() > 0) {
+                return true;
+            }
+            if (podSpec.getAffinity() != null
+                    && podSpec.getAffinity().getNodeAffinity() != null
+                    && podSpec.getAffinity().getNodeAffinity()
+                    .getRequiredDuringSchedulingIgnoredDuringExecution() != null) {
+                final List<NodeSelectorTerm> terms = podSpec.getAffinity().getNodeAffinity()
+                        .getRequiredDuringSchedulingIgnoredDuringExecution()
+                        .getNodeSelectorTerms();
+                final Set<String> operators = new HashSet<>();
+                operators.add(Operators.In.toString());
+                operators.add(Operators.Exists.toString());
+                return hasNodeAffinityRequirementsHelper(terms, operators);
+            }
+            return false; // no affinity reqs if none of that was true;
+        } else { // looking for anti affinity requirements
+            final PodSpec podSpec = pod.getSpec();
+            if (podSpec.getAffinity() != null
+                    && podSpec.getAffinity().getNodeAffinity() != null
+                    && podSpec.getAffinity().getNodeAffinity()
+                    .getRequiredDuringSchedulingIgnoredDuringExecution() != null) {
+                final List<NodeSelectorTerm> terms = podSpec.getAffinity().getNodeAffinity()
+                        .getRequiredDuringSchedulingIgnoredDuringExecution()
+                        .getNodeSelectorTerms();
+                final Set<String> operators = new HashSet<>();
+                operators.add(Operators.NotIn.toString());
+                operators.add(Operators.DoesNotExist.toString());
+                return hasNodeAffinityRequirementsHelper(terms, operators);
+            }
+            return false; // no anti affinity reqs if none of that was true;
+        }
+    }
+
+    private boolean hasNodeAffinityRequirementsHelper(final List<NodeSelectorTerm> terms, final Set<String> operators) {
+        for (final NodeSelectorTerm term: terms) {
+            final List<NodeSelectorRequirement> requirements = term.getMatchExpressions();
+            for (final NodeSelectorRequirement requirement: requirements) {
+                if (operators.contains(requirement.getOperator())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private List<Insert<?>> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {

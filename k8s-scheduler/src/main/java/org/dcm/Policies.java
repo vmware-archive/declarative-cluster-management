@@ -21,7 +21,8 @@ class Policies {
 
     static {
         ALL_POLICIES.add(nodePredicates());
-        ALL_POLICIES.add(nodeSelectorPredicate());
+        ALL_POLICIES.add(nodeAffinitySelectorPredicate());
+        ALL_POLICIES.add(nodeAntiAffinitySelectorPredicate());
         ALL_POLICIES.add(podAffinityPredicate());
         ALL_POLICIES.add(podAntiAffinityPredicate());
         ALL_POLICIES.add(capacityConstraint(true, true));
@@ -46,16 +47,29 @@ class Policies {
      * that satisfy node affinity requirements. This policy covers the basic node selector as well as
      * the nodeAffinity policies in k8s.
      */
-    static Policy nodeSelectorPredicate() {
-        final String constraint = "create view constraint_node_selector as " +
+    static Policy nodeAffinitySelectorPredicate() {
+        final String constraint = "create view constraint_affine_node_selector as " +
                                   "select * " +
                                   "from pods_to_assign " +
-                                  "where pods_to_assign.has_node_selector_labels = false or " +
+                                  "where pods_to_assign.has_node_affinity_requirements = false or " +
                                   "      pods_to_assign.controllable__node_name in " +
                                   "         (select node_name " +
-                                  "          from pod_node_selector_matches " +
-                                  "          where pods_to_assign.pod_name = pod_node_selector_matches.pod_name)";
-        return new Policy("NodeSelectorPredicate", constraint);
+                                  "          from pod_affine_node_selector_matches " +
+                                  "       where pods_to_assign.pod_name = pod_affine_node_selector_matches.pod_name" +
+                ")";
+        return new Policy("NodeAffinitySelectorPredicate", constraint);
+    }
+
+    static Policy nodeAntiAffinitySelectorPredicate() {
+        final String constraint = "create view constraint_anti_affine_node_selector as " +
+                "select * " +
+                "from pods_to_assign " +
+                "where pods_to_assign.has_node_anti_affinity_requirements = false or (" +
+                "      pods_to_assign.controllable__node_name not in " +
+                "         (select node_name " +
+                "          from pod_anti_affine_node_selector_matches " +
+                "       where pods_to_assign.pod_name = pod_anti_affine_node_selector_matches.pod_name))";
+        return new Policy("NodeAntiAffinitySelectorPredicate", constraint);
     }
 
     /**
