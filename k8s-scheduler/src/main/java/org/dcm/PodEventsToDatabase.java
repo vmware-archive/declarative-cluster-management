@@ -150,7 +150,8 @@ class PodEventsToDatabase {
     }
 
     private void addPod(final Pod pod) {
-        LOG.trace("Adding pod {}", pod.getMetadata().getName());
+        LOG.info("Adding pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+                  pod.getMetadata().getResourceVersion());
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> inserts = new ArrayList<>();
             inserts.addAll(updatePodRecord(pod, conn));
@@ -165,7 +166,8 @@ class PodEventsToDatabase {
     }
 
     private void deletePod(final Pod pod) {
-        LOG.trace("Deleting pod {}", pod.getMetadata().getName());
+        LOG.info("Deleting pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+                                                           pod.getMetadata().getResourceVersion());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
@@ -180,10 +182,11 @@ class PodEventsToDatabase {
                     .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
                     .fetchOne();
             if (existingPodInfoRecord == null) {
-                LOG.trace("Pod {} does not exist. Skipping", pod.getMetadata().getName());
+                LOG.info("Pod {} does not exist. Skipping", pod.getMetadata().getName());
                 return;
             }
-            LOG.trace("Updating pod {}", pod.getMetadata().getName());
+            LOG.info("Updating pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+                      pod.getMetadata().getResourceVersion());
             final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
             conn.batch(insertOrUpdate).execute();
         }
