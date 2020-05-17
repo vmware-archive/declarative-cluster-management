@@ -228,8 +228,9 @@ class WorkloadGeneratorIT extends ITBase {
                 final float mem = Float.parseFloat(parts[5].replace(">", "")) / memScaleDown;
                 final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
-                // randomly choose a deployment to add affinity requirements
-                final boolean createAffinityRequirements = r.nextInt(100) < affinityProportion;
+                // If the deployment is not too large, then add affinity requirements according to probability
+                final boolean createAffinityRequirements = vmCount < 400 &&
+                                                          (r.nextInt(100) < affinityProportion);
 
                 // generate a deployment's details based on cpu, mem requirements
                 final List<Pod> deployment = getDeployment(client, schedulerName, cpu, mem, vmCount,
