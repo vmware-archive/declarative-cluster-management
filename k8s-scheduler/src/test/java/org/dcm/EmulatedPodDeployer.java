@@ -63,6 +63,7 @@ public class EmulatedPodDeployer implements IPodDeployer {
             for (final Pod pod: deployment) {
                 pod.getMetadata().setCreationTimestamp("" + System.currentTimeMillis());
                 pod.getMetadata().setNamespace(namespace);
+                pod.getMetadata().setResourceVersion("101");
                 final OwnerReference reference = new OwnerReference();
                 reference.setName(deploymentName);
                 pod.getMetadata().setOwnerReferences(List.of(reference));
