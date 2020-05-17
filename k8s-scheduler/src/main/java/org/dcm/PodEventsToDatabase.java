@@ -186,7 +186,7 @@ class PodEventsToDatabase {
                 return;
             }
             final long incomingResourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
-            if (existingPodInfoRecord.getResourceversion() >= incomingResourceVersion) {
+            if (existingPodInfoRecord.getResourceversion() == incomingResourceVersion) {
                 LOG.info("Received a duplicate pod event {} (resourceVersion: {}). Ignoring",
                          pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
                 return;
