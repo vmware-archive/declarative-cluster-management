@@ -76,9 +76,8 @@ class Policies {
             "          from pods_to_assign as b" +
             "          join inter_pod_affinity_matches_pending" +
             "           on inter_pod_affinity_matches_pending.pod_name = pods_to_assign.pod_name" +
-            "           and inter_pod_affinity_matches_pending.matches = b.pod_name" +
-                        // If the pod is affine only to itself and no others, it can be placed anywhere
-            "       and (num_matches = 1 or inter_pod_affinity_matches_pending.matches != pods_to_assign.pod_name)))" +
+            "           and contains(inter_pod_affinity_matches_pending.matches, b.pod_name)" +
+            "       ))" +
                 // pending pods
 
                 // Affinity to running pods...
@@ -108,9 +107,7 @@ class Policies {
             "          from pods_to_assign as b" +
             "          join inter_pod_anti_affinity_matches_pending" +
             "           on inter_pod_anti_affinity_matches_pending.pod_name = pods_to_assign.pod_name" +
-            "           and inter_pod_anti_affinity_matches_pending.matches != pods_to_assign.pod_name" +
-                        // next clause assumes that a pod cannot be anti-affine to itself
-            "           and inter_pod_anti_affinity_matches_pending.matches = b.pod_name))" + // pending pods
+            "           and contains(inter_pod_anti_affinity_matches_pending.matches, b.pod_name)))" + // pending pods
 
             // Anti-affinity to running pods...
             "  and pods_to_assign.controllable__node_name not in " +

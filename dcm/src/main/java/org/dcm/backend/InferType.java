@@ -58,6 +58,7 @@ class InferType extends MonoidVisitor<String, Void> {
             case IN:
             case OR:
             case AND:
+            case CONTAINS:
                 return "Boolean";
             case ADD:
             case SUBTRACT:
@@ -182,6 +183,8 @@ class InferType extends MonoidVisitor<String, Void> {
                 return  "Integer";
             case FLOAT:
                 return  "Float";
+            case ARRAY:
+                return  "Object[]";
             default:
                 throw new IllegalArgumentException();
         }

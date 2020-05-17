@@ -58,6 +58,7 @@ public class MonoidFunction extends Expr {
         ALL_DIFFERENT,
         ALL_EQUAL,
         INCREASING,
-        CAPACITY_CONSTRAINT
+        CAPACITY_CONSTRAINT,
+        CONTAINS
     }
 }

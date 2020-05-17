@@ -328,6 +328,16 @@ public class Ops {
         return bool;
     }
 
+    public boolean in(final String left, final Object[] right) {
+        assert right.length > 0 && right[0] instanceof String;
+        for (final Object obj: right) {
+            if (left.equals(obj)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean in(final String left, final List<String> right) {
         return right.contains(left);
     }

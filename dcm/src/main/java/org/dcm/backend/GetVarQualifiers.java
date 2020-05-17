@@ -126,6 +126,7 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
             case GREATER_THAN:
             case GREATER_THAN_OR_EQUAL:
             case IN:
+            case CONTAINS:
             case OR: {
                 // function expressions do not necessarily affect the arity of an outer expression.
                 // We err on the conservative side for now.
