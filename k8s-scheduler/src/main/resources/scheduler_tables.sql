@@ -40,7 +40,8 @@ create table pod_info
   has_pod_affinity_requirements boolean not null,
   has_pod_anti_affinity_requirements boolean not null,
   equivalence_class bigint not null,
-  qos_class varchar(10) not null
+  qos_class varchar(10) not null,
+  resourceVersion bigint not null
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.

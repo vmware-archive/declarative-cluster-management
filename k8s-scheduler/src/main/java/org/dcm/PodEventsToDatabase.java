@@ -185,6 +185,12 @@ class PodEventsToDatabase {
                 LOG.info("Pod {} does not exist. Skipping", pod.getMetadata().getName());
                 return;
             }
+            final long incomingResourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
+            if (existingPodInfoRecord.getResourceversion() <= incomingResourceVersion) {
+                LOG.info("Received a duplicate pod event {} (resourceVersion: {}). Ignoring",
+                         pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
+                return;
+            }
             LOG.info("Updating pod {} (resourceVersion: {})", pod.getMetadata().getName(),
                       pod.getMetadata().getResourceVersion());
             final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
@@ -247,6 +253,7 @@ class PodEventsToDatabase {
 
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
+        final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
         final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
                 p.POD_NAME,
                 p.STATUS,
@@ -264,7 +271,8 @@ class PodEventsToDatabase {
                 p.PRIORITY,
                 p.SCHEDULERNAME,
                 p.EQUIVALENCE_CLASS,
-                p.QOS_CLASS)
+                p.QOS_CLASS,
+                p.RESOURCEVERSION)
                 .values(pod.getMetadata().getName(),
                         pod.getStatus().getPhase(),
                         pod.getSpec().getNodeName(),
@@ -281,7 +289,8 @@ class PodEventsToDatabase {
                         priority,
                         pod.getSpec().getSchedulerName(),
                         equivalenceClassHash(pod),
-                        getQosClass(resourceRequirements).toString()
+                        getQosClass(resourceRequirements).toString(),
+                        resourceVersion
                 )
                 .onDuplicateKeyUpdate()
                 .set(p.POD_NAME, pod.getMetadata().getName())
@@ -311,7 +320,10 @@ class PodEventsToDatabase {
                 .set(p.EQUIVALENCE_CLASS, equivalenceClassHash(pod))
 
                 // QoS classes are defined based on the requests/limits configured for containers in the pod
-                .set(p.QOS_CLASS, getQosClass(resourceRequirements).toString());
+                .set(p.QOS_CLASS, getQosClass(resourceRequirements).toString())
+
+                // This should monotonically increase
+                .set(p.RESOURCEVERSION, resourceVersion);
         inserts.add(podInfoInsert);
         return inserts;
     }
