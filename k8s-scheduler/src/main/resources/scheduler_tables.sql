@@ -564,7 +564,7 @@ create view inter_pod_anti_affinity_matches_pending as
 select pod_name, array_agg(matches) as matches, num_matches from
    (select *, count(*) over (partition by pod_name) as num_matches
     from inter_pod_anti_affinity_matches_inner_pending)
-where (num_matches = 1 or pod_name != matches)
+where (pod_name != matches)
 group by pod_name, num_matches;
 
 create view inter_pod_anti_affinity_matches_scheduled as
