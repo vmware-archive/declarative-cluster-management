@@ -39,7 +39,7 @@ class DBConnectionPool {
         this.databaseName = UUID.randomUUID().toString();
         setupDb();
         final HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(String.format("jdbc:h2:mem:%s;LOG=0;UNDO_LOG=0", databaseName));
+        config.setJdbcUrl(String.format("jdbc:h2:mem:%s;", databaseName));
         config.addDataSourceProperty("cachePrepStmts", "true");
         config.addDataSourceProperty("prepStmtCacheSize", "250");
         config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");

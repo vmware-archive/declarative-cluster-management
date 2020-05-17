@@ -1386,6 +1386,8 @@ public class OrToolsSolver implements ISolverBackend {
                         return apply(String.format("o.div(%s, %s)", left, right), context);
                     case IN:
                         return apply(String.format("o.in%s(%s, %s)", rightType, left, right), context);
+                    case CONTAINS:
+                        return apply(String.format("o.inObjectArr(%s, %s)", right, left), context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
