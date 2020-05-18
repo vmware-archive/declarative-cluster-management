@@ -158,7 +158,8 @@ class PodEventsToDatabase {
     private void addPod(final Pod pod) {
         LOG.trace("Adding pod {} (resourceVersion: {})", pod.getMetadata().getName(),
                   pod.getMetadata().getResourceVersion());
-        if (deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
+        if (pod.getMetadata().getUid() != null &&
+            deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
             LOG.trace("Received stale event for pod that we already deleted: {} {}. Ignoring",
                      pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
             return;
@@ -181,7 +182,8 @@ class PodEventsToDatabase {
                                                            pod.getMetadata().getResourceVersion());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
-        if (deletedUids.getIfPresent(pod.getMetadata().getUid()) == null) {
+        if (pod.getMetadata().getUid() != null &&
+                deletedUids.getIfPresent(pod.getMetadata().getUid()) == null) {
             deletedUids.put(pod.getMetadata().getUid(), true);
         }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
@@ -211,7 +213,8 @@ class PodEventsToDatabase {
                          "Ignoring.", existingPodInfoRecord.getNodeName(), pod.getSpec().getNodeName());
                 return;
             }
-            if (deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
+            if (pod.getMetadata().getUid() != null &&
+                    deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
                 LOG.trace("Received stale event for pod that we already deleted: {} {}. Ignoring",
                         pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
                 return;
