@@ -216,7 +216,7 @@ class PodEventsToDatabase {
                         pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
                 return;
             }
-            LOG.info("Updating pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+            LOG.trace("Updating pod {} (resourceVersion: {})", pod.getMetadata().getName(),
                       pod.getMetadata().getResourceVersion());
             final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
             conn.batch(insertOrUpdate).execute();
@@ -485,9 +485,9 @@ class PodEventsToDatabase {
                 final int numMatchExpressions = term.getMatchExpressions().size();
                 for (final NodeSelectorRequirement expr: term.getMatchExpressions()) {
                     matchExpressionNumber += 1;
-                    LOG.info("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, op:{}, values:{}",
-                            pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
-                            expr.getKey(), expr.getOperator(), expr.getValues());
+                    LOG.trace("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, op:{}, " +
+                            "values:{}", pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                            numMatchExpressions, expr.getKey(), expr.getOperator(), expr.getValues());
 
                     if (expr.getValues() != null) {
                         for (final String value : expr.getValues()) {
