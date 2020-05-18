@@ -254,6 +254,25 @@ class PodEventsToDatabase {
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
         final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
+        LOG.info("Insert/Update pod {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+                pod.getMetadata().getName(),
+                pod.getStatus().getPhase(),
+                pod.getSpec().getNodeName(),
+                pod.getMetadata().getNamespace(),
+                cpuRequest,
+                memoryRequest,
+                ephemeralStorageRequest,
+                podsRequest,
+                ownerName,
+                pod.getMetadata().getCreationTimestamp(),
+                hasNodeSelector,
+                hasPodAffinityRequirements,
+                hasPodAntiAffinityRequirements,
+                priority,
+                pod.getSpec().getSchedulerName(),
+                equivalenceClassHash(pod),
+                getQosClass(resourceRequirements).toString(),
+                resourceVersion);
         final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
                 p.POD_NAME,
                 p.STATUS,
