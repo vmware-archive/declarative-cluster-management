@@ -191,6 +191,12 @@ class PodEventsToDatabase {
                          pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
                 return;
             }
+            if (pod.getSpec().getNodeName() == null &&
+                existingPodInfoRecord.getNodeName() != null) {
+                LOG.info("Received a duplicate event for a node that we have already scheduled (old: {}, new:{}). " +
+                         "Ignoring.", existingPodInfoRecord.getNodeName(), pod.getSpec().getNodeName());
+                return;
+            }
             LOG.info("Updating pod {} (resourceVersion: {})", pod.getMetadata().getName(),
                       pod.getMetadata().getResourceVersion());
             final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
