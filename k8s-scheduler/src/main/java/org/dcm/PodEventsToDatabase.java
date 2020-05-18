@@ -156,10 +156,10 @@ class PodEventsToDatabase {
     }
 
     private void addPod(final Pod pod) {
-        LOG.info("Adding pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+        LOG.debug("Adding pod {} (resourceVersion: {})", pod.getMetadata().getName(),
                   pod.getMetadata().getResourceVersion());
         if (deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
-            LOG.info("Received stale event for pod that we already deleted: {} {}. Ignoring",
+            LOG.debug("Received stale event for pod that we already deleted: {} {}. Ignoring",
                      pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
             return;
         }
@@ -177,7 +177,7 @@ class PodEventsToDatabase {
     }
 
     private void deletePod(final Pod pod) {
-        LOG.info("Deleting pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+        LOG.debug("Deleting pod {} (resourceVersion: {})", pod.getMetadata().getName(),
                                                            pod.getMetadata().getResourceVersion());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
@@ -196,23 +196,23 @@ class PodEventsToDatabase {
                     .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
                     .fetchOne();
             if (existingPodInfoRecord == null) {
-                LOG.info("Pod {} does not exist. Skipping", pod.getMetadata().getName());
+                LOG.debug("Pod {} does not exist. Skipping", pod.getMetadata().getName());
                 return;
             }
             final long incomingResourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
             if (existingPodInfoRecord.getResourceversion() >= incomingResourceVersion) {
-                LOG.info("Received a stale pod event {} (resourceVersion: {}). Ignoring",
+                LOG.debug("Received a stale pod event {} (resourceVersion: {}). Ignoring",
                          pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
                 return;
             }
             if (pod.getSpec().getNodeName() == null &&
                 existingPodInfoRecord.getNodeName() != null) {
-                LOG.info("Received a duplicate event for a node that we have already scheduled (old: {}, new:{}). " +
+                LOG.debug("Received a duplicate event for a node that we have already scheduled (old: {}, new:{}). " +
                          "Ignoring.", existingPodInfoRecord.getNodeName(), pod.getSpec().getNodeName());
                 return;
             }
             if (deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
-                LOG.info("Received stale event for pod that we already deleted: {} {}. Ignoring",
+                LOG.debug("Received stale event for pod that we already deleted: {} {}. Ignoring",
                         pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
                 return;
             }
@@ -279,7 +279,7 @@ class PodEventsToDatabase {
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
         final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
-        LOG.info("Insert/Update pod {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+        LOG.trace("Insert/Update pod {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
                 pod.getMetadata().getName(),
                 pod.getStatus().getPhase(),
                 pod.getSpec().getNodeName(),

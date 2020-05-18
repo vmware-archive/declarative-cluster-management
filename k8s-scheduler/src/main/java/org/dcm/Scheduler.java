@@ -34,10 +34,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -61,7 +59,6 @@ public final class Scheduler {
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
 
-    public final ConcurrentHashMap<String, Boolean> alreadyScheduled = new ConcurrentHashMap<>();
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
     private final Meter solverInvocations = metrics.meter("solverInvocations");
@@ -152,15 +149,10 @@ public final class Scheduler {
                                 .set(Tables.POD_INFO.NODE_NAME, nodeName)
                                 .where(Tables.POD_INFO.POD_NAME.eq(podName))
                     );
-                    if (alreadyScheduled.containsKey(podName)) {
-                        System.out.println("Podname already scheduled before " + podName);
-                    }
-                    alreadyScheduled.put(podName, true);
                     LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
                              podName, batch, totalTime);
                 });
-                final int[] execute = conn.batch(updates).execute();
-                System.out.println(Arrays.toString(execute));
+                conn.batch(updates).execute();
             }
             LOG.info("Done with updates");
             // Next, issue bind requests for pod -> node_name
