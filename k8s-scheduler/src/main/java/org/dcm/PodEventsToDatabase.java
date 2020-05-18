@@ -6,6 +6,8 @@
 
 package org.dcm;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
@@ -45,6 +47,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 
@@ -54,6 +57,9 @@ import java.util.stream.Collectors;
 class PodEventsToDatabase {
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
     private final DBConnectionPool dbConnectionPool;
+    private final Cache<String, Boolean> deletedUids = CacheBuilder.newBuilder()
+                                                                      .expireAfterWrite(5, TimeUnit.MINUTES)
+                                                                      .build();
 
     private enum Operators {
         In,
@@ -152,6 +158,11 @@ class PodEventsToDatabase {
     private void addPod(final Pod pod) {
         LOG.info("Adding pod {} (resourceVersion: {})", pod.getMetadata().getName(),
                   pod.getMetadata().getResourceVersion());
+        if (deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
+            LOG.info("Received stale event for pod that we already deleted: {} {}. Ignoring",
+                     pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
+            return;
+        }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> inserts = new ArrayList<>();
             inserts.addAll(updatePodRecord(pod, conn));
@@ -170,6 +181,9 @@ class PodEventsToDatabase {
                                                            pod.getMetadata().getResourceVersion());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
+        if (deletedUids.getIfPresent(pod.getMetadata().getUid()) == null) {
+            deletedUids.put(pod.getMetadata().getUid(), true);
+        }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             conn.deleteFrom(Tables.POD_INFO)
                 .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName())).execute();
@@ -195,6 +209,11 @@ class PodEventsToDatabase {
                 existingPodInfoRecord.getNodeName() != null) {
                 LOG.info("Received a duplicate event for a node that we have already scheduled (old: {}, new:{}). " +
                          "Ignoring.", existingPodInfoRecord.getNodeName(), pod.getSpec().getNodeName());
+                return;
+            }
+            if (deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
+                LOG.info("Received stale event for pod that we already deleted: {} {}. Ignoring",
+                        pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
                 return;
             }
             LOG.info("Updating pod {} (resourceVersion: {})", pod.getMetadata().getName(),
