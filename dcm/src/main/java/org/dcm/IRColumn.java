@@ -52,7 +52,7 @@ public class IRColumn {
      * as understood by MiniZinc
      */
     public enum FieldType {
-        FLOAT, INT, STRING, BOOL;
+        FLOAT, INT, STRING, BOOL, ARRAY;
 
         /**
          * @param f SQL table jooqField
@@ -77,6 +77,8 @@ public class IRColumn {
                 case Types.CHAR:
                 case Types.VARCHAR:
                     return FieldType.STRING;
+                case Types.OTHER:
+                    return FieldType.ARRAY;
                 default:
                     throw new IllegalArgumentException("Unknown type jooqField: " + f.getDataType().getSQLType());
             }

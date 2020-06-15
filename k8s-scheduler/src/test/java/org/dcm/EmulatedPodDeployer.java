@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -29,6 +30,7 @@ public class EmulatedPodDeployer implements IPodDeployer {
     private final PodResourceEventHandler resourceEventHandler;
     private final String namespace;
     private final Map<String, List<Pod>> pods = new ConcurrentHashMap<>();
+    private final AtomicInteger uidCounter = new AtomicInteger(0);
 
     EmulatedPodDeployer(final PodResourceEventHandler podResourceEventHandler, final String namespace) {
         this.resourceEventHandler = podResourceEventHandler;
@@ -63,6 +65,8 @@ public class EmulatedPodDeployer implements IPodDeployer {
             for (final Pod pod: deployment) {
                 pod.getMetadata().setCreationTimestamp("" + System.currentTimeMillis());
                 pod.getMetadata().setNamespace(namespace);
+                pod.getMetadata().setResourceVersion("101");
+                pod.getMetadata().setUid("" + uidCounter.incrementAndGet());
                 final OwnerReference reference = new OwnerReference();
                 reference.setName(deploymentName);
                 pod.getMetadata().setOwnerReferences(List.of(reference));

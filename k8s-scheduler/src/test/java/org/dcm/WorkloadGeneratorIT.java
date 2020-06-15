@@ -62,6 +62,8 @@ class WorkloadGeneratorIT extends ITBase {
     private static final int TIME_SCALE_DOWN_DEFAULT = 1000;
     private static final String START_TIME_CUTOFF = "startTimeCutOff";
     private static final int START_TIME_CUTOFF_DEFAULT = 1000;
+    private static final String AFFINITY_PROPORTION = "affinityProportion";
+    private static final int AFFINITY_PROPORTION_DEFAULT = 0;
 
     private final List<ListenableFuture<?>> deletions = new ArrayList<>();
     private final ListeningScheduledExecutorService scheduledExecutorService =
@@ -176,8 +178,12 @@ class WorkloadGeneratorIT extends ITBase {
         final String startTimeCutOffProperty = System.getProperty(START_TIME_CUTOFF);
         final int startTimeCutOff = startTimeCutOffProperty == null ? START_TIME_CUTOFF_DEFAULT :
                 Integer.parseInt(startTimeCutOffProperty);
+
+        final String affinityProportionProperty = System.getProperty(AFFINITY_PROPORTION);
+        final int affinityProportion = affinityProportionProperty == null ? AFFINITY_PROPORTION_DEFAULT :
+                Integer.parseInt(affinityProportionProperty);
         runTrace(fabricClient, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
-                startTimeCutOff);
+                startTimeCutOff, affinityProportion);
     }
 
     void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
@@ -222,8 +228,9 @@ class WorkloadGeneratorIT extends ITBase {
                 final float mem = Float.parseFloat(parts[5].replace(">", "")) / memScaleDown;
                 final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
-                // randomly choose a deployment to add affinity requirements
-                final boolean createAffinityRequirements = r.nextInt(100) < affinityProportion;
+                // If the deployment is not too large, then add affinity requirements according to probability
+                final boolean createAffinityRequirements = vmCount < 400 &&
+                                                          (r.nextInt(100) < affinityProportion);
 
                 // generate a deployment's details based on cpu, mem requirements
                 final List<Pod> deployment = getDeployment(client, schedulerName, cpu, mem, vmCount,

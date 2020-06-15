@@ -80,6 +80,8 @@ class EmulatedClusterTest {
             resourceRequests.put("memory", new Quantity("1"));
             resourceRequests.put("pods", new Quantity("1"));
             pod.getMetadata().setNamespace("kube-system");
+            pod.getMetadata().setUid("13131" + i);
+            pod.getMetadata().setResourceVersion("1");
             pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
             pod.getSpec().setNodeName(nodeName);
             handler.onAddSync(pod);

@@ -1125,7 +1125,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
-        return RewriteArity.apply(comprehension);
+        return RewriteContains.apply(RewriteArity.apply(comprehension));
     }
 
     private <T extends Expr> String generateTupleGenericParameters(final List<T> exprs) {
@@ -1386,6 +1386,8 @@ public class OrToolsSolver implements ISolverBackend {
                         return apply(String.format("o.div(%s, %s)", left, right), context);
                     case IN:
                         return apply(String.format("o.in%s(%s, %s)", rightType, left, right), context);
+                    case CONTAINS:
+                        return apply(String.format("o.inObjectArr(%s, %s)", right, left), context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1401,6 +1403,8 @@ public class OrToolsSolver implements ISolverBackend {
                         return apply(String.format("(%s && %s)", left, right), context);
                     case OR:
                         return apply(String.format("(%s || %s)", left, right), context);
+                    case CONTAINS:
+                        return apply(String.format("o.in(%s, %s)", right, left), context);
                     case IN:
                         return apply(String.format("(o.in(%s, %s))", left, right), context);
                     case LESS_THAN_OR_EQUAL:

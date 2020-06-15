@@ -328,6 +328,16 @@ public class Ops {
         return bool;
     }
 
+    public boolean in(final String left, final Object[] right) {
+        assert right.length > 0 && right[0] instanceof String;
+        for (final Object obj: right) {
+            if (left.equals(obj)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean in(final String left, final List<String> right) {
         return right.contains(left);
     }
@@ -338,6 +348,26 @@ public class Ops {
 
     public boolean in(final long left, final List<Long> right) {
         return right.contains(left);
+    }
+
+    public IntVar inObjectArr(final IntVar left, final Object[] right) {
+        final IntVar bool = model.newBoolVar("");
+        assert right.length > 0;
+        final Domain domain;
+        if (right[0] instanceof String) {
+            domain = Domain.fromValues(Arrays.stream(right)
+                    .map(e -> (String) e)
+                    .mapToLong(encoder::toLong).toArray());
+        } else if (right[0] instanceof Integer) {
+            domain = Domain.fromValues(Arrays.stream(right)
+                    .map(e -> (Integer) e)
+                    .mapToLong(encoder::toLong).toArray());
+        } else {
+            throw new RuntimeException("Unexpected object array " + Arrays.toString(right));
+        }
+        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
+        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        return bool;
     }
 
     public IntVar inString(final IntVar left, final List<String> right) {

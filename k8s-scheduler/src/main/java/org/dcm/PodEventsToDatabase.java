@@ -6,6 +6,8 @@
 
 package org.dcm;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
@@ -45,6 +47,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 
@@ -54,6 +57,9 @@ import java.util.stream.Collectors;
 class PodEventsToDatabase {
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
     private final DBConnectionPool dbConnectionPool;
+    private final Cache<String, Boolean> deletedUids = CacheBuilder.newBuilder()
+                                                                      .expireAfterWrite(5, TimeUnit.MINUTES)
+                                                                      .build();
 
     private enum Operators {
         In,
@@ -150,7 +156,14 @@ class PodEventsToDatabase {
     }
 
     private void addPod(final Pod pod) {
-        LOG.trace("Adding pod {}", pod.getMetadata().getName());
+        LOG.trace("Adding pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+                  pod.getMetadata().getResourceVersion());
+        if (pod.getMetadata().getUid() != null &&
+            deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
+            LOG.trace("Received stale event for pod that we already deleted: {} {}. Ignoring",
+                     pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
+            return;
+        }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> inserts = new ArrayList<>();
             inserts.addAll(updatePodRecord(pod, conn));
@@ -165,9 +178,14 @@ class PodEventsToDatabase {
     }
 
     private void deletePod(final Pod pod) {
-        LOG.trace("Deleting pod {}", pod.getMetadata().getName());
+        LOG.trace("Deleting pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+                                                           pod.getMetadata().getResourceVersion());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
+        if (pod.getMetadata().getUid() != null &&
+                deletedUids.getIfPresent(pod.getMetadata().getUid()) == null) {
+            deletedUids.put(pod.getMetadata().getUid(), true);
+        }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             conn.deleteFrom(Tables.POD_INFO)
                 .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName())).execute();
@@ -183,7 +201,26 @@ class PodEventsToDatabase {
                 LOG.trace("Pod {} does not exist. Skipping", pod.getMetadata().getName());
                 return;
             }
-            LOG.trace("Updating pod {}", pod.getMetadata().getName());
+            final long incomingResourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
+            if (existingPodInfoRecord.getResourceversion() >= incomingResourceVersion) {
+                LOG.trace("Received a stale pod event {} (resourceVersion: {}). Ignoring",
+                         pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
+                return;
+            }
+            if (pod.getSpec().getNodeName() == null &&
+                existingPodInfoRecord.getNodeName() != null) {
+                LOG.trace("Received a duplicate event for a node that we have already scheduled (old: {}, new:{}). " +
+                         "Ignoring.", existingPodInfoRecord.getNodeName(), pod.getSpec().getNodeName());
+                return;
+            }
+            if (pod.getMetadata().getUid() != null &&
+                    deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
+                LOG.trace("Received stale event for pod that we already deleted: {} {}. Ignoring",
+                        pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
+                return;
+            }
+            LOG.trace("Updating pod {} (resourceVersion: {})", pod.getMetadata().getName(),
+                      pod.getMetadata().getResourceVersion());
             final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
             conn.batch(insertOrUpdate).execute();
         }
@@ -244,6 +281,26 @@ class PodEventsToDatabase {
 
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
+        final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
+        LOG.trace("Insert/Update pod {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+                pod.getMetadata().getName(),
+                pod.getStatus().getPhase(),
+                pod.getSpec().getNodeName(),
+                pod.getMetadata().getNamespace(),
+                cpuRequest,
+                memoryRequest,
+                ephemeralStorageRequest,
+                podsRequest,
+                ownerName,
+                pod.getMetadata().getCreationTimestamp(),
+                hasNodeSelector,
+                hasPodAffinityRequirements,
+                hasPodAntiAffinityRequirements,
+                priority,
+                pod.getSpec().getSchedulerName(),
+                equivalenceClassHash(pod),
+                getQosClass(resourceRequirements).toString(),
+                resourceVersion);
         final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
                 p.POD_NAME,
                 p.STATUS,
@@ -261,7 +318,8 @@ class PodEventsToDatabase {
                 p.PRIORITY,
                 p.SCHEDULERNAME,
                 p.EQUIVALENCE_CLASS,
-                p.QOS_CLASS)
+                p.QOS_CLASS,
+                p.RESOURCEVERSION)
                 .values(pod.getMetadata().getName(),
                         pod.getStatus().getPhase(),
                         pod.getSpec().getNodeName(),
@@ -278,7 +336,8 @@ class PodEventsToDatabase {
                         priority,
                         pod.getSpec().getSchedulerName(),
                         equivalenceClassHash(pod),
-                        getQosClass(resourceRequirements).toString()
+                        getQosClass(resourceRequirements).toString(),
+                        resourceVersion
                 )
                 .onDuplicateKeyUpdate()
                 .set(p.POD_NAME, pod.getMetadata().getName())
@@ -308,7 +367,10 @@ class PodEventsToDatabase {
                 .set(p.EQUIVALENCE_CLASS, equivalenceClassHash(pod))
 
                 // QoS classes are defined based on the requests/limits configured for containers in the pod
-                .set(p.QOS_CLASS, getQosClass(resourceRequirements).toString());
+                .set(p.QOS_CLASS, getQosClass(resourceRequirements).toString())
+
+                // This should monotonically increase
+                .set(p.RESOURCEVERSION, resourceVersion);
         inserts.add(podInfoInsert);
         return inserts;
     }
@@ -426,9 +488,9 @@ class PodEventsToDatabase {
                 final int numMatchExpressions = term.getMatchExpressions().size();
                 for (final NodeSelectorRequirement expr: term.getMatchExpressions()) {
                     matchExpressionNumber += 1;
-                    LOG.info("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, op:{}, values:{}",
-                            pod.getMetadata().getName(), termNumber, matchExpressionNumber, numMatchExpressions,
-                            expr.getKey(), expr.getOperator(), expr.getValues());
+                    LOG.trace("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, op:{}, " +
+                            "values:{}", pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                            numMatchExpressions, expr.getKey(), expr.getOperator(), expr.getValues());
 
                     if (expr.getValues() != null) {
                         for (final String value : expr.getValues()) {
