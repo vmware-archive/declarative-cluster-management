@@ -65,7 +65,7 @@ public class OpsTests {
         final IntVar sum = ops.sumV(entries);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
 
         final long total = entries.stream().map(solver::value).reduce(Long::sum).get();
         assertEquals(total, solver.value(sum));
@@ -82,7 +82,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
 
         final long total = entries.stream().map(solver::value).reduce(Long::sum).get();
         assertEquals(8, total);
@@ -116,7 +116,7 @@ public class OpsTests {
         model.addEquality(existsVar, model.newConstant(exists ? 1L : 0L));
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(exists ? 1L : 0L, solver.value(existsVar));
 
         final Set<Long> assignments = entries.stream().map(solver::value).collect(Collectors.toSet());
@@ -137,7 +137,7 @@ public class OpsTests {
         model.addEquality(maxV, 9);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         final long largestValue = entries.stream().map(solver::value).max(Long::compareTo).get();
         assertEquals(largestValue, solver.value(maxV));
         assertEquals(9, largestValue);
@@ -153,7 +153,7 @@ public class OpsTests {
         model.addDifferent(maxV, 1);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         final long largestValue = entries.stream().map(solver::value).max(Long::compareTo).get();
         assertEquals(largestValue, solver.value(maxV));
         assertEquals(0, largestValue);
@@ -179,7 +179,7 @@ public class OpsTests {
         model.addEquality(minV, 9);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         final long largestValue = entries.stream().map(solver::value).min(Long::compareTo).get();
         assertEquals(largestValue, solver.value(minV));
         assertEquals(9, largestValue);
@@ -195,7 +195,7 @@ public class OpsTests {
         model.addDifferent(minV, 0);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         final long largestValue = entries.stream().map(solver::value).min(Long::compareTo).get();
         assertEquals(largestValue, solver.value(minV));
         assertEquals(1, largestValue);
@@ -224,7 +224,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(minus), solver.value(left) - solver.value(right));
     }
 
@@ -236,7 +236,7 @@ public class OpsTests {
         model.addEquality(minus, -100);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(minus), solver.value(left) - solver.value(right));
         assertEquals(-100L, solver.value(minus));
         assertEquals(0L, solver.value(left));
@@ -251,7 +251,7 @@ public class OpsTests {
         model.addDifferent(minus, -100);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(minus), solver.value(left) - solver.value(right));
         assertEquals(-99L, solver.value(minus));
         assertEquals(1L, solver.value(left));
@@ -266,7 +266,7 @@ public class OpsTests {
         model.addDifferent(minus, -98);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(minus), left - solver.value(right));
         assertEquals(-99L, solver.value(minus));
         assertEquals(100L, solver.value(right));
@@ -280,7 +280,7 @@ public class OpsTests {
         model.addDifferent(minus, 98);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(minus), solver.value(left) - right);
         assertEquals(99L, solver.value(minus));
         assertEquals(100L, solver.value(left));
@@ -295,7 +295,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(mult), solver.value(left) * solver.value(right));
     }
 
@@ -309,7 +309,7 @@ public class OpsTests {
         model.addEquality(mult, 21L);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(mult), solver.value(left) * solver.value(right));
         assertTrue(solver.value(left) == 3L || solver.value(right) == 3L);
         assertTrue(solver.value(left) == 7L || solver.value(right) == 7L);
@@ -324,7 +324,7 @@ public class OpsTests {
         model.addDifferent(mult, 0L);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(mult), solver.value(left) * solver.value(right));
         assertTrue(solver.value(left) == 1L && solver.value(right) == 1L);
     }
@@ -338,7 +338,7 @@ public class OpsTests {
         model.addEquality(mult, 700L);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(mult), left * solver.value(right));
         assertEquals(70L, solver.value(right));
     }
@@ -352,7 +352,7 @@ public class OpsTests {
         model.addEquality(mult, 700L);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(solver.value(mult), solver.value(left) * right);
         assertEquals(70L, solver.value(left));
     }
@@ -387,7 +387,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals("hello", encoding.toStr(solver.value(right)));
     }
 
@@ -401,7 +401,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(l + 1, solver.value(right));
     }
 
@@ -414,7 +414,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(10L, solver.value(right));
     }
 
@@ -427,7 +427,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(1L, solver.value(right));
     }
 
@@ -440,7 +440,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(0L, solver.value(right));
     }
 
@@ -453,7 +453,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(0L, solver.value(right));
     }
 
@@ -467,7 +467,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertNull(encoding.toStr(solver.value(right)));
     }
 
@@ -481,7 +481,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals("hello", encoding.toStr(solver.value(right)));
     }
 
@@ -495,7 +495,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(11L, solver.value(right));
     }
 
@@ -508,7 +508,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(0L, solver.value(right));
     }
 
@@ -521,7 +521,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(1L, solver.value(right));
     }
 
@@ -534,7 +534,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(1L, solver.value(right));
     }
 
@@ -546,7 +546,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(0L, solver.value(left));
     }
 
@@ -560,7 +560,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(0L, solver.value(left));
         assertEquals(1L, solver.value(right));
     }
@@ -573,7 +573,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertTrue(solver.value(left) == 0 || solver.value(left) == 1L);
     }
 
@@ -587,7 +587,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertFalse(solver.value(left) == 1L && solver.value(right) == 1L);
     }
 
@@ -599,7 +599,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(2L, solver.value(left));
     }
 
@@ -613,7 +613,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(1L, solver.value(left));
         assertEquals(0L, solver.value(right));
     }
@@ -626,7 +626,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertTrue(solver.value(left) == 99L || solver.value(left) == 100L);
     }
 
@@ -640,7 +640,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertFalse(solver.value(left) == 0L && solver.value(right) == 1L);
     }
 
@@ -655,7 +655,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertTrue(encoding.toStr(solver.value(var)).equals("1")
                 || encoding.toStr(solver.value(var)).equals("5"));
     }
@@ -670,7 +670,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertTrue(longs.contains(solver.value(var)));
     }
 
@@ -684,7 +684,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertTrue(ints.contains((int) solver.value(var)));
     }
 
@@ -698,7 +698,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertFalse(ints.contains((int) solver.value(var)));
     }
 
@@ -714,7 +714,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         final Set<Long> collect = vars.stream().map(solver::value).collect(Collectors.toSet());
         assertTrue(collect.contains(solver.value(var)));
     }
@@ -731,7 +731,7 @@ public class OpsTests {
 
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
-        assertEquals(CpSolverStatus.FEASIBLE, solve);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
         final Set<Long> collect = vars.stream().map(solver::value).collect(Collectors.toSet());
         assertFalse(collect.contains(solver.value(var)));
     }
