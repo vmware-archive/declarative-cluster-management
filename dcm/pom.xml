@@ -95,6 +95,7 @@
     </dependencies>
 
     <build>
+        <!-- Used for generating platform (e.g. $os.name) properties file on each build  -->
         <extensions>
             <extension>
                 <groupId>kr.motd.maven</groupId>

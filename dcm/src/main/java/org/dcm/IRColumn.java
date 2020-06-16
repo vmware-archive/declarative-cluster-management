@@ -52,8 +52,10 @@ public class IRColumn {
         FLOAT, INT, STRING, BOOL, ARRAY;
 
         /**
+         * Returns the coerced type of an SQL field
+         *
          * @param f SQL table jooqField
-         * @return Returns the type of the SQL JooqField
+         * @return the type of the SQL JooqField
          */
         public static FieldType fromField(final Field<?> f) {
             switch (f.getDataType().getSQLType()) {
@@ -151,14 +153,14 @@ public class IRColumn {
     }
 
     /**
-     * @return Returns the IRTable from the jooqField
+     * Returns the IRTable corresponding to this IRColumn
      */
     public IRTable getIRTable() {
         return Preconditions.checkNotNull(irTable);
     }
 
     /**
-     * @return Retuns the original SQL jooqField
+     * Returns the Jooq Field that backs an IRColumn
      */
     public Field getJooqField() {
         return Preconditions.checkNotNull(jooqField);
@@ -187,28 +189,6 @@ public class IRColumn {
     }
 
     /**
-     * @return Returns this jooqField foreignKeyParent jooqField
-     */
-    public Optional<IRColumn> getForeignKeyParent() {
-        Preconditions.checkNotNull(type);
-        return foreignKeyParent;
-    }
-
-    /**
-     * @return Returns the foreignKeyParent root by recursively getting the existing foreignKeyParent
-     *         of the foreignKeyParent
-     */
-    public Optional<IRColumn> getRootForeignKeyParent() {
-        Preconditions.checkNotNull(type);
-        Optional<IRColumn> root = foreignKeyParent;
-        // we recursively test if the foreignKeyParent also has a foreignKeyParent
-        while (root.isPresent() && root.get().foreignKeyParent.isPresent()) {
-            root = root.get().foreignKeyParent;
-        }
-        return root;
-    }
-
-    /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
      *
      * @return Returns the prefix tag of a jooqField
@@ -218,7 +198,7 @@ public class IRColumn {
     }
 
     /**
-     * @return we get the original values from the correspondent jooqField
+     * Returns a list of values (the entire column) corresponding to the IRField
      */
     synchronized List<?> getFieldValues() {
         Preconditions.checkNotNull(type);

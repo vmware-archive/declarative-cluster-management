@@ -28,8 +28,10 @@ public class IRContext {
     }
 
     /**
+     * Returns the IRTable corresponding to a given table name
+     *
      * @param tableName table name to be queried
-     * @return Returns the IRTable corresponding to tableName
+     * @return the IRTable corresponding to tableName
      */
     public IRTable getTable(final String tableName) {
         final String tableNameCaps = tableName.toUpperCase(Locale.US);
@@ -40,9 +42,11 @@ public class IRContext {
     }
 
     /**
+     * Returns the IRColumn corresponding to a table name and field name
+     *
      * @param tableName table name to be queried
      * @param fieldName field name within tableName
-     * @return Returns the IRColumn corresponding to `tableName`.`fieldName`
+     * @return the IRColumn corresponding to `tableName`.`fieldName`
      */
     public IRColumn getColumn(final String tableName, final String fieldName) {
         final IRTable irTable = getTable(tableName);
@@ -50,9 +54,11 @@ public class IRContext {
     }
 
     /**
+     * Returns the IRColumn corresponding to an IRTable and a field name
+     *
      * @param irTable an IRTable instance
      * @param fieldName a fieldName within the IRTable instance
-     * @return Returns the IRColumn based on IRTable.`fieldName`
+     * @return the IRColumn based on IRTable.`fieldName`
      */
     private IRColumn getColumn(final IRTable irTable, final String fieldName) {
         final String fieldNameCaps = fieldName.toUpperCase(Locale.US);
@@ -64,6 +70,9 @@ public class IRContext {
     }
 
     /**
+     * Returns an IRColumn corresponding to a unique field name within a collection of IRTable instances.
+     * If the field name is not unique, it throws a ModelException
+     *
      * @param fieldName a fieldName to be found within a collection of IRTable instances
      * @param tables a collection of IRTable instances
      * @return Returns a single instance of IRColumn with the given name, within a set of tables.
@@ -90,9 +99,11 @@ public class IRContext {
     }
 
     /**
+     * Returns all IRColumn instances that match a field name within a collection of IRTable instances.
+     *
      * @param fieldName a fieldName within the IRTable instance
      * @param tables a collection of IRTable instances
-     * @return Returns all instances of IRColumn with the given name, within a set of tables.
+     * @return all instances of IRColumn with the given name, within a set of tables.
      */
     private List<IRColumn> getColumns(final String fieldName, final Collection<IRTable> tables) {
         final String fieldNameCaps = fieldName.toUpperCase(Locale.US);

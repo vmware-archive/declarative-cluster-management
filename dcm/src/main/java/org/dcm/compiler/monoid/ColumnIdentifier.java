@@ -40,7 +40,7 @@ public class ColumnIdentifier extends Expr {
     }
 
     /**
-     * @return true if this column was referenced in a group by using a dereference. False otherwise.
+     * true if this column was referenced in a group by using a dereference. False otherwise.
      */
     public boolean fromGroupByWithDereference() {
         return fromGroupByWithDereference;

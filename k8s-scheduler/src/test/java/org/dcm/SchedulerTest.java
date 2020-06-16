@@ -70,7 +70,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 @ExtendWith({})
 public class SchedulerTest {
-    private final int numThreads = 1;
+    private static final int NUM_THREADS = 1;
 
     /*
      * Test our simulation of a materialized view by adding and removing pods, and checking whether
@@ -307,7 +307,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, NUM_THREADS);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
@@ -399,7 +399,7 @@ public class SchedulerTest {
             } else if (podsPartialMatch.contains(pod)) {
                 assertEquals(Sets.union(nodesToMatch, nodesPartialMatch), nodes);
             } else {
-                assert false : "Cannot happen";
+                fail();
             }
         }
 
@@ -408,7 +408,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, NUM_THREADS);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -537,7 +537,7 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, NUM_THREADS);
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
@@ -670,7 +670,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
@@ -903,7 +903,7 @@ public class SchedulerTest {
 
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
             assertEquals(numPods, result.size());
@@ -990,7 +990,7 @@ public class SchedulerTest {
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, NUM_THREADS);
 
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
@@ -1132,7 +1132,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.getDefaultPolicies();
         DebugUtils.dbLoad(conn);
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
         for (int i = 0; i < 100; i++) {
             final Result<? extends Record> results = scheduler.runOneLoop();
             System.out.println(results);
@@ -1173,7 +1173,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, numThreads);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));

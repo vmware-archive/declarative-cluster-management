@@ -78,7 +78,7 @@ public class IRTable {
     }
 
     /**
-     * @return the original SQL table associated with this IRTable
+     * Returns the Jooq Table associated with this IRTable
      */
     public Table<? extends Record> getTable() {
         return Preconditions.checkNotNull(jooqTable);
@@ -95,7 +95,7 @@ public class IRTable {
     }
 
     /**
-     * @return Returns irColumns that have a specific tag
+     * Returns IRColumns that have a specific tag
      */
     private List<IRColumn> filterFieldsByTag(final IRColumn.FieldTag filterTag) {
         return irColumns.values().stream()
@@ -104,8 +104,7 @@ public class IRTable {
     }
 
     /**
-     * @return Number of rows from the current table
-     * We get this by looking at the length of one of the columns
+     * Returns the number of rows in the table backed by this IRTable
      */
     public int getNumRows() {
         Preconditions.checkNotNull(jooqTable);
@@ -153,7 +152,7 @@ public class IRTable {
     }
 
     /**
-     * @return Returns a list of foreign keys, where each one is Map between this table field, and the referenced
+     * Returns a list of foreign keys, where each one is Map between this table field, and the referenced
      * table foreign key field.
      */
     public List<IRForeignKey> getForeignKeys() {
@@ -172,7 +171,7 @@ public class IRTable {
     }
 
     /**
-     * @return Returns the IRColumn based on the SQL field
+     * Returns the IRColumn based on the SQL field
      */
     IRColumn getField(final Field field) {
         Preconditions.checkNotNull(jooqTable);
@@ -232,7 +231,7 @@ public class IRTable {
     }
 
     /**
-     * @return Returns all the irColumns of the current table in order
+     * Returns all the IRColumns of the current table
      */
     public Map<String, IRColumn> getIRColumns() {
         return irColumns;

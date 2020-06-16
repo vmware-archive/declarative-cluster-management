@@ -31,14 +31,14 @@ public class IRPrimaryKey {
     }
 
     /**
-     * @return Returns all the fields that compose this primary key
+     * Returns all the fields that compose this primary key
      */
     public List<IRColumn> getPrimaryKeyFields() {
         return primaryKeyFields;
     }
 
     /**
-     * @return Returns true if this primaryKey has a controllable field
+     * Returns true if this primaryKey has a controllable field
      */
     public boolean hasControllableColumn() {
         return primaryKeyFields.stream().anyMatch(IRColumn::isControllable);

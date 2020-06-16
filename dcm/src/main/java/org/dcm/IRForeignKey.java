@@ -52,7 +52,7 @@ public class IRForeignKey {
     }
 
     /**
-     * @return Returns true if one of the child table fields is a controllable
+     * Returns true if one of the child table fields is a controllable, false otherwise
      */
     private boolean hasControllableField() {
         return fields.keySet().stream().anyMatch(IRColumn::isControllable);
@@ -73,7 +73,7 @@ public class IRForeignKey {
     }
 
     /**
-     * @return Returns true if this foreign key is defined on a variable column
+     * Returns true if this foreign key is defined on a variable column, false otherwise
      */
     public boolean hasConstraint() {
         return !this.fields.isEmpty() && this.hasControllableField();

@@ -1841,8 +1841,7 @@ public class ModelTest {
     }
 
     /**
-     * @param sql
-     * @return Splits by ';' separating the SQL for each view and returning a list of those views
+     * Splits the supplied SQL by ';'
      */
     private List<String> toListOfViews(final String sql) {
         return Splitter.on(";")
