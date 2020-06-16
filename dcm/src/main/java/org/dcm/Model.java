@@ -46,9 +46,9 @@ import static org.jooq.impl.DSL.values;
 
 
 /**
- * Used synthesize a MiniZinc model based on a set of SQL tables.
+ * Used to synthesize a model from a set of SQL tables and constraints.
  *
- * The public API for Model involves two narrow interfaces:
+ * The public API for Model involves three narrow interfaces:
  *
  *   - buildModel() to create Model instances based on a supplied JOOQ DSLContext.
  *   - updateData() to extract the input data for the Model that we can then feed to solvers.
@@ -243,7 +243,11 @@ public class Model {
     }
 
     /**
-     * Solves the current model by running the current modelFile and dataFile against MiniZinc
+     * Solves the current model and only returns values for the supplied output tables
+     *
+     * @param tables a set of table names
+     * @return A map where keys correspond to the supplied "tables" parameter, and the values are Result<> objects
+     *         representing rows of the corresponding tables, with modifications made by the solver
      */
     @SuppressWarnings("WeakerAccess")
     public synchronized Map<String, Result<? extends Record>> solveModelWithoutTableUpdates(final Set<String> tables)
@@ -263,9 +267,8 @@ public class Model {
     }
 
     /**
-     * Updates the database tables based on the output from the MiniZinc model.
-     *
-     * XXX: This method is currently a performance bottleneck.
+     * Updates the database tables based on the output from the backend.
+     * Note, this method should only be used for testing.
      */
     @SuppressWarnings("unchecked")
     private void updateTables(final Map<IRTable, Result<? extends Record>> recordsPerTable) {
@@ -278,7 +281,7 @@ public class Model {
             final IRTable irTable = tableEntry.getKey();
             LOG.info("Updating rows for table: {}", irTable.getName());
 
-            // if a table has no variables, there will be no new values from MiniZinc output to write
+            // if a table has no variables, there will be no new values from the solver to write
             // hence we just skip that value
             if (irTable.getVars().isEmpty()) {
                 continue;
@@ -294,11 +297,11 @@ public class Model {
             // Rundown of the different query parts:
             // - Current Table:
             //      dbCtx.selectFrom(table)
-            // - Temporary VALUES table built from the MiniZinc output
+            // - Temporary VALUES table built from the backend output
             //      dbCtx.selectFrom(values(valuesRows).as(table, table.fields()))
 
-            // Delete rows on current table that are not in the MiniZinc output
-            // computed as: Current Table MINUS MiniZinc output table
+            // Delete rows on current table that are not in the backend's output.
+            // It is computed as: Current Table MINUS output table
             final Result<? extends Record> rowsToDelete = dbCtx.selectFrom(table)
                     .except(dbCtx.selectFrom(values(valuesRows).as(table, table.fields())))
                     .fetchInto(table);
@@ -318,8 +321,8 @@ public class Model {
 
             });
 
-            // Insert new rows from MiniZinc output
-            // computed as: MiniZinc output table MINUS Current Table
+            // Insert new rows from the backend's output.
+            // It is computed as: backend output table MINUS Current Table
             dbCtx.insertInto(table)
                     .select(dbCtx.selectFrom(values(valuesRows).as(table, table.fields()))
                                  .except(dbCtx.selectFrom(table)))
@@ -362,10 +365,8 @@ public class Model {
     }
 
     /**
-     * Converts an SQL Table entry to a MiniZinc table entry, parsing and storing a reference to every field
-     * This includes:
-     *  - Parsing foreign keys relationship between fields from different tables
-     *
+     * Converts an SQL Table entry to a IR table, parsing and storing a reference to every field
+     *  This includes Parsing foreign keys relationship between fields from different tables
      */
     private void parseModel(final List<Table<?>> tables) {
         // parse the model for all the tables and fields
@@ -378,8 +379,8 @@ public class Model {
                 irTable.addField(irColumn);
             }
 
-            // After adding all the MnzFields to the table, we parse the table UniqueKey
-            // and link the correspondent MnzFields as fields that compose the IRTable primary key
+            // After adding all the IRFields to the table, we parse the table UniqueKey
+            // and link the correspondent IRFields as fields that compose the IRTable primary key
             final IRPrimaryKey pk = new IRPrimaryKey(irTable, table.getPrimaryKey());
             irTable.setPrimaryKey(pk);
 

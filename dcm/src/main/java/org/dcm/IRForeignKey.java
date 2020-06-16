@@ -20,7 +20,7 @@ public class IRForeignKey {
     private final Map<IRColumn, IRColumn> fields;
 
     /**
-     * Represents an SQL Foreign Key relationship in MiniZinc, and caputres the relationship between the fields from
+     * Represents an SQL Foreign Key relationship in the IR, and captures the relationship between the fields from
      * the child table, with the fields from the parent table. The table containing the foreign key is called the
      * child table, and the table containing the candidate key is called the referenced or parent table.
      *
@@ -73,7 +73,7 @@ public class IRForeignKey {
     }
 
     /**
-     * @return Returns true if this field has a MiniZinc constraint associated with it
+     * @return Returns true if this foreign key is defined on a variable column
      */
     public boolean hasConstraint() {
         return !this.fields.isEmpty() && this.hasControllableField();

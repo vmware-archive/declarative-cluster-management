@@ -25,11 +25,9 @@ import java.util.stream.Collectors;
 
 
 /**
- * Represents an SQL Table in MiniZinc, and captures some relevant metadata about
+ * Represents an SQL Table in our IR, and captures some relevant metadata about
  * the table like the primary keys, controllable and input variables. This info
- * is used when creating the minizinc model file.
- *
- * Has to be public so mnz_data.ftl and mnz_model.ftl template files can find the corresponding methods
+ * is used by backends when generating models.
  */
 public class IRTable {
     static final String NUM_ROWS_NAME = "NUM_ROWS";
@@ -187,7 +185,7 @@ public class IRTable {
     void updateValues(final Result<? extends Record> recentData) {
         Preconditions.checkNotNull(jooqTable);
         this.recentData = recentData;
-        // stores all the values per field for later use in MiniZinc
+        // stores all the values per field for later use by backends
         for (final Field<?> field : jooqTable.fields()) {
             fieldToIRColumn.get(field).setValues(recentData.getValues(field));
         }

@@ -30,7 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Extracts the required Minizinc forall expressions and conditions from a FROM clause
+ * Extracts IRTables and filtering conditions from a FROM clause
  */
 class FromExtractor extends DefaultTraversalVisitor<Void, Void> {
     private final Set<IRTable> tables = new HashSet<>();
@@ -60,8 +60,8 @@ class FromExtractor extends DefaultTraversalVisitor<Void, Void> {
             tableAlias.addField(aliasIRColumn);
         }
 
-        // After adding all the MnzFields to the table, we parse the table UniqueKey
-        // and link the correspondent MnzFields as fields that compose the IRTable primary key
+        // After adding all the IRFields to the table, we parse the table UniqueKey
+        // and link the correspondent IRFields as fields that compose the IRTable primary key
         if (!irTable.isViewTable()) {
             final IRPrimaryKey pk = new IRPrimaryKey(tableAlias, table.getPrimaryKey());
             tableAlias.setPrimaryKey(pk);

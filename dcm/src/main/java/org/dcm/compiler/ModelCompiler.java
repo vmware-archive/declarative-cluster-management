@@ -118,7 +118,7 @@ public class ModelCompiler {
     }
 
     /**
-     * Entry point to compile views into Minizinc
+     * Entry point to compile views into list comprehensions
      * @param views a list of strings, each of which is a view statement
      */
     @CanIgnoreReturnValue
@@ -304,7 +304,7 @@ public class ModelCompiler {
     }
 
     /**
-     * Converts a WHERE expression stack obtained by a WhereExpressionParser to a Minizinc expression
+     * Converts a WHERE expression stack obtained by a WhereExpressionParser to an IR expression
      */
     private ImmutableList<Qualifier> processWhereExpression(final Expression expression,
                                                             final Set<IRTable> tablesReferencedInView,

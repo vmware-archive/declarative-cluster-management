@@ -37,26 +37,23 @@ public class IRColumn {
 
 
     /**
-     * In generating MiniZinc models, we distinguish between primary key columns,
+     * In generating models, we distinguish between primary key columns,
      * fixed input columns, and controllable columns. The solver can only vary
-     * the value of the latter. In representing the MiniZinc model, we use the
-     * notation of TABLE__FIXED_INPUT_COL[TABLE__PK_ENTRY] to represent columns of
-     * specific tables
+     * the value of the latter.
      */
     public enum FieldTag {
         CONTROLLABLE, INPUT;
     }
 
     /**
-     * For now, we coerce SQL types to float, int, string, and bool,
-     * as understood by MiniZinc
+     * For now, we coerce SQL types to float, int, string, boolean and arrays.
      */
     public enum FieldType {
         FLOAT, INT, STRING, BOOL, ARRAY;
 
         /**
          * @param f SQL table jooqField
-         * @return Returns the correspondent MiniZinc jooqField type from a SQL jooqField
+         * @return Returns the type of the SQL JooqField
          */
         public static FieldType fromField(final Field<?> f) {
             switch (f.getDataType().getSQLType()) {
@@ -230,8 +227,7 @@ public class IRColumn {
 
     /**
      * This is used to update the IRColumn with the values from its corresponding
-     * column in the SQL database. We coerce the variable and value names to a formatting
-     * that is MiniZinc friendly.
+     * column in the SQL database.
      *
      * @param values A list of values that will be reflected in the dzn file for
      *               the corresponding jooqField/column.
@@ -246,7 +242,7 @@ public class IRColumn {
 
             /*
              * The generated model differentiates between primary keys, controllable, and
-             * fixed columns. We translate the values to MiniZinc friendly forms.
+             * fixed columns.
              */
             switch (tag) {
                 /*
@@ -256,7 +252,8 @@ public class IRColumn {
                 case CONTROLLABLE:
                 case INPUT: {
                     switch (type) {
-                        // Strings in MiniZinc need to be quoted
+                        // TODO: The following quoting is specific to MiniZinc and need not be done
+                        //       this early in the compiler
                         case STRING: {
                             svalue = String.format("\"%s\"", svalue);
                             break;
