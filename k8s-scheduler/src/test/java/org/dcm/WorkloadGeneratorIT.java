@@ -24,6 +24,7 @@ import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,6 +82,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("integration-test")
     @Test
     public void testSmallTrace() throws Exception {
         if (getClass().getClassLoader().getResource("test-data.txt") != null) {
@@ -96,6 +98,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("integration-test")
     @Test
     public void testAzureV1Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v1-data.txt") != null) {
@@ -112,6 +115,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("integration-test")
     @Test
     public void testAzureV1Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v1-cropped.txt") != null) {
@@ -128,6 +132,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("integration-test")
     @Test
     public void testAzureV2Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v2-data.txt") != null) {
@@ -144,6 +149,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("integration-test")
     @Test
     public void testAzureV2Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v2-cropped.txt") != null) {

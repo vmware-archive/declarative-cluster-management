@@ -8,6 +8,7 @@ package org.dcm;
 
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -35,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class SchedulerIT extends ITBase {
 
+    @Tag("integration-test")
     @Test()
     @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
@@ -64,6 +66,7 @@ public class SchedulerIT extends ITBase {
         scheduler.shutdown();
     }
 
+    @Tag("integration-test")
     @Test()
     @Timeout(60 /* seconds */)
     public void testAffinityAntiAffinity() throws Exception {
@@ -104,6 +107,7 @@ public class SchedulerIT extends ITBase {
     }
 
 
+    @Tag("integration-test")
     @Test()
     @Timeout(60 /* seconds */)
     public void testSmallTrace() throws Exception {
