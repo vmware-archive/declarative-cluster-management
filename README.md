@@ -31,7 +31,7 @@ To learn more about DCM, we suggest going through the following research papers:
 
 ### Pre-requisites
 
-1. Maven and JDK 12 for building.
+1. Gradle and JDK 12 for building.
 
 2. We test regularly on OSX and Ubuntu 18.04.
 
@@ -43,7 +43,7 @@ To learn more about DCM, we suggest going through the following research papers:
 
    * **Google OR-tools CP-SAT (version 7.7)**. To install, download the binary package for your platform from: [https://github.com/google/or-tools/releases/tag/v7.7](https://github.com/google/or-tools/releases/tag/v7.7)
 
-     Untar the downloaded bundle and run the following command in the `<or-tools>/lib/` folder to install the or-tools jar file:
+     Untar the downloaded bundle and run the following command in the `<or-tools>/lib/` folder to install the or-tools jar file (requires Maven):
 
      ```
       $: mvn install:install-file -Dfile=com.google.ortools.jar -DgroupId=com.google -DartifactId=ortools -Dversion=7.7 -Dpackaging=jar
@@ -64,10 +64,10 @@ To learn more about DCM, we suggest going through the following research papers:
 
 ### Building
 
-We use maven as our build system. You can run the following command once you've set up the solvers as listed above:
+We use gradle as our build system. You can run the following command once you've set up the solvers as listed above:
 
 ```
- $: mvn package
+ $: ./gradlew build
 ```
 
 ## How do I use DCM?
@@ -303,7 +303,7 @@ simple cluster manager.
 
 The entire build including unit tests can be triggered from the root folder with:
 ```bash
-$: mvn package 
+$: ./gradlew build
 ```
 
 The Kubernetes scheduler also comes with integration tests that run against a real Kubernetes cluster. 
@@ -325,14 +325,11 @@ you initialize a `KUBECONFIG` environment variable to point to that path.
 You can then execute the following command to run integration-tests against the created local cluster:
 
 ```bash
-$: KUBECONFIG=~/.kube/kind-config-dcm-it mvn integration-test
+$: KUBECONFIG=~/.kube/kind-config-dcm-it ./gradlew :k8s-scheduler:integrationTest
 ```
 
 To run a specific integration test class (example: `SchedulerIT` from the `k8s-scheduler` module):
 
 ```bash
-$: KUBECONFIG=~/.kube/kind-config-dcm-it mvn integration-test -Dtest=SchedulerIT -DfailIfNoTests=false
+$: KUBECONFIG=~/.kube/kind-config-dcm-it ./gradlew :k8s-scheduler:integrationTest --tests SchedulerIT
 ```
-
-Note, the `-DfailIfNoTests=false` flag is important, or the build will fail earlier modules that don't have tests
-with the same class name.
