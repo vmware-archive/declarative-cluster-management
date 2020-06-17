@@ -6,4 +6,4 @@ rootProject.name = 'dcm-project'
 include(':dcm')
 include(':examples')
 include(':k8s-scheduler')
-//include(':benchmarks')
+include(':benchmarks')
