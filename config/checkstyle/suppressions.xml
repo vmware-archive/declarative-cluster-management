@@ -14,4 +14,6 @@
     <suppress checks="IllegalCatch"
               files="PodResourceEventHandler.java"
             />
+
+    <suppress checks=".*" files="[\\/]generated-sources[\\/]"/>
 </suppressions>

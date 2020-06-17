@@ -43,7 +43,7 @@ subprojects {
 
     spotbugs {
        effort = "Max"
-       excludeFilter = file("../build-common/src/main/resources/findbugs-exclude.xml")
+       excludeFilter = file("../config/spotbugs/findbugs-exclude.xml")
     }
 
     checkstyle {
@@ -90,14 +90,13 @@ subprojects {
 }
 
 
-// Make sure to run the test first
+// Make sure to run the test task first
 tasks.register("codeCoverageReport", JacocoReport) {
 
     repositories {
         mavenLocal()
         mavenCentral()
     }
-
 
     // If a subproject applies the 'jacoco' plugin, add the result it to the report
     subprojects { subproject ->
@@ -114,5 +113,3 @@ tasks.register("codeCoverageReport", JacocoReport) {
         html.enabled true
     }
 }
-
-
