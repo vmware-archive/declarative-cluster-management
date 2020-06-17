@@ -74,19 +74,19 @@ subprojects {
         useJUnitPlatform()
     }
 
-    test {
-        jacoco {
-           excludes = ["**/generated/**"]
-        }
-    }
     jacocoTestReport {
         reports {
            xml.enabled = true // coveralls plugin depends on xml format report
            html.enabled = true
         }
+
+        afterEvaluate {
+            classDirectories.setFrom(files(classDirectories.files.collect {
+               fileTree(dir: it, exclude: '**/generated/**')
+            }))
+        }
     }
 }
-
 
 
 // task to gather code coverage from multiple subprojects
@@ -108,14 +108,6 @@ tasks.register("codeCoverageReport", JacocoReport) {
             subproject.tasks.matching({ t -> t.extensions.findByType(JacocoTaskExtension) }).configureEach { testTask ->
                 sourceSets subproject.sourceSets.main
                 executionData(testTask)
-            }
-
-            // To automatically run `test` every time `./gradlew codeCoverageReport` is called,
-            // you may want to set up a task dependency between them as shown below.
-            // Note that this requires the `test` tasks to be resolved eagerly (see `forEach`) which
-            // may have a negative effect on the configuration time of your build.
-            subproject.tasks.matching({ t -> t.extensions.findByType(JacocoTaskExtension) }).forEach {
-                rootProject.tasks.codeCoverageReport.dependsOn(it)
             }
         }
     }

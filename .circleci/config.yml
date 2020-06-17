@@ -19,8 +19,7 @@ jobs:
       - checkout
 
       # run tests!
-      - run: mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent package 
-      - run: mvn -pl '!build-common' jacoco:report
+      - run: ./gradlew test codeCoverageReport
       - run: bash <(curl -s https://codecov.io/bash)
 
       # collect test metadata
