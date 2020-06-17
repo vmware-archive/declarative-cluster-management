@@ -72,6 +72,7 @@ subprojects {
 
     test {
         useJUnitPlatform()
+        finalizedBy jacocoTestReport // report is always generated after tests run
     }
 
     jacocoTestReport {
@@ -89,11 +90,7 @@ subprojects {
 }
 
 
-// task to gather code coverage from multiple subprojects
-// NOTE: the `JacocoReport` tasks do *not* depend on the `test` task by default. Meaning you have to ensure
-// that `test` (or other tasks generating code coverage) run before generating the report.
-// You can achieve this by calling the `test` lifecycle task manually
-// $ ./gradlew test codeCoverageReport
+// Make sure to run the test first
 tasks.register("codeCoverageReport", JacocoReport) {
 
     repositories {
@@ -112,14 +109,8 @@ tasks.register("codeCoverageReport", JacocoReport) {
         }
     }
 
-    // enable the different report types (html, xml, csv)
     reports {
-        // xml is usually used to integrate code coverage with
-        // other tools like SonarQube, Coveralls or Codecov
-        xml.enabled true
-
-        // HTML reports can be used to see code coverage
-        // without any external tools
+        xml.enabled true // required for codecov
         html.enabled true
     }
 }
