@@ -8,6 +8,7 @@ package org.dcm;
 
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import org.dcm.trace.TraceReplayer;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -120,9 +121,9 @@ public class SchedulerIT extends ITBase {
         stateSync.startProcessingEvents();
 
         // Add a new one
-        final WorkloadGeneratorIT workloadGeneratorIT = new WorkloadGeneratorIT();
         final KubernetesPodDeployer deployer = new KubernetesPodDeployer(fabricClient, "default");
-        workloadGeneratorIT.runTrace(fabricClient, "test-data.txt", deployer, "dcm-scheduler",
+        final TraceReplayer traceReplayer = new TraceReplayer();
+        traceReplayer.runTrace(fabricClient, "test-data.txt", deployer, "dcm-scheduler",
                 100, 50, 100, 1000000);
         stateSync.shutdown();
         scheduler.shutdown();

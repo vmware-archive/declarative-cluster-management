@@ -25,6 +25,7 @@ import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Options;
+import org.dcm.trace.TraceReplayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,10 +39,10 @@ import java.util.concurrent.ThreadFactory;
 
 
 /**
- * Tests that replay cluster traces in process without the involvement of a Kubernetes cluster.
+ * Used to replay traces in-process and emulate large clusters without the involvement of an actual Kubernetes cluster.
  */
-class EmulatedClusterTest {
-    private static final Logger LOG = LoggerFactory.getLogger(EmulatedClusterTest.class);
+class EmulatedCluster {
+    private static final Logger LOG = LoggerFactory.getLogger(EmulatedCluster.class);
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
@@ -86,10 +87,10 @@ class EmulatedClusterTest {
             pod.getSpec().setNodeName(nodeName);
             handler.onAddSync(pod);
         }
-        final WorkloadGeneratorIT replay = new WorkloadGeneratorIT();
+        final TraceReplayer traceReplayer = new TraceReplayer();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
-        replay.runTrace(client, traceFileName, deployer, "dcm-scheduler", cpuScaleDown,
+        traceReplayer.runTrace(client, traceFileName, deployer, "dcm-scheduler", cpuScaleDown,
                 memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion);
     }
 
@@ -152,7 +153,7 @@ class EmulatedClusterTest {
     }
 
     public static void main(final String[] args) throws Exception {
-        final EmulatedClusterTest emulatedClusterTest = new EmulatedClusterTest();
+        final EmulatedCluster emulatedCluster = new EmulatedCluster();
         final Options options = new Options();
 
         options.addRequiredOption("n", "numNodes", true,
@@ -184,7 +185,7 @@ class EmulatedClusterTest {
                     "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}",
                 numNodes, traceFile, cpuScaleDown, memScaleDown,
                 timeScaleDown, startTimeCutOff, affinityRequirementsProportion);
-        emulatedClusterTest.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
+        emulatedCluster.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
                                             startTimeCutOff, affinityRequirementsProportion);
         System.exit(0); // without this, there are non-daemon threads that prevent JVM shutdown
     }
