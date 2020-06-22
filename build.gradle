@@ -38,6 +38,7 @@ subprojects {
         implementation 'com.google.guava:guava:29.0-jre'
         testImplementation 'org.junit.jupiter:junit-jupiter:5.7.0-M1'
         spotbugs 'com.github.spotbugs:spotbugs:4.0.4'
+        compileOnly 'com.github.spotbugs:spotbugs-annotations:4.0.4'
         errorprone "com.google.errorprone:error_prone_core:2.4.0"
     }
 
@@ -73,6 +74,17 @@ subprojects {
     test {
         useJUnitPlatform()
         finalizedBy jacocoTestReport // report is always generated after tests run
+    }
+
+    // Example to configure HTML report
+    spotbugsMain {
+        reports {
+            html {
+                enabled = true
+                destination = file("$buildDir/reports/spotbugs/spotbugs.html")
+                stylesheet = 'fancy-hist.xsl'
+            }
+        }
     }
 
     jacocoTestReport {

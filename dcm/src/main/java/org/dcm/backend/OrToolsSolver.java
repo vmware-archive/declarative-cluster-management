@@ -25,6 +25,7 @@ import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.WildcardTypeName;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
@@ -1221,6 +1222,7 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * The main logic to parse a comprehension and translate it into a set of intermediate variables and expressions.
      */
+    @SuppressFBWarnings("NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE") // false positive
     private class ExprToStrVisitor extends MonoidVisitor<String, TranslationContext> {
         private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
@@ -1700,6 +1702,7 @@ public class OrToolsSolver implements ISolverBackend {
      * @param variableType the type of `variableToExtract`
      * @return the name of the list being extracted
      */
+    @SuppressFBWarnings("UPM_UNCALLED_PRIVATE_METHOD") // false positive
     private  String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
                                        final String loopBlockName, final String variableType) {
         final OutputIR.Block forLoop = outerBlock.getForLoopByName(loopBlockName);
