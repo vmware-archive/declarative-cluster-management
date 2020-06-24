@@ -5,8 +5,10 @@
 
 package org.dcm;
 
+import io.fabric8.kubernetes.api.model.Binding;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeListBuilder;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.fabric8.kubernetes.api.model.PodListBuilder;
 import io.fabric8.kubernetes.api.model.Status;
@@ -16,7 +18,6 @@ import io.fabric8.kubernetes.api.model.WatchEventBuilder;
 import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesServer;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.annotation.Nullable;
@@ -35,20 +36,19 @@ public class KubernetesStateSyncTest {
     private static final WatchEvent OUTDATED_EVENT = new WatchEventBuilder().withStatusObject(OUTDATED_STATUS).build();
     @Nullable private KubernetesServer server;
 
-    @BeforeEach
-    void setup() {
-        server = new KubernetesServer(false);
-        server.before();
-    }
-
     @AfterEach
     void tearDown() {
         assertNotNull(server);
         server.after();
     }
 
+    /**
+     * Tests our use of informers to subscribe to learn about pod and node events via the K8s API
+     */
     @Test
     public void testK8sApi() throws InterruptedException {
+        server = new KubernetesServer(false);
+        server.before();
         final String rv1 = "10";
         final String rv2 = "11";
         final String rv3 = "12";
@@ -103,5 +103,43 @@ public class KubernetesStateSyncTest {
         stateSync.startProcessingEvents();
         assertTrue(latch.await(5, TimeUnit.SECONDS));
         stateSync.shutdown();
+    }
+
+
+    /**
+     * Given a single pod and node, test the Scheduler loop that pulls in events from
+     * the notification queue, makes a placement decision, and creates the subsequent
+     * pod binding.
+     */
+    @Test
+    public void testSchedulerLoopAndBind() throws InterruptedException {
+        server = new KubernetesServer(false, true);
+        server.before();
+        assertNotNull(server);
+        final NamespacedKubernetesClient client = server.getClient();
+        final Node node = SchedulerTest.newNode("n1", Collections.emptyMap(), Collections.emptyList());
+        final Pod pod = SchedulerTest.newPod("p1");
+        final DBConnectionPool conn = new DBConnectionPool();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(conn);
+        final PodResourceEventHandler podHandler = new PodResourceEventHandler(eventHandler::handle);
+        final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(conn);
+
+        nodeHandler.onAddSync(node);
+        podHandler.onAddSync(pod);
+
+        final Scheduler scheduler = new Scheduler(conn,
+                Policies.getDefaultPolicies(), "ORTOOLS", false, 4);
+
+        final KubernetesBinder binder = new KubernetesBinder(client);
+        scheduler.startScheduler(binder, 50, 100);
+
+        // Create pod event and wait for scheduler to create a binding
+        scheduler.handlePodEvent(new PodEvent(PodEvent.Action.ADDED, pod));
+        Thread.sleep(1000);
+
+        // Test whether the scheduler created a binding. This call returns null if the binding does not exist.
+        final Binding binding = client.bindings().inNamespace("default").withName(pod.getMetadata().getName()).get();
+        assertNotNull(binding);
     }
 }

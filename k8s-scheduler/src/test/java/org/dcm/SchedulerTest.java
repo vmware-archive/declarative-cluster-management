@@ -1223,11 +1223,11 @@ public class SchedulerTest {
         return requirement;
     }
 
-    private Pod newPod(final String name) {
+    static Pod newPod(final String name) {
         return newPod(name, "Pending", Collections.emptyMap(), Collections.emptyMap());
     }
 
-    private Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
+    static Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
                          final Map<String, String> labels) {
         final Pod pod = new Pod();
         final ObjectMeta meta = new ObjectMeta();
