@@ -84,7 +84,7 @@ public class SchedulerTest {
 
         for (int i = 0; i < 10; i++) {
             final String nodeName = "n" + i;
-            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             node.getStatus().getCapacity().put("cpu",
                     new Quantity(String.valueOf(100)));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(100)));
@@ -292,7 +292,7 @@ public class SchedulerTest {
             final NodeCondition badCondition = new NodeCondition();
             badCondition.setStatus(status);
             badCondition.setType(type);
-            nodeResourceEventHandler.onAddSync(addNode("n" + i, Collections.emptyMap(),
+            nodeResourceEventHandler.onAddSync(newNode("n" + i, Collections.emptyMap(),
                                            i == nodeToAssignTo ? Collections.emptyList() : List.of(badCondition)));
 
             // Add one system pod per node
@@ -375,7 +375,7 @@ public class SchedulerTest {
             else {
                 nodesWithoutLabels.add(nodeName);
             }
-            nodeResourceEventHandler.onAddSync(addNode(nodeName, nodeLabels, Collections.emptyList()));
+            nodeResourceEventHandler.onAddSync(newNode(nodeName, nodeLabels, Collections.emptyList()));
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
@@ -492,7 +492,7 @@ public class SchedulerTest {
                 nodeLabels.put("dummyKey2", "dummyValue2");
                 remainingNodes.add(nodeName);
             }
-            nodeResourceEventHandler.onAddSync(addNode(nodeName, nodeLabels, Collections.emptyList()));
+            nodeResourceEventHandler.onAddSync(newNode(nodeName, nodeLabels, Collections.emptyList()));
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
@@ -657,7 +657,7 @@ public class SchedulerTest {
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             nodes.add(nodeName);
-            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             nodeResourceEventHandler.onAddSync(node);
 
             // Add one system pod per node
@@ -886,7 +886,7 @@ public class SchedulerTest {
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
-            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             node.getStatus().getCapacity().put("cpu",
                                                new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(nodeMemoryCapacities.get(i))));
@@ -978,7 +978,7 @@ public class SchedulerTest {
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
-            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             node.getSpec().setTaints(taints.get(i));
             nodeResourceEventHandler.onAddSync(node);
 
@@ -1158,7 +1158,7 @@ public class SchedulerTest {
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         for (int i = 0; i < numNodes; i++) {
-            nodeResourceEventHandler.onAddSync(addNode("n" + i, Collections.emptyMap(),
+            nodeResourceEventHandler.onAddSync(newNode("n" + i, Collections.emptyMap(),
                                            Collections.emptyList()));
 
             // Add one system pod per node
@@ -1262,8 +1262,8 @@ public class SchedulerTest {
         return pod;
     }
 
-    private Node addNode(final String nodeName, final Map<String, String> labels,
-                           final List<NodeCondition> conditions) {
+    static Node newNode(final String nodeName, final Map<String, String> labels,
+                 final List<NodeCondition> conditions) {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
         final Map<String, Quantity> quantityMap = new HashMap<>();
