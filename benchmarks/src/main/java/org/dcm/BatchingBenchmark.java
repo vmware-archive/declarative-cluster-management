@@ -44,7 +44,7 @@ import java.util.stream.IntStream;
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
-public class BatchTests {
+public class BatchingBenchmark {
 
     @Param({"1", "5", "10", "50"})
     static int numPods;

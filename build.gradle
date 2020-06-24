@@ -100,3 +100,32 @@ subprojects {
         }
     }
 }
+
+
+
+task codeCoverageReport(type: JacocoReport) {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+    }
+
+    // Gather execution data from all subprojects
+    executionData fileTree(project.rootDir.absolutePath).include("**/build/jacoco/*.exec")
+
+    // Add all relevant sourcesets from the subprojects
+    subprojects.each {
+        sourceSets it.sourceSets.main
+    }
+
+    reports {
+        xml.enabled true
+        html.enabled true
+        csv.enabled false
+    }
+
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: ['**/generated/**', '**/**Benchmark**'])
+        }))
+    }
+}

@@ -42,7 +42,7 @@ import static org.jooq.impl.DSL.using;
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
 
-public class EncodingBenchmark {
+public class OrToolsEncodingBenchmark {
     @State(Scope.Benchmark)
     public static class BenchmarkState {
         @Nullable Model model = null;
@@ -137,7 +137,7 @@ public class EncodingBenchmark {
     }
 
     @Benchmark
-    public void runSolver(final EncodingBenchmark.BenchmarkState state) {
+    public void runSolver(final OrToolsEncodingBenchmark.BenchmarkState state) {
         assert state.model != null;
         state.model.solveModelWithoutTableUpdates(Set.of("T2"));
     }

@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit;
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
-public class EndToEnd {
+public class EndToEndBenchmark {
 
     @Param("ORTOOLS")
     static String solverToUse;

@@ -42,7 +42,7 @@ import static org.jooq.impl.DSL.using;
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
 
-public class EncodingBenchmarkMnz {
+public class MiniZincEncodingBenchmark {
 
     @State(Scope.Benchmark)
     public static class BenchmarkState {
@@ -119,7 +119,7 @@ public class EncodingBenchmarkMnz {
     }
 
     @Benchmark
-    public void runSolver(final EncodingBenchmarkMnz.BenchmarkState state) {
+    public void runSolver(final MiniZincEncodingBenchmark.BenchmarkState state) {
         assert state.model != null;
         state.model.solveModelWithoutTableUpdates(Set.of("T2"));
     }
