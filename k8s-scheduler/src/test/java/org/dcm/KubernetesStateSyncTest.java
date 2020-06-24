@@ -56,6 +56,18 @@ public class KubernetesStateSyncTest {
         assertNotNull(server);
         final NamespacedKubernetesClient client = server.getClient();
         final Node node = SchedulerTest.newNode("n1", Collections.emptyMap(), Collections.emptyList());
+        final PodBuilder podBuilder = new PodBuilder().withNewMetadata()
+                                                         .withName("pod1")
+                                                         .withNamespace("test")
+                                                         .withCreationTimestamp("10")
+                                                         .withResourceVersion(rv2)
+                                                      .endMetadata()
+                                                      .withNewSpec()
+                                                         .withSchedulerName(Scheduler.SCHEDULER_NAME)
+                                                      .endSpec()
+                                                      .withNewStatus()
+                                                         .withPhase("Pending")
+                                                      .endStatus();
         server.expect().get()
                 .withPath("/api/v1/namespaces/test/nodes")
                 .andReturn(200, new NodeListBuilder().withNewMetadata()
@@ -75,29 +87,31 @@ public class KubernetesStateSyncTest {
                 .andUpgradeToWebSocket()
                 .open()
                 .waitFor(10)
-                .andEmit(new WatchEvent(new PodBuilder().withNewMetadata()
-                                                          .withName("pod1")
-                                                          .withResourceVersion(rv2)
-                                                        .endMetadata()
-                        .withNewSpec().withSchedulerName(Scheduler.SCHEDULER_NAME).endSpec()
-                        .build(), "ADDED"))
-                .waitFor(20)
-                .andEmit(new WatchEvent(new PodBuilder()
-                        .withNewMetadata().withName("pod1").withResourceVersion(rv3).endMetadata()
-                        .withNewSpec().withSchedulerName(Scheduler.SCHEDULER_NAME).endSpec()
-                        .build(), "MODIFIED"))
-                .waitFor(30)
-                .andEmit(new WatchEvent(new PodBuilder()
-                        .withNewMetadata().withName("pod1").withResourceVersion(rv4).endMetadata()
-                        .withNewSpec().withSchedulerName(Scheduler.SCHEDULER_NAME).endSpec()
-                        .build(), "DELETED"))
+                .andEmit(new WatchEvent(podBuilder.editMetadata().withResourceVersion(rv2).endMetadata().build(),
+                                        "ADDED"))
+                .done().always();
+        server.expect().get().withPath("/api/v1/namespaces/test/pods?resourceVersion=" + rv2 + "&watch=true")
+                .andUpgradeToWebSocket()
+                .open()
+                .waitFor(10)
+                .andEmit(new WatchEvent(podBuilder.editMetadata().withResourceVersion(rv3).endMetadata().build(),
+                                        "MODIFIED"))
+                .done().always();
+        server.expect().get().withPath("/api/v1/namespaces/test/pods?resourceVersion=" + rv3 + "&watch=true")
+                .andUpgradeToWebSocket()
+                .open()
+                .waitFor(10)
+                .andEmit(new WatchEvent(podBuilder.editMetadata().withResourceVersion(rv4).endMetadata().build(),
+                                        "DELETED"))
                 .waitFor(40)
                 .andEmit(OUTDATED_EVENT).done().always();
 
         final DBConnectionPool conn = new DBConnectionPool();
         final KubernetesStateSync stateSync = new KubernetesStateSync(client);
         final CountDownLatch latch = new CountDownLatch(3);
+        final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(conn);
         stateSync.setupInformersAndPodEventStream(conn, (pe) -> {
+            podEventsToDatabase.handle(pe);
             latch.countDown();
         });
         stateSync.startProcessingEvents();
