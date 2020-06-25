@@ -7,7 +7,7 @@
 package org.dcm;
 
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.client.DefaultKubernetesClient;
+import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,10 +20,10 @@ import java.util.List;
 public class KubernetesPodDeployer implements IPodDeployer {
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesPodDeployer.class);
 
-    private final DefaultKubernetesClient fabricClient;
+    private final NamespacedKubernetesClient fabricClient;
     private final String namespace;
 
-    public KubernetesPodDeployer(final DefaultKubernetesClient fabricClient, final String namespace) {
+    public KubernetesPodDeployer(final NamespacedKubernetesClient fabricClient, final String namespace) {
         this.fabricClient = fabricClient;
         this.namespace = namespace;
     }

@@ -46,7 +46,7 @@ public class KubernetesStateSyncTest {
      * Tests our use of informers to subscribe to learn about pod and node events via the K8s API
      */
     @Test
-    public void testK8sApi() throws InterruptedException {
+    public void testKubernetesInformers() throws InterruptedException {
         server = new KubernetesServer(false);
         server.before();
         final String rv1 = "10";

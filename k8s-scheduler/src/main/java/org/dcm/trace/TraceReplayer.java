@@ -19,6 +19,7 @@ import io.fabric8.kubernetes.api.model.PodAffinityTerm;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
+import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
 import org.dcm.IPodDeployer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,9 +53,18 @@ public class TraceReplayer {
                 startTimeCutOff, 0);
     }
 
-    public void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
-                  final String schedulerName, final int cpuScaleDown, final int memScaleDown,
-                  final int timeScaleDown, final int startTimeCutOff, final int affinityProportion)
+    public void runTrace(final NamespacedKubernetesClient client, final String fileName, final IPodDeployer deployer,
+                         final String schedulerName, final int cpuScaleDown, final int memScaleDown,
+                         final int timeScaleDown, final int startTimeCutOff, final int affinityProportion)
+                                                                                                throws Exception {
+        runTrace(client, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
+                startTimeCutOff, 0, 60);
+    }
+
+    public void runTrace(final NamespacedKubernetesClient client, final String fileName, final IPodDeployer deployer,
+                         final String schedulerName, final int cpuScaleDown, final int memScaleDown,
+                         final int timeScaleDown, final int startTimeCutOff, final int affinityProportion,
+                         final int deletionTime)
             throws Exception {
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
                         " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{} AffinityProportion:{}",
@@ -112,14 +122,14 @@ public class TraceReplayer {
                 // get duration based on start and end times
                 // final int duration = getDuration(start, end);
 
-                final long computedEndTime = (waitTime / 1000) + 60;
+                final long computedEndTime = (waitTime / 1000) + deletionTime;
 
                 // Schedule deletion of this deployment based on duration + time until start of the dep
                 final SettableFuture<Boolean> onComplete = SettableFuture.create();
                 scheduledStart.addListener(() -> {
                     final ListenableScheduledFuture<?> deletion =
                             scheduledExecutorService.schedule(deployer.endDeployment(deployment),
-                                    60, TimeUnit.SECONDS);
+                                    deletionTime, TimeUnit.SECONDS);
                     deletion.addListener(() -> onComplete.set(true), scheduledExecutorService);
                 }, scheduledExecutorService);
                 deletions.add(onComplete);
@@ -155,7 +165,7 @@ public class TraceReplayer {
         return linesCount;
     }
 
-    private List<Pod> getDeployment(final DefaultKubernetesClient client, final String schedulerName, final float cpu,
+    private List<Pod> getDeployment(final NamespacedKubernetesClient client, final String schedulerName, final float cpu,
                                     final float mem, final int count, final int taskCount,
                                     final boolean createAffinityRequirements) {
         // Load the template file and update its contents to generate a new deployment template

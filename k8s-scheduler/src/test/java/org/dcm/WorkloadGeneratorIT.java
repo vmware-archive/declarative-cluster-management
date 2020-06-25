@@ -58,22 +58,6 @@ class WorkloadGeneratorIT extends ITBase {
 
     @Tag("integration-test")
     @Test
-    public void testSmallTrace() throws Exception {
-        if (getClass().getClassLoader().getResource("test-data.txt") != null) {
-            System.out.println("Running small trace");
-            final long traceId = System.currentTimeMillis();
-            fabricClient.pods().inAnyNamespace().watch(new LoggingPodWatcher(traceId));
-            fabricClient.nodes().watch(new LoggingNodeWatcher(traceId));
-
-            final IPodDeployer deployer = new KubernetesPodDeployer(fabricClient, TEST_NAMESPACE);
-            runTrace("test-data.txt", deployer);
-        } else {
-            System.out.println("test file not found");
-        }
-    }
-
-    @Tag("integration-test")
-    @Test
     public void testAzureV1Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v1-data.txt") != null) {
             System.out.println("Running Azure v1 complete trace");
@@ -167,7 +151,7 @@ class WorkloadGeneratorIT extends ITBase {
                                timeScaleDown, startTimeCutOff, affinityProportion);
     }
 
-    private static final class LoggingPodWatcher implements Watcher<Pod> {
+    static final class LoggingPodWatcher implements Watcher<Pod> {
         private final long traceId;
 
         LoggingPodWatcher(final long traceId) {
@@ -188,7 +172,7 @@ class WorkloadGeneratorIT extends ITBase {
     }
 
 
-    private static final class LoggingNodeWatcher implements Watcher<Node> {
+    static final class LoggingNodeWatcher implements Watcher<Node> {
         private final long traceId;
 
         LoggingNodeWatcher(final long traceId) {
