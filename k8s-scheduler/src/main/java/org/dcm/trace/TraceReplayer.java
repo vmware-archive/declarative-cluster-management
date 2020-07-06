@@ -165,8 +165,8 @@ public class TraceReplayer {
         return linesCount;
     }
 
-    private List<Pod> getDeployment(final NamespacedKubernetesClient client, final String schedulerName, final float cpu,
-                                    final float mem, final int count, final int taskCount,
+    private List<Pod> getDeployment(final NamespacedKubernetesClient client, final String schedulerName,
+                                    final float cpu, final float mem, final int count, final int taskCount,
                                     final boolean createAffinityRequirements) {
         // Load the template file and update its contents to generate a new deployment template
         final String podFile = createAffinityRequirements ? "pod-with-affinity.yml" : "pod-only.yml";
