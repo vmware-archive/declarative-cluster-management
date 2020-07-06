@@ -130,6 +130,7 @@ public class EndToEndBenchmark {
             meta.setLabels(labels);
             meta.setCreationTimestamp("1");
             meta.setNamespace("default");
+            meta.setResourceVersion("10");
             final PodSpec spec = new PodSpec();
             spec.setSchedulerName(Scheduler.SCHEDULER_NAME);
             spec.setPriority(0);
