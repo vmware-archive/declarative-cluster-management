@@ -8,8 +8,8 @@ package org.dcm.compiler;
 
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.CreateView;
+import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
 import com.facebook.presto.sql.tree.DereferenceExpression;
-import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -88,7 +89,8 @@ public class ModelCompiler {
 
     /**
      * A pass to create IRTable entries for non-constraint views. These views are used as intermediate
-     * computations, so we need an IRTable entry to track relevant metadata (like column type information).
+     * computations, so it is convenient in later stages of the compiler to have an IRTable entry for such views
+     * to track relevant metadata (like column type information).
      *
      * @param viewName view being parsed
      * @param view AST representing the view
@@ -105,52 +107,15 @@ public class ModelCompiler {
     /**
      * Given a list of select items, constructs IRColumns and IRTable entries for them.
      */
-    private void createIRTablesFromSelectItems(final List<SelectItem> selectItems, final Set<IRTable> tables,
-                                               final String viewName) {
+    private void createIRTablesFromSelectItems(final List<SelectItem> selectItems,
+                                               final Set<IRTable> tablesReferencedInView, final String viewName) {
         final IRTable viewTable = new IRTable(null, viewName, viewName);
-        for (final SelectItem selectItem: selectItems) {
-            if (selectItem instanceof SingleColumn) {
-                final SingleColumn singleColumn = (SingleColumn) selectItem;
-                final Expression expression = singleColumn.getExpression();
-                if (singleColumn.getAlias().isPresent()) {
-                    final IRColumn.FieldType fieldType;
-                    if (expression instanceof Identifier) {
-                        fieldType = irContext.getColumnIfUnique(expression.toString(), tables).getType();
-                    } else if (expression instanceof DereferenceExpression) {
-                        fieldType = TranslateViewToIR
-                                   .getIRColumnFromDereferencedExpression((DereferenceExpression) expression, irContext)
-                                   .getType();
-                    } else {
-                        LOG.warn("Guessing FieldType for column {} in non-constraint view {} to be INT",
-                                singleColumn.getAlias(), viewName);
-                        fieldType = IRColumn.FieldType.INT;
-                    }
-                    final IRColumn column = new IRColumn(viewTable, null, fieldType,
-                            singleColumn.getAlias().get().toString());
-                    viewTable.addField(column);
-                } else if (expression instanceof Identifier) {
-                    final IRColumn columnIfUnique = irContext.getColumnIfUnique(expression.toString(), tables);
-                    final IRColumn newColumn = new IRColumn(viewTable, null, columnIfUnique.getType(),
-                            columnIfUnique.getName());
-                    viewTable.addField(newColumn);
-                } else if (expression instanceof DereferenceExpression) {
-                    final DereferenceExpression derefExpression = (DereferenceExpression) expression;
-                    final IRColumn irColumn =
-                            TranslateViewToIR.getIRColumnFromDereferencedExpression(derefExpression, irContext);
-                    final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getType(),
-                            irColumn.getName());
-                    viewTable.addField(newColumn);
-                } else {
-                    throw new RuntimeException("SelectItem type is not a column but does not have an alias");
-                }
-            } else if (selectItem instanceof AllColumns) {
-                tables.forEach(
-                        table -> table.getIRColumns().forEach((fieldName, irColumn) -> {
-                            viewTable.addField(irColumn);
-                        })
-                );
-            }
-        }
+
+        selectItems.forEach(selectItem -> {
+            final IRColumnsFromSelectItems visitor = new IRColumnsFromSelectItems(irContext, viewTable,
+                                                                                  tablesReferencedInView);
+            visitor.process(selectItem); // updates viewTable with new columns
+        });
         irContext.addAliasedOrViewTable(viewTable);
     }
 
@@ -163,5 +128,67 @@ public class ModelCompiler {
         final Map<String, MonoidComprehension> result = new HashMap<>();
         views.forEach((key, value) -> result.put(key, TranslateViewToIR.apply(value, irContext)));
         return result;
+    }
+
+    /**
+     * Identifies and adds IRColumns to a given IRTable (viewTable) by scanning the select items in a particular view.
+     */
+    private static class IRColumnsFromSelectItems extends DefaultTraversalVisitor<Void, Optional<String>> {
+        private final IRContext irContext;
+        private final IRTable viewTable;
+        private final Set<IRTable> tablesReferencedInView;
+
+        private IRColumnsFromSelectItems(final IRContext irContext, final IRTable viewTable,
+                                         final Set<IRTable> tablesReferencedInView) {
+            this.irContext = irContext;
+            this.viewTable = viewTable;
+            this.tablesReferencedInView = tablesReferencedInView;
+        }
+
+        @Override
+        protected Void visitSingleColumn(final SingleColumn node, final Optional<String> context) {
+            final int before = viewTable.getIRColumns().size();
+            super.visitSingleColumn(node, node.getAlias().map(Identifier::getValue));
+            if (viewTable.getIRColumns().size() == before) {
+                // Was neither an identifier nor a dereference expression.
+                // We therefore assume its a supported expression, but require
+                // that it have an alias
+                LOG.warn("Guessing FieldType for column {} in non-constraint view {} to be INT",
+                         node.getAlias(), viewTable.getName());
+                final String alias = node.getAlias().orElseThrow().getValue();
+                final IRColumn.FieldType intType = IRColumn.FieldType.INT;
+                final IRColumn newColumn = new IRColumn(viewTable, null, intType, alias);
+                viewTable.addField(newColumn);
+            }
+            return null;
+        }
+
+        @Override
+        protected Void visitAllColumns(final AllColumns node, final Optional<String> context) {
+            tablesReferencedInView.forEach(
+                table -> table.getIRColumns().forEach((fieldName, irColumn) -> {
+                    viewTable.addField(irColumn);
+                })
+            );
+            return null;
+        }
+
+        @Override
+        protected Void visitIdentifier(final Identifier node, final Optional<String> context) {
+            final IRColumn columnIfUnique = irContext.getColumnIfUnique(node.toString(), tablesReferencedInView);
+            final IRColumn newColumn = new IRColumn(viewTable, null, columnIfUnique.getType(),
+                                                    context.orElse(columnIfUnique.getName()));
+            viewTable.addField(newColumn);
+            return null;
+        }
+
+        @Override
+        protected Void visitDereferenceExpression(final DereferenceExpression node, final Optional<String> context) {
+            final IRColumn irColumn = TranslateViewToIR.getIRColumnFromDereferencedExpression(node, irContext);
+            final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getType(),
+                                                    context.orElse(irColumn.getName()));
+            viewTable.addField(newColumn);
+            return null;
+        }
     }
 }
