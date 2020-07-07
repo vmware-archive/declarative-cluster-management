@@ -1120,7 +1120,7 @@ public class OrToolsSolver implements ISolverBackend {
     private String exprToStr(final Expr expr, final boolean allowControllable,
                              @Nullable final GroupContext currentGroup, final TranslationContext context) {
         final ExprToStrVisitor visitor = new ExprToStrVisitor(allowControllable, currentGroup, null);
-        return Objects.requireNonNull(visitor.visit(expr, context));
+        return visitor.visit(expr, context);
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
@@ -1253,8 +1253,7 @@ public class OrToolsSolver implements ISolverBackend {
             }
 
             context.enterScope(forLoop);
-            final String processedArgument = Objects.requireNonNull(visit(node.getArgument().get(0),
-                                                                          context.withEnterFunctionContext()));
+            final String processedArgument = visit(node.getArgument().get(0), context.withEnterFunctionContext());
             context.leaveScope();
 
             final String argumentType = inferType(node.getArgument().get(0));
@@ -1296,20 +1295,17 @@ public class OrToolsSolver implements ISolverBackend {
                 default:
                     throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
             }
-            Preconditions.checkNotNull(function);
             return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();
         }
 
         @Override
         protected String visitExistsPredicate(final ExistsPredicate node, final TranslationContext context) {
-            Preconditions.checkNotNull(context);
             final String processedArgument = visit(node.getArgument(), context);
             return apply(String.format("o.exists(%s)", processedArgument), context);
         }
 
         @Override
         protected String visitIsNullPredicate(final IsNullPredicate node, final TranslationContext context) {
-            Preconditions.checkNotNull(context);
             final String type = inferType(node.getArgument());
             final String processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(!type.equals("IntVar"));
@@ -1317,9 +1313,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         @Override
-        protected String visitIsNotNullPredicate(final IsNotNullPredicate node,
-                                                 @Nullable final TranslationContext context) {
-            Preconditions.checkNotNull(context);
+        protected String visitIsNotNullPredicate(final IsNotNullPredicate node, final TranslationContext context) {
             final String type = inferType(node.getArgument());
             final String processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(!type.equals("IntVar"));
@@ -1328,14 +1322,13 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Override
         protected String visitUnaryOperator(final UnaryOperator node, final TranslationContext context) {
-            Preconditions.checkNotNull(context);
             switch (node.getOperator()) {
                 case NOT:
                     return apply(String.format("o.not(%s)", visit(node.getArgument(), context)), context);
                 case MINUS:
                     return apply(String.format("o.mult(-1, %s)", visit(node.getArgument(), context)), context);
                 case PLUS:
-                    return apply(Objects.requireNonNull(visit(node.getArgument(), context)), context);
+                    return apply(visit(node.getArgument(), context), context);
                 default:
                     throw new IllegalArgumentException(node.toString());
             }
@@ -1344,11 +1337,8 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
                                                       final TranslationContext context) {
-            Preconditions.checkNotNull(context);
-            final String left = Objects.requireNonNull(visit(node.getLeft(), context),
-                                                       "Expr was null: " + node.getLeft());
-            final String right = Objects.requireNonNull(visit(node.getRight(), context),
-                                                        "Expr was null: " + node.getRight());
+            final String left = visit(node.getLeft(), context);
+            final String right = visit(node.getRight(), context);
             final BinaryOperatorPredicate.Operator op = node.getOperator();
             final String leftType = inferType(node.getLeft());
             final String rightType = inferType(node.getRight());
@@ -1427,7 +1417,6 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Override
         protected String visitColumnIdentifier(final ColumnIdentifier node, final TranslationContext context) {
-            Preconditions.checkNotNull(context);
             // If we are evaluating a group-by comprehension, then column accesses that happen outside the context
             // of an aggregation function must refer to the grouping column, not the inner tuple being iterated over.
             if (!context.isFunctionContext() && currentGroupContext != null) {
@@ -1482,7 +1471,6 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Override
         protected String visitMonoidComprehension(final MonoidComprehension node, final TranslationContext context) {
-            Preconditions.checkNotNull(context);
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             final OutputIR.Block subQueryBlock = addView(newSubqueryName, node, false, context);
@@ -1498,12 +1486,12 @@ public class OrToolsSolver implements ISolverBackend {
             final boolean headSelectItemContainsMonoidFunction = visitor.getFound();
 
             final OutputIR.Block currentBlock = context.currentScope();
-            final TranslationContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
+            final TranslationContext newCtx = context.withEnterFunctionContext();
             // If the head contains a function, then this is a scalar subquery
             if (headSelectItemContainsMonoidFunction) {
                 newCtx.enterScope(subQueryBlock);
                 currentBlock.addBody(subQueryBlock);
-                final String ret = apply(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                final String ret = apply(innerVisitor.visit(headSelectItem, newCtx), context);
                 newCtx.leaveScope();
                 return ret;
             } else {
@@ -1521,7 +1509,6 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Override
         protected String visitGroupByComprehension(final GroupByComprehension node, final TranslationContext context) {
-            Preconditions.checkNotNull(context);
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             final OutputIR.Block subQueryBlock = addView(newSubqueryName, node, false, context);
@@ -1533,19 +1520,18 @@ public class OrToolsSolver implements ISolverBackend {
             final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
 
             final OutputIR.Block currentBlock = context.currentScope();
-            final TranslationContext newCtx = Objects.requireNonNull(context).withEnterFunctionContext();
+            final TranslationContext newCtx = context.withEnterFunctionContext();
             // if scalar subquery
             if (headSelectItem instanceof MonoidFunction) {
                 newCtx.enterScope(subQueryBlock);
                 currentBlock.addBody(subQueryBlock);
-                final String ret = apply(Objects.requireNonNull(innerVisitor.visit(headSelectItem, newCtx)), context);
+                final String ret = apply(innerVisitor.visit(headSelectItem, newCtx), context);
                 newCtx.leaveScope();
                 return ret;
             } else {
                 newCtx.enterScope(subQueryBlock.getForLoopByName(newSubqueryName));
                 final String processedHeadItem =
-                    Objects.requireNonNull(innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0),
-                                           newCtx));
+                    innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0), newCtx);
                 final String type = inferType(node.getComprehension().getHead().getSelectExprs().get(0));
                 final String listName =
                         extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
@@ -1622,7 +1608,7 @@ public class OrToolsSolver implements ISolverBackend {
             }
             // regular sum
             context.enterScope(forLoop);
-            final String processedArgument = Objects.requireNonNull(visit(node, context.withEnterFunctionContext()));
+            final String processedArgument = visit(node, context.withEnterFunctionContext());
             context.leaveScope();
             final String argumentType = inferType(node);
             final String function = argumentType.equals("IntVar") ? "sumV" : "sum";
@@ -1640,9 +1626,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                    final OutputIR.Block forLoop,
                                                    final String coefficientsType) {
             context.enterScope(forLoop);
-            final String variablesItem = Objects.requireNonNull(visit(variables, context.withEnterFunctionContext()));
-            final String coefficientsItem = Objects.requireNonNull(visit(coefficients,
-                                                                         context.withEnterFunctionContext()));
+            final String variablesItem = visit(variables, context.withEnterFunctionContext());
+            final String coefficientsItem = visit(coefficients, context.withEnterFunctionContext());
             context.leaveScope();
             final String listOfVariablesItem =
                     extractListFromLoop(variablesItem, outerBlock, forLoop, "IntVar");

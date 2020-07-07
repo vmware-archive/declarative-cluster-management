@@ -18,8 +18,6 @@ import org.dcm.compiler.monoid.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Objects;
-
 /**
  * Only used by the Minizinc backend to rewrite IsNull/IsNotNull(expr) predicates into expr =/!= 'null'
  */
@@ -40,7 +38,7 @@ public class RewriteNullPredicates extends ComprehensionRewriter {
 
     static MonoidComprehension apply(final MonoidComprehension comprehension) {
         final RewriteNullPredicates rewriter = new RewriteNullPredicates();
-        final Expr result = Objects.requireNonNull(rewriter.visit(comprehension));
+        final Expr result = rewriter.visit(comprehension);
         LOG.trace("Rewrote {} into {}", comprehension, result);
         return comprehension instanceof GroupByComprehension ?
                 (GroupByComprehension) result : (MonoidComprehension) result;

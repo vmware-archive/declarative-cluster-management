@@ -27,7 +27,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
-import java.util.Objects;
 
 class InferType extends MonoidVisitor<String, VoidType> {
     private static final Logger LOG = LoggerFactory.getLogger(InferType.class);
@@ -45,8 +44,6 @@ class InferType extends MonoidVisitor<String, VoidType> {
     protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final VoidType context) {
         final String leftType = visit(node.getLeft());
         final String rightType = visit(node.getRight());
-        Preconditions.checkNotNull(leftType);
-        Preconditions.checkNotNull(rightType, "type was null: " + node.getRight());
         if (leftType.equals("IntVar") || rightType.equals("IntVar")) {
             return "IntVar";
         }
@@ -117,17 +114,17 @@ class InferType extends MonoidVisitor<String, VoidType> {
 
     @Override
     protected String visitIsNullPredicate(final IsNullPredicate node, final VoidType context) {
-        return Objects.requireNonNull(visit(node.getArgument(), context)).equals("IntVar") ? "IntVar" : "Boolean";
+        return visit(node.getArgument(), context).equals("IntVar") ? "IntVar" : "Boolean";
     }
 
     @Override
     protected String visitIsNotNullPredicate(final IsNotNullPredicate node, final VoidType context) {
-        return Objects.requireNonNull(visit(node.getArgument(), context)).equals("IntVar") ? "IntVar" : "Boolean";
+        return visit(node.getArgument(), context).equals("IntVar") ? "IntVar" : "Boolean";
     }
 
     @Override
     protected String visitUnaryOperator(final UnaryOperator node, final VoidType context) {
-        final String type = Objects.requireNonNull(visit(node.getArgument(), context));
+        final String type = visit(node.getArgument(), context);
         switch (node.getOperator()) {
             case NOT:
                 return type.equals("IntVar") ? "IntVar" : "Boolean";
@@ -186,8 +183,7 @@ class InferType extends MonoidVisitor<String, VoidType> {
     // TODO: passing viewTupleTypeParameters makes this class tightly coupled with OrToolsSolver.
     static String forExpr(final Expr expr, final Map<String, String> viewTupleTypeParameters) {
         final InferType visitor = new InferType(viewTupleTypeParameters);
-        final String result =
-            Objects.requireNonNull(visitor.visit(expr), "Result of type inference for expr was null: " + expr);
+        final String result = visitor.visit(expr);
         assert !result.isEmpty();
         return result;
     }

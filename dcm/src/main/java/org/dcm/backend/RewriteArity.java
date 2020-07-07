@@ -25,7 +25,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -39,7 +38,7 @@ class RewriteArity extends ComprehensionRewriter {
 
     static MonoidComprehension apply(final MonoidComprehension comprehension) {
         final RewriteArity rewriter = new RewriteArity();
-        final Expr result = Objects.requireNonNull(rewriter.visit(comprehension));
+        final Expr result = rewriter.visit(comprehension);
         return comprehension instanceof GroupByComprehension ?
                 (GroupByComprehension) result : (MonoidComprehension) result;
     }
@@ -133,7 +132,7 @@ class RewriteArity extends ComprehensionRewriter {
         final MonoidComprehension result =
                 (MonoidComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers);
         if (functionRewriter.didRewrite) {
-            LOG.info("Rewrote: {} into {}", input, Objects.requireNonNull(result));
+            LOG.info("Rewrote: {} into {}", input, result);
             return result;
         } else {
             LOG.debug("Did not rewrite: {}", input);
@@ -164,7 +163,7 @@ class RewriteArity extends ComprehensionRewriter {
                         .collect(Collectors.toList());
 
                 final Head newHead = (Head) super.visit(node.getHead(), context);
-                return new MonoidComprehension(Objects.requireNonNull(newHead), qualifiers);
+                return new MonoidComprehension(newHead, qualifiers);
             }
             return node;
         }

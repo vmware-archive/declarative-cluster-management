@@ -6,12 +6,10 @@
 
 package org.dcm.compiler.monoid;
 
-import java.util.Objects;
-
 public class MonoidVisitor<T, C> {
 
     public T visit(final Expr expr, final C context) {
-        return Objects.requireNonNull(expr.acceptVisitor(this, context));
+        return expr.acceptVisitor(this, context);
     }
 
     protected T visitHead(final Head node, final C context) {

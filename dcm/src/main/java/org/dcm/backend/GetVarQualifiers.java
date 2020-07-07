@@ -25,7 +25,6 @@ import org.dcm.compiler.monoid.UnaryOperator;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Separates qualifiers in an expression into vars and non-vars.
@@ -39,7 +38,7 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
 
     static QualifiersList apply(final Expr expr, final boolean skipAggregates) {
         final GetVarQualifiers visitor = new GetVarQualifiers(skipAggregates);
-        return Objects.requireNonNull(visitor.visit(expr));
+        return visitor.visit(expr);
     }
 
     static QualifiersList apply(final Expr expr) {
@@ -53,7 +52,6 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
     @Override
     protected QualifiersList visitGroupByQualifier(final GroupByQualifier node,
                                                    final QualifiersList context) {
-        assert context != null;
         return context.withNonVarQualifier(node);
     }
 
@@ -80,9 +78,9 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
                     new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node.getArgument(),
                             new MonoidLiteral<>(false, Boolean.class));
             if (isControllableField(node.getArgument())) {
-                return Objects.requireNonNull(context).withVarQualifier(rewritten);
+                return context.withVarQualifier(rewritten);
             } else {
-                return Objects.requireNonNull(context).withNonVarQualifier(rewritten);
+                return context.withNonVarQualifier(rewritten);
             }
         }
         return context;
@@ -125,8 +123,8 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
                 return context.withNonVarQualifier(checkForAggregate(node));
             }
             case AND: {
-                final QualifiersList left = Objects.requireNonNull(visit(node.getLeft(), context));
-                final QualifiersList right = Objects.requireNonNull(visit(node.getRight(), context));
+                final QualifiersList left = visit(node.getLeft(), context);
+                final QualifiersList right = visit(node.getRight(), context);
                 return left.withQualifiersList(right);
             }
             default:

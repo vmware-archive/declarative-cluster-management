@@ -14,8 +14,6 @@ import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.VoidType;
 
-import java.util.Objects;
-
 /**
  * Minizinc has no "count()" function. We rewrite all instances of
  * count([i | qualifiers..]) to sum([1 | qualifiers...]).
@@ -38,6 +36,6 @@ class RewriteCountFunction extends ComprehensionRewriter {
 
     static MonoidComprehension apply(final MonoidComprehension comprehension) {
         final RewriteCountFunction rewriter = new RewriteCountFunction();
-        return (MonoidComprehension) Objects.requireNonNull(rewriter.visit(comprehension));
+        return (MonoidComprehension) rewriter.visit(comprehension);
     }
 }

@@ -16,15 +16,13 @@ import org.dcm.compiler.monoid.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Objects;
-
 public class RewriteContains extends ComprehensionRewriter {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteContains.class);
 
     static MonoidComprehension apply(final MonoidComprehension comprehension) {
         LOG.trace("Invoking RewriteContains on {}", comprehension);
         final RewriteContains rewriter = new RewriteContains();
-        final Expr result = Objects.requireNonNull(rewriter.visit(comprehension));
+        final Expr result = rewriter.visit(comprehension);
         return comprehension instanceof GroupByComprehension ?
                 (GroupByComprehension) result : (MonoidComprehension) result;
     }
