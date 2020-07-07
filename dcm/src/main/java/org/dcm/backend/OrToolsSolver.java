@@ -45,8 +45,10 @@ import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.Qualifier;
+import org.dcm.compiler.monoid.SimpleVisitor;
 import org.dcm.compiler.monoid.TableRowGenerator;
 import org.dcm.compiler.monoid.UnaryOperator;
+import org.dcm.compiler.monoid.VoidType;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -1232,12 +1234,10 @@ public class OrToolsSolver implements ISolverBackend {
             this.currentSubQueryContext = currentSubQueryContext;
         }
 
-        @Nullable
         @Override
-        protected String visitMonoidFunction(final MonoidFunction node, @Nullable final TranslationContext context) {
+        protected String visitMonoidFunction(final MonoidFunction node, final TranslationContext context) {
             final String vectorName = currentSubQueryContext == null ? currentGroupContext.groupViewName
                                                                      : currentSubQueryContext.subQueryName;
-            assert context != null;
             // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
             // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
             final OutputIR.Block forLoop = context.currentScope().getForLoopByName(vectorName);
@@ -1297,17 +1297,15 @@ public class OrToolsSolver implements ISolverBackend {
             return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();
         }
 
-        @Nullable
         @Override
-        protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final TranslationContext context) {
+        protected String visitExistsPredicate(final ExistsPredicate node, final TranslationContext context) {
             Preconditions.checkNotNull(context);
             final String processedArgument = visit(node.getArgument(), context);
             return apply(String.format("o.exists(%s)", processedArgument), context);
         }
 
-        @Nullable
         @Override
-        protected String visitIsNullPredicate(final IsNullPredicate node, @Nullable final TranslationContext context) {
+        protected String visitIsNullPredicate(final IsNullPredicate node, final TranslationContext context) {
             Preconditions.checkNotNull(context);
             final String type = inferType(node.getArgument());
             final String processedArgument = visit(node.getArgument(), context);
@@ -1315,7 +1313,6 @@ public class OrToolsSolver implements ISolverBackend {
             return apply(String.format("%s == null", processedArgument), context);
         }
 
-        @Nullable
         @Override
         protected String visitIsNotNullPredicate(final IsNotNullPredicate node,
                                                  @Nullable final TranslationContext context) {
@@ -1326,9 +1323,8 @@ public class OrToolsSolver implements ISolverBackend {
             return apply(String.format("%s != null", processedArgument), context);
         }
 
-        @Nullable
         @Override
-        protected String visitUnaryOperator(final UnaryOperator node, @Nullable final TranslationContext context) {
+        protected String visitUnaryOperator(final UnaryOperator node, final TranslationContext context) {
             Preconditions.checkNotNull(context);
             switch (node.getOperator()) {
                 case NOT:
@@ -1342,10 +1338,9 @@ public class OrToolsSolver implements ISolverBackend {
             }
         }
 
-        @Nullable
         @Override
         protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
-                                                      @Nullable final TranslationContext context) {
+                                                      final TranslationContext context) {
             Preconditions.checkNotNull(context);
             final String left = Objects.requireNonNull(visit(node.getLeft(), context),
                                                        "Expr was null: " + node.getLeft());
@@ -1427,10 +1422,8 @@ public class OrToolsSolver implements ISolverBackend {
             }
         }
 
-        @Nullable
         @Override
-        protected String visitColumnIdentifier(final ColumnIdentifier node,
-                                               @Nullable final TranslationContext context) {
+        protected String visitColumnIdentifier(final ColumnIdentifier node, final TranslationContext context) {
             Preconditions.checkNotNull(context);
             // If we are evaluating a group-by comprehension, then column accesses that happen outside the context
             // of an aggregation function must refer to the grouping column, not the inner tuple being iterated over.
@@ -1475,9 +1468,8 @@ public class OrToolsSolver implements ISolverBackend {
             return apply(fieldNameStrWithIter(tableName, fieldName, iterStr), context);
         }
 
-        @Nullable
         @Override
-        protected String visitMonoidLiteral(final MonoidLiteral node, @Nullable final TranslationContext context) {
+        protected String visitMonoidLiteral(final MonoidLiteral node, final TranslationContext context) {
             if (node.getValue() instanceof String) {
                 return node.getValue().toString().replace("'", "\"");
             } else {
@@ -1485,10 +1477,8 @@ public class OrToolsSolver implements ISolverBackend {
             }
         }
 
-        @Nullable
         @Override
-        protected String visitMonoidComprehension(final MonoidComprehension node,
-                                                  @Nullable final TranslationContext context) {
+        protected String visitMonoidComprehension(final MonoidComprehension node, final TranslationContext context) {
             Preconditions.checkNotNull(context);
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
@@ -1526,10 +1516,8 @@ public class OrToolsSolver implements ISolverBackend {
             }
         }
 
-        @Nullable
         @Override
-        protected String visitGroupByComprehension(final GroupByComprehension node,
-                                                   @Nullable final TranslationContext context) {
+        protected String visitGroupByComprehension(final GroupByComprehension node, final TranslationContext context) {
             Preconditions.checkNotNull(context);
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
@@ -1704,12 +1692,11 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
 
-    private static class ContainsMonoidFunction extends MonoidVisitor<Boolean, Void> {
+    private static class ContainsMonoidFunction extends SimpleVisitor {
         boolean found = false;
 
-        @Nullable
         @Override
-        protected Boolean visitMonoidFunction(final MonoidFunction node, @Nullable final Void context) {
+        protected VoidType visitMonoidFunction(final MonoidFunction node, final VoidType context) {
             found = true;
             return super.visitMonoidFunction(node, context);
         }

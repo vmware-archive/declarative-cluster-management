@@ -23,7 +23,6 @@ import org.dcm.compiler.monoid.Qualifier;
 import org.dcm.compiler.monoid.TableRowGenerator;
 import org.dcm.compiler.monoid.UnaryOperator;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -47,41 +46,34 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
         return apply(expr, true);
     }
 
-    @Nullable
-    @Override
     public QualifiersList visit(final Expr expr) {
         return super.visit(expr, new GetVarQualifiers.QualifiersList());
     }
 
     @Override
     protected QualifiersList visitGroupByQualifier(final GroupByQualifier node,
-                                                   @Nullable final QualifiersList context) {
+                                                   final QualifiersList context) {
         assert context != null;
         return context.withNonVarQualifier(node);
     }
 
     @Override
-    protected QualifiersList visitGroupByComprehension(final GroupByComprehension node,
-                                                       @Nullable final QualifiersList context) {
+    protected QualifiersList visitGroupByComprehension(final GroupByComprehension node, final QualifiersList context) {
         return context;
     }
 
     @Override
-    protected QualifiersList visitMonoidComprehension(final MonoidComprehension node,
-                                                      @Nullable final QualifiersList context) {
+    protected QualifiersList visitMonoidComprehension(final MonoidComprehension node, final QualifiersList context) {
         return context;
     }
 
     @Override
-    protected QualifiersList visitTableRowGenerator(final TableRowGenerator node,
-                                                    @Nullable final QualifiersList context) {
-        assert context != null;
+    protected QualifiersList visitTableRowGenerator(final TableRowGenerator node, final QualifiersList context) {
         return context.withNonVarQualifier(node);
     }
 
-    @Nullable
     @Override
-    protected QualifiersList visitUnaryOperator(final UnaryOperator node, @Nullable final QualifiersList context) {
+    protected QualifiersList visitUnaryOperator(final UnaryOperator node, final QualifiersList context) {
         // TODO: revisit the sub-types of Qualifiers. Not every qualifier needs to be a binary operator.
         if (node.getOperator().equals(UnaryOperator.Operator.NOT)) {
             final BinaryOperatorPredicate rewritten =
@@ -97,21 +89,17 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
     }
 
     @Override
-    protected QualifiersList visitMonoidFunction(final MonoidFunction node,
-                                                 @Nullable final QualifiersList context) {
+    protected QualifiersList visitMonoidFunction(final MonoidFunction node, final QualifiersList context) {
         return context;
     }
 
-    @Nullable
     @Override
-    protected QualifiersList visitIsNotNullPredicate(final IsNotNullPredicate node,
-                                                     @Nullable final QualifiersList context) {
+    protected QualifiersList visitIsNotNullPredicate(final IsNotNullPredicate node, final QualifiersList context) {
         return context;
     }
 
-    @Nullable
     @Override
-    protected QualifiersList visitIsNullPredicate(final IsNullPredicate node, @Nullable final QualifiersList context) {
+    protected QualifiersList visitIsNullPredicate(final IsNullPredicate node, final QualifiersList context) {
         return context;
     }
 

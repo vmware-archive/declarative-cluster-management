@@ -8,8 +8,6 @@ package org.dcm.compiler.monoid;
 
 import org.dcm.IRColumn;
 
-import javax.annotation.Nullable;
-
 public class ColumnIdentifier extends Expr {
     private final String tableName;
     private final IRColumn field;
@@ -27,7 +25,7 @@ public class ColumnIdentifier extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitColumnIdentifier(this, context);
     }
 

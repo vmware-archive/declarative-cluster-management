@@ -12,10 +12,10 @@ import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
+import org.dcm.compiler.monoid.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.util.Objects;
 
 public class RewriteContains {
@@ -29,9 +29,9 @@ public class RewriteContains {
                 (GroupByComprehension) result : (MonoidComprehension) result;
     }
 
-    private static class ContainsRewriter extends ComprehensionRewriter<Void> {
+    private static class ContainsRewriter extends ComprehensionRewriter {
         @Override
-        protected Expr visitMonoidFunction(final MonoidFunction node, @Nullable final Void context) {
+        protected Expr visitMonoidFunction(final MonoidFunction node, final VoidType context) {
             if (node.getFunction().equals(MonoidFunction.Function.CONTAINS)) {
                 return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.CONTAINS,
                         node.getArgument().get(0), node.getArgument().get(1));

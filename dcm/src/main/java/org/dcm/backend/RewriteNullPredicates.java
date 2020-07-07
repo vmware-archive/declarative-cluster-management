@@ -14,6 +14,7 @@ import org.dcm.compiler.monoid.IsNotNullPredicate;
 import org.dcm.compiler.monoid.IsNullPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidLiteral;
+import org.dcm.compiler.monoid.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,17 +35,17 @@ public class RewriteNullPredicates {
                 (GroupByComprehension) result : (MonoidComprehension) result;
     }
 
-    private static class Rewriter extends ComprehensionRewriter<Void> {
+    private static class Rewriter extends ComprehensionRewriter {
         @Nullable
         @Override
-        protected Expr visitIsNullPredicate(final IsNullPredicate node, @Nullable final Void context) {
+        protected Expr visitIsNullPredicate(final IsNullPredicate node, final VoidType context) {
             return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node,
                                                new MonoidLiteral<>("'null'", String.class));
         }
 
         @Nullable
         @Override
-        protected Expr visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final Void context) {
+        protected Expr visitIsNotNullPredicate(final IsNotNullPredicate node, final VoidType context) {
             return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.NOT_EQUAL, node,
                                                new MonoidLiteral<>("'null'", String.class));
         }

@@ -9,9 +9,9 @@ package org.dcm.backend;
 import org.dcm.compiler.monoid.ColumnIdentifier;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.MonoidComprehension;
-import org.dcm.compiler.monoid.MonoidVisitor;
+import org.dcm.compiler.monoid.SimpleVisitor;
+import org.dcm.compiler.monoid.VoidType;
 
-import javax.annotation.Nullable;
 import java.util.LinkedHashSet;
 
 
@@ -19,26 +19,23 @@ import java.util.LinkedHashSet;
  * A visitor that returns the set of accessed columns within a comprehension's scope, *without entering
  * sub-queries.
  */
-class GetColumnIdentifiers extends MonoidVisitor<Void, Void> {
+class GetColumnIdentifiers extends SimpleVisitor {
     private final LinkedHashSet<ColumnIdentifier> columnIdentifiers = new LinkedHashSet<>();
 
-    @Nullable
     @Override
-    protected Void visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Void context) {
+    protected VoidType visitColumnIdentifier(final ColumnIdentifier node, final VoidType context) {
         columnIdentifiers.add(node);
-        return super.visitColumnIdentifier(node, context);
+        return defaultReturn();
     }
 
-    @Nullable
     @Override
-    protected Void visitMonoidComprehension(final MonoidComprehension node, @Nullable final Void context) {
-        return null;
+    protected VoidType visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
+        return defaultReturn();
     }
 
-    @Nullable
     @Override
-    protected Void visitGroupByComprehension(final GroupByComprehension node, @Nullable final Void context) {
-        return null;
+    protected VoidType visitGroupByComprehension(final GroupByComprehension node, final VoidType context) {
+        return defaultReturn();
     }
 
     LinkedHashSet<ColumnIdentifier> getColumnIdentifiers() {

@@ -6,7 +6,6 @@
 
 package org.dcm.compiler.monoid;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 public class MonoidFunction extends Expr {
@@ -46,7 +45,7 @@ public class MonoidFunction extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitMonoidFunction(this, context);
     }
 

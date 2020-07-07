@@ -6,8 +6,6 @@
 
 package org.dcm.compiler.monoid;
 
-import javax.annotation.Nullable;
-
 public class IsNotNullPredicate extends Expr {
     private final Expr argument;
 
@@ -26,9 +24,8 @@ public class IsNotNullPredicate extends Expr {
                 '}';
     }
 
-    @Nullable
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitIsNotNullPredicate(this, context);
     }
 }

@@ -8,8 +8,6 @@ package org.dcm.compiler.monoid;
 
 import org.dcm.IRTable;
 
-import javax.annotation.Nullable;
-
 public final class TableRowGenerator extends Qualifier {
     private final IRTable table;
 
@@ -29,7 +27,7 @@ public final class TableRowGenerator extends Qualifier {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitTableRowGenerator(this, context);
     }
 }

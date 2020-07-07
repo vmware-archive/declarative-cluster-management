@@ -6,7 +6,6 @@
 
 package org.dcm.compiler.monoid;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 public final class GroupByQualifier extends Qualifier {
@@ -24,7 +23,7 @@ public final class GroupByQualifier extends Qualifier {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitGroupByQualifier(this, context);
     }
 

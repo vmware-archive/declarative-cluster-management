@@ -6,8 +6,6 @@
 
 package org.dcm.compiler.monoid;
 
-import javax.annotation.Nullable;
-
 public class UnaryOperator extends Expr {
     private final Operator operator;
     private final Expr argument;
@@ -15,12 +13,6 @@ public class UnaryOperator extends Expr {
     public UnaryOperator(final Operator operator, final Expr argument) {
         this.operator = operator;
         this.argument = argument;
-    }
-
-    public UnaryOperator(final Operator operator, final Expr argument, final String alias) {
-        this.operator = operator;
-        this.argument = argument;
-        setAlias(alias);
     }
 
     public Expr getArgument() {
@@ -40,7 +32,7 @@ public class UnaryOperator extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitUnaryOperator(this, context);
     }
 

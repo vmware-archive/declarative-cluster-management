@@ -19,10 +19,10 @@ import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.Qualifier;
+import org.dcm.compiler.monoid.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -44,9 +44,9 @@ class RewriteArity {
                 (GroupByComprehension) result : (MonoidComprehension) result;
     }
 
-    private static class ArityRewriter extends ComprehensionRewriter<Void> {
+    private static class ArityRewriter extends ComprehensionRewriter {
         @Override
-        protected Expr visitMonoidComprehension(final MonoidComprehension node, final Void context) {
+        protected Expr visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
             // First, rewrite qualifiers. Then, rewrite head
             final List<Qualifier> qualifiers = node.getQualifiers()
                     .stream().map(q -> (Qualifier) visit(q)).collect(Collectors.toList());
@@ -55,7 +55,7 @@ class RewriteArity {
         }
 
         @Override
-        protected Expr visitExistsPredicate(final ExistsPredicate node, @Nullable final Void context) {
+        protected Expr visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
             Preconditions.checkArgument(node.getArgument() instanceof MonoidComprehension);
             final MonoidComprehension argument = rewriteExistsArgument((MonoidComprehension) node.getArgument());
             return new ExistsPredicate(argument);
@@ -129,12 +129,11 @@ class RewriteArity {
     private static MonoidComprehension maybeRewriteFunctions(final MonoidComprehension input,
                                                              final List<Qualifier> varQualifiers,
                                                              final List<Qualifier> nonVarQualifiers) {
-        final FunctionRewriter functionRewriter = new FunctionRewriter();
+        final FunctionRewriter functionRewriter = new FunctionRewriter(varQualifiers.get(0));
         final MonoidComprehension comprehensionWithoutVarQualifiers =
                 new MonoidComprehension(input.getHead(), nonVarQualifiers);
         final MonoidComprehension result =
-                (MonoidComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers,
-                        varQualifiers.get(0));
+                (MonoidComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers);
         if (functionRewriter.didRewrite) {
             LOG.info("Rewrote: {} into {}", input, Objects.requireNonNull(result));
             return result;
@@ -148,12 +147,17 @@ class RewriteArity {
      * Rewrites sum/count functions such that the argument of the function is multiplied by a qualifier,
      * which is expected to be a predicate on a controllable column.
      */
-    private static class FunctionRewriter extends ComprehensionRewriter<Qualifier> {
+    private static class FunctionRewriter extends ComprehensionRewriter {
         private boolean didRewrite = false;
         private boolean isDepthPastOne = false;
+        private final Qualifier qualifier;
+
+        public FunctionRewriter(final Qualifier qualifier) {
+            this.qualifier = qualifier;
+        }
 
         @Override
-        protected Expr visitMonoidComprehension(final MonoidComprehension node, @Nullable final Qualifier context) {
+        protected Expr visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
             if (!isDepthPastOne) {
                 isDepthPastOne = true;
                 final List<Qualifier> qualifiers = node.getQualifiers()
@@ -168,8 +172,7 @@ class RewriteArity {
         }
 
         @Override
-        protected Expr visitMonoidFunction(final MonoidFunction node, @Nullable final Qualifier qualifier) {
-            assert qualifier != null;
+        protected Expr visitMonoidFunction(final MonoidFunction node, final VoidType context) {
             if (node.getFunction().equals(MonoidFunction.Function.SUM) ||
                     node.getFunction().equals(MonoidFunction.Function.COUNT)) {
                 final Expr oldSumArg = node.getFunction().equals(MonoidFunction.Function.COUNT)

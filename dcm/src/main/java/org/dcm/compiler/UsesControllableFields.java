@@ -7,19 +7,18 @@
 package org.dcm.compiler;
 
 import org.dcm.compiler.monoid.ColumnIdentifier;
-import org.dcm.compiler.monoid.MonoidVisitor;
-
-import javax.annotation.Nullable;
+import org.dcm.compiler.monoid.SimpleVisitor;
+import org.dcm.compiler.monoid.VoidType;
 
 /**
  * If a query does not have any variables in it (say, in a predicate or a join key), then they return arrays
  * of type int. If they do access variables, then they're of type "var opt" int.
  */
-public class UsesControllableFields extends MonoidVisitor<Void, Void> {
+public class UsesControllableFields extends SimpleVisitor {
     private boolean usesControllable = false;
 
     @Override
-    protected Void visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Void context) {
+    protected VoidType visitColumnIdentifier(final ColumnIdentifier node, final VoidType context) {
         if (node.getField().isControllable()) {
             usesControllable = true;
         }

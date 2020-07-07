@@ -12,8 +12,8 @@ import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
+import org.dcm.compiler.monoid.VoidType;
 
-import javax.annotation.Nullable;
 import java.util.Objects;
 
 /**
@@ -29,9 +29,9 @@ class RewriteCountFunction {
         return newCompr;
     }
 
-    static class CountRewriter extends ComprehensionRewriter<Void> {
+    static class CountRewriter extends ComprehensionRewriter {
         @Override
-        protected Expr visitMonoidFunction(final MonoidFunction function, @Nullable final Void context) {
+        protected Expr visitMonoidFunction(final MonoidFunction function, final VoidType context) {
             if (function.getFunction().equals(MonoidFunction.Function.COUNT)) {
                 if (!(function.getArgument().get(0) instanceof ColumnIdentifier)) {
                     throw new IllegalStateException("RewriteCountFunction is only safe to use on column identifiers");

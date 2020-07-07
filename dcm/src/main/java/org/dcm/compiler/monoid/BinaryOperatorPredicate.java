@@ -6,8 +6,6 @@
 
 package org.dcm.compiler.monoid;
 
-import javax.annotation.Nullable;
-
 public class BinaryOperatorPredicate extends Qualifier {
     private final Operator operator;
     private final Expr left;
@@ -25,7 +23,7 @@ public class BinaryOperatorPredicate extends Qualifier {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitBinaryOperatorPredicate(this, context);
     }
 

@@ -22,14 +22,14 @@ import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.MonoidVisitor;
 import org.dcm.compiler.monoid.UnaryOperator;
+import org.dcm.compiler.monoid.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.util.Map;
 import java.util.Objects;
 
-class InferType extends MonoidVisitor<String, Void> {
+class InferType extends MonoidVisitor<String, VoidType> {
     private static final Logger LOG = LoggerFactory.getLogger(InferType.class);
     private final Map<String, String> viewTupleTypeParameters;
 
@@ -37,10 +37,12 @@ class InferType extends MonoidVisitor<String, Void> {
         this.viewTupleTypeParameters = viewTupleTypeParameters;
     }
 
-    @Nullable
+    public String visit(final Expr expr) {
+        return super.visit(expr, VoidType.getAbsent());
+    }
+
     @Override
-    protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
-                                                  @Nullable final Void context) {
+    protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final VoidType context) {
         final String leftType = visit(node.getLeft());
         final String rightType = visit(node.getRight());
         Preconditions.checkNotNull(leftType);
@@ -71,9 +73,8 @@ class InferType extends MonoidVisitor<String, Void> {
         }
     }
 
-    @Nullable
     @Override
-    protected String visitGroupByComprehension(final GroupByComprehension node, @Nullable final Void context) {
+    protected String visitGroupByComprehension(final GroupByComprehension node, final VoidType context) {
         final Head head = node.getComprehension().getHead();
         if (head.getSelectExprs().size() == 1) {
             final String type = visit(head.getSelectExprs().get(0), context);
@@ -83,9 +84,8 @@ class InferType extends MonoidVisitor<String, Void> {
         throw new UnsupportedOperationException("Do not know type of subquery");
     }
 
-    @Nullable
     @Override
-    protected String visitMonoidComprehension(final MonoidComprehension node, @Nullable final Void context) {
+    protected String visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
         final Head head = node.getHead();
         if (head.getSelectExprs().size() == 1) {
             final String type = visit(head.getSelectExprs().get(0), context);
@@ -95,15 +95,13 @@ class InferType extends MonoidVisitor<String, Void> {
         throw new UnsupportedOperationException("Do not know type of subquery");
     }
 
-    @Nullable
     @Override
-    protected String visitColumnIdentifier(final ColumnIdentifier node, @Nullable final Void context) {
+    protected String visitColumnIdentifier(final ColumnIdentifier node, final VoidType context) {
         return typeStringFromColumn(node);
     }
 
-    @Nullable
     @Override
-    protected String visitMonoidFunction(final MonoidFunction node, @Nullable final Void context) {
+    protected String visitMonoidFunction(final MonoidFunction node, final VoidType context) {
         if (node.getFunction().equals(MonoidFunction.Function.CAPACITY_CONSTRAINT)) {
             return "IntVar";
         }
@@ -111,28 +109,24 @@ class InferType extends MonoidVisitor<String, Void> {
         return visit(node.getArgument().get(0), context);
     }
 
-    @Nullable
     @Override
-    protected String visitExistsPredicate(final ExistsPredicate node, @Nullable final Void context) {
+    protected String visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
         // TODO: This is incomplete. It can be boolean if node.getArgument() is const.
         return "IntVar";
     }
 
-    @Nullable
     @Override
-    protected String visitIsNullPredicate(final IsNullPredicate node, @Nullable final Void context) {
+    protected String visitIsNullPredicate(final IsNullPredicate node, final VoidType context) {
         return Objects.requireNonNull(visit(node.getArgument(), context)).equals("IntVar") ? "IntVar" : "Boolean";
     }
 
-    @Nullable
     @Override
-    protected String visitIsNotNullPredicate(final IsNotNullPredicate node, @Nullable final Void context) {
+    protected String visitIsNotNullPredicate(final IsNotNullPredicate node, final VoidType context) {
         return Objects.requireNonNull(visit(node.getArgument(), context)).equals("IntVar") ? "IntVar" : "Boolean";
     }
 
-    @Nullable
     @Override
-    protected String visitUnaryOperator(final UnaryOperator node, @Nullable final Void context) {
+    protected String visitUnaryOperator(final UnaryOperator node, final VoidType context) {
         final String type = Objects.requireNonNull(visit(node.getArgument(), context));
         switch (node.getOperator()) {
             case NOT:
@@ -145,9 +139,8 @@ class InferType extends MonoidVisitor<String, Void> {
         }
     }
 
-    @Nullable
     @Override
-    protected String visitMonoidLiteral(final MonoidLiteral node, @Nullable final Void context) {
+    protected String visitMonoidLiteral(final MonoidLiteral node, final VoidType context) {
         if (node.getValue() instanceof String) {
             return "String";
         } else if (node.getValue() instanceof Integer) {

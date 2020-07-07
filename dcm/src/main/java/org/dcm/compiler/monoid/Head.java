@@ -6,7 +6,6 @@
 
 package org.dcm.compiler.monoid;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 public final class Head extends Expr {
@@ -24,7 +23,7 @@ public final class Head extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitHead(this, context);
     }
 

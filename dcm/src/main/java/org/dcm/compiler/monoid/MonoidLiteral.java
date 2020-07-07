@@ -6,8 +6,6 @@
 
 package org.dcm.compiler.monoid;
 
-import javax.annotation.Nullable;
-
 public class MonoidLiteral<T> extends Expr {
     private final T value;
 
@@ -27,7 +25,7 @@ public class MonoidLiteral<T> extends Expr {
     }
 
     @Override
-    <T1, C> T1 acceptVisitor(final MonoidVisitor<T1, C> visitor, @Nullable final C context) {
+    <T1, C> T1 acceptVisitor(final MonoidVisitor<T1, C> visitor, final C context) {
         return visitor.visitMonoidLiteral(this, context);
     }
 }

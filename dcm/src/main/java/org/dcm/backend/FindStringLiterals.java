@@ -7,16 +7,17 @@
 package org.dcm.backend;
 
 import org.dcm.compiler.monoid.MonoidLiteral;
-import org.dcm.compiler.monoid.MonoidVisitor;
+import org.dcm.compiler.monoid.VoidType;
+import org.dcm.compiler.monoid.SimpleVisitor;
 
 import java.util.HashSet;
 import java.util.Set;
 
-public class FindStringLiterals extends MonoidVisitor<Void, Void> {
+public class FindStringLiterals extends SimpleVisitor {
     private final Set<String> stringLiterals = new HashSet<>();
 
     @Override
-    protected Void visitMonoidLiteral(final MonoidLiteral node, final Void context) {
+    protected VoidType visitMonoidLiteral(final MonoidLiteral node, final VoidType context) {
         if (node.getValue() instanceof String) {
             final String s = node.getValue().toString();
             if (s.startsWith("'") && s.endsWith("'")) {

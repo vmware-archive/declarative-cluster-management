@@ -51,7 +51,7 @@ public class MonoidComprehension extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context) {
+    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
         return visitor.visitMonoidComprehension(this, context);
     }
 }

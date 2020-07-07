@@ -6,14 +6,12 @@
 
 package org.dcm.compiler.monoid;
 
-import javax.annotation.Nullable;
 import java.util.Optional;
 
 public abstract class Expr {
     private Optional<String> alias = Optional.empty();
 
-    @Nullable
-    abstract <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, @Nullable final C context);
+    abstract <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context);
 
     public void setAlias(final String alias) {
         this.alias = Optional.of(alias);
