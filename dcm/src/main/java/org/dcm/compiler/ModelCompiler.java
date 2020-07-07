@@ -157,9 +157,77 @@ public class ModelCompiler {
      * @return map of String (name) -> ForAllStatement pairs corresponding to the views parameter
      */
     private Map<String, MonoidComprehension> parseNonConstraintViews(final Map<String, Query> views) {
-        final Map<String, MonoidComprehension> result = new HashMap<>();
-        views.forEach((key, value) -> result.put(key, parseViewMonoid(key, value, true)));
-        return result;
+        return views.entrySet()
+                    .stream()
+                    .peek(es -> createIRTablesForNonConstraintViews(es.getKey(), es.getValue()))
+                    .map(es -> Map.entry(es.getKey(), parseViewMonoid(es.getValue())))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    /**
+     * A pass to create IRTable entries for non-constraint views. These views are used as intermediate
+     * computations, so we need an IRTable entry to track relevant metadata (like column type information).
+     *
+     * @param viewName view being parsed
+     * @param view AST representing the view
+     */
+    private void createIRTablesForNonConstraintViews(final String viewName, final Query view) {
+        final FromExtractor fromParser = new FromExtractor(irContext);
+        fromParser.process(view.getQueryBody());
+
+        final Set<IRTable> tables = fromParser.getTables();
+        final List<SelectItem> selectItems = ((QuerySpecification) view.getQueryBody()).getSelect().getSelectItems();
+        createIRTablesFromSelectItems(selectItems, tables, viewName);
+    }
+
+    /**
+     * Given a list of select items, constructs IRColumns and IRTable entries for them.
+     */
+    private void createIRTablesFromSelectItems(final List<SelectItem> selectItems, final Set<IRTable> tables,
+                                               final String viewName) {
+        final IRTable viewTable = new IRTable(null, viewName, viewName);
+        for (final SelectItem selectItem: selectItems) {
+            if (selectItem instanceof SingleColumn) {
+                final SingleColumn singleColumn = (SingleColumn) selectItem;
+                final Expression expression = singleColumn.getExpression();
+                if (singleColumn.getAlias().isPresent()) {
+                    final IRColumn.FieldType fieldType;
+                    if (expression instanceof Identifier) {
+                        fieldType = irContext.getColumnIfUnique(expression.toString(), tables).getType();
+                    } else if (expression instanceof DereferenceExpression) {
+                        fieldType = getIRColumnFromDereferencedExpression((DereferenceExpression) expression)
+                                .getType();
+                    } else {
+                        LOG.warn("Guessing FieldType for column {} in non-constraint view {} to be INT",
+                                singleColumn.getAlias(), viewName);
+                        fieldType = IRColumn.FieldType.INT;
+                    }
+                    final IRColumn column = new IRColumn(viewTable, null, fieldType,
+                            singleColumn.getAlias().get().toString());
+                    viewTable.addField(column);
+                } else if (expression instanceof Identifier) {
+                    final IRColumn columnIfUnique = irContext.getColumnIfUnique(expression.toString(), tables);
+                    final IRColumn newColumn = new IRColumn(viewTable, null, columnIfUnique.getType(),
+                            columnIfUnique.getName());
+                    viewTable.addField(newColumn);
+                } else if (expression instanceof DereferenceExpression) {
+                    final DereferenceExpression derefExpression = (DereferenceExpression) expression;
+                    final IRColumn irColumn = getIRColumnFromDereferencedExpression(derefExpression);
+                    final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getType(),
+                            irColumn.getName());
+                    viewTable.addField(newColumn);
+                } else {
+                    throw new RuntimeException("SelectItem type is not a column but does not have an alias");
+                }
+            } else if (selectItem instanceof AllColumns) {
+                tables.forEach(
+                        table -> table.getIRColumns().forEach((fieldName, irColumn) -> {
+                            viewTable.addField(irColumn);
+                        })
+                );
+            }
+        }
+        irContext.addAliasedOrViewTable(viewTable);
     }
 
     /**
@@ -169,7 +237,7 @@ public class ModelCompiler {
      */
     private Map<String, MonoidComprehension> parseViews(final Map<String, Query> views) {
         final Map<String, MonoidComprehension> result = new HashMap<>();
-        views.forEach((key, value) -> result.put(key, parseViewMonoid(key, value, false)));
+        views.forEach((key, value) -> result.put(key, parseViewMonoid(value)));
         return result;
     }
 
@@ -179,8 +247,7 @@ public class ModelCompiler {
      * @param view a parsed View statement
      * @return A ForAllStatement corresponding to the view parameter
      */
-    private MonoidComprehension parseViewMonoid(final String viewName, final Query view,
-                                                final boolean createIrTableForView) {
+    private MonoidComprehension parseViewMonoid(final Query view) {
         final FromExtractor fromParser = new FromExtractor(irContext);
         fromParser.process(view.getQueryBody());
 
@@ -192,7 +259,7 @@ public class ModelCompiler {
 
         // Construct Monoid Comprehension
         final List<SelectItem> selectItems = ((QuerySpecification) view.getQueryBody()).getSelect().getSelectItems();
-        final List<Expr> selectItemExpr = processSelectItems(selectItems, tables, createIrTableForView, viewName);
+        final List<Expr> selectItemExpr = processSelectItems(selectItems, tables);
         final Head head = new Head(selectItemExpr);
 
         final List<Qualifier> qualifiers = new ArrayList<>();
@@ -218,48 +285,12 @@ public class ModelCompiler {
         return new MonoidComprehension(head, qualifiers);
     }
 
-    private List<Expr> processSelectItems(final List<SelectItem> selectItems, final Set<IRTable> tables,
-                                          final boolean createIrTableForView, final String viewName) {
+    private List<Expr> processSelectItems(final List<SelectItem> selectItems, final Set<IRTable> tables) {
         final List<Expr> exprs = new ArrayList<>();
-
-        // This represents an IRTable that we create for non-constraint views. It should not be created
-        // for constraint or objective function views.
-        final IRTable viewTable = createIrTableForView ? new IRTable(null, viewName, viewName) : null;
         for (final SelectItem selectItem: selectItems) {
             if (selectItem instanceof SingleColumn) {
                 final SingleColumn singleColumn = (SingleColumn) selectItem;
                 final Expression expression = singleColumn.getExpression();
-                if (createIrTableForView) {
-                    if (singleColumn.getAlias().isPresent()) {
-                        final IRColumn.FieldType fieldType;
-                        if (expression instanceof Identifier) {
-                            fieldType = irContext.getColumnIfUnique(expression.toString(), tables).getType();
-                        } else if (expression instanceof DereferenceExpression) {
-                            fieldType = getIRColumnFromDereferencedExpression((DereferenceExpression) expression)
-                                              .getType();
-                        } else {
-                            LOG.warn("Guessing FieldType for column {} in non-constraint view {} to be INT",
-                                      singleColumn.getAlias(), viewName);
-                            fieldType = IRColumn.FieldType.INT;
-                        }
-                        final IRColumn column = new IRColumn(viewTable, null, fieldType,
-                                                             singleColumn.getAlias().get().toString());
-                        viewTable.addField(column);
-                    } else if (expression instanceof Identifier) {
-                        final IRColumn columnIfUnique = irContext.getColumnIfUnique(expression.toString(), tables);
-                        final IRColumn newColumn = new IRColumn(viewTable, null, columnIfUnique.getType(),
-                                                                columnIfUnique.getName());
-                        viewTable.addField(newColumn);
-                    } else if (expression instanceof DereferenceExpression) {
-                        final DereferenceExpression derefExpression = (DereferenceExpression) expression;
-                        final IRColumn irColumn = getIRColumnFromDereferencedExpression(derefExpression);
-                        final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getType(),
-                                                                irColumn.getName());
-                        viewTable.addField(newColumn);
-                    } else {
-                        throw new RuntimeException("SelectItem type is not a column but does not have an alias");
-                    }
-                }
                 final List<Expr> result = processArithmeticExpression(expression, tables, false);
                 assert result.size() == 1;
                 final Expr expr = result.get(0);
@@ -269,19 +300,11 @@ public class ModelCompiler {
             } else if (selectItem instanceof AllColumns) {
                 tables.forEach(
                     table -> table.getIRColumns().forEach((fieldName, irColumn) -> {
-                        if (createIrTableForView) {
-                            viewTable.addField(irColumn);
-                        }
                         exprs.add(new ColumnIdentifier(table.getName(), irColumn, false));
                     })
                 );
             }
         }
-
-        if (createIrTableForView) {
-            irContext.addAliasedOrViewTable(viewTable);
-        }
-
         return exprs;
     }
 
@@ -351,7 +374,7 @@ public class ModelCompiler {
             final Node node = stack.pop();
             if (node instanceof SubqueryExpression) {
                 final Query subQuery = ((SubqueryExpression) node).getQuery();
-                operands.push(parseViewMonoid("", subQuery, false));
+                operands.push(parseViewMonoid(subQuery));
             } else if (node instanceof FunctionCall) {
                 // Only having clauses will have function calls in the expression.
                 final FunctionCall functionCall = (FunctionCall) node;

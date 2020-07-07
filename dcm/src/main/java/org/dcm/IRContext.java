@@ -119,6 +119,6 @@ public class IRContext {
 
     // TODO: this should ideally happen at input time.
     public void addAliasedOrViewTable(final IRTable tableAlias) {
-        irTables.put(tableAlias.getAliasedName().toUpperCase(Locale.US), tableAlias);
+        irTables.putIfAbsent(tableAlias.getAliasedName().toUpperCase(Locale.US), tableAlias);
     }
 }
