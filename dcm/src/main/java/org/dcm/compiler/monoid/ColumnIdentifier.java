@@ -11,12 +11,13 @@ import org.dcm.IRColumn;
 public class ColumnIdentifier extends Expr {
     private final String tableName;
     private final IRColumn field;
-    private final boolean fromGroupByWithDereference;
+    // True if this ColumnIdentifier was accessed using a dereference (table.fieldName) in the source SQL view
+    private final boolean fromDereferencedAccess;
 
-    public ColumnIdentifier(final String table, final IRColumn field, final boolean fromGroupByWithDereference) {
+    public ColumnIdentifier(final String table, final IRColumn field, final boolean fromDereferencedAccess) {
         this.tableName = table;
         this.field = field;
-        this.fromGroupByWithDereference = fromGroupByWithDereference;
+        this.fromDereferencedAccess = fromDereferencedAccess;
     }
 
     @Override
@@ -38,9 +39,10 @@ public class ColumnIdentifier extends Expr {
     }
 
     /**
-     * true if this column was referenced in a group by using a dereference. False otherwise.
+     * True if this column was referenced in the original view using a dereference. False otherwise.
+     * XXX: Is only consumed by the MiniZinc backend, and is likely not required
      */
-    public boolean fromGroupByWithDereference() {
-        return fromGroupByWithDereference;
+    public boolean fromDereferencedAccess() {
+        return fromDereferencedAccess;
     }
 }

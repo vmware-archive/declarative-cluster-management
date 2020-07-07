@@ -61,7 +61,7 @@ class MinizincString {
 
     static String groupColumnNameWithIteration(final String viewName, final ColumnIdentifier node) {
         return String.format("GROUP_TABLE__%s__%s%s[%s]", viewName.toUpperCase(Locale.getDefault()),
-                                   node.fromGroupByWithDereference() ? node.getTableName() + "_" : "",
+                                   node.fromDereferencedAccess() ? node.getTableName() + "_" : "",
                                    node.getField().getName(), "GROUP__KEY");
     }
 

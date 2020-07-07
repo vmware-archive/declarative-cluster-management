@@ -7,110 +7,32 @@
 package org.dcm.compiler;
 
 import com.facebook.presto.sql.tree.AllColumns;
-import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
-import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
-import com.facebook.presto.sql.tree.BooleanLiteral;
-import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.DereferenceExpression;
-import com.facebook.presto.sql.tree.ExistsPredicate;
 import com.facebook.presto.sql.tree.Expression;
-import com.facebook.presto.sql.tree.FunctionCall;
-import com.facebook.presto.sql.tree.GroupBy;
-import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.Identifier;
-import com.facebook.presto.sql.tree.InPredicate;
-import com.facebook.presto.sql.tree.IsNotNullPredicate;
-import com.facebook.presto.sql.tree.IsNullPredicate;
-import com.facebook.presto.sql.tree.Literal;
-import com.facebook.presto.sql.tree.LogicalBinaryExpression;
-import com.facebook.presto.sql.tree.LongLiteral;
-import com.facebook.presto.sql.tree.Node;
-import com.facebook.presto.sql.tree.NotExpression;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
 import com.facebook.presto.sql.tree.SelectItem;
-import com.facebook.presto.sql.tree.SimpleGroupBy;
 import com.facebook.presto.sql.tree.SingleColumn;
-import com.facebook.presto.sql.tree.StringLiteral;
-import com.facebook.presto.sql.tree.SubqueryExpression;
-import com.google.common.base.Splitter;
-import com.google.common.collect.ImmutableList;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
 import org.dcm.Model;
 import org.dcm.backend.ISolverBackend;
-import org.dcm.compiler.monoid.BinaryOperatorPredicate;
-import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
-import org.dcm.compiler.monoid.ColumnIdentifier;
-import org.dcm.compiler.monoid.Expr;
-import org.dcm.compiler.monoid.GroupByComprehension;
-import org.dcm.compiler.monoid.GroupByQualifier;
-import org.dcm.compiler.monoid.Head;
-import org.dcm.compiler.monoid.JoinPredicate;
 import org.dcm.compiler.monoid.MonoidComprehension;
-import org.dcm.compiler.monoid.MonoidFunction;
-import org.dcm.compiler.monoid.MonoidLiteral;
-import org.dcm.compiler.monoid.Qualifier;
-import org.dcm.compiler.monoid.TableRowGenerator;
-import org.dcm.compiler.monoid.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ModelCompiler {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
-    private static final Map<ArithmeticBinaryExpression.Operator,
-                             BinaryOperatorPredicate.Operator> ARITHMETIC_OP_TABLE =
-            new EnumMap<>(ArithmeticBinaryExpression.Operator.class);
-    private static final Map<ComparisonExpression.Operator,
-                             BinaryOperatorPredicate.Operator> COMPARISON_OP_TABLE =
-            new EnumMap<>(ComparisonExpression.Operator.class);
-    private static final Map<LogicalBinaryExpression.Operator,
-                             BinaryOperatorPredicate.Operator> LOGICAL_OP_TABLE =
-            new EnumMap<>(LogicalBinaryExpression.Operator.class);
-
-    static {
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.ADD,
-                                BinaryOperatorPredicate.Operator.ADD);
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.SUBTRACT,
-                                BinaryOperatorPredicate.Operator.SUBTRACT);
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.MULTIPLY,
-                                BinaryOperatorPredicate.Operator.MULTIPLY);
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.DIVIDE,
-                                BinaryOperatorPredicate.Operator.DIVIDE);
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.MODULUS,
-                                BinaryOperatorPredicate.Operator.MODULUS);
-
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.EQUAL,
-                                BinaryOperatorPredicate.Operator.EQUAL);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.LESS_THAN,
-                                BinaryOperatorPredicate.Operator.LESS_THAN);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.GREATER_THAN,
-                                BinaryOperatorPredicate.Operator.GREATER_THAN);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.LESS_THAN_OR_EQUAL,
-                                BinaryOperatorPredicate.Operator.LESS_THAN_OR_EQUAL);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL,
-                                BinaryOperatorPredicate.Operator.GREATER_THAN_OR_EQUAL);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.NOT_EQUAL,
-                                BinaryOperatorPredicate.Operator.NOT_EQUAL);
-
-        LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.AND, BinaryOperatorPredicate.Operator.AND);
-        LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.OR, BinaryOperatorPredicate.Operator.OR);
-    }
-
     private final IRContext irContext;
 
     public ModelCompiler(final IRContext irContext) {
@@ -160,7 +82,7 @@ public class ModelCompiler {
         return views.entrySet()
                     .stream()
                     .peek(es -> createIRTablesForNonConstraintViews(es.getKey(), es.getValue()))
-                    .map(es -> Map.entry(es.getKey(), parseViewMonoid(es.getValue())))
+                    .map(es -> Map.entry(es.getKey(), TranslateViewToIR.apply(es.getValue(), irContext)))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
@@ -195,8 +117,9 @@ public class ModelCompiler {
                     if (expression instanceof Identifier) {
                         fieldType = irContext.getColumnIfUnique(expression.toString(), tables).getType();
                     } else if (expression instanceof DereferenceExpression) {
-                        fieldType = getIRColumnFromDereferencedExpression((DereferenceExpression) expression)
-                                .getType();
+                        fieldType = TranslateViewToIR
+                                   .getIRColumnFromDereferencedExpression((DereferenceExpression) expression, irContext)
+                                   .getType();
                     } else {
                         LOG.warn("Guessing FieldType for column {} in non-constraint view {} to be INT",
                                 singleColumn.getAlias(), viewName);
@@ -212,7 +135,8 @@ public class ModelCompiler {
                     viewTable.addField(newColumn);
                 } else if (expression instanceof DereferenceExpression) {
                     final DereferenceExpression derefExpression = (DereferenceExpression) expression;
-                    final IRColumn irColumn = getIRColumnFromDereferencedExpression(derefExpression);
+                    final IRColumn irColumn =
+                            TranslateViewToIR.getIRColumnFromDereferencedExpression(derefExpression, irContext);
                     final IRColumn newColumn = new IRColumn(viewTable, null, irColumn.getType(),
                             irColumn.getName());
                     viewTable.addField(newColumn);
@@ -237,310 +161,7 @@ public class ModelCompiler {
      */
     private Map<String, MonoidComprehension> parseViews(final Map<String, Query> views) {
         final Map<String, MonoidComprehension> result = new HashMap<>();
-        views.forEach((key, value) -> result.put(key, parseViewMonoid(value)));
+        views.forEach((key, value) -> result.put(key, TranslateViewToIR.apply(value, irContext)));
         return result;
-    }
-
-
-    /**
-     * Converts a view into a ForAllStatement.
-     * @param view a parsed View statement
-     * @return A ForAllStatement corresponding to the view parameter
-     */
-    private MonoidComprehension parseViewMonoid(final Query view) {
-        final FromExtractor fromParser = new FromExtractor(irContext);
-        fromParser.process(view.getQueryBody());
-
-        final Set<IRTable> tables = fromParser.getTables();
-        final Optional<Expression> where = ((QuerySpecification) view.getQueryBody()).getWhere();
-        final List<Expression> joinConditions = fromParser.getJoinConditions();
-        final Optional<Expression> having = ((QuerySpecification) view.getQueryBody()).getHaving();
-        final Optional<GroupBy> groupBy = ((QuerySpecification) view.getQueryBody()).getGroupBy();
-
-        // Construct Monoid Comprehension
-        final List<SelectItem> selectItems = ((QuerySpecification) view.getQueryBody()).getSelect().getSelectItems();
-        final List<Expr> selectItemExpr = processSelectItems(selectItems, tables);
-        final Head head = new Head(selectItemExpr);
-
-        final List<Qualifier> qualifiers = new ArrayList<>();
-        tables.forEach(t -> qualifiers.add(new TableRowGenerator(t)));
-        where.ifPresent(e -> qualifiers.addAll(processWhereExpression(e, tables, false)));
-        having.ifPresent(e -> qualifiers.addAll(processWhereExpression(e, tables, true)));
-
-        joinConditions.forEach(e -> {
-            final List<Qualifier> joinQualifiers = processWhereExpression(e, tables, false);
-            for (final Qualifier qualifier: joinQualifiers) {
-                assert qualifier instanceof BinaryOperatorPredicate;
-                qualifiers.add(new JoinPredicate((BinaryOperatorPredicate) qualifier));
-            }
-        });
-
-        if (groupBy.isPresent()) {
-            final List<GroupingElement> groupingElement = groupBy.get().getGroupingElements();
-            final List<ColumnIdentifier> columnIdentifiers = processSimpleGroupBy(groupingElement, tables);
-            final GroupByQualifier groupByQualifier = new GroupByQualifier(columnIdentifiers);
-            final MonoidComprehension comprehension = new MonoidComprehension(head, qualifiers);
-            return new GroupByComprehension(comprehension, groupByQualifier);
-        }
-        return new MonoidComprehension(head, qualifiers);
-    }
-
-    private List<Expr> processSelectItems(final List<SelectItem> selectItems, final Set<IRTable> tables) {
-        final List<Expr> exprs = new ArrayList<>();
-        for (final SelectItem selectItem: selectItems) {
-            if (selectItem instanceof SingleColumn) {
-                final SingleColumn singleColumn = (SingleColumn) selectItem;
-                final Expression expression = singleColumn.getExpression();
-                final List<Expr> result = processArithmeticExpression(expression, tables, false);
-                assert result.size() == 1;
-                final Expr expr = result.get(0);
-                singleColumn.getAlias().ifPresent(v -> expr.setAlias(v.toString()));
-                exprs.add(expr);
-
-            } else if (selectItem instanceof AllColumns) {
-                tables.forEach(
-                    table -> table.getIRColumns().forEach((fieldName, irColumn) -> {
-                        exprs.add(new ColumnIdentifier(table.getName(), irColumn, false));
-                    })
-                );
-            }
-        }
-        return exprs;
-    }
-
-    private List<ColumnIdentifier> processSimpleGroupBy(final List<GroupingElement> groupingElements,
-                                                        final Set<IRTable> tables) {
-        final List<ColumnIdentifier> columnIdentifiers = new ArrayList<>();
-
-        for (final GroupingElement element: groupingElements) {
-            assert element instanceof SimpleGroupBy;
-            final List<Expression> columnExpressions = ((SimpleGroupBy) element).getColumnExpressions();
-            assert !columnExpressions.isEmpty();
-
-            for (final Expression columnExpression : columnExpressions) {
-                final ColumnIdentifier columnIdentifierFromField =
-                        getColumnIdentifierFromField(columnExpression, tables);
-                columnIdentifiers.add(columnIdentifierFromField);
-            }
-        }
-        return columnIdentifiers;
-    }
-
-    /**
-     * Converts a WHERE expression stack obtained by a WhereExpressionParser to an IR expression
-     */
-    private ImmutableList<Qualifier> processWhereExpression(final Expression expression,
-                                                            final Set<IRTable> tablesReferencedInView,
-                                                            final boolean isAggregate) {
-        final ExpressionTraverser traverser = new ExpressionTraverser();
-        traverser.process(expression);
-        final ArrayDeque<Node> stack = traverser.getExpressionStack();
-        if (stack.size() == 0) {
-            return ImmutableList.of();
-        }
-        final ArrayDeque<Expr> operands = convertToExpr(expression, tablesReferencedInView, isAggregate);
-        final List<Qualifier> predicates = new ArrayList<>();
-        for (final Expr expr: operands) {
-            assert expr instanceof BinaryOperatorPredicate : expr;
-            predicates.add((BinaryOperatorPredicate) expr);
-        }
-        assert predicates.size() > 0;
-        return ImmutableList.copyOf(predicates);
-    }
-
-    /**
-     * Process arithmetic expression
-     */
-    private List<Expr> processArithmeticExpression(final Expression expression,
-                                                   final Set<IRTable> tablesReferencedInView,
-                                                   final boolean isAggregate) {
-        final ExpressionTraverser traverser = new ExpressionTraverser();
-        traverser.process(expression);
-        final ArrayDeque<Node> stack = traverser.getExpressionStack();
-        if (stack.size() == 0) {
-            return ImmutableList.of();
-        }
-        final ArrayDeque<Expr> operands = convertToExpr(expression, tablesReferencedInView, isAggregate);
-        return ImmutableList.copyOf(operands);
-    }
-
-    private ArrayDeque<Expr> convertToExpr(final Expression expression, final Set<IRTable> tablesReferencedInView,
-                                           final boolean isAggregate) {
-        final ExpressionTraverser traverser = new ExpressionTraverser();
-        traverser.process(expression);
-        final ArrayDeque<Node> stack = traverser.getExpressionStack();
-        final ArrayDeque<Expr> operands = new ArrayDeque<>();
-        while (stack.size() > 0) {
-            final Node node = stack.pop();
-            if (node instanceof SubqueryExpression) {
-                final Query subQuery = ((SubqueryExpression) node).getQuery();
-                operands.push(parseViewMonoid(subQuery));
-            } else if (node instanceof FunctionCall) {
-                // Only having clauses will have function calls in the expression.
-                final FunctionCall functionCall = (FunctionCall) node;
-                final Expr function;
-                final String functionNameStr = functionCall.getName().toString().toUpperCase(Locale.US);
-                final MonoidFunction.Function functionType = MonoidFunction.Function.valueOf(functionNameStr);
-                if (functionCall.getArguments().size() >= 1) {
-                    final List<Expr> arguments = functionCall.getArguments().stream()
-                            .map(e -> {
-                                final List<Expr> arithmeticExpression =
-                                        processArithmeticExpression(e,
-                                                tablesReferencedInView,
-                                                isAggregate);
-                                assert arithmeticExpression.size() == 1;
-                                return arithmeticExpression.get(0);
-                            }).collect(Collectors.toList());
-                    function = new MonoidFunction(functionType, arguments);
-                } else if (functionCall.getArguments().isEmpty() &&
-                        "count".equalsIgnoreCase(functionCall.getName().getSuffix())) {
-                    // The presto parser does not consider count(*) as a function with a single
-                    // argument "*", but instead treats it as a function without any arguments.
-                    // The parser code therefore has this special case behavior when it
-                    // comes to the count function. See Presto's ExpressionFormatter.visitFunctionCall() for how
-                    // this is handled externally from the FunctionCall code.
-                    //
-                    // We therefore replace the argument for count with the first column of one of the tables.
-                    final IRTable table = tablesReferencedInView.iterator().next();
-                    final IRColumn field = table.getIRColumns().entrySet().iterator().next().getValue();
-                    final ColumnIdentifier column = new ColumnIdentifier(table.getName(), field, false);
-                    function = new MonoidFunction(functionType, column);
-                } else {
-                    throw new RuntimeException("I don't know what to do with this function call type: " + functionCall);
-                }
-                operands.push(function);
-            } else if (node instanceof DereferenceExpression) {
-                final ColumnIdentifier columnIdentifier = getColumnIdentifierFromField(node, tablesReferencedInView);
-                operands.push(columnIdentifier);
-            } else if (node instanceof Identifier) {
-                final ColumnIdentifier identifier = getColumnIdentifierFromField(node, tablesReferencedInView);
-                operands.push(identifier);
-            } else if (isLiteral(node)) {
-                final MonoidLiteral literal;
-                if (node instanceof StringLiteral) {
-                    literal = new MonoidLiteral<>("\'" + ((StringLiteral) node).getValue() + "\'",
-                            String.class);
-                } else if (node instanceof LongLiteral) {
-                    literal = new MonoidLiteral<>(Long.valueOf(node.toString()), Long.class);
-                } else if (node instanceof BooleanLiteral) {
-                    literal = new MonoidLiteral<>(Boolean.valueOf(node.toString()), Boolean.class);
-                } else {
-                    throw new UnsupportedOperationException("I don't know how to handle this literal " + node);
-                }
-                operands.push(literal);
-            } else if (node instanceof ArithmeticBinaryExpression) {
-                assert operands.size() >= 2;
-                final Expr left = operands.pop();
-                final Expr right = operands.pop();
-                final BinaryOperatorPredicate.Operator operatorMnz =
-                        operatorTranslator(((ArithmeticBinaryExpression) node).getOperator());
-                operands.push(createOperatorPredicate(operatorMnz, left, right, isAggregate));
-            } else if (node instanceof ComparisonExpression) {
-                assert operands.size() >= 2;
-                final Expr left = operands.pop();
-                final Expr right = operands.pop();
-                final BinaryOperatorPredicate.Operator operatorMnz =
-                        operatorTranslator(((ComparisonExpression) node).getOperator());
-                operands.push(createOperatorPredicate(operatorMnz, left, right, isAggregate));
-            } else if (node instanceof LogicalBinaryExpression) {
-                assert operands.size() >= 2;
-                final Expr left = operands.pop();
-                final Expr right = operands.pop();
-                final BinaryOperatorPredicate.Operator operatorMnz =
-                        operatorTranslator(((LogicalBinaryExpression) node).getOperator());
-                operands.push(createOperatorPredicate(operatorMnz, left, right, isAggregate));
-            } else if (node instanceof InPredicate) {
-                final Expr left = operands.pop();
-                final Expr right = operands.pop();
-                final BinaryOperatorPredicate operatorPredicate =
-                        new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.IN, left, right);
-                operands.push(operatorPredicate);
-            } else if (node instanceof ExistsPredicate) {
-                final Expr innerExpr = operands.pop();
-                final org.dcm.compiler.monoid.ExistsPredicate operatorPredicate =
-                        new org.dcm.compiler.monoid.ExistsPredicate(innerExpr);
-                operands.push(operatorPredicate);
-            } else if (node instanceof NotExpression) {
-                final Expr innerExpr = operands.pop();
-                final UnaryOperator operatorPredicate = new UnaryOperator(UnaryOperator.Operator.NOT, innerExpr);
-                operands.push(operatorPredicate);
-            } else if (node instanceof ArithmeticUnaryExpression) {
-                final Expr innerExpr = operands.pop();
-                final ArithmeticUnaryExpression.Sign sign = ((ArithmeticUnaryExpression) node).getSign();
-                final UnaryOperator.Operator signStr = sign.equals(ArithmeticUnaryExpression.Sign.MINUS) ?
-                        UnaryOperator.Operator.MINUS : UnaryOperator.Operator.PLUS;
-                final UnaryOperator operatorPredicate = new UnaryOperator(signStr, innerExpr);
-                operands.push(operatorPredicate);
-            } else if (node instanceof IsNullPredicate) {
-                final Expr innerExpr = operands.pop();
-                final org.dcm.compiler.monoid.IsNullPredicate isNullPredicate =
-                        new org.dcm.compiler.monoid.IsNullPredicate(innerExpr);
-                operands.push(isNullPredicate);
-            } else if (node instanceof IsNotNullPredicate) {
-                final Expr innerExpr = operands.pop();
-                final org.dcm.compiler.monoid.IsNotNullPredicate isNotNullPredicate =
-                        new org.dcm.compiler.monoid.IsNotNullPredicate(innerExpr);
-                operands.push(isNotNullPredicate);
-            } else {
-                throw new IllegalArgumentException("Unknown type stack " + node);
-            }
-        }
-        return operands;
-    }
-
-    private BinaryOperatorPredicate createOperatorPredicate(final BinaryOperatorPredicate.Operator operatorMnz,
-                                                            final Expr left, final Expr right,
-                                                            final boolean isAggregate) {
-        return isAggregate
-                ? new BinaryOperatorPredicateWithAggregate(operatorMnz, left, right)
-                : new BinaryOperatorPredicate(operatorMnz, left, right);
-    }
-
-    private ColumnIdentifier getColumnIdentifierFromField(final Node node, final Set<IRTable> tablesReferencedInView) {
-          if (node instanceof DereferenceExpression) {
-            final IRColumn irColumn = getIRColumnFromDereferencedExpression((DereferenceExpression) node);
-            return new ColumnIdentifier(irColumn.getIRTable().getName(), irColumn, true);
-        } else if (node instanceof Identifier) {
-            final IRColumn irColumn = irContext.getColumnIfUnique(node.toString(), tablesReferencedInView);
-            assert tablesReferencedInView.stream().map(IRTable::getName)
-                                                  .collect(Collectors.toSet())
-                                                  .contains(irColumn.getIRTable().getName());
-            return new ColumnIdentifier(irColumn.getIRTable().getName(), irColumn, false);
-        } else {
-            throw new IllegalArgumentException("Unknown field type");
-        }
-    }
-
-    private IRColumn getIRColumnFromDereferencedExpression(final DereferenceExpression node) {
-        final List<String> identifier = Splitter.on(".")
-                .trimResults()
-                .omitEmptyStrings()
-                .splitToList(node.toString());
-
-        // Only supports dereference expressions that have exactly 1 dot.
-        // At the moment we don't support, e.g. schema.reference.field - that is we only support queries
-        // within the same schema
-        if (identifier.size() != 2) {
-            throw new UnsupportedOperationException("Dereference fields can only be of the format `table.field`");
-        }
-        final String tableName = identifier.get(0);
-        final String fieldName = identifier.get(1);
-        return irContext.getColumn(tableName, fieldName);
-    }
-
-    private static BinaryOperatorPredicate.Operator operatorTranslator(final ArithmeticBinaryExpression.Operator op) {
-        return ARITHMETIC_OP_TABLE.get(op);
-    }
-
-    private static BinaryOperatorPredicate.Operator operatorTranslator(final LogicalBinaryExpression.Operator op) {
-        return LOGICAL_OP_TABLE.get(op);
-    }
-
-    private static BinaryOperatorPredicate.Operator operatorTranslator(final ComparisonExpression.Operator op) {
-        return COMPARISON_OP_TABLE.get(op);
-    }
-
-    private static boolean isLiteral(final Node node) {
-        return node instanceof Literal;
     }
 }
