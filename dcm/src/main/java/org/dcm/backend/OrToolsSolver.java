@@ -1124,7 +1124,10 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
-        return RewriteContains.apply(RewriteArity.apply(comprehension));
+        return Stream.of(comprehension)
+                .map(RewriteArity::apply)
+                .map(RewriteContains::apply)
+                .findFirst().orElseThrow();
     }
 
     private <T extends Expr> String generateTupleGenericParameters(final List<T> exprs) {

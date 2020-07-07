@@ -20,28 +20,24 @@ import java.util.Objects;
  * Minizinc has no "count()" function. We rewrite all instances of
  * count([i | qualifiers..]) to sum([1 | qualifiers...]).
  */
-class RewriteCountFunction {
+class RewriteCountFunction extends ComprehensionRewriter {
 
-    static MonoidComprehension apply(final MonoidComprehension comprehension) {
-        final CountRewriter rewriter = new CountRewriter();
-        final MonoidComprehension newCompr =
-                (MonoidComprehension) Objects.requireNonNull(rewriter.visit(comprehension));
-        return newCompr;
+    @Override
+    protected Expr visitMonoidFunction(final MonoidFunction function, final VoidType context) {
+        if (function.getFunction().equals(MonoidFunction.Function.COUNT)) {
+            if (!(function.getArgument().get(0) instanceof ColumnIdentifier)) {
+                throw new IllegalStateException("RewriteCountFunction is only safe to use on column identifiers");
+            }
+            final MonoidFunction newFunction = new MonoidFunction(MonoidFunction.Function.SUM,
+                                                                  new MonoidLiteral<>(1L, Long.class));
+            function.getAlias().ifPresent(newFunction::setAlias);
+            return newFunction;
+        }
+        return super.visitMonoidFunction(function, context);
     }
 
-    static class CountRewriter extends ComprehensionRewriter {
-        @Override
-        protected Expr visitMonoidFunction(final MonoidFunction function, final VoidType context) {
-            if (function.getFunction().equals(MonoidFunction.Function.COUNT)) {
-                if (!(function.getArgument().get(0) instanceof ColumnIdentifier)) {
-                    throw new IllegalStateException("RewriteCountFunction is only safe to use on column identifiers");
-                }
-                final MonoidFunction newFunction = new MonoidFunction(MonoidFunction.Function.SUM,
-                                                                      new MonoidLiteral<>(1L, Long.class));
-                function.getAlias().ifPresent(newFunction::setAlias);
-                return newFunction;
-            }
-            return super.visitMonoidFunction(function, context);
-        }
+    static MonoidComprehension apply(final MonoidComprehension comprehension) {
+        final RewriteCountFunction rewriter = new RewriteCountFunction();
+        return (MonoidComprehension) Objects.requireNonNull(rewriter.visit(comprehension));
     }
 }

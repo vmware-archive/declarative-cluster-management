@@ -34,96 +34,94 @@ import java.util.stream.Collectors;
  * sum([col | predicate-based-on-var...]) into expressions of the form
  * sum([col * (predicate-based-on-var) | non-var-q]).
  */
-class RewriteArity {
+class RewriteArity extends ComprehensionRewriter {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteArity.class);
 
     static MonoidComprehension apply(final MonoidComprehension comprehension) {
-        final ArityRewriter rewriter = new ArityRewriter();
+        final RewriteArity rewriter = new RewriteArity();
         final Expr result = Objects.requireNonNull(rewriter.visit(comprehension));
         return comprehension instanceof GroupByComprehension ?
                 (GroupByComprehension) result : (MonoidComprehension) result;
     }
 
-    private static class ArityRewriter extends ComprehensionRewriter {
-        @Override
-        protected Expr visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
-            // First, rewrite qualifiers. Then, rewrite head
-            final List<Qualifier> qualifiers = node.getQualifiers()
-                    .stream().map(q -> (Qualifier) visit(q)).collect(Collectors.toList());
-            final MonoidComprehension maybeRewrittenComprehension = new MonoidComprehension(node.getHead(), qualifiers);
-            return rewriteComprehension(maybeRewrittenComprehension);
+    @Override
+    protected Expr visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
+        // First, rewrite qualifiers. Then, rewrite head
+        final List<Qualifier> qualifiers = node.getQualifiers()
+                .stream().map(q -> (Qualifier) visit(q)).collect(Collectors.toList());
+        final MonoidComprehension maybeRewrittenComprehension = new MonoidComprehension(node.getHead(), qualifiers);
+        return rewriteComprehension(maybeRewrittenComprehension);
+    }
+
+    @Override
+    protected Expr visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
+        Preconditions.checkArgument(node.getArgument() instanceof MonoidComprehension);
+        final MonoidComprehension argument = rewriteExistsArgument((MonoidComprehension) node.getArgument());
+        return new ExistsPredicate(argument);
+    }
+
+    /**
+     * First, extract the var and non-var qualifiers in the comprehension. If we only have a single
+     * var qualifier, then check if we can rewrite the comprehension. Rewrites only happen for
+     * sum/count expressions.
+     */
+    private MonoidComprehension rewriteComprehension(final MonoidComprehension input) {
+        LOG.debug("Attempting to rewrite: {}", input);
+
+        // Extract var and non-var qualifiers
+        final List<GetVarQualifiers.QualifiersList> collect = input.getQualifiers().stream()
+                .map(GetVarQualifiers::apply)
+                .collect(Collectors.toList());
+        final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.getVarQualifiers().stream())
+                .collect(Collectors.toList());
+        final List<Qualifier> nonVarQualifiers = collect.stream().flatMap(ql -> ql.getNonVarQualifiers().stream())
+                .collect(Collectors.toList());
+        if (varQualifiers.isEmpty()) {
+            return input;
         }
-
-        @Override
-        protected Expr visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
-            Preconditions.checkArgument(node.getArgument() instanceof MonoidComprehension);
-            final MonoidComprehension argument = rewriteExistsArgument((MonoidComprehension) node.getArgument());
-            return new ExistsPredicate(argument);
+        if (varQualifiers.size() != 1) {
+            LOG.debug("Found multiple var qualifiers. Skipping arity rewrite.");
+            for (final Qualifier qualifier : varQualifiers) {
+                LOG.debug("--- " + qualifier);
+            }
+            return input;
         }
+        return maybeRewriteFunctions(input, varQualifiers, nonVarQualifiers);
+    }
 
-        /**
-         * First, extract the var and non-var qualifiers in the comprehension. If we only have a single
-         * var qualifier, then check if we can rewrite the comprehension. Rewrites only happen for
-         * sum/count expressions.
-         */
-        private MonoidComprehension rewriteComprehension(final MonoidComprehension input) {
-            LOG.debug("Attempting to rewrite: {}", input);
 
-            // Extract var and non-var qualifiers
-            final List<GetVarQualifiers.QualifiersList> collect = input.getQualifiers().stream()
-                    .map(GetVarQualifiers::apply)
-                    .collect(Collectors.toList());
-            final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.getVarQualifiers().stream())
-                    .collect(Collectors.toList());
-            final List<Qualifier> nonVarQualifiers = collect.stream().flatMap(ql -> ql.getNonVarQualifiers().stream())
-                    .collect(Collectors.toList());
-            if (varQualifiers.isEmpty()) {
-                return input;
-            }
-            if (varQualifiers.size() != 1) {
-                LOG.debug("Found multiple var qualifiers. Skipping arity rewrite.");
-                for (final Qualifier qualifier : varQualifiers) {
-                    LOG.debug("--- " + qualifier);
-                }
-                return input;
-            }
-            return maybeRewriteFunctions(input, varQualifiers, nonVarQualifiers);
+    /**
+     * First, extract the var and non-var qualifiers in the comprehension. If we only have a single
+     * var qualifier, then ignore the head items and replace it with the var qualifier
+     */
+    private MonoidComprehension rewriteExistsArgument(final MonoidComprehension input) {
+        LOG.debug("Attempting to rewrite: {}", input);
+
+        final List<Qualifier> qualifiers = input.getQualifiers()
+                .stream().map(q -> (Qualifier) visit(q)).collect(Collectors.toList());
+
+        // Extract var and non-var qualifiers
+        final List<GetVarQualifiers.QualifiersList> collect = qualifiers.stream()
+                .map(GetVarQualifiers::apply)
+                .collect(Collectors.toList());
+        final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.getVarQualifiers().stream())
+                .collect(Collectors.toList());
+        final List<Qualifier> nonVarQualifiers = collect.stream().flatMap(ql -> ql.getNonVarQualifiers().stream())
+                .collect(Collectors.toList());
+        if (varQualifiers.isEmpty()) {
+            return input;
         }
-
-
-        /**
-         * First, extract the var and non-var qualifiers in the comprehension. If we only have a single
-         * var qualifier, then ignore the head items and replace it with the var qualifier
-         */
-        private MonoidComprehension rewriteExistsArgument(final MonoidComprehension input) {
-            LOG.debug("Attempting to rewrite: {}", input);
-
-            final List<Qualifier> qualifiers = input.getQualifiers()
-                    .stream().map(q -> (Qualifier) visit(q)).collect(Collectors.toList());
-
-            // Extract var and non-var qualifiers
-            final List<GetVarQualifiers.QualifiersList> collect = qualifiers.stream()
-                    .map(GetVarQualifiers::apply)
-                    .collect(Collectors.toList());
-            final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.getVarQualifiers().stream())
-                    .collect(Collectors.toList());
-            final List<Qualifier> nonVarQualifiers = collect.stream().flatMap(ql -> ql.getNonVarQualifiers().stream())
-                    .collect(Collectors.toList());
-            if (varQualifiers.isEmpty()) {
-                return input;
+        if (varQualifiers.size() != 1) {
+            LOG.debug("Found multiple var qualifiers. Skipping arity rewrite.");
+            for (final Qualifier qualifier : varQualifiers) {
+                LOG.debug("--- " + qualifier);
             }
-            if (varQualifiers.size() != 1) {
-                LOG.debug("Found multiple var qualifiers. Skipping arity rewrite.");
-                for (final Qualifier qualifier : varQualifiers) {
-                    LOG.debug("--- " + qualifier);
-                }
-                return input;
-            }
-            final Head newHead = new Head(Collections.singletonList(varQualifiers.get(0)));
-            final MonoidComprehension rewrittenComprehension =
-                    new MonoidComprehension(newHead, nonVarQualifiers);
-            return rewrittenComprehension;
+            return input;
         }
+        final Head newHead = new Head(Collections.singletonList(varQualifiers.get(0)));
+        final MonoidComprehension rewrittenComprehension =
+                new MonoidComprehension(newHead, nonVarQualifiers);
+        return rewrittenComprehension;
     }
 
     private static MonoidComprehension maybeRewriteFunctions(final MonoidComprehension input,

@@ -18,25 +18,23 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 
-public class RewriteContains {
+public class RewriteContains extends ComprehensionRewriter {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteContains.class);
 
     static MonoidComprehension apply(final MonoidComprehension comprehension) {
         LOG.trace("Invoking RewriteContains on {}", comprehension);
-        final ContainsRewriter rewriter = new ContainsRewriter();
+        final RewriteContains rewriter = new RewriteContains();
         final Expr result = Objects.requireNonNull(rewriter.visit(comprehension));
         return comprehension instanceof GroupByComprehension ?
                 (GroupByComprehension) result : (MonoidComprehension) result;
     }
 
-    private static class ContainsRewriter extends ComprehensionRewriter {
-        @Override
-        protected Expr visitMonoidFunction(final MonoidFunction node, final VoidType context) {
-            if (node.getFunction().equals(MonoidFunction.Function.CONTAINS)) {
-                return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.CONTAINS,
-                        node.getArgument().get(0), node.getArgument().get(1));
-            }
-            return super.visitMonoidFunction(node, context);
+    @Override
+    protected Expr visitMonoidFunction(final MonoidFunction node, final VoidType context) {
+        if (node.getFunction().equals(MonoidFunction.Function.CONTAINS)) {
+            return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.CONTAINS,
+                    node.getArgument().get(0), node.getArgument().get(1));
         }
+        return super.visitMonoidFunction(node, context);
     }
 }
