@@ -8,21 +8,17 @@ package org.dcm.compiler.monoid;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 public class MonoidComprehension extends Expr {
-    @Nullable private Head head;
-    private List<Qualifier> qualifiers = new ArrayList<>();
-
-    MonoidComprehension() {
-    }
+    @Nullable private final Head head;
+    private final List<Qualifier> qualifiers;
 
     public MonoidComprehension(final Head head) {
         this.head = head;
-    }
-
-    public MonoidComprehension(final List<Qualifier> qualifiers) {
-        this.qualifiers = qualifiers;
+        this.qualifiers = new ArrayList<>();
     }
 
     public MonoidComprehension(final Head head, final List<Qualifier> qualifiers) {
@@ -30,15 +26,19 @@ public class MonoidComprehension extends Expr {
         this.qualifiers = qualifiers;
     }
 
+    public MonoidComprehension() {
+        this.head = null;
+        this.qualifiers = Collections.emptyList();
+    }
+
     public MonoidComprehension withQualifier(final Qualifier qualifier) {
         final List<Qualifier> newQualifiers = new ArrayList<>(qualifiers);
         newQualifiers.add(qualifier);
-        return new MonoidComprehension(head, newQualifiers);
+        return new MonoidComprehension(Objects.requireNonNull(head), newQualifiers);
     }
 
-    @Nullable
     public Head getHead() {
-        return head;
+        return Objects.requireNonNull(head);
     }
 
     public List<Qualifier> getQualifiers() {

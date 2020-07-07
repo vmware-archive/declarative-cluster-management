@@ -75,7 +75,7 @@ class InferType extends MonoidVisitor<String, Void> {
     @Override
     protected String visitGroupByComprehension(final GroupByComprehension node, @Nullable final Void context) {
         final Head head = node.getComprehension().getHead();
-        if (head != null && head.getSelectExprs().size() == 1) {
+        if (head.getSelectExprs().size() == 1) {
             final String type = visit(head.getSelectExprs().get(0), context);
             LOG.warn("Returning type of sub-query {} as {}", node, type);
             return type;
@@ -87,7 +87,7 @@ class InferType extends MonoidVisitor<String, Void> {
     @Override
     protected String visitMonoidComprehension(final MonoidComprehension node, @Nullable final Void context) {
         final Head head = node.getHead();
-        if (head != null && head.getSelectExprs().size() == 1) {
+        if (head.getSelectExprs().size() == 1) {
             final String type = visit(head.getSelectExprs().get(0), context);
             LOG.warn("Returning type of sub-query {} as {}", node, type);
             return type;

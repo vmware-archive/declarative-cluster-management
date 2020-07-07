@@ -324,7 +324,6 @@ public class OrToolsSolver implements ISolverBackend {
             final int groupByQualifiersSize = groupByQualifier.getColumnIdentifiers().size();
             final String groupByTupleTypeParameters = viewGroupByTupleTypeParameters.get(intermediateView);
             final String headItemsTupleTypeParamters = viewTupleTypeParameters.get(intermediateView);
-            assert inner.getHead() != null;
 
             // when duplicates appear for viewToFieldIndex, we increment the fieldIndex counter but do not add a new
             // entry. This means that the highest fieldIndex (and not the size of the map) is equal to tuple size.
@@ -429,7 +428,6 @@ public class OrToolsSolver implements ISolverBackend {
                                                    @Nullable final GroupByQualifier groupByQualifier,
                                                    final boolean isConstraint, final TranslationContext context) {
         final OutputIR.Block block = outputIR.newBlock(viewName);
-        Preconditions.checkNotNull(comprehension.getHead());
         // Add a comment with the view name
         block.addHeader(CodeBlock.builder().add("\n")
                      .add("/* $L view $L */\n", isConstraint ? "Constraint" : "Non-constraint", viewName)
@@ -518,12 +516,10 @@ public class OrToolsSolver implements ISolverBackend {
                 // There are constraints that are trivially true or false, wherein the predicate does not depend on
                 // on any columns from the relations in the query. See the ModelTest.innerSubqueryCountTest
                 // as an example. In such cases, we simply revert to pulling out all the head items for the outer query.
-                Preconditions.checkArgument(comprehension.getHead() != null);
                 return getColumnsAccessed(comprehension.getHead().getSelectExprs());
             }
             return columnsAccessed;
         } else {
-            Preconditions.checkArgument(comprehension.getHead() != null);
             final List<ColumnIdentifier> columnsFromQualifiers  =
                     getColumnsAccessed(comprehension.getQualifiers());
             final List<ColumnIdentifier> columnsFromHead =
@@ -1497,7 +1493,6 @@ public class OrToolsSolver implements ISolverBackend {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             final OutputIR.Block subQueryBlock = addView(newSubqueryName, node, false, context);
-            Preconditions.checkNotNull(node.getHead());
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
                     new ExprToStrVisitor(allowControllable, currentGroupContext,
@@ -1539,7 +1534,6 @@ public class OrToolsSolver implements ISolverBackend {
             // We are in a subquery.
             final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
             final OutputIR.Block subQueryBlock = addView(newSubqueryName, node, false, context);
-            Preconditions.checkNotNull(node.getComprehension().getHead());
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
                     new ExprToStrVisitor(allowControllable, currentGroupContext,

@@ -19,7 +19,6 @@ import org.dcm.compiler.monoid.MonoidComprehension;
 import org.dcm.compiler.monoid.MonoidFunction;
 import org.dcm.compiler.monoid.MonoidLiteral;
 import org.dcm.compiler.monoid.Qualifier;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -162,7 +161,7 @@ class RewriteArity {
                         .map(q -> (Qualifier) super.visit(q, context))
                         .collect(Collectors.toList());
 
-                final Head newHead = (Head) super.visit(Objects.requireNonNull(node.getHead()), context);
+                final Head newHead = (Head) super.visit(node.getHead(), context);
                 return new MonoidComprehension(Objects.requireNonNull(newHead), qualifiers);
             }
             return node;

@@ -20,15 +20,7 @@ import java.util.stream.Collectors;
 class SplitIntoSingleHeadComprehensions {
 
     static List<MonoidComprehension> apply(final MonoidComprehension input) {
-        if (input.getHead() != null) {
-            return input.getHead()
-                    .getSelectExprs()
-                    .stream()
-                    .map(e -> new MonoidComprehension(new Head(Collections.singletonList(e)),
-                                                      input.getQualifiers()))
-                    .collect(Collectors.toList());
-        }
-        else if (input instanceof GroupByComprehension) {
+        if (input instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) input;
             final MonoidComprehension innerComprehension = groupByComprehension.getComprehension();
             return innerComprehension.getHead()
@@ -43,7 +35,12 @@ class SplitIntoSingleHeadComprehensions {
                     .collect(Collectors.toList());
         }
         else {
-            return Collections.singletonList(input);
+            return input.getHead()
+                    .getSelectExprs()
+                    .stream()
+                    .map(e -> new MonoidComprehension(new Head(Collections.singletonList(e)),
+                            input.getQualifiers()))
+                    .collect(Collectors.toList());
         }
     }
 }
