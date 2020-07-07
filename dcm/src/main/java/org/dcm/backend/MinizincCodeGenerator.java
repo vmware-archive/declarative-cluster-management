@@ -129,9 +129,8 @@ public class MinizincCodeGenerator extends SimpleVisitor {
         return defaultReturn();
     }
 
-    @Nullable
     @Override
-    protected VoidType visitUnaryOperator(final UnaryOperator node, @Nullable final VoidType context) {
+    protected VoidType visitUnaryOperator(final UnaryOperator node, final VoidType context) {
         literals.add(node);
         return defaultReturn();
     }
@@ -789,7 +788,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
         }
 
         @Override
-        protected VoidType visitUnaryOperator(final UnaryOperator node, @Nullable final VoidType context) {
+        protected VoidType visitUnaryOperator(final UnaryOperator node, final VoidType context) {
             stack.push(node);
             return defaultReturn();
         }
