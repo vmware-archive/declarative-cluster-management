@@ -36,7 +36,7 @@ class Policies {
     static Policy nodePredicates() {
         final String constraint = "create view constraint_controllable_node_name_domain as " +
                                   "select * from pods_to_assign " +
-                                  "where controllable__node_name in " +
+                                  "check controllable__node_name in " +
                                         "(select name from spare_capacity_per_node)";
         return new Policy("NodePredicates", constraint);
     }
@@ -50,7 +50,7 @@ class Policies {
         final String constraint = "create view constraint_node_selector as " +
                                   "select * " +
                                   "from pods_to_assign " +
-                                  "where pods_to_assign.has_node_selector_labels = false or " +
+                                  "check pods_to_assign.has_node_selector_labels = false or " +
                                   "      pods_to_assign.controllable__node_name in " +
                                   "         (select node_name " +
                                   "          from pod_node_selector_matches " +
@@ -66,7 +66,7 @@ class Policies {
         final String constraint = "create view constraint_pod_affinity as " +
                                   "select * " +
                                   "from pods_to_assign " +
-                                  "where pods_to_assign.has_pod_affinity_requirements = false or " +
+                                  "check pods_to_assign.has_pod_affinity_requirements = false or " +
 
             // Affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are affine to it
             // from inter_pod_affinity_matches_pending. We get this latter set of pending pods by joining
@@ -97,7 +97,7 @@ class Policies {
         final String constraintPending = "create view constraint_pod_anti_affinity_pending as " +
             "select * " +
             "from pods_to_assign " +
-            "where pods_to_assign.has_pod_anti_affinity_requirements = false or " +
+            "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
             // Anti-affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are
             // anti-affine to it from inter_pod_anti_affinity_matches_pending. We get this latter set of
             // pending pods by joining inter_pod_anti_affinity_matches_pending with pods_to_assign (inner).
@@ -114,7 +114,7 @@ class Policies {
                 "from pods_to_assign " +
                 "join inter_pod_anti_affinity_matches_scheduled on  " +
                 "     pods_to_assign.pod_name = inter_pod_anti_affinity_matches_scheduled.pod_name " +
-                "where pods_to_assign.has_pod_anti_affinity_requirements = false or " +
+                "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
                 "      not(contains(inter_pod_anti_affinity_matches_scheduled.matches, " +
                 "                   pods_to_assign.controllable__node_name))";
         return new Policy("InterPodAntiAffinity", List.of(constraintPending, constraintScheduled));
@@ -136,7 +136,7 @@ class Policies {
             "from spare_capacity_per_node " +
             "join pods_to_assign " +
             "     on pods_to_assign.controllable__node_name = spare_capacity_per_node.name " +
-            "having capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
+            "check capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
             "                           pods_to_assign.cpu_request, spare_capacity_per_node.cpu_remaining) = true" +
             " and capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
             "                         pods_to_assign.memory_request, spare_capacity_per_node.memory_remaining) = true" +
@@ -155,7 +155,7 @@ class Policies {
                 "select * " +
                 "from pods_to_assign " +
                 "group by equivalence_class " +
-                "having increasing(pods_to_assign.controllable__node_name) = true";
+                "check increasing(pods_to_assign.controllable__node_name) = true";
         return new Policy("SymmetryBreaking", constraint);
     }
 
@@ -168,7 +168,7 @@ class Policies {
                 "from pods_to_assign " +
                 "join nodes_that_have_tolerations" +
                 "    on pods_to_assign.controllable__node_name = nodes_that_have_tolerations.node_name " +
-                "where exists(select * from pods_that_tolerate_node_taints as A " +
+                "check exists(select * from pods_that_tolerate_node_taints as A " +
                 "              where A.pod_name = pods_to_assign.pod_name" +
                 "                and A.node_name = pods_to_assign.controllable__node_name) = true";
         return new Policy("NodeTaintsPredicate", constraint);

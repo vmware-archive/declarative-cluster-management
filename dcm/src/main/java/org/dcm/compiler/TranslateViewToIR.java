@@ -300,7 +300,12 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         tables.forEach(t -> qualifiers.add(new TableRowGenerator(t)));
         where.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, false)));
         having.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, true)));
-        check.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, having.isPresent())));
+        check.ifPresent(e -> {
+            final UsesAggregateFunctions usesAggregateFunctions = new UsesAggregateFunctions();
+            usesAggregateFunctions.process(e);
+            qualifiers.add((Qualifier) translateExpression(e, irContext, tables,
+                    usesAggregateFunctions.isFound() || groupBy.isPresent() || having.isPresent()));
+        });
 
         joinConditions.forEach(e -> {
             final Qualifier joinQualifier = (Qualifier) translateExpression(e, irContext, tables, false);
