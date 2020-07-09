@@ -8,8 +8,6 @@ package org.dcm;
 
 import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.parser.ParsingException;
-import com.facebook.presto.sql.parser.ParsingOptions;
-import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
@@ -57,14 +55,12 @@ import static org.jooq.impl.DSL.values;
 public class Model {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
     private static final String CURRENT_SCHEMA = "CURR";
-    private static final SqlParser PARSER = new SqlParser();
-    private static final ParsingOptions OPTIONS = new ParsingOptions();
     private final DSLContext dbCtx;
     private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
     private final Multimap<Table<?>, Constraint> jooqTableConstraintMap;
     private final ModelCompiler compiler;
-    private IRContext irContext;
+    private final IRContext irContext;
     private final ISolverBackend backend;
 
 
@@ -76,10 +72,10 @@ public class Model {
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
         this.backend = backend;
-        final List<CreateView> constraintViews = constraints.stream().map(
+        final List<ViewsWithChecks> constraintViews = constraints.stream().map(
                 constraint -> {
                     try {
-                        return (CreateView) PARSER.createStatement(constraint, OPTIONS);
+                        return ViewsWithChecks.fromString(constraint);
                     } catch (final ParsingException e) {
                         LOG.error("Could not parse view: {}", constraint, e);
                         throw e;
@@ -95,7 +91,7 @@ public class Model {
         if (backend.needsGroupTables()) {
             final List<CreateView> groupByViewsToCreate = constraintViews.stream().map(view -> {
                 final ExtractGroupTable groupTable = new ExtractGroupTable();
-                return groupTable.process(view);
+                return groupTable.process(view.getCreateView());
             }).filter(Optional::isPresent)
                     .map(Optional::get)
                     .collect(Collectors.toList());
@@ -196,9 +192,10 @@ public class Model {
     private static List<Table<?>> getTablesFromContext(final DSLContext dslContext, final List<String> constraints) {
         final Set<String> accessedTableNames = new HashSet<>();
         constraints.forEach(constraint -> {
-            final CreateView createView = (CreateView) PARSER.createStatement(constraint, OPTIONS);
+            final ViewsWithChecks viewsWithChecks = ViewsWithChecks.fromString(constraint);
             final ExtractAccessedTables visitor = new ExtractAccessedTables(accessedTableNames);
-            visitor.process(createView);
+            visitor.process(viewsWithChecks.getCreateView());
+            viewsWithChecks.getCheckExpression().ifPresent(visitor::process);
         });
 
         final Meta dslMeta = dslContext.meta();
@@ -223,7 +220,6 @@ public class Model {
     /**
      * Updates the data file within a model by getting the latest data from the tables
      */
-    @SuppressWarnings("WeakerAccess")
     public synchronized void updateData() {
         updateDataFields();
     }
@@ -231,7 +227,6 @@ public class Model {
     /**
      * Solves the current model by running the current modelFile and dataFile against MiniZinc
      */
-    @SuppressWarnings("WeakerAccess")
     public synchronized void solveModel() throws ModelException {
         // run the solver and get a result set per table
         LOG.info("Running the solver");
@@ -249,7 +244,6 @@ public class Model {
      * @return A map where keys correspond to the supplied "tables" parameter, and the values are Result<> objects
      *         representing rows of the corresponding tables, with modifications made by the solver
      */
-    @SuppressWarnings("WeakerAccess")
     public synchronized Map<String, Result<? extends Record>> solveModelWithoutTableUpdates(final Set<String> tables)
             throws ModelException {
         // run the solver and get a result set per table

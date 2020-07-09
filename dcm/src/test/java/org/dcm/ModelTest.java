@@ -81,11 +81,11 @@ public class ModelTest {
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_for_c2_null AS " +
                 "SELECT * FROM t1 " +
-                "where c2 is not null OR controllable__c3 = 1;" +
+                "check c2 is not null OR controllable__c3 = 1;" +
 
                 "CREATE VIEW constraint_for_c2_not_null AS " +
                 "SELECT * FROM t1 " +
-                "where c2 is null OR controllable__c3 = 2;"
+                "check c2 is null OR controllable__c3 = 2;"
         );
 
         final Model model = buildModel(conn, solver, views, modelName);

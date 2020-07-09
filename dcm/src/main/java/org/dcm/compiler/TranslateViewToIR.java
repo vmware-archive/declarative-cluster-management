@@ -217,7 +217,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
     @Override
     protected Optional<Expr> visitSubqueryExpression(final SubqueryExpression node, final Void context) {
         final Query subQuery = node.getQuery();
-        return Optional.of(apply(subQuery, irContext));
+        return Optional.of(apply(subQuery, Optional.empty(), irContext));
     }
 
     @Override
@@ -281,7 +281,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
      * @param irContext an IRContext instance
      * @return A list comprehension corresponding to the view parameter
      */
-    static MonoidComprehension apply(final Query view, final IRContext irContext) {
+    static MonoidComprehension apply(final Query view, final Optional<Expression> check, final IRContext irContext) {
         final FromExtractor fromParser = new FromExtractor(irContext);
         fromParser.process(view.getQueryBody());
 
@@ -300,6 +300,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         tables.forEach(t -> qualifiers.add(new TableRowGenerator(t)));
         where.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, false)));
         having.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, true)));
+        check.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, having.isPresent())));
 
         joinConditions.forEach(e -> {
             final Qualifier joinQualifier = (Qualifier) translateExpression(e, irContext, tables, false);
