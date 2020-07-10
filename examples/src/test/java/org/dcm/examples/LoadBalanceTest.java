@@ -41,7 +41,7 @@ public class LoadBalanceTest {
     public void testSimpleConstraint() {
         final String allVmsGoToPm3 = "create view constraint_simple as " +
                                      "select * from virtual_machine " +
-                                     "where controllable__physical_machine = 'pm3'";
+                                     "check controllable__physical_machine = 'pm3'";
         final LoadBalance lb = new LoadBalance(Collections.singletonList(allVmsGoToPm3));
         addInventory(lb);
         final Result<? extends Record> results = lb.run();
@@ -62,7 +62,7 @@ public class LoadBalanceTest {
                 "join physical_machine " +
                 "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
                 "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
-                "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
+                "check sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
                 "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
 
         final LoadBalance lb = new LoadBalance(Collections.singletonList(capacityConstraint));
@@ -86,7 +86,7 @@ public class LoadBalanceTest {
                 "join physical_machine " +
                 "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
                 "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
-                "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
+                "check sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
                 "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
 
         final String spareCpu = "create view spare_cpu as " +

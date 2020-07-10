@@ -155,7 +155,7 @@ simple cluster manager.
     public void testSimpleConstraint() {
         final String allVmsGoToPm3 = "create view constraint_simple as " +
                                      "select * from virtual_machine " +
-                                     "where controllable__physical_machine = 'pm3'";
+                                     "check controllable__physical_machine = 'pm3'";
         final LoadBalance lb = new LoadBalance(Collections.singletonList(allVmsGoToPm3));
         addInventory(lb);
         final Result<? extends Record> results = lb.run();
@@ -163,7 +163,7 @@ simple cluster manager.
         results.forEach(e -> assertEquals(e.get("CONTROLLABLE__PHYSICAL_MACHINE"), "pm3"));
     }
   ```
-  To specify a constraint, we simply create a view whose name is prefixed with `constraint_`. The where clause
+  To specify a constraint, we simply create a view with a `check` clause. The `check` clause
   specifies a predicate that should hold true for all records returned by the relation being selected (in this case,
   the table `virtual_machine`). In this case, the constraint requires all VMs to be assigned to `pm3`, which yields
   the following result:
@@ -202,8 +202,8 @@ simple cluster manager.
                   "join physical_machine " +
                   "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
                   "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
-                  "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
-                  "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
+                  "check sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
+                  "      sum(virtual_machine.memory) <= physical_machine.memory_capacity";
   
           final LoadBalance lb = new LoadBalance(Collections.singletonList(capacityConstraint));
           addInventory(lb);
@@ -216,7 +216,7 @@ simple cluster manager.
           assertTrue(setOfPhysicalMachines.size() >= 2);
       }
   ```
-  Here, the `having` clause specifies the capacity constraint. On my machine, this assigns all VMs evenly
+  Here, the `check` clause specifies the capacity constraint. On my machine, this assigns all VMs evenly
   between physical machines `pm2` and `pm4`:
   ```
     +----+----+------+------------------------------+
@@ -249,8 +249,8 @@ simple cluster manager.
                   "join physical_machine " +
                   "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
                   "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
-                  "having sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
-                  "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
+                  "check sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
+                  "      sum(virtual_machine.memory) <= physical_machine.memory_capacity";
   
           final String spareCpu = "create view spare_cpu as " +
                   "select physical_machine.cpu_capacity - sum(virtual_machine.cpu) as cpu_spare " +

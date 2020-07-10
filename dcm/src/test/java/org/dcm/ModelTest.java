@@ -81,11 +81,11 @@ public class ModelTest {
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_for_c2_null AS " +
                 "SELECT * FROM t1 " +
-                "where c2 is not null OR controllable__c3 = 1;" +
+                "check c2 is not null OR controllable__c3 = 1;" +
 
                 "CREATE VIEW constraint_for_c2_not_null AS " +
                 "SELECT * FROM t1 " +
-                "where c2 is null OR controllable__c3 = 2;"
+                "check c2 is null OR controllable__c3 = 2;"
         );
 
         final Model model = buildModel(conn, solver, views, modelName);
@@ -217,12 +217,12 @@ public class ModelTest {
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_exclude_non_data_nodes1 AS " +
                 "SELECT * FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
-                "where hosts.controllable__in_segment != false OR stripes.controllable__host_id != hosts.host_id;\n" +
+                "check hosts.controllable__in_segment != false OR stripes.controllable__host_id != hosts.host_id;\n" +
 
                 "CREATE VIEW constraint_exclude_non_data_nodes2 AS " +
                 "SELECT count(*) FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
                 "group by hosts.host_id " +
-                "having count(hosts.host_id) <= 2;\n"
+                "check count(hosts.host_id) <= 2;\n"
         );
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
@@ -276,7 +276,7 @@ public class ModelTest {
                 "CREATE VIEW constraint_exclude_non_data_nodes2 AS " +
                 "SELECT * FROM hosts JOIN stripes ON hosts.host_id = stripes.controllable__host_id " +
                 "group by hosts.host_id " +
-                "having count(hosts.host_id) <= 2;\n"
+                "check count(hosts.host_id) <= 2;\n"
         );
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
@@ -331,7 +331,7 @@ public class ModelTest {
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_x AS " +
                 "SELECT * FROM hosts " +
-                "where (select count(stripes.stripe_id) from stripes) >= 2;\n"
+                "check (select count(stripes.stripe_id) from stripes) >= 2;\n"
         );
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
@@ -491,7 +491,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_t1 AS " +
-                "SELECT * FROM t1 where controllable__c2 in (select c1 from t1 as A) and not(controllable__c2 = 1)");
+                "SELECT * FROM t1 check controllable__c2 in (select c1 from t1 as A) and not(controllable__c2 = 1)");
 
         // insert data
         conn.execute("insert into t1 values (1, 1)");
@@ -528,7 +528,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_t1 AS " +
-                "SELECT * FROM t1 group by c1 having sum(controllable__c2) = 5 and count(controllable__c2) = 1; ");
+                "SELECT * FROM t1 group by c1 check sum(controllable__c2) = 5 and count(controllable__c2) = 1; ");
 
         // insert data
         conn.execute("insert into t1 values (1, 5)");
@@ -608,7 +608,7 @@ public class ModelTest {
         );
         final List<String> views = toListOfViews("create view constraint_valid_nodes as\n" +
                 "select * from pod_info\n" +
-                "where\n" +
+                "check\n" +
                 "not(status = 'Pending') or\n" +
                 "pod_info.controllable__node_name in\n" +
                 "  (select node_labels.node_name from node_labels\n" +
@@ -707,7 +707,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_t1 AS " +
-                "SELECT * FROM t1 where exists(select c1 from t2 where t2.c1 = t1.controllable__c1) = true;");
+                "SELECT * FROM t1 check exists(select c1 from t2 where t2.c1 = t1.controllable__c1) = true;");
 
         // insert data
         conn.execute("insert into t1 values (2)");
@@ -861,7 +861,7 @@ public class ModelTest {
                 ")");
         final String pod_info_constant = "create view constraint_ex as\n" +
                 " select * from t1 join t2 on t1.c1 = t2.c1" +
-                " where controllable__c2 = t1.c1";
+                " check controllable__c2 = t1.c1";
         conn.execute("insert into t1 values (1, 1)");
         conn.execute("insert into t1 values (2, 1)");
         conn.execute("insert into t1 values (3, 1)");
@@ -1120,7 +1120,7 @@ public class ModelTest {
                 "SELECT hosts.* FROM hosts JOIN latest_epochs on hosts.epoch_id = latest_epochs.epoch_id");
 
         final List<String> views = toListOfViews("CREATE VIEW constraint_view AS " +
-                                                      "SELECT * FROM latest_hosts where epoch_id = 2;");
+                                                      "SELECT * FROM latest_hosts check epoch_id = 2;");
 
         // insert data
         conn.execute("insert into epochs values (1)");
@@ -1153,7 +1153,7 @@ public class ModelTest {
                 ")"
         );
         final List<String> views = toListOfViews("CREATE VIEW constraint_c1 AS " +
-                "SELECT * FROM t1 where c1 = 'non-existent-string' or c1 = 'some-other-string';");
+                "SELECT * FROM t1 check c1 = 'non-existent-string' or c1 = 'some-other-string';");
 
         // insert data
         conn.execute("insert into t1 values ('some-other-string')");
@@ -1178,7 +1178,7 @@ public class ModelTest {
                 ")"
         );
         final List<String> views = toListOfViews("CREATE VIEW constraint_c1 AS " +
-                "SELECT * FROM t1 where controllable__c1 >= -10 and controllable__c1 >= -20;");
+                "SELECT * FROM t1 check controllable__c1 >= -10 and controllable__c1 >= -20;");
 
         // insert data
         conn.execute("insert into t1 values (1)");
@@ -1311,7 +1311,7 @@ public class ModelTest {
                 "create view constraint_membership as\n" +
                         "select *\n" +
                         "from pod_info\n" +
-                        "where pod_info.controllable__node_name in (select node_info.name from node_info);"
+                        "check pod_info.controllable__node_name in (select node_info.name from node_info);"
         );
 
         conn.execute("insert into node_info values ('n1')");
@@ -1423,7 +1423,7 @@ public class ModelTest {
                         "    select *\n" +
                         "    from pod_info\n" +
                         "    group by cpu_request, memory_request, ephemeral_storage_request, pods_request\n" +
-                        "    having increasing(controllable__node_name) = true;"
+                        "    check increasing(controllable__node_name) = true;"
         );
 
         final Model model = buildModel(conn, solver, views, modelName);
@@ -1481,7 +1481,7 @@ public class ModelTest {
             "  join pod_info on pod_info.controllable__node_name = node_info.name\n" +
             "group by\n" +
             "  node_info.name, node_info.cpu_allocatable, node_info.memory_allocatable, node_info.pods_allocatable\n" +
-            "having\n" +
+            "check\n" +
             "  sum(pod_info.cpu_request) < node_info.cpu_allocatable and\n" +
             "  sum(pod_info.memory_request) < node_info.memory_allocatable and\n" +
             "  sum(pod_info.pods_request) < node_info.pods_allocatable;");
@@ -1646,7 +1646,7 @@ public class ModelTest {
                 "from pod_info\n" +
                 "join node_info\n" +
                 "     on pod_info.controllable__node_name = node_info.name\n" +
-                "where node_info.unschedulable = false and\n" +
+                "check node_info.unschedulable = false and\n" +
                 "      node_info.memory_pressure = false and\n" +
                 "      node_info.disk_pressure = false and\n" +
                 "      node_info.pid_pressure = false and\n" +
@@ -1658,7 +1658,7 @@ public class ModelTest {
                 "pod_with_affinity_expr.match_key = pod_with_labels.label_key and \n" +
                 "pod_with_affinity_expr.match_value = pod_with_labels.label_value and\n" +
                 "pod_with_affinity_expr.pod_name != pod_with_labels.pod_name \n" +
-                "where (\n" +
+                "check (\n" +
                 "pod_with_affinity_expr.node_name in (\n" +
                 "select pod_with_labels.node_name as node_name\n" +
                 "from pod_with_labels as A join pod_with_affinity_expr as B on \n" +
@@ -1679,7 +1679,7 @@ public class ModelTest {
                 "group by\n" +
                 "  node_info.name, node_info.cpu_allocatable,\n" +
                 "  node_info.memory_allocatable, node_info.pods_allocatable " +
-                "having\n" +
+                "check\n" +
                 "  sum(pod_info.cpu_request) < node_info.cpu_allocatable and\n" +
                 "  sum(pod_info.memory_request) < node_info.memory_allocatable and\n" +
                 "  sum(pod_info.pods_request) < node_info.pods_allocatable\n";
@@ -1690,10 +1690,10 @@ public class ModelTest {
                 "join node_labels\n" +
                 "     on node_labels.node_name = services_with_affinity_labels.node_name\n" +
                 "group by services_with_affinity_labels.service_name\n" +
-                "having all_equal(node_labels.label_value) = true";
+                "check all_equal(node_labels.label_value) = true";
 
         final String constraint_fk_constraint = "create view constraint_fk as\n" +
-                "select * from pod_info where \n" +
+                "select * from pod_info check \n" +
                 "pod_info.controllable__node_name in (select name from node_info)";
 
         stringBuilder.append(
@@ -1812,25 +1812,25 @@ public class ModelTest {
         // non-constraint views
         // TODO: this is the correct view but atm the compiler doesnt support that
         final List<String> views = toListOfViews("create view constraint_retain_old_values_hosts as\n" +
-                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A) or\n" +
+                "select * from hosts check epoch_id = (select max(epoch_id) from hosts as A) or\n" +
                 "         (controllable__is_layout_server = is_layout_server and\n" +
                 "         controllable__is_sequencer = is_sequencer and\n" +
                 "         controllable__in_segment = in_segment);\n" +
                 "\n" +
                 "create view constraint_minimal_layouts as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
-                "         having sum(controllable__is_layout_server) >= 2;\n" +
+                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
+                "         check sum(controllable__is_layout_server) >= 2;\n" +
                 "\n" +
                 "create view constraint_minimal_sequencers as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
-                "         having sum(controllable__is_sequencer) >= 2;\n" +
+                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
+                "         check sum(controllable__is_sequencer) >= 2;\n" +
                 "\n" +
                 "create view constraint_minimal_segments as\n" +
-                "select count(*) from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
-                "         having sum(controllable__in_segment) >= 2;\n" +
+                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A)\n" +
+                "         check sum(controllable__in_segment) >= 2;\n" +
                 "\n" +
                 "create view constraint_purge_policy as\n" +
-                "select * from hosts where epoch_id = (select max(epoch_id) from hosts as A) and\n" +
+                "select * from hosts check epoch_id = (select max(epoch_id) from hosts as A) and\n" +
                 "         failure_state = 'UNRESPONSIVE' and\n" +
                 "         controllable__is_layout_server = true and\n" +
                 "         controllable__is_sequencer = true and\n" +

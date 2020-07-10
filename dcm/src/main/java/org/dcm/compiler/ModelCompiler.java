@@ -20,6 +20,7 @@ import org.dcm.IRColumn;
 import org.dcm.IRContext;
 import org.dcm.IRTable;
 import org.dcm.Model;
+import org.dcm.ViewsWithChecks;
 import org.dcm.backend.ISolverBackend;
 import org.dcm.compiler.monoid.MonoidComprehension;
 import org.slf4j.Logger;
@@ -27,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -45,12 +47,11 @@ public class ModelCompiler {
      * @param views a list of strings, each of which is a view statement
      */
     @CanIgnoreReturnValue
-    public List<String> compile(final List<CreateView> views, final ISolverBackend backend) {
+    public List<String> compile(final List<ViewsWithChecks> views, final ISolverBackend backend) {
         LOG.debug("Compiling the following views\n{}", views);
         // First, we extract all the necessary views from the input code
         final ReferencedSymbols symbols = new ReferencedSymbols();
-
-        views.forEach(view -> extractSymbols(view, symbols));
+        splitByType(views, symbols);
         final Map<String, MonoidComprehension> nonConstraintForAlls =
                 parseNonConstraintViews(symbols.getNonConstraintViews());
         final Map<String, MonoidComprehension> constraintForAlls = parseViews(symbols.getConstraintViews());
@@ -61,17 +62,24 @@ public class ModelCompiler {
         return backend.generateModelCode(irContext, nonConstraintForAlls, constraintForAlls, objFunctionForAlls);
     }
 
+    private void splitByType(final List<ViewsWithChecks> viewsWithChecks, final ReferencedSymbols symbols) {
+        viewsWithChecks.stream().forEach(view -> {
+                final CreateView createView = view.getCreateView();
+                final String viewName = createView.getName().toString();
+                if (view.getCheckExpression().isPresent()) {
+                    symbols.getConstraintViews().put(viewName, view);
+                } else if (viewName.toLowerCase(Locale.US).startsWith("objective_")) {
+                    symbols.getObjectiveFunctionViews().put(viewName, view);
+                } else {
+                    symbols.getNonConstraintViews().put(viewName, view);
+                }
+            }
+        );
+    }
 
     @CanIgnoreReturnValue
     public List<String> updateData(final IRContext context, final ISolverBackend backend) {
         return backend.generateDataCode(context);
-    }
-
-
-    private void extractSymbols(final CreateView view, final ReferencedSymbols symbols) {
-            final SymbolExtractingVisitor visitor = new SymbolExtractingVisitor();
-            // updates class field with all the existing views symbols
-            visitor.process(view, symbols);
     }
 
     /**
@@ -79,11 +87,13 @@ public class ModelCompiler {
      * @param views a map of String (name) -> View pairs.
      * @return map of String (name) -> ForAllStatement pairs corresponding to the views parameter
      */
-    private Map<String, MonoidComprehension> parseNonConstraintViews(final Map<String, Query> views) {
+    private Map<String, MonoidComprehension> parseNonConstraintViews(final Map<String, ViewsWithChecks> views) {
         return views.entrySet()
                     .stream()
+                    .map(es -> Map.entry(es.getKey(), es.getValue().getCreateView().getQuery()))
                     .peek(es -> createIRTablesForNonConstraintViews(es.getKey(), es.getValue()))
-                    .map(es -> Map.entry(es.getKey(), TranslateViewToIR.apply(es.getValue(), irContext)))
+                    .map(es -> Map.entry(es.getKey(), TranslateViewToIR.apply(es.getValue(), Optional.empty(),
+                                                                              irContext)))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
@@ -124,9 +134,12 @@ public class ModelCompiler {
      * @param views a map of String (name) -> View pairs.
      * @return map of String (name) -> ForAllStatement pairs corresponding to the views parameter
      */
-    private Map<String, MonoidComprehension> parseViews(final Map<String, Query> views) {
+    private Map<String, MonoidComprehension> parseViews(final Map<String, ViewsWithChecks> views) {
         final Map<String, MonoidComprehension> result = new HashMap<>();
-        views.forEach((key, value) -> result.put(key, TranslateViewToIR.apply(value, irContext)));
+        views.forEach((key, value) -> result.put(key,
+                TranslateViewToIR.apply(value.getCreateView().getQuery(),
+                                        value.getCheckExpression(),
+                                        irContext)));
         return result;
     }
 
