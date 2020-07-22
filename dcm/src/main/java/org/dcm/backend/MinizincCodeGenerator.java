@@ -456,9 +456,9 @@ public class MinizincCodeGenerator extends SimpleVisitor {
     private String handleGroupBy(final Expr headItem, final boolean innerOnly, final String rangeExpression,
                                  final String whereExpression, final String viewName) {
         assert groupByQualifier != null;
-        final int numColumnsInGroupBy = groupByQualifier.getColumnIdentifiers().size();
+        final int numColumnsInGroupBy = groupByQualifier.getGroupByExprs().size();
         final List<String> groupByPredicates = new ArrayList<>(numColumnsInGroupBy);
-        for (final ColumnIdentifier id : groupByQualifier.getColumnIdentifiers()) {
+        for (final ColumnIdentifier id : groupByQualifier.getGroupByColumnIdentifiers()) {
             final String columnWithIteration = MinizincString.columnNameWithIteration(id);
             final String groupColumnNameWithIteration = MinizincString.groupColumnNameWithIteration(viewName, id);
             final String groupByPredicate = String.format("%s == %s", columnWithIteration,
@@ -821,7 +821,8 @@ public class MinizincCodeGenerator extends SimpleVisitor {
     private VarType usesControllableVariables(final Expr expr) {
         if (expr instanceof GroupByComprehension) {
             final GroupByComprehension comprehension = (GroupByComprehension) expr;
-            final List<ColumnIdentifier> columnIdentifiers = comprehension.getGroupByQualifier().getColumnIdentifiers();
+            final List<ColumnIdentifier> columnIdentifiers = comprehension.getGroupByQualifier()
+                                                                          .getGroupByColumnIdentifiers();
             for (final ColumnIdentifier columnIdentifier: columnIdentifiers) {
                 if (columnIdentifier.getField().isControllable()) {
                     return VarType.IS_VAR;

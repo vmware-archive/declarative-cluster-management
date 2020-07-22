@@ -10,6 +10,7 @@ package org.dcm.backend;
 import org.dcm.compiler.UsesControllableFields;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
+import org.dcm.compiler.monoid.CheckQualifier;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
 import org.dcm.compiler.monoid.GroupByQualifier;
@@ -71,13 +72,22 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
     }
 
     @Override
+    protected QualifiersList visitCheckExpression(final CheckQualifier node, final QualifiersList context) {
+        if (usesControllableField(node.getExpr())) {
+            return context.withVarQualifier(node);
+        } else {
+            return context.withNonVarQualifier(node);
+        }
+    }
+
+    @Override
     protected QualifiersList visitUnaryOperator(final UnaryOperator node, final QualifiersList context) {
         // TODO: revisit the sub-types of Qualifiers. Not every qualifier needs to be a binary operator.
         if (node.getOperator().equals(UnaryOperator.Operator.NOT)) {
             final BinaryOperatorPredicate rewritten =
                     new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node.getArgument(),
                             new MonoidLiteral<>(false, Boolean.class));
-            if (isControllableField(node.getArgument())) {
+            if (usesControllableField(node.getArgument())) {
                 return context.withVarQualifier(rewritten);
             } else {
                 return context.withNonVarQualifier(rewritten);
@@ -116,7 +126,7 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
             case OR: {
                 // function expressions do not necessarily affect the arity of an outer expression.
                 // We err on the conservative side for now.
-                if ((isControllableField(node.getLeft()) || isControllableField(node.getRight()))
+                if ((usesControllableField(node.getLeft()) || usesControllableField(node.getRight()))
                         && involvesAggregateFunctions(node)) {
                     return context.withVarQualifier(checkForAggregate(node));
                 }
@@ -146,7 +156,7 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
                 new BinaryOperatorPredicateWithAggregate(node) : node;
     }
 
-    private boolean isControllableField(final Expr expr) {
+    private boolean usesControllableField(final Expr expr) {
         final UsesControllableFields usesControllableFields = new UsesControllableFields();
         usesControllableFields.visit(expr);
         return usesControllableFields.usesControllableFields();

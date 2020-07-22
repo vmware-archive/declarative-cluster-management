@@ -1023,8 +1023,7 @@ public class ModelTest {
                 "FROM hosts as X JOIN hosts as Y on X.host_id = Y.host_id " +
                 "WHERE X.failure_state = 'UNRESPONSIVE' and Y.epoch_id = (" +
                 "   SELECT MAX(epoch_id)" +
-                "   FROM epochs" +
-                ") having all_different(X.host_id) = true;");
+                "   FROM epochs);");
 
         // insert data
         conn.execute("insert into epochs values (1)");
