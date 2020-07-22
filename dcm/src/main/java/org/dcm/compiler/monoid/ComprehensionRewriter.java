@@ -25,6 +25,12 @@ public class ComprehensionRewriter extends MonoidVisitor<Expr, VoidType> {
     }
 
     @Override
+    protected Expr visitCheckExpression(final CheckQualifier node, final VoidType context) {
+        final Expr rewrittenExpr = this.visit(node.getExpr(), context);
+        return new CheckQualifier(rewrittenExpr);
+    }
+
+    @Override
     protected Expr visitTableRowGenerator(final TableRowGenerator node, final VoidType context) {
         return new TableRowGenerator(node.getTable());
     }

@@ -32,6 +32,7 @@ import org.dcm.IRTable;
 import org.dcm.ModelException;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
+import org.dcm.compiler.monoid.CheckQualifier;
 import org.dcm.compiler.monoid.ColumnIdentifier;
 import org.dcm.compiler.monoid.ExistsPredicate;
 import org.dcm.compiler.monoid.Expr;
@@ -736,10 +737,10 @@ public class OrToolsSolver implements ISolverBackend {
             joinPredicateStr = "";
         }
         final List<CodeBlock> results = new ArrayList<>();
-        varQualifiers.wherePredicates.forEach(e ->
-                results.add(topLevelConstraint(e, joinPredicateStr, null, context)));
-        nonVarQualifiers.wherePredicates.forEach(e ->
-                results.add(topLevelConstraint(e, joinPredicateStr, null, context)));
+        varQualifiers.checkQualifiers.forEach(e ->
+                results.add(topLevelConstraint(e.getExpr(), joinPredicateStr, null, context)));
+        nonVarQualifiers.checkQualifiers.forEach(e ->
+                results.add(topLevelConstraint(e.getExpr(), joinPredicateStr, null, context)));
         return results;
     }
 
@@ -750,10 +751,12 @@ public class OrToolsSolver implements ISolverBackend {
                                         final QualifiersByType nonVarQualifiers, final GroupContext groupContext,
                                         final TranslationContext context) {
         final List<CodeBlock> results = new ArrayList<>();
-        varQualifiers.aggregatePredicates.forEach(e ->
-                results.add(topLevelConstraint(e, "", groupContext, context)));
-        nonVarQualifiers.aggregatePredicates.forEach(e ->
-                results.add(topLevelConstraint(e, "", groupContext, context)));
+        varQualifiers.checkQualifiers.forEach(e ->
+                results.add(topLevelConstraint(e.getExpr(), "", groupContext, context)));
+        nonVarQualifiers.checkQualifiers.forEach(e ->
+                results.add(topLevelConstraint(e.getExpr(), "", groupContext, context)));
+//        varQualifiers.checkQualifiers.forEach(e ->
+//                results.add(topLevelConstraint(e.getExpr(), "", groupContext, context)));
         return results;
     }
 
@@ -1721,9 +1724,12 @@ public class OrToolsSolver implements ISolverBackend {
         private final List<JoinPredicate> joinPredicates = new ArrayList<>();
         private final List<BinaryOperatorPredicateWithAggregate> aggregatePredicates = new ArrayList<>();
         private final List<TableRowGenerator> tableRowGenerators = new ArrayList<>();
+        private final List<CheckQualifier> checkQualifiers = new ArrayList<>();
 
         private void addQualifierByType(final Qualifier q) {
-            if (q instanceof BinaryOperatorPredicateWithAggregate) {
+            if (q instanceof CheckQualifier) {
+                checkQualifiers.add((CheckQualifier) q);
+            } else if (q instanceof BinaryOperatorPredicateWithAggregate) {
                 aggregatePredicates.add((BinaryOperatorPredicateWithAggregate) q);
             } else if (q instanceof JoinPredicate) {
                 joinPredicates.add((JoinPredicate) q);

@@ -38,6 +38,7 @@ import org.dcm.IRContext;
 import org.dcm.IRTable;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
 import org.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
+import org.dcm.compiler.monoid.CheckQualifier;
 import org.dcm.compiler.monoid.ColumnIdentifier;
 import org.dcm.compiler.monoid.Expr;
 import org.dcm.compiler.monoid.GroupByComprehension;
@@ -303,8 +304,9 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         check.ifPresent(e -> {
             final UsesAggregateFunctions usesAggregateFunctions = new UsesAggregateFunctions();
             usesAggregateFunctions.process(e);
-            qualifiers.add((Qualifier) translateExpression(e, irContext, tables,
-                    usesAggregateFunctions.isFound() || groupBy.isPresent() || having.isPresent()));
+            final Expr expr = translateExpression(e, irContext, tables,usesAggregateFunctions.isFound()
+                                                      || groupBy.isPresent() || having.isPresent());
+            qualifiers.add(new CheckQualifier(expr));
         });
 
         joinConditions.forEach(e -> {

@@ -20,6 +20,11 @@ public class MonoidVisitor<T, C> {
         return defaultReturn();
     }
 
+    protected T visitCheckExpression(final CheckQualifier node, final C context) {
+        node.getExpr().acceptVisitor(this, context);
+        return defaultReturn();
+    }
+
     protected T visitMonoidComprehension(final MonoidComprehension node, final C context) {
         node.getHead().acceptVisitor(this, context);
         for (final Qualifier qualifier: node.getQualifiers()) {
