@@ -7,18 +7,19 @@
 package org.dcm.compiler.monoid;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 public final class GroupByQualifier extends Qualifier {
-    private final List<ColumnIdentifier> columnIdentifiers;
+    private final List<Expr> exprs;
 
-    public GroupByQualifier(final List<ColumnIdentifier> columnIdentifiers) {
-        this.columnIdentifiers = columnIdentifiers;
+    public GroupByQualifier(final List<Expr> exprs) {
+        this.exprs = exprs;
     }
 
     @Override
     public String toString() {
         return "GroupByQualifier{" +
-                "groupBy=" + columnIdentifiers +
+                "groupBy=" + exprs +
                 '}';
     }
 
@@ -27,7 +28,13 @@ public final class GroupByQualifier extends Qualifier {
         return visitor.visitGroupByQualifier(this, context);
     }
 
-    public List<ColumnIdentifier> getColumnIdentifiers() {
-        return columnIdentifiers;
+    public List<Expr> getGroupByExprs() {
+        return exprs;
+    }
+
+    public List<ColumnIdentifier> getGroupByColumnIdentifiers() {
+        return exprs.stream().filter(e -> e instanceof ColumnIdentifier)
+                    .map(e -> (ColumnIdentifier) e)
+                    .collect(Collectors.toList());
     }
 }

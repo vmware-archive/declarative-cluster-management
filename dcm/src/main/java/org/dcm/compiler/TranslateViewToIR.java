@@ -301,10 +301,10 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         tables.forEach(t -> qualifiers.add(new TableRowGenerator(t)));
         where.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, false)));
         having.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, true)));
+        final UsesAggregateFunctions usesAggregateFunctions = new UsesAggregateFunctions();
         check.ifPresent(e -> {
-            final UsesAggregateFunctions usesAggregateFunctions = new UsesAggregateFunctions();
             usesAggregateFunctions.process(e);
-            final Expr expr = translateExpression(e, irContext, tables,usesAggregateFunctions.isFound()
+            final Expr expr = translateExpression(e, irContext, tables, usesAggregateFunctions.isFound()
                                                       || groupBy.isPresent() || having.isPresent());
             qualifiers.add(new CheckQualifier(expr));
         });
@@ -317,8 +317,13 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
 
         if (groupBy.isPresent()) {
             final List<GroupingElement> groupingElement = groupBy.get().getGroupingElements();
-            final List<ColumnIdentifier> columnIdentifiers = columnListFromGroupBy(groupingElement, irContext, tables);
+            final List<Expr> columnIdentifiers = columnListFromGroupBy(groupingElement, irContext, tables);
             final GroupByQualifier groupByQualifier = new GroupByQualifier(columnIdentifiers);
+            final MonoidComprehension comprehension = new MonoidComprehension(head, qualifiers);
+            return new GroupByComprehension(comprehension, groupByQualifier);
+        } else if (usesAggregateFunctions.isFound() || having.isPresent()) { // group by 1
+            final GroupByQualifier groupByQualifier = new GroupByQualifier(
+                    List.of(new MonoidLiteral<>(1, Integer.class)));
             final MonoidComprehension comprehension = new MonoidComprehension(head, qualifiers);
             return new GroupByComprehension(comprehension, groupByQualifier);
         }
@@ -352,15 +357,14 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
 
     /**
      * Translates a list of SQL GroupingElements into a corresponding list of ColumnIdentifiers. This method does
-     * not work for GroupBy expressions that are not over columns.
+     * not work for GroupBy expressions that are not over columns or constant expressions.
      */
-    private static List<ColumnIdentifier> columnListFromGroupBy(final List<GroupingElement> groupingElements,
+    private static List<Expr> columnListFromGroupBy(final List<GroupingElement> groupingElements,
                                                                 final IRContext irContext, final Set<IRTable> tables) {
         return groupingElements.stream()
                 .map(e -> ((SimpleGroupBy) e).getColumnExpressions()) // We only support SimpleGroupBy
                 .flatMap(Collection::stream)
                 .map(expr -> translateExpression(expr, irContext, tables, false))
-                .map(expr -> (ColumnIdentifier) expr) // We only support columns as group by elements
                 .collect(Collectors.toList());
     }
 

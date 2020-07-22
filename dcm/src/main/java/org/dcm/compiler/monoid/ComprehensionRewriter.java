@@ -75,10 +75,10 @@ public class ComprehensionRewriter extends MonoidVisitor<Expr, VoidType> {
 
     @Override
     protected Expr visitGroupByQualifier(final GroupByQualifier node, final VoidType context) {
-        final List<ColumnIdentifier> columnIdentifiers = node.getColumnIdentifiers()
-                .stream().map(ci -> (ColumnIdentifier) this.visitColumnIdentifier(ci, context))
+        final List<Expr> maybeRewrittenExprs = node.getGroupByExprs()
+                .stream().map(expr -> this.visit(expr, context))
                          .collect(Collectors.toList());
-        return new GroupByQualifier(columnIdentifiers);
+        return new GroupByQualifier(maybeRewrittenExprs);
     }
 
     @Override

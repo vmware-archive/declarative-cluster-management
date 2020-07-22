@@ -324,7 +324,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
             // in two steps...
-            final int groupByQualifiersSize = groupByQualifier.getColumnIdentifiers().size();
+            final int groupByQualifiersSize = groupByQualifier.getGroupByExprs().size();
             final String groupByTupleTypeParameters = viewGroupByTupleTypeParameters.get(intermediateView);
             final String headItemsTupleTypeParamters = viewTupleTypeParameters.get(intermediateView);
 
@@ -490,7 +490,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             final OutputIR.Block resultSetAddBlock = addToResultSet(viewName, tupleSize, headItemsStr,
                                                                headItemsListTupleGenericParameters,
-                                                               resultSetNameStr, groupByQualifier);
+                                                               resultSetNameStr, groupByQualifier, context);
             forLoopsBlock.addBody(resultSetAddBlock);
         } else {
             final List<CodeBlock> addRowConstraintBlock = addRowConstraint(varQualifiers, nonVarQualifiers, context);
@@ -597,9 +597,9 @@ public class OrToolsSolver implements ISolverBackend {
         final TypeSpec tupleSpec = tupleGen.getTupleType(tupleSize);
         if (groupByQualifier != null) {
             // Create group by tuple
-            final int numberOfGroupColumns = groupByQualifier.getColumnIdentifiers().size();
+            final int numberOfGroupColumns = groupByQualifier.getGroupByExprs().size();
             final String groupByTupleGenericParameters =
-                    generateTupleGenericParameters(groupByQualifier.getColumnIdentifiers());
+                    generateTupleGenericParameters(groupByQualifier.getGroupByExprs());
             final TypeSpec groupTupleSpec = tupleGen.getTupleType(numberOfGroupColumns);
             viewGroupByTupleTypeParameters.put(viewName, groupByTupleGenericParameters);
             block.addHeader(statement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
@@ -694,7 +694,8 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private OutputIR.Block addToResultSet(final String viewName, final int tupleSize,
                                           final String headItemsStr, final String headItemsListTupleGenericParameters,
-                                          final String viewRecords, @Nullable final GroupByQualifier groupByQualifier) {
+                                          final String viewRecords, @Nullable final GroupByQualifier groupByQualifier,
+                                          final TranslationContext context) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
         // Create a tuple for the result set
         block.addBody(statement("final Tuple$1L<$2L> t = new Tuple$1L<>(\n    $3L\n    )",
@@ -702,10 +703,10 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Update result set
         if (groupByQualifier != null) {
-            final int numberOfGroupByColumns = groupByQualifier.getColumnIdentifiers().size();
+            final int numberOfGroupByColumns = groupByQualifier.getGroupByExprs().size();
             // Comma separated list of field accesses to construct a group string
-            final String groupString = groupByQualifier.getColumnIdentifiers().stream()
-                    .map(e -> fieldNameStrWithIter(e.getTableName(), e.getField().getName()))
+            final String groupString = groupByQualifier.getGroupByExprs().stream()
+                    .map(e -> exprToStr(e, context))
                     .collect(Collectors.joining(",     \n"));
 
             // Organize the collected tuples from the nested for loops by groupByTuple
@@ -755,8 +756,6 @@ public class OrToolsSolver implements ISolverBackend {
                 results.add(topLevelConstraint(e.getExpr(), "", groupContext, context)));
         nonVarQualifiers.checkQualifiers.forEach(e ->
                 results.add(topLevelConstraint(e.getExpr(), "", groupContext, context)));
-//        varQualifiers.checkQualifiers.forEach(e ->
-//                results.add(topLevelConstraint(e.getExpr(), "", groupContext, context)));
         return results;
     }
 
@@ -1025,10 +1024,6 @@ public class OrToolsSolver implements ISolverBackend {
                                      CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, fieldName));
     }
 
-    private String fieldNameStrWithIter(final String tableName, final String fieldName) {
-        return fieldNameStrWithIter(tableName, fieldName, iterStr(tableName));
-    }
-
     private String fieldNameStrWithIter(final String tableName, final String fieldName, final String iterStr) {
         if (fieldName.contains("CONTROLLABLE")) {
             return String.format("%s[%s]", fieldNameStr(tableName, fieldName), iterStr);
@@ -1160,13 +1155,16 @@ public class OrToolsSolver implements ISolverBackend {
     OutputIR.Block createCapacityConstraint(final String viewName, final MonoidComprehension comprehension,
                                             final TranslationContext context,
                                             final List<MonoidFunction> capacityConstraint) {
+        Preconditions.checkArgument(comprehension instanceof GroupByComprehension);
+        final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
+        final MonoidComprehension innerComprehension = groupByComprehension.getComprehension();
         final OutputIR.Block block = outputIR.newBlock(viewName);
         context.enterScope(block);
 
         // Add individual for loops to extract what we need. This would use table-row generators.
         final Map<String, OutputIR.ForBlock> tableToForBlock = new HashMap<>();
         final List<TableRowGenerator> tableRowGenerators =
-                comprehension.getQualifiers().stream().filter(q -> q instanceof TableRowGenerator)
+                innerComprehension.getQualifiers().stream().filter(q -> q instanceof TableRowGenerator)
                              .map(q -> (TableRowGenerator) q).collect(Collectors.toList());
         tableRowGenerators.forEach(
                 tableRowGenerator -> {
@@ -1176,6 +1174,7 @@ public class OrToolsSolver implements ISolverBackend {
                     tableToForBlock.put(tableRowGenerator.getTable().getName(), forBlock);
                 }
         );
+        Preconditions.checkArgument(tableToForBlock.size() > 0);
         final Set<String> vars = new HashSet<>();
         final Set<String> domain = new HashSet<>();
         final List<String> demands = new ArrayList<>();
@@ -1426,7 +1425,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String tableName = node.getTableName();
                 final String fieldName = node.getField().getName();
                 int columnNumber = 0;
-                for (final ColumnIdentifier ci: currentGroupContext.qualifier.getColumnIdentifiers()) {
+                for (final ColumnIdentifier ci: currentGroupContext.qualifier.getGroupByColumnIdentifiers()) {
                     if (ci.getTableName().equalsIgnoreCase(tableName)
                             && ci.getField().getName().equalsIgnoreCase(fieldName)) {
                         return apply(String.format("group.value%s()", columnNumber), context);
