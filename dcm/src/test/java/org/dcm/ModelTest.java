@@ -69,6 +69,39 @@ public class ModelTest {
         assertEquals(4, fetch.size());
     }
 
+
+    @ParameterizedTest
+    @MethodSource("solvers")
+    public void testIndexGen(final SolverConfig solver) {
+        final String modelName = "indexAccess";
+
+        final DSLContext conn = setup();
+        conn.execute("create table t1(c1 integer, c2 integer, primary key (c1))");
+        conn.execute("create table t2(c1 integer, controllable__c2 integer, primary key (c1))");
+
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW constraint_with_join AS " +
+                "SELECT * FROM t1 " +
+                "JOIN t2 on t1.c1 = t2.c1 " +
+                "check c2 = controllable__c2;"
+        );
+
+        final Model model = buildModel(conn, solver, views, modelName);
+
+        conn.execute("insert into t1 values (1, 123)");
+        conn.execute("insert into t1 values (2, 425)");
+        conn.execute("insert into t2 values (1, 10)");
+        conn.execute("insert into t2 values (2, 10)");
+
+        model.updateData();
+        final Result<? extends Record> fetch = model.solveModelWithoutTableUpdates(Set.of("T2"))
+                .get("T2");
+        System.out.println(fetch);
+        assertEquals(2, fetch.size());
+        assertEquals(123, fetch.get(0).get("CONTROLLABLE__C2"));
+        assertEquals(425, fetch.get(1).get("CONTROLLABLE__C2"));
+    }
+
     @ParameterizedTest
     @MethodSource("solvers")
     public void nullTest(final SolverConfig solver) {

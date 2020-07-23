@@ -6,7 +6,11 @@
 
 package org.dcm.compiler.monoid;
 
+import org.dcm.IRColumn;
+import org.dcm.IRPrimaryKey;
 import org.dcm.IRTable;
+
+import java.util.Optional;
 
 public final class TableRowGenerator extends Qualifier {
     private final IRTable table;
@@ -17,6 +21,12 @@ public final class TableRowGenerator extends Qualifier {
 
     public IRTable getTable() {
         return table;
+    }
+
+    public Optional<IRColumn> getUniquePrimaryKeyColumn() {
+        return table.getPrimaryKey().map(IRPrimaryKey::getPrimaryKeyFields)
+                .filter(l -> l.size() == 1)
+                .map(l -> l.get(0));
     }
 
     @Override

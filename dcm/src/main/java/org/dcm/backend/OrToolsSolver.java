@@ -28,6 +28,7 @@ import com.squareup.javapoet.WildcardTypeName;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.dcm.IRColumn;
 import org.dcm.IRContext;
+import org.dcm.IRPrimaryKey;
 import org.dcm.IRTable;
 import org.dcm.ModelException;
 import org.dcm.compiler.monoid.BinaryOperatorPredicate;
@@ -88,6 +89,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 
@@ -125,6 +127,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final int configMaxTimeInSeconds;
     private final boolean configTryScalarProductEncoding;
     private final boolean configUseFullReifiedConstraintsForJoinPreferences;
+    private final boolean configUseIndicesForEqualityBasedJoins;
 
     static {
         Preconditions.checkNotNull(System.getenv(OR_TOOLS_LIB_ENV));
@@ -136,11 +139,13 @@ public class OrToolsSolver implements ISolverBackend {
 
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
-                          final boolean configUseFullReifiedConstraintsForJoinPreferences) {
+                          final boolean configUseFullReifiedConstraintsForJoinPreferences,
+                          final boolean configUseIndicesForEqualityBasedJoins) {
         this.configNumThreads = configNumThreads;
         this.configMaxTimeInSeconds = configMaxTimeInSeconds;
         this.configTryScalarProductEncoding = configTryScalarProductEncoding;
         this.configUseFullReifiedConstraintsForJoinPreferences = configUseFullReifiedConstraintsForJoinPreferences;
+        this.configUseIndicesForEqualityBasedJoins = configUseIndicesForEqualityBasedJoins;
     }
 
     public static class Builder {
@@ -148,6 +153,8 @@ public class OrToolsSolver implements ISolverBackend {
         private int maxTimeInSeconds = MAX_TIME_IN_SECONDS;
         private boolean tryScalarProductEncoding = true;
         private boolean useFullReifiedConstraintsForJoinPreferences = false;
+        private boolean useIndicesForEqualityBasedJoins = true;
+
 
         /**
          * Number of solver threads. Corresponds to CP-SAT's setNumSearchWorkers parameter.
@@ -190,9 +197,21 @@ public class OrToolsSolver implements ISolverBackend {
             return this;
         }
 
+
+        /**
+         * Configures whether we construct and leverage indexes for equality based joins, instead of nested for
+         * loops in the generated code.
+         *
+         * @param useIndicesForEqualityBasedJoins generated code uses indexes if possible. Defaults to true.
+         */
+        public Builder setUseIndicesForEqualityBasedJoins(final boolean useIndicesForEqualityBasedJoins) {
+            this.useIndicesForEqualityBasedJoins = useIndicesForEqualityBasedJoins;
+            return this;
+        }
+
         public OrToolsSolver build() {
             return new OrToolsSolver(numThreads, maxTimeInSeconds, tryScalarProductEncoding,
-                                     useFullReifiedConstraintsForJoinPreferences);
+                                     useFullReifiedConstraintsForJoinPreferences, useIndicesForEqualityBasedJoins);
         }
     }
 
@@ -466,17 +485,16 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Start control flows to create nested for loops
         final OutputIR.Block forLoopsBlock = addNestedForLoops(viewName, nonVarQualifiers);
+        context.enterScope(forLoopsBlock);
 
         // Filter out nested for loops using an if(predicate) statement
-        context.enterScope(forLoopsBlock);
+        final OutputIR.Block nonVarFiltersBlock = maybeAddNonVarFilters(viewName, nonVarQualifiers,
+                isConstraint, context);
 
         // Identify head items to be accessed within loop
         final String headItemsStr = headItemsList.stream()
                 .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex, context))
                 .collect(Collectors.joining(",\n    "));
-
-        final OutputIR.Block nonVarFiltersBlock = maybeAddNonVarFilters(viewName, nonVarQualifiers,
-                                                                        isConstraint, context);
 
         block.addBody(resultSetDeclBlock);
         block.addBody(forLoopsBlock);
@@ -631,12 +649,66 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     /**
-     * Returns a block of code representing nested for loops for a view
+     * Returns a block of code representing a selection or a join. The block brings into scope
+     * iteration indices pointing to the relevant lists of tuples. These iteration indices
+     * may be obtained via nested for loops or using indexes if available.
      */
     private OutputIR.Block addNestedForLoops(final String viewName,
                                              final QualifiersByType nonVarQualifiers) {
-        final List<CodeBlock> loopStatements = forLoopsFromTableRowGenerators(nonVarQualifiers.tableRowGenerators);
+        final List<CodeBlock> loopStatements = forLoopsOrIndicesFromTableRowGenerators(
+                                                        nonVarQualifiers.tableRowGenerators,
+                                                        nonVarQualifiers.joinPredicates);
         return outputIR.newForBlock(viewName, loopStatements);
+    }
+
+
+    private List<CodeBlock> forLoopsOrIndicesFromTableRowGenerators(final List<TableRowGenerator> tableRowGenerators,
+                                                                         final List<JoinPredicate> joinPredicates) {
+        final TableRowGenerator forLoopTable = tableRowGenerators.get(0);
+        final List<CodeBlock> loopStatements = new ArrayList<>(forLoopsFromTableRowGenerators(List.of(forLoopTable)));
+
+        // For now, we always use a scan for the first Table being iterated over.
+        // XXX: It would be better to look at all join predicates and determine which tables should be scanned
+        tableRowGenerators.subList(1, tableRowGenerators.size()).stream()
+            .map(tr -> {
+                if (configUseIndicesForEqualityBasedJoins && tr.getUniquePrimaryKeyColumn().isPresent()) {
+                    // We might be able to use an index here, look for equality based accesses
+                    // across the join predicates
+                    for (final BinaryOperatorPredicate binaryOp: joinPredicates) {
+                        if (binaryOp.getOperator().equals(BinaryOperatorPredicate.Operator.EQUAL)) {
+                            final ColumnIdentifier left = (ColumnIdentifier) binaryOp.getLeft();
+                            final ColumnIdentifier right = (ColumnIdentifier) binaryOp.getRight();
+
+                            if (left.getTableName().equals(forLoopTable.getTable().getName())
+                                    && right.getTableName().equals(tr.getTable().getName())) {
+                                return indexedAccess(tr, forLoopTable, left);
+                            } else if (right.getTableName().equals(forLoopTable.getTable().getName())
+                                    && left.getTableName().equals(tr.getTable().getName())) {
+                                return indexedAccess(tr, forLoopTable, right);
+                            }
+                        }
+                    }
+                }
+                // By default, we'll stick to producing nested for loops
+                return forLoopsFromTableRowGenerators(List.of(tr)).get(0);
+            })
+            .forEach(loopStatements::add);
+        return loopStatements;
+    }
+
+    private CodeBlock indexedAccess(final TableRowGenerator indexedTable, final TableRowGenerator scanTable,
+                                    final ColumnIdentifier scanColumn) {
+        final String idxIterStr = iterStr(indexedTable.getTable().getAliasedName());
+        final String idxTableNameStr = tableNameStr(indexedTable.getTable().getName());
+        final String fieldAccessFromScan = fieldNameStrWithIter(scanTable.getTable().getName(),
+                                                                scanColumn.getField().getName(),
+                                                                iterStr(scanTable.getTable().getAliasedName()));
+        return CodeBlock.builder()
+                .addStatement("final Integer $1L = $2LIndex.get($3L)", idxIterStr, idxTableNameStr, fieldAccessFromScan)
+                .beginControlFlow("if ($L == null)", idxIterStr)
+                .addStatement("continue")
+                .endControlFlow()
+                .build();
     }
 
     /**
@@ -822,6 +894,25 @@ public class OrToolsSolver implements ISolverBackend {
             output.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
                                  List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),
                                  recordType, recordTypeParameters, table.getName());
+
+            // ...3) create an index if configured
+            if (configUseIndicesForEqualityBasedJoins) {
+                // XXX: Generate this code only if an index is needed
+                context.getTable(table.getName()).getPrimaryKey()
+                        .map(IRPrimaryKey::getPrimaryKeyFields)
+                        .filter(e -> !e.isEmpty())
+                        .filter(e -> e.size() == 1)
+                        .ifPresent(pkCol -> output.addStatement("final var $1LIndex = $2T.range(0, $3L.size())\n" +
+                                        ".boxed()\n" +
+                                        ".collect($4T.toMap(i -> $3L.get(i).get($5S, $6L.class), i -> i));",
+                                tableNameStr(table.getName()),
+                                IntStream.class,
+                                tableNameStr(table.getName()),
+                                Collectors.class,
+                                pkCol.get(0).getName(),
+                                tableToFieldToType.get(table.getName()).get(pkCol.get(0).getName())
+                        ));
+            }
 
             // ...3) for controllable fields, create a corresponding array of IntVars.
             for (final Map.Entry<String, IRColumn> fieldEntrySet : table.getIRColumns().entrySet()) {
