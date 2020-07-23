@@ -914,7 +914,7 @@ public class OrToolsSolver implements ISolverBackend {
                         ));
             }
 
-            // ...3) for controllable fields, create a corresponding array of IntVars.
+            // ...4) for controllable fields, create a corresponding array of IntVars.
             for (final Map.Entry<String, IRColumn> fieldEntrySet : table.getIRColumns().entrySet()) {
                 final String fieldName = fieldEntrySet.getKey();
                 final IRColumn field = fieldEntrySet.getValue();
