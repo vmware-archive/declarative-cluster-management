@@ -109,7 +109,7 @@ public class OrToolsEncodingBenchmark {
                     .setTryScalarProductEncoding(useScalarProduct)
                     .setMaxTimeInSeconds(100)
                     .build();
-            model = Model.buildModel(conn, solver, views);
+            model = Model.build(conn, solver, views);
             model.updateData();
         }
 
@@ -138,6 +138,6 @@ public class OrToolsEncodingBenchmark {
     @Benchmark
     public void runSolver(final OrToolsEncodingBenchmark.BenchmarkState state) {
         assert state.model != null;
-        state.model.solveModel("T2");
+        state.model.solve("T2");
     }
 }

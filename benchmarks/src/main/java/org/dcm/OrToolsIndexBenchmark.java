@@ -76,7 +76,7 @@ public class OrToolsIndexBenchmark {
             final OrToolsSolver solver = new OrToolsSolver.Builder()
                     .setUseIndicesForEqualityBasedJoins(useIndex)
                     .build();
-            model = Model.buildModel(conn, solver, views);
+            model = Model.build(conn, solver, views);
             model.updateData();
         }
 
@@ -105,6 +105,6 @@ public class OrToolsIndexBenchmark {
     @Benchmark
     public void runSolver(final BenchmarkState state) {
         assert state.model != null;
-        state.model.solveModel("T2");
+        state.model.solve("T2");
     }
 }

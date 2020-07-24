@@ -45,7 +45,7 @@ class LoadBalance {
 
     LoadBalance(final List<String> constraints) {
         conn = setup();
-        model = Model.buildModel(conn, constraints);
+        model = Model.build(conn, constraints);
     }
 
     /**
@@ -85,7 +85,7 @@ class LoadBalance {
 
         // Run the solver and return the virtual machines table with solver-identified values for the
         // controllable__physical_machines column
-        return model.solveModel(VIRTUAL_MACHINES_TABLE);
+        return model.solve(VIRTUAL_MACHINES_TABLE);
     }
 
 

@@ -140,7 +140,7 @@ public class Model {
      * @return An initialized Model instance
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static Model buildModel(final DSLContext dslContext, final List<String> constraints) {
+    public static Model build(final DSLContext dslContext, final List<String> constraints) {
         final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
         final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder().build();
         return new Model(dslContext, orToolsSolver, tables, constraints);
@@ -155,8 +155,8 @@ public class Model {
      * @return An initialized Model instance
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
-                                   final List<String> constraints) {
+    public static Model build(final DSLContext dslContext, final ISolverBackend solverBackend,
+                              final List<String> constraints) {
         final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
         return new Model(dslContext, solverBackend, tables, constraints);
     }
@@ -224,7 +224,7 @@ public class Model {
      * @return A map where keys correspond to the supplied "tables" parameter, and the values are Result<> objects
      *         representing rows of the corresponding tables, with modifications made by the solver
      */
-    public synchronized Map<String, Result<? extends Record>> solveModel(final Set<String> tables)
+    public synchronized Map<String, Result<? extends Record>> solve(final Set<String> tables)
             throws ModelException {
         // run the solver and get a result set per table
         LOG.info("Running the solver");
@@ -248,9 +248,9 @@ public class Model {
      * @param tableName a table name
      * @return A Result<> object representing rows of the corresponding tables, with modifications made by the solver
      */
-    public synchronized Result<? extends Record> solveModel(final String tableName)
+    public synchronized Result<? extends Record> solve(final String tableName)
             throws ModelException {
-        return solveModel(Set.of(tableName)).get(tableName);
+        return solve(Set.of(tableName)).get(tableName);
     }
 
     /**

@@ -91,7 +91,7 @@ public class MiniZincEncodingBenchmark {
             final File modelFile = new File(BASE_PATH + "/" + "bench_model.mzn");
             final File dataFile = new File(BASE_PATH + "/" + "bench_data.dzn");
             final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
-            model = Model.buildModel(conn, solver, views);
+            model = Model.build(conn, solver, views);
             model.updateData();
         }
 
@@ -120,6 +120,6 @@ public class MiniZincEncodingBenchmark {
     @Benchmark
     public void runSolver(final MiniZincEncodingBenchmark.BenchmarkState state) {
         assert state.model != null;
-        state.model.solveModel("T2");
+        state.model.solve("T2");
     }
 }

@@ -165,7 +165,7 @@ public final class Scheduler {
         model.updateData();
         updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();
-        final Result<? extends Record> podsToAssignUpdated = model.solveModel("PODS_TO_ASSIGN");
+        final Result<? extends Record> podsToAssignUpdated = model.solve("PODS_TO_ASSIGN");
         solveTimer.stop();
         return podsToAssignUpdated;
     }
@@ -180,12 +180,12 @@ public final class Scheduler {
                 final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
                 final File dataFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_data.dzn");
                 final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
-                return Model.buildModel(conn, solver, policies);
+                return Model.build(conn, solver, policies);
             case "ORTOOLS":
                 final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
                                                      .setNumThreads(numThreads)
                                                      .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
-                return Model.buildModel(conn, orToolsSolver, policies);
+                return Model.build(conn, orToolsSolver, policies);
             default:
                 throw new IllegalArgumentException(solverToUse);
         }

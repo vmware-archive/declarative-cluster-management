@@ -92,7 +92,7 @@ public class ModelTest {
         conn.execute("insert into t2 values (2, 10)");
 
         model.updateData();
-        final Result<? extends Record> fetch = model.solveModel("T2");
+        final Result<? extends Record> fetch = model.solve("T2");
         System.out.println(fetch);
         assertEquals(2, fetch.size());
         assertEquals(123, fetch.get(0).get("CONTROLLABLE__C2"));
@@ -126,7 +126,7 @@ public class ModelTest {
         conn.execute("insert into t1 values (4, 4, 19)");
 
         model.updateData();
-        final Result<? extends Record> fetch = model.solveModel("T1");
+        final Result<? extends Record> fetch = model.solve("T1");
         System.out.println(fetch);
         assertEquals(4, fetch.size());
         assertEquals(1, fetch.get(0).get("CONTROLLABLE__C3"));
@@ -151,7 +151,7 @@ public class ModelTest {
         conn.execute("insert into placement values (4, 'h4')");
 
         model.updateData();
-        final Result<? extends Record> placement = model.solveModel("PLACEMENT");
+        final Result<? extends Record> placement = model.solve("PLACEMENT");
         assertEquals(4, placement.size());
     }
 
@@ -1262,7 +1262,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        final Result<? extends Record> podInfo = model.solveModel("POD_INFO");
+        final Result<? extends Record> podInfo = model.solve("POD_INFO");
         podInfo.forEach(
                 e -> assertTrue(e.get("CONTROLLABLE__NODE_NAME").equals("n1") ||
                                 e.get("CONTROLLABLE__NODE_NAME").equals("n2"))
@@ -1399,7 +1399,7 @@ public class ModelTest {
 
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        final Result<? extends Record> results = model.solveModel("LEAST_REQUESTED");
+        final Result<? extends Record> results = model.solve("LEAST_REQUESTED");
         assertNull(results);
     }
 
@@ -1894,10 +1894,10 @@ public class ModelTest {
         switch (solverBackend) {
             case MinizincSolver:
                 final MinizincSolver minizincSolver = new MinizincSolver(modelFile, dataFile, new Conf());
-                return Model.buildModel(conn, minizincSolver, views);
+                return Model.build(conn, minizincSolver, views);
             case OrToolsSolver:
                 final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder().build();
-                return Model.buildModel(conn, orToolsSolver, views);
+                return Model.build(conn, orToolsSolver, views);
             default:
                 throw new IllegalArgumentException(solverBackend.toString());
         }
