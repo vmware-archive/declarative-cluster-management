@@ -20,9 +20,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
@@ -87,9 +85,7 @@ class LoadBalance {
 
         // Run the solver and return the virtual machines table with solver-identified values for the
         // controllable__physical_machines column
-        final Map<String, Result<? extends Record>> virtualMachineTableNew
-            = model.solveModelWithoutTableUpdates(Collections.singleton(VIRTUAL_MACHINES_TABLE));
-        return virtualMachineTableNew.get(VIRTUAL_MACHINES_TABLE);
+        return model.solveModel(VIRTUAL_MACHINES_TABLE);
     }
 
 

@@ -9,11 +9,11 @@ package org.dcm;
 import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.tree.CreateView;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
-import com.google.common.io.Files;
 import org.dcm.backend.ISolverBackend;
-import org.dcm.backend.MinizincSolver;
+import org.dcm.backend.OrToolsSolver;
 import org.dcm.compiler.ModelCompiler;
 import org.jooq.Constraint;
 import org.jooq.DSLContext;
@@ -28,7 +28,6 @@ import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -63,8 +62,6 @@ public class Model {
     private final IRContext irContext;
     private final ISolverBackend backend;
 
-
-    @SuppressWarnings("unused")
     private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
                   final List<String> constraints) {
         assert !tables.isEmpty();
@@ -136,37 +133,17 @@ public class Model {
     }
 
     /**
-     * Builds a model out of dslContext, using the Minizinc solver as a backend.
+     * Builds a model out of dslContext, using the OR-Tools solver as a backend.
      *
      * @param dslContext JOOQ DSLContext to use to find tables representing the model.
      * @param constraints The hard and soft constraints, with one view per string
      * @return An initialized Model instance
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> constraints) {
-        final File tempDir = Files.createTempDir();
-        final File modelFile = new File(tempDir.getPath() + "/model.mzn");
-        final File dataFile = new File(tempDir.getPath() + "/data.dzn");
+    public static Model buildModel(final DSLContext dslContext, final List<String> constraints) {
         final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
-        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, new Conf()), tables, constraints);
-    }
-
-
-    /**
-     * Builds a model out of dslContext, using the Minizinc solver as a backend
-     *
-     * @param dslContext JOOQ DSLContext to use to find tables representing the model.
-     * @param constraints The hard and soft constraints, with one view per string
-     * @param modelFile A file into which the Minizinc model (.mnz) will be written before this method returns
-     * @param dataFile A file into which the data (.dzn) for the Minizinc model will be written at runtime, when
-     *                 updateData() is invoked
-     * @return An initialized Model instance
-     */
-    @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final List<String> constraints,
-                                                final File modelFile, final File dataFile) {
-        final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
-        return new Model(dslContext, new MinizincSolver(modelFile, dataFile, new Conf()), tables, constraints);
+        final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder().build();
+        return new Model(dslContext, orToolsSolver, tables, constraints);
     }
 
     /**
@@ -178,8 +155,8 @@ public class Model {
      * @return An initialized Model instance
      */
     @SuppressWarnings({"WeakerAccess", "reason=Public API"})
-    public static synchronized Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
-                                                final List<String> constraints) {
+    public static Model buildModel(final DSLContext dslContext, final ISolverBackend solverBackend,
+                                   final List<String> constraints) {
         final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
         return new Model(dslContext, solverBackend, tables, constraints);
     }
@@ -226,8 +203,10 @@ public class Model {
 
     /**
      * Solves the current model by running the current modelFile and dataFile against MiniZinc
+     * This method should only be used for testing.
      */
-    public synchronized void solveModel() throws ModelException {
+    @VisibleForTesting
+    synchronized void solveModelAndReflectTableChanges() throws ModelException {
         // run the solver and get a result set per table
         LOG.info("Running the solver");
         final long start = System.nanoTime();
@@ -238,13 +217,14 @@ public class Model {
     }
 
     /**
-     * Solves the current model and only returns values for the supplied output tables
+     * Solves the current model and returns the records for the specified set of tables. If any of these
+     * tables have variable columns, they will reflect the changes made by the solver.
      *
      * @param tables a set of table names
      * @return A map where keys correspond to the supplied "tables" parameter, and the values are Result<> objects
      *         representing rows of the corresponding tables, with modifications made by the solver
      */
-    public synchronized Map<String, Result<? extends Record>> solveModelWithoutTableUpdates(final Set<String> tables)
+    public synchronized Map<String, Result<? extends Record>> solveModel(final Set<String> tables)
             throws ModelException {
         // run the solver and get a result set per table
         LOG.info("Running the solver");
@@ -260,9 +240,21 @@ public class Model {
         return recordsToReturn;
     }
 
+
+    /**
+     * Solves the current model and returns the records for the specified table. If the
+     * table has variable columns, the returned result will reflect the changes made by the solver.
+     *
+     * @param tableName a table name
+     * @return A Result<> object representing rows of the corresponding tables, with modifications made by the solver
+     */
+    public synchronized Result<? extends Record> solveModel(final String tableName)
+            throws ModelException {
+        return solveModel(Set.of(tableName)).get(tableName);
+    }
+
     /**
      * Updates the database tables based on the output from the backend.
-     * Note, this method should only be used for testing.
      */
     @SuppressWarnings("unchecked")
     private void updateTables(final Map<IRTable, Result<? extends Record>> recordsPerTable) {

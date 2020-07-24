@@ -34,7 +34,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -166,9 +165,7 @@ public final class Scheduler {
         model.updateData();
         updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();
-        final Result<? extends Record> podsToAssignUpdated =
-                model.solveModelWithoutTableUpdates(Collections.singleton("PODS_TO_ASSIGN"))
-                     .get("PODS_TO_ASSIGN");
+        final Result<? extends Record> podsToAssignUpdated = model.solveModel("PODS_TO_ASSIGN");
         solveTimer.stop();
         return podsToAssignUpdated;
     }

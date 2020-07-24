@@ -7,7 +7,6 @@
 package org.dcm;
 
 import com.google.common.base.Splitter;
-import com.google.common.collect.Sets;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import org.dcm.backend.MinizincSolver;
 import org.dcm.backend.OrToolsSolver;
@@ -26,15 +25,14 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -63,7 +61,7 @@ public class ModelTest {
         conn.execute("insert into placement values (4, 'h4')");
 
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final Result<Record> fetch = conn.selectFrom("curr.placement").fetch();
         assertEquals(4, fetch.size());
@@ -94,8 +92,7 @@ public class ModelTest {
         conn.execute("insert into t2 values (2, 10)");
 
         model.updateData();
-        final Result<? extends Record> fetch = model.solveModelWithoutTableUpdates(Set.of("T2"))
-                .get("T2");
+        final Result<? extends Record> fetch = model.solveModel("T2");
         System.out.println(fetch);
         assertEquals(2, fetch.size());
         assertEquals(123, fetch.get(0).get("CONTROLLABLE__C2"));
@@ -129,8 +126,7 @@ public class ModelTest {
         conn.execute("insert into t1 values (4, 4, 19)");
 
         model.updateData();
-        final Result<? extends Record> fetch = model.solveModelWithoutTableUpdates(Set.of("T1"))
-                                                    .get("T1");
+        final Result<? extends Record> fetch = model.solveModel("T1");
         System.out.println(fetch);
         assertEquals(4, fetch.size());
         assertEquals(1, fetch.get(0).get("CONTROLLABLE__C3"));
@@ -155,9 +151,8 @@ public class ModelTest {
         conn.execute("insert into placement values (4, 'h4')");
 
         model.updateData();
-        final Map<String, Result<? extends Record>> placement =
-                model.solveModelWithoutTableUpdates(Sets.newHashSet("PLACEMENT"));
-        assertEquals(1, placement.size());
+        final Result<? extends Record> placement = model.solveModel("PLACEMENT");
+        assertEquals(4, placement.size());
     }
 
 
@@ -175,7 +170,7 @@ public class ModelTest {
             .values(Collections.singletonList(null)).execute();
 
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final Result<Record> fetch = conn.selectFrom("curr.placement").fetch();
         assertEquals(1, fetch.size());
@@ -221,7 +216,7 @@ public class ModelTest {
 
         // update and solve
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         // TODO: missing the assert. What to expect when the solver can return multiple results?
     }
@@ -274,7 +269,7 @@ public class ModelTest {
 
         // update and solve
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final List<?> results = conn.selectFrom("STRIPES")
                 .fetch("CONTROLLABLE__HOST_ID");
@@ -328,7 +323,7 @@ public class ModelTest {
 
         // update and solve
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final List<?> results = conn.selectFrom("STRIPES")
                 .fetch("CONTROLLABLE__HOST_ID");
@@ -383,7 +378,7 @@ public class ModelTest {
 
         // update and solve
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final List<?> results = conn.selectFrom("STRIPES")
                 .fetch("CONTROLLABLE__HOST_ID");
@@ -463,7 +458,7 @@ public class ModelTest {
         // build model - fails when building for the first time
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
     @ParameterizedTest
@@ -503,7 +498,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -534,7 +529,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final List<?> results = conn.selectFrom("T1")
                 .fetch("CONTROLLABLE__C2");
@@ -571,7 +566,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final List<?> results = conn.selectFrom("T1")
                 .fetch("CONTROLLABLE__C2");
@@ -684,7 +679,7 @@ public class ModelTest {
         // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -716,7 +711,7 @@ public class ModelTest {
         // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -749,7 +744,7 @@ public class ModelTest {
         // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final List<Integer> fetch = conn.selectFrom("t1").fetch("CONTROLLABLE__C1", Integer.class);
         assertEquals(1, fetch.size());
@@ -785,7 +780,7 @@ public class ModelTest {
         // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
     @ParameterizedTest
@@ -834,7 +829,7 @@ public class ModelTest {
         // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -875,7 +870,7 @@ public class ModelTest {
         // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
     @ParameterizedTest
@@ -902,7 +897,7 @@ public class ModelTest {
         conn.execute("insert into t2 values (2)");
         final Model model = buildModel(conn, solver, Collections.singletonList(pod_info_constant), modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
         final Result<Record> t1 = conn.selectFrom("t1").fetch();
         assertEquals(1, t1.get(0).get("CONTROLLABLE__C2"));
         assertEquals(2, t1.get(1).get("CONTROLLABLE__C2"));
@@ -950,7 +945,7 @@ public class ModelTest {
         // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -982,7 +977,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
     @ParameterizedTest
@@ -1026,7 +1021,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -1070,7 +1065,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
     @Disabled
@@ -1122,7 +1117,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -1166,7 +1161,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         // Should not be unsat.
     }
@@ -1193,7 +1188,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -1218,7 +1213,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
 
         final List<Integer> fetch = conn.selectFrom("t1").fetch("CONTROLLABLE__C1", Integer.class);
         assertEquals(1, fetch.size());
@@ -1267,9 +1262,8 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        final Map<String, Result<? extends Record>> podInfo =
-                model.solveModelWithoutTableUpdates(Collections.singleton("POD_INFO"));
-        podInfo.get("POD_INFO").forEach(
+        final Result<? extends Record> podInfo = model.solveModel("POD_INFO");
+        podInfo.forEach(
                 e -> assertTrue(e.get("CONTROLLABLE__NODE_NAME").equals("n1") ||
                                 e.get("CONTROLLABLE__NODE_NAME").equals("n2"))
         );
@@ -1315,7 +1309,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
     }
 
 
@@ -1353,7 +1347,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModel();
+        model.solveModelAndReflectTableChanges();
         final Result<Record> podInfo = conn.selectFrom("POD_INFO").fetch();
         assertEquals(1, podInfo.size());
         assertTrue(podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n1") ||
@@ -1405,9 +1399,8 @@ public class ModelTest {
 
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        final Map<String, Result<? extends Record>> results
-                = model.solveModelWithoutTableUpdates(Collections.singleton("LEAST_REQUESTED"));
-        assertEquals(0, results.size());
+        final Result<? extends Record> results = model.solveModel("LEAST_REQUESTED");
+        assertNull(results);
     }
 
     @ParameterizedTest
@@ -1738,7 +1731,7 @@ public class ModelTest {
         final List<String> views = toListOfViews(stringBuilder.toString());
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        assertThrows(ModelException.class, model::solveModel);
+        assertThrows(ModelException.class, model::solveModelAndReflectTableChanges);
     }
 
     private void insert_data(final DSLContext conn) {

@@ -29,7 +29,6 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -121,6 +120,6 @@ public class MiniZincEncodingBenchmark {
     @Benchmark
     public void runSolver(final MiniZincEncodingBenchmark.BenchmarkState state) {
         assert state.model != null;
-        state.model.solveModelWithoutTableUpdates(Set.of("T2"));
+        state.model.solveModel("T2");
     }
 }
