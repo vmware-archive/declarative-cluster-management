@@ -79,14 +79,14 @@ simple cluster manager.
   how one would load balance VMs across physical machines using DCM.
   
 - The first step to using DCM is to set up a database connection, and instantiate a model using
-  `Model.buildModel()`. The `setup()` method returns a [JOOQ](https://github.com/jooq/) connection to an 
+  `Model.build()`. The `setup()` method returns a [JOOQ](https://github.com/jooq/) connection to an 
   initialized, in-memory database for our example. In a few steps, we will see what kind 
   of constraints we can pass to the model: 
 
    ```java
     LoadBalance(final List<String> constraints) {
         conn = setup();
-        model = Model.buildModel(conn, constraints);
+        model = Model.build(conn, constraints);
     }
    ```
 
@@ -114,6 +114,20 @@ simple cluster manager.
   find a mapping of virtual machines to physical machines. 
 
 - We can update the tables with some simple helper methods, `LoadBalance.addVm()` and `LoadBalance.addNode()`. 
+
+- To actually run the load balancer, we simply invoke `LoadBalance.run()`, which uses two key methods from the DCM
+  `Model` API -- `model.updateData()` and `model.solve()`:
+
+  ```java
+   Result<? extends Record> run() {
+        // Pull the latest state from the DB
+        model.updateData();
+
+        // Run the solver and return the virtual machines table with solver-identified values for the
+        // controllable__physical_machines column
+        return model.solve(VIRTUAL_MACHINES_TABLE);
+    }
+  ```
 
 - Let's now drive our simple example with some tests. Have a look at `examples/src/test/java/org/dcm/examples/LoadBalanceTest.java`.
   All the tests populate the database with the following initial state using the `LoadBalanceTest.addInventory()` method:
