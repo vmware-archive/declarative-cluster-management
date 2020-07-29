@@ -19,7 +19,7 @@ jobs:
       - checkout
 
       # run tests!
-      - run: ./gradlew build test codeCoverageReport
+      - run: ./gradlew build test codeCoverageReport -i
       - run: bash <(curl -s https://codecov.io/bash) -f build/reports/jacoco/codeCoverageReport/codeCoverageReport.xml
 
       # collect test metadata
