@@ -136,10 +136,9 @@ public class ModelCompiler {
      */
     private Map<String, MonoidComprehension> parseViews(final Map<String, ViewsWithChecks> views) {
         final Map<String, MonoidComprehension> result = new HashMap<>();
-        views.forEach((key, value) -> result.put(key,
-                TranslateViewToIR.apply(value.getCreateView().getQuery(),
-                                        value.getCheckExpression(),
-                                        irContext)));
+        views.forEach((key, value) -> result.put(key, TranslateViewToIR.apply(value.getCreateView().getQuery(),
+                                                                              value.getCheckExpression(),
+                                                                              irContext)));
         return result;
     }
 
