@@ -46,8 +46,8 @@ class ExtractGroupTable {
             for (final GroupingElement e: groupBy.getGroupingElements()) {
                 assert e instanceof SimpleGroupBy;
                 final SimpleGroupBy simpleGroupBy = (SimpleGroupBy) e;
-                assert simpleGroupBy.getColumnExpressions().size() == 1;
-                final Expression column = simpleGroupBy.getColumnExpressions().get(0);
+                assert simpleGroupBy.getExpressions().size() == 1;
+                final Expression column = simpleGroupBy.getExpressions().get(0);
                 final SelectItem item = new SingleColumn(column,
                                                  new Identifier(column.toString()
                                                                       .replace(".", "_")));

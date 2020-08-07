@@ -28,7 +28,6 @@ import com.facebook.presto.sql.tree.NotExpression;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
 import com.facebook.presto.sql.tree.SelectItem;
-import com.facebook.presto.sql.tree.SimpleGroupBy;
 import com.facebook.presto.sql.tree.SingleColumn;
 import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.SubqueryExpression;
@@ -362,7 +361,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
     private static List<Expr> columnListFromGroupBy(final List<GroupingElement> groupingElements,
                                                                 final IRContext irContext, final Set<IRTable> tables) {
         return groupingElements.stream()
-                .map(e -> ((SimpleGroupBy) e).getColumnExpressions()) // We only support SimpleGroupBy
+                .map(GroupingElement::getExpressions) // We only support SimpleGroupBy
                 .flatMap(Collection::stream)
                 .map(expr -> translateExpression(expr, irContext, tables, false))
                 .collect(Collectors.toList());
