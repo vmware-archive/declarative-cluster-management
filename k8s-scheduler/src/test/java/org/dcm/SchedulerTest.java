@@ -720,7 +720,10 @@ public class SchedulerTest {
                             && !conditionToRemainingPods
                             && !conditionToLabelledPods) {
                         // all pods can be with the unlabelled pod
-                        assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                        assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode)
+                                    // All pods with anti-affinities are assigned to the same node
+                                    || (nodesAssignedToPodsWithAffinityRequirements.size() == 1 &&
+                                        nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode)));
                     }
                 }
             }

@@ -9,7 +9,7 @@ dependencies {
     implementation 'commons-io:commons-io:2.4'
     implementation 'com.facebook.presto:presto-parser:0.238.2'
     implementation 'com.squareup:javapoet:1.11.1'
-    implementation 'com.google:ortools:7.7'
+    implementation 'com.google:ortools:7.8'
     implementation 'com.google.protobuf:protobuf-java:3.8.0'
     testImplementation 'com.h2database:h2:1.4.200'
 }
