@@ -690,6 +690,7 @@ public class OrToolsSolver implements ISolverBackend {
                     }
                 }
                 // By default, we'll stick to producing nested for loops
+                LOG.warn("{} are being iterated using nested for loops", tableRowGenerators);
                 return forLoopsFromTableRowGenerators(List.of(tr)).get(0);
             })
             .forEach(loopStatements::add);
