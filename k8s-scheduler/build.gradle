@@ -22,6 +22,8 @@ dependencies {
     implementation "commons-io:commons-io:${commonsIoVersion}"
     implementation "com.h2database:h2:${h2Version}"
     jooqRuntime "org.jooq:jooq-meta-extensions:${jooqVersion}"
+    implementation 'ddlog:ddlogapi:0.1'
+    implementation 'ddlog:sql:1.0-SNAPSHOT'
 }
 
 gitProperties {

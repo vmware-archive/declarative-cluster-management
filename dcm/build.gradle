@@ -19,6 +19,8 @@ dependencies {
     // Temporarily use community contributed or-tools package
     implementation "com.skaggsm.ortools:ortools-natives-all:${orToolsVersion}"
     implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
+    implementation 'ddlog:ddlogapi:0.1'
+    implementation 'ddlog:sql:1.0-SNAPSHOT'
     testImplementation "com.h2database:h2:${h2Version}"
 }
 

@@ -6,7 +6,11 @@
 
 package com.vmware.dcm;
 
+import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
+import com.vmware.ddlog.ir.DDlogProgram;
+import com.vmware.ddlog.translator.Translator;
+import ddlogapi.DDlogException;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.LabelSelector;
@@ -46,6 +50,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -71,6 +83,37 @@ import static org.junit.jupiter.api.Assertions.fail;
 @ExtendWith({})
 public class SchedulerTest {
     private static final int NUM_THREADS = 1;
+
+    @Test
+    public void testddlog() throws IOException, DDlogException, IllegalAccessException, NoSuchFieldException {
+        final Translator t = new Translator(null);
+        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/aug7_scheduler_tables.sql");
+        try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
+                StandardCharsets.UTF_8))) {
+            final String schemaAsString = tables.lines()
+                    .filter(line -> !line.startsWith("--")) // remove SQL comments
+                    .collect(Collectors.joining("\n"));
+            final List<String> semiColonSeparated = Splitter.on(";")
+                    .trimResults()
+                    .omitEmptyStrings()
+                    .splitToList(schemaAsString);
+            semiColonSeparated.forEach(e -> {
+                System.out.println(e);
+                t.translateSqlStatement(e);
+            });
+        }
+        final DDlogProgram dDlogProgram = t.getDDlogProgram();
+        writeProgramToFile(dDlogProgram.toString());
+        Translator.compileAndLoad("/tmp/program.dl", "/Users/lsuresh/code/differential-datalog/lib", "/Users/lsuresh/code/differential-datalog/sql/lib/");
+    }
+
+    public File writeProgramToFile(String programBody) throws IOException {
+        File tmp = new File("/tmp/program.dl");
+        BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
+        bw.write(programBody);
+        bw.close();
+        return tmp;
+    }
 
     /*
      * Test our simulation of a materialized view by adding and removing pods, and checking whether
