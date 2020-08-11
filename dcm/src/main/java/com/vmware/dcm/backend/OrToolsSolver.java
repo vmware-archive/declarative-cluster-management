@@ -129,6 +129,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final boolean configTryScalarProductEncoding;
     private final boolean configUseFullReifiedConstraintsForJoinPreferences;
     private final boolean configUseIndicesForEqualityBasedJoins;
+    private final boolean configUseHalfReifiedConstraintsForHardConstraints;
 
     static {
         OrToolsHelper.loadLibrary();
@@ -140,12 +141,14 @@ public class OrToolsSolver implements ISolverBackend {
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
                           final boolean configUseFullReifiedConstraintsForJoinPreferences,
-                          final boolean configUseIndicesForEqualityBasedJoins) {
+                          final boolean configUseIndicesForEqualityBasedJoins,
+                          final boolean configUseHalfReifiedConstraintsForHardConstraints) {
         this.configNumThreads = configNumThreads;
         this.configMaxTimeInSeconds = configMaxTimeInSeconds;
         this.configTryScalarProductEncoding = configTryScalarProductEncoding;
         this.configUseFullReifiedConstraintsForJoinPreferences = configUseFullReifiedConstraintsForJoinPreferences;
         this.configUseIndicesForEqualityBasedJoins = configUseIndicesForEqualityBasedJoins;
+        this.configUseHalfReifiedConstraintsForHardConstraints = configUseHalfReifiedConstraintsForHardConstraints;
     }
 
     public static class Builder {
@@ -154,6 +157,7 @@ public class OrToolsSolver implements ISolverBackend {
         private boolean tryScalarProductEncoding = true;
         private boolean useFullReifiedConstraintsForJoinPreferences = false;
         private boolean useIndicesForEqualityBasedJoins = true;
+        private boolean useHalfReifiedConstraintsForHardConstraints = true;
 
 
         /**
@@ -214,9 +218,21 @@ public class OrToolsSolver implements ISolverBackend {
             return this;
         }
 
+        /**
+         * Configures whether to attempt encoding top-level hard constraints using half-reified constraints
+         *
+         * @param value generated code uses half-reified constraints for top-level constraints if true,
+         *              uses fully-reified constraints otherwise. Defaults to true.
+         */
+        public Builder setUseHalfReifiedConstraintsForHardConstraints(final boolean value) {
+            this.useHalfReifiedConstraintsForHardConstraints = value;
+            return this;
+        }
+
         public OrToolsSolver build() {
             return new OrToolsSolver(numThreads, maxTimeInSeconds, tryScalarProductEncoding,
-                                     useFullReifiedConstraintsForJoinPreferences, useIndicesForEqualityBasedJoins);
+                                     useFullReifiedConstraintsForJoinPreferences, useIndicesForEqualityBasedJoins,
+                                     useHalfReifiedConstraintsForHardConstraints);
         }
     }
 
@@ -843,7 +859,10 @@ public class OrToolsSolver implements ISolverBackend {
     private CodeBlock topLevelConstraint(final Expr expr, final String joinPredicateStr,
                                     @Nullable final GroupContext groupContext, final TranslationContext context) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
-        final String statement = maybeWrapped(expr, groupContext, context.withEnterHalfReifiedContext());
+        final String statement = maybeWrapped(expr, groupContext,
+                                              configUseHalfReifiedConstraintsForHardConstraints
+                                                      ? context.withEnterHalfReifiedContext()
+                                                      : context.withEnterFullReifiedContext());
 
         if (joinPredicateStr.isEmpty()) {
             return CodeBlock.builder().addStatement("model.addEquality($L, 1)", statement).build();
@@ -1738,16 +1757,16 @@ public class OrToolsSolver implements ISolverBackend {
                     extractListFromLoop(coefficientsItem, outerBlock, forLoop, coefficientsType);
             return CodeBlock.of("o.scalProd($L, $L)", listOfVariablesItem, listOfCoefficientsItem).toString();
         }
+    }
 
-        private TranslationContext reificationContext(final TranslationContext context,
-                                                      final BinaryOperatorPredicate.Operator op) {
-            switch (op) {
-                case AND:
-                case OR:
-                    return context;
-                default:
-                    return context.withEnterFullReifiedContext();
-            }
+    private TranslationContext reificationContext(final TranslationContext context,
+                                                  final BinaryOperatorPredicate.Operator op) {
+        switch (op) {
+            case AND:
+            case OR:
+                return context;
+            default:
+                return context.withEnterFullReifiedContext();
         }
     }
 
