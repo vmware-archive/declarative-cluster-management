@@ -187,38 +187,42 @@ public class Ops {
         return left == right;
     }
 
-    public IntVar eq(final String left, final IntVar right) {
-        return eq(right, left);
+    public IntVar eq(final String left, final IntVar right, final boolean halfReify) {
+        return eq(right, left, halfReify);
     }
 
-    public IntVar eq(final IntVar left, final String right) {
-        return eq(left, encoder.toLong(right));
+    public IntVar eq(final IntVar left, final String right, final boolean halfReify) {
+        return eq(left, encoder.toLong(right), halfReify);
     }
 
-    public IntVar eq(final long left, final IntVar right) {
-        return eq(right, left);
+    public IntVar eq(final long left, final IntVar right, final boolean halfReify) {
+        return eq(right, left, halfReify);
     }
 
-    public IntVar eq(final IntVar left, final long right) {
+    public IntVar eq(final IntVar left, final long right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addEquality(left, right).onlyEnforceIf(bool);
-        model.addDifferent(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addDifferent(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar eq(final IntVar left, final IntVar right) {
+    public IntVar eq(final IntVar left, final IntVar right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addEquality(left, right).onlyEnforceIf(bool);
-        model.addDifferent(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addDifferent(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar eq(final IntVar left, final boolean right) {
-        return eq(left, right ? 1 : 0);
+    public IntVar eq(final IntVar left, final boolean right, final boolean halfReify) {
+        return eq(left, right ? 1 : 0, halfReify);
     }
 
-    public IntVar eq(final boolean left, final IntVar right) {
-        return eq(right, left);
+    public IntVar eq(final boolean left, final IntVar right, final boolean halfReify) {
+        return eq(right, left, halfReify);
     }
 
     public boolean ne(final boolean left, final boolean right) {
@@ -237,94 +241,114 @@ public class Ops {
         return left != right;
     }
 
-    public IntVar ne(final String left, final IntVar right) {
-        return ne(right, left);
+    public IntVar ne(final String left, final IntVar right, final boolean halfReify) {
+        return ne(right, left, halfReify);
     }
 
-    public IntVar ne(final IntVar left, final String right) {
-        return ne(left, encoder.toLong(right));
+    public IntVar ne(final IntVar left, final String right, final boolean halfReify) {
+        return ne(left, encoder.toLong(right), halfReify);
     }
 
-    public IntVar ne(final long left, final IntVar right) {
-        return ne(right, left);
+    public IntVar ne(final long left, final IntVar right, final boolean halfReify) {
+        return ne(right, left, halfReify);
     }
 
-    public IntVar ne(final IntVar left, final long right) {
+    public IntVar ne(final IntVar left, final long right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addDifferent(left, right).onlyEnforceIf(bool);
-        model.addEquality(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addEquality(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar ne(final IntVar left, final IntVar right) {
+    public IntVar ne(final IntVar left, final IntVar right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addDifferent(left, right).onlyEnforceIf(bool);
-        model.addEquality(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addEquality(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar ne(final boolean left, final IntVar right) {
-        return ne(right, left);
+    public IntVar ne(final boolean left, final IntVar right, final boolean halfReify) {
+        return ne(right, left, halfReify);
     }
 
-    public IntVar ne(final IntVar left, final boolean right) {
-        return ne(left, right ? 1 : 0);
+    public IntVar ne(final IntVar left, final boolean right, final boolean halfReify) {
+        return ne(left, right ? 1 : 0, halfReify);
     }
 
-    public IntVar lt(final IntVar left, final long right) {
+    public IntVar lt(final IntVar left, final long right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addLessThan(left, right).onlyEnforceIf(bool);
-        model.addGreaterOrEqual(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addGreaterOrEqual(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar lt(final IntVar left, final IntVar right) {
+    public IntVar lt(final IntVar left, final IntVar right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addLessThan(left, right).onlyEnforceIf(bool);
-        model.addGreaterOrEqual(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addGreaterOrEqual(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar leq(final IntVar left, final long right) {
+    public IntVar leq(final IntVar left, final long right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addLessOrEqual(left, right).onlyEnforceIf(bool);
-        model.addGreaterThan(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addGreaterThan(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar leq(final IntVar left, final IntVar right) {
+    public IntVar leq(final IntVar left, final IntVar right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addLessOrEqual(left, right).onlyEnforceIf(bool);
-        model.addGreaterThan(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addGreaterThan(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
 
-    public IntVar gt(final IntVar left, final long right) {
+    public IntVar gt(final IntVar left, final long right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addGreaterThan(left, right).onlyEnforceIf(bool);
-        model.addLessOrEqual(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addLessOrEqual(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar gt(final IntVar left, final IntVar right) {
+    public IntVar gt(final IntVar left, final IntVar right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addGreaterThan(left, right).onlyEnforceIf(bool);
-        model.addLessOrEqual(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addLessOrEqual(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar geq(final IntVar left, final long right) {
+    public IntVar geq(final IntVar left, final long right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addGreaterOrEqual(left, right).onlyEnforceIf(bool);
-        model.addLessThan(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addLessThan(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar geq(final IntVar left, final IntVar right) {
+    public IntVar geq(final IntVar left, final IntVar right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addGreaterOrEqual(left, right).onlyEnforceIf(bool);
-        model.addLessThan(left, right).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addLessThan(left, right).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
@@ -350,7 +374,7 @@ public class Ops {
         return right.contains(left);
     }
 
-    public IntVar inObjectArr(final IntVar left, final Object[] right) {
+    public IntVar inObjectArr(final IntVar left, final Object[] right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         assert right.length > 0;
         final Domain domain;
@@ -366,85 +390,99 @@ public class Ops {
             throw new RuntimeException("Unexpected object array " + Arrays.toString(right));
         }
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar inString(final IntVar left, final List<String> right) {
+    public IntVar inString(final IntVar left, final List<String> right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar inLong(final IntVar left, final List<Long> right) {
+    public IntVar inLong(final IntVar left, final List<Long> right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar inInteger(final IntVar left, final List<Integer> right) {
+    public IntVar inInteger(final IntVar left, final List<Integer> right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar inIntVar(final IntVar left, final List<IntVar> right) {
+    public IntVar inIntVar(final IntVar left, final List<IntVar> right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         final Literal[] literals = new Literal[right.size()];
         for (int i = 0; i < right.size(); i++) {
-            literals[i] = eq(left, right.get(i));
+            literals[i] = eq(left, right.get(i), halfReify);
         }
         model.addBoolOr(literals).onlyEnforceIf(bool);
 
-        for (int i = 0; i < right.size(); i++) {
-            literals[i] = literals[i].not();
+        if (!halfReify) {
+            for (int i = 0; i < right.size(); i++) {
+                literals[i] = literals[i].not();
+            }
+            model.addBoolAnd(literals).onlyEnforceIf(bool.not());
         }
-        model.addBoolAnd(literals).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar or(final boolean left, final IntVar right) {
+    public IntVar or(final boolean left, final IntVar right, final boolean halfReify) {
         return left ? trueVar : right;
     }
 
-    public IntVar or(final IntVar left, final boolean right) {
-        return or(right, left);
+    public IntVar or(final IntVar left, final boolean right, final boolean halfReify) {
+        return or(right, left, halfReify);
     }
 
-    public IntVar or(final IntVar left, final IntVar right) {
+    public IntVar or(final IntVar left, final IntVar right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addBoolOr(new Literal[]{left, right}).onlyEnforceIf(bool);
-        model.addBoolAnd(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addBoolAnd(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
 
-    public IntVar and(final boolean left, final IntVar right) {
+    public IntVar and(final boolean left, final IntVar right, final boolean halfReify) {
         return left ? right : falseVar;
     }
 
-    public IntVar and(final IntVar left, final boolean right) {
-        return and(right, left);
+    public IntVar and(final IntVar left, final boolean right, final boolean halfReify) {
+        return and(right, left, halfReify);
     }
 
-    public IntVar and(final IntVar left, final IntVar right) {
+    public IntVar and(final IntVar left, final IntVar right, final boolean halfReify) {
         final IntVar bool = model.newBoolVar("");
         model.addBoolAnd(new Literal[]{left, right}).onlyEnforceIf(bool);
-        model.addBoolOr(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
+        if (!halfReify) {
+            model.addBoolOr(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
+        }
         return bool;
     }
 
-    public IntVar not(final IntVar var) {
-        return eq(var, 0L);
+    public IntVar not(final IntVar var, final boolean halfReify) {
+        return eq(var, 0L, halfReify);
     }
 
-    public boolean not(final boolean var) {
+    public boolean not(final boolean var, final boolean halfReify) {
         return !var;
     }
 
@@ -594,7 +632,7 @@ public class Ops {
             for (final IntVar assignmentVar: taskToNodeAssignment) {
                 final IntVar boolVar;
                 if (configUseFullReifiedConstraintsForJoinPreferences) {
-                    boolVar = inLong(assignmentVar, Arrays.asList(ArrayUtils.toObject(subArray)));
+                    boolVar = inLong(assignmentVar, Arrays.asList(ArrayUtils.toObject(subArray)), true);
                 } else {
                     boolVar = model.newBoolVar("");
                     model.addLinearExpressionInDomain(assignmentVar, Domain.fromValues(subArray))
