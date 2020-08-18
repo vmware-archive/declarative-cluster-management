@@ -10,6 +10,7 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
 import com.vmware.ddlog.ir.DDlogProgram;
 import com.vmware.ddlog.translator.Translator;
+import ddlogapi.DDlogAPI;
 import ddlogapi.DDlogException;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
@@ -104,7 +105,7 @@ public class SchedulerTest {
         }
         final DDlogProgram dDlogProgram = t.getDDlogProgram();
         writeProgramToFile(dDlogProgram.toString());
-        Translator.compileAndLoad("/tmp/program.dl", "/Users/lsuresh/code/differential-datalog/lib", "/Users/lsuresh/code/differential-datalog/sql/lib/");
+        DDlogAPI.compileDDlogProgram("/tmp/program.dl", true, "/Users/lsuresh/code/differential-datalog/lib", "/Users/lsuresh/code/differential-datalog/sql/lib/");
     }
 
     public File writeProgramToFile(String programBody) throws IOException {
