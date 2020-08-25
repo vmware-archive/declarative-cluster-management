@@ -66,3 +66,8 @@ def integrationTest = tasks.register("integrationTest2", Test) {
 application {
     mainClass = 'org.dcm.Scheduler'
 }
+
+task(runBenchmark, dependsOn: 'classes', type: JavaExec) {
+   main = 'org.dcm.EmulatedCluster'
+   classpath = sourceSets.main.runtimeClasspath
+}
