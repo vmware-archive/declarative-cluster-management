@@ -41,12 +41,12 @@ To learn more about DCM, we suggest going through the following research papers:
 
      Make sure you are able to invoke the `minizinc` binary from your commandline.
 
-   * **Google OR-tools CP-SAT (version 7.8)**. To install, download the binary package for your platform from: [https://github.com/google/or-tools/releases/tag/v7.7](https://github.com/google/or-tools/releases/tag/v7.8)
+   * **Google OR-tools CP-SAT (version 7.8)**. To install, download the binary package for your platform from: [https://github.com/google/or-tools/releases/tag/v7.8](https://github.com/google/or-tools/releases/tag/v7.8)
 
      Untar the downloaded bundle and run the following command in the `<or-tools>/lib/` folder to install the or-tools jar file (requires Maven):
 
      ```
-      $: mvn install:install-file -Dfile=com.google.ortools.jar -DgroupId=com.google -DartifactId=ortools -Dversion=7.7 -Dpackaging=jar
+      $: mvn install:install-file -Dfile=com.google.ortools.jar -DgroupId=com.google -DartifactId=ortools -Dversion=7.8 -Dpackaging=jar
      ```
 
      Next, set up the following environment variable to point to the or-tools shared library:
