@@ -59,7 +59,7 @@ class EmulatedCluster {
                 service);
 
         final List<String> policies = Policies.getDefaultPolicies();
-        final int solverMaxTimeInSeconds = numNodes >= 5000 ? 2 : 1;
+        final int solverMaxTimeInSeconds = numNodes >= 5000 ? 5 : 1;
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                                        4, solverMaxTimeInSeconds);
         final PodResourceEventHandler handler = new PodResourceEventHandler(scheduler::handlePodEvent, service);
@@ -167,7 +167,7 @@ class EmulatedCluster {
         options.addRequiredOption("t", "timeScaleDown", true,
                         "Factor by which to scale down arrival rate for pods");
         options.addRequiredOption("s", "startTimeCutOff", true,
-                        "N, where we replay first N seconds of trace");
+                        "N, where we replay first N seconds of the trace");
         options.addOption("p", "proportion", true,
                 "P, from 0 to 100, indicating the proportion of pods that have affinity requirements");
         final CommandLineParser parser = new DefaultParser();
