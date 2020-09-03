@@ -113,7 +113,8 @@ simple cluster manager.
   assign values to this column to satisfy all the supplied constraints. In doing so, we expect DCM to help us
   find a mapping of virtual machines to physical machines. 
 
-- We can update the tables with some simple helper methods, `LoadBalance.addVm()` and `LoadBalance.addNode()`. 
+- We can update the tables with some simple helper methods, `LoadBalance.addVirtualMachine()` and
+  `LoadBalance.addPhysicalMachine()`.
 
 - To actually run the load balancer, we simply invoke `LoadBalance.run()`, which uses two key methods from the DCM
   `Model` API -- `model.updateData()` and `model.solve()`:
