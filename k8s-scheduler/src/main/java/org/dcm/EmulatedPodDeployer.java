@@ -48,7 +48,7 @@ public class EmulatedPodDeployer implements IPodDeployer {
     }
 
     private class StartDeployment implements Runnable {
-        List<Pod> deployment;
+        final List<Pod> deployment;
 
         StartDeployment(final List<Pod> dep) {
             this.deployment = dep;
@@ -82,7 +82,7 @@ public class EmulatedPodDeployer implements IPodDeployer {
     }
 
     private class EndDeployment implements Runnable {
-        List<Pod> deployment;
+        final List<Pod> deployment;
 
         EndDeployment(final List<Pod> dep) {
             this.deployment = dep;
