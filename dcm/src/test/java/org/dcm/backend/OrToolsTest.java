@@ -61,7 +61,7 @@ public class OrToolsTest {
         if (status == CpSolverStatus.FEASIBLE ||
                 status == CpSolverStatus.OPTIMAL) {
             for (int i = 0; i < numVals; i++) {
-                System.out.println(String.format("var[%s] = %s", i, solver.value(vars[i])));
+                System.out.printf("var[%s] = %s%n", i, solver.value(vars[i]));
             }
         }
         System.out.println(solver.responseStats());

@@ -106,10 +106,10 @@ public class OrToolsIntervalsTest {
                 for (int j = 0; j < numTasks; j++) {
                     if (solver.value(taskToNodeAssignment[j]) == i) {
                         sum += scores[j];
-                        System.out.println(String.format("Node[%s] has task[%s]", i, j));
+                        System.out.printf("Node[%s] has task[%s]%n", i, j);
                     }
                 }
-                System.out.println(String.format("Node[%s] has score=%s", i, sum));
+                System.out.printf("Node[%s] has score=%s%n", i, sum);
             }
         }
         System.out.println("Done: " + (System.currentTimeMillis() - now));
