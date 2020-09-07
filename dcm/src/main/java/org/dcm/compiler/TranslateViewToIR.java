@@ -227,7 +227,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
 
     @Override
     protected Optional<Expr> visitStringLiteral(final StringLiteral node, final Void context) {
-        return Optional.of(new MonoidLiteral<>("\'" + node.getValue() + "\'", String.class));
+        return Optional.of(new MonoidLiteral<>("'" + node.getValue() + "'", String.class));
     }
 
     @Override
