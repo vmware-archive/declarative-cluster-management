@@ -33,7 +33,7 @@ public class ExtractGroupTablesTest {
                 " from t1 join t2 on t1.a = t2.b " +
                 " group by t2.b";
         final SqlParser parser = new SqlParser();
-        final CreateView statement = (CreateView) parser.createStatement(input, new ParsingOptions());
+        final CreateView statement = (CreateView) parser.createStatement(input, ParsingOptions.builder().build());
         final QuerySpecification orig = (QuerySpecification) statement.getQuery().getQueryBody();
         final ExtractGroupTable visitor = new ExtractGroupTable();
         final Optional<CreateView> process = visitor.process(statement);
@@ -49,7 +49,7 @@ public class ExtractGroupTablesTest {
                 " from t1 join t2 on t1.controllable__a = t2.b " +
                 " group by t2.b";
         final SqlParser parser = new SqlParser();
-        final CreateView statement = (CreateView) parser.createStatement(input, new ParsingOptions());
+        final CreateView statement = (CreateView) parser.createStatement(input, ParsingOptions.builder().build());
         final ExtractGroupTable visitor = new ExtractGroupTable();
         final Optional<CreateView> process = visitor.process(statement);
         assertTrue(process.isPresent());
@@ -65,7 +65,7 @@ public class ExtractGroupTablesTest {
                 " from t1 join t2 on t1.controllable__a = t2.b and t1.x = t2.y" +
                 " group by t2.b";
         final SqlParser parser = new SqlParser();
-        final CreateView statement = (CreateView) parser.createStatement(input, new ParsingOptions());
+        final CreateView statement = (CreateView) parser.createStatement(input, ParsingOptions.builder().build());
         final ExtractGroupTable visitor = new ExtractGroupTable();
         final Optional<CreateView> process = visitor.process(statement);
         assertTrue(process.isPresent());
@@ -85,7 +85,7 @@ public class ExtractGroupTablesTest {
                 " from t1 join t2 on t1.x = t2.y and t1.controllable__a = t2.b and t2.c != t1.y" +
                 " group by t2.b";
         final SqlParser parser = new SqlParser();
-        final CreateView statement = (CreateView) parser.createStatement(input, new ParsingOptions());
+        final CreateView statement = (CreateView) parser.createStatement(input, ParsingOptions.builder().build());
         final ExtractGroupTable visitor = new ExtractGroupTable();
         final Optional<CreateView> process = visitor.process(statement);
         assertTrue(process.isPresent());
@@ -107,7 +107,7 @@ public class ExtractGroupTablesTest {
                 " from t1 join t2 on t1.x = t2.y OR (t1.controllable__a = t2.b and t2.c != t1.y)" +
                 " group by t2.b";
         final SqlParser parser = new SqlParser();
-        final CreateView statement = (CreateView) parser.createStatement(input, new ParsingOptions());
+        final CreateView statement = (CreateView) parser.createStatement(input, ParsingOptions.builder().build());
         final ExtractGroupTable visitor = new ExtractGroupTable();
         final Optional<CreateView> process = visitor.process(statement);
         assertTrue(process.isPresent());
@@ -128,7 +128,7 @@ public class ExtractGroupTablesTest {
                 " from t1 join t2 on t1.x = t2.y AND (t1.controllable__a = t2.b OR t2.c != t1.y)" +
                 " group by t2.b";
         final SqlParser parser = new SqlParser();
-        final CreateView statement = (CreateView) parser.createStatement(input, new ParsingOptions());
+        final CreateView statement = (CreateView) parser.createStatement(input, ParsingOptions.builder().build());
         final ExtractGroupTable visitor = new ExtractGroupTable();
         final Optional<CreateView> process = visitor.process(statement);
         assertTrue(process.isPresent());
@@ -149,7 +149,7 @@ public class ExtractGroupTablesTest {
                 " from t1 join t2 on t1.x = t2.y OR t1.controllable__a = t2.b OR t2.c != t1.y" +
                 " group by t2.b";
         final SqlParser parser = new SqlParser();
-        final CreateView statement = (CreateView) parser.createStatement(input, new ParsingOptions());
+        final CreateView statement = (CreateView) parser.createStatement(input, ParsingOptions.builder().build());
         final ExtractGroupTable visitor = new ExtractGroupTable();
         final Optional<CreateView> process = visitor.process(statement);
         assertTrue(process.isPresent());

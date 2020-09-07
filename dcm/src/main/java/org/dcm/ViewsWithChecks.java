@@ -23,7 +23,7 @@ import java.util.Optional;
  */
 public class ViewsWithChecks {
     private static final SqlParser PARSER = new SqlParser();
-    private static final ParsingOptions OPTIONS = new ParsingOptions();
+    private static final ParsingOptions OPTIONS = ParsingOptions.builder().build();
     private final CreateView createView;
     @Nullable private final Expression checkExpression;
 
