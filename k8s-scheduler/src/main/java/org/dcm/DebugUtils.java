@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 
@@ -49,7 +49,7 @@ class DebugUtils {
             try {
                 FileUtils.writeStringToFile(new File("/tmp/" + table.getName() + ".csv"),
                         conn.selectFrom(table).fetch().formatCSV(new CSVFormat().nullString("{null}")),
-                        Charset.defaultCharset());
+                        StandardCharsets.UTF_8);
             } catch (final IOException e) {
                 LOG.error("Could not create db-dump for table {} because of exception:", table.getName(), e);
             }
@@ -61,7 +61,7 @@ class DebugUtils {
         for (final TableImpl<?> table: TABLES) {
             try {
                 final String csv = FileUtils.readFileToString(new File("/tmp/" + table.getName() + ".csv"),
-                        Charset.defaultCharset());
+                        StandardCharsets.UTF_8);
                 conn.loadInto(table).onDuplicateKeyError()
                         .onErrorAbort()
                         .commitAll().loadCSV(csv).fields(table.fields())
