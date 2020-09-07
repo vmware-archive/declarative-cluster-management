@@ -17,7 +17,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
@@ -104,7 +104,7 @@ class LoadBalance {
             using.execute("set schema curr");
             final InputStream resourceAsStream = this.getClass().getResourceAsStream("/schema.sql");
             final BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(resourceAsStream, Charset.forName("UTF8")));
+                    new BufferedReader(new InputStreamReader(resourceAsStream, StandardCharsets.UTF_8));
             final String schemaAsString = reader
                     .lines()
                     .filter(line -> !line.startsWith("--")) // remove SQL comments

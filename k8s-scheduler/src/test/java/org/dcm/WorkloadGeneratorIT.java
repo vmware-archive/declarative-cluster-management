@@ -21,7 +21,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.stream.Collectors;
 
 /**
@@ -48,7 +48,7 @@ class WorkloadGeneratorIT extends ITBase {
     public void logBuildInfo() {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
-                Charset.forName("UTF8")))) {
+                StandardCharsets.UTF_8))) {
             final String gitProperties = gitPropertiesFile.lines().collect(Collectors.joining(" "));
             LOG.info("Running integration test for the following build: {}", gitProperties);
         } catch (final IOException e) {
