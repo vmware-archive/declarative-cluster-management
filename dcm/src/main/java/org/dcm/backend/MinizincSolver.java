@@ -69,7 +69,7 @@ public class MinizincSolver implements ISolverBackend {
     private final File stdout;
     private final Template modelTemplate;
     private final Template dataTemplate;
-    private Set<String> stringLiteralsInModel = new HashSet<>();
+    private final Set<String> stringLiteralsInModel = new HashSet<>();
     private final AtomicInteger batch = new AtomicInteger(0);
 
 
