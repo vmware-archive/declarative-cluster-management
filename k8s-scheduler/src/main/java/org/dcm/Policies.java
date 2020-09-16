@@ -71,7 +71,7 @@ class Policies {
         // 1) for affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are affine to it
         //    from inter_pod_affinity_matches_pending. We get this latter set of pending pods by joining
         //    inter_pod_affinity_matches_pending with pods_to_assign (inner).
-        // 2) or for affinity to running pods
+        // 2) or affinity to running pods
         final String constraint = """
                 create view constraint_pod_affinity as
                 select *
