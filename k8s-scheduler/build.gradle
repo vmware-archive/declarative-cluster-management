@@ -4,7 +4,7 @@
 
 plugins {
     id 'nu.studer.jooq' version "${jooqPluginVersion}"
-    id "com.gorylenko.gradle-git-properties" version "${gradleGitProperties}"
+    id "com.gorylenko.gradle-git-properties" version "${gitPropertiesVersion}"
 }
 
 
