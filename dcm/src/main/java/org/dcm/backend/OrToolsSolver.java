@@ -1355,7 +1355,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             final String listOfProcessedItem =
                     extractListFromLoop(processedArgument, context.currentScope(), forLoop, argumentType);
-            String function;
+            final String function;
             switch (node.getFunction()) {
                 case SUM:
                     throw new IllegalStateException("Unreachable");

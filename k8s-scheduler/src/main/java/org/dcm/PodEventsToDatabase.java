@@ -545,8 +545,8 @@ class PodEventsToDatabase {
             for (final LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
                 matchExpressionNumber += 1;
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                    Table<?> finalTable;
-                    String operator;
+                    final Table<?> finalTable;
+                    final String operator;
                     if (expr.getOperator().equals(Operators.In.toString()) ||
                             expr.getOperator().equals(Operators.Exists.toString())) {
                         finalTable = table;

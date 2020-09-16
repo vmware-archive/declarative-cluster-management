@@ -43,6 +43,7 @@ class DebugUtils {
                                                         Tables.NODE_IMAGES,
                                                         Tables.POD_IMAGES,
                                                         Tables.BATCH_SIZE);
+
     // TODO: add folder path as argument
     static void dbDump(final DSLContext conn) {
         for (final TableImpl<?> table: TABLES) {

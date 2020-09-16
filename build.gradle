@@ -48,16 +48,19 @@ subprojects {
     }
 
     checkstyle {
-       toolVersion = "6.11.2"
+       toolVersion = "8.36.1"
     }
 
+    jacoco {
+       toolVersion = "0.8.6"
+    }
 
     tasks.withType(JavaCompile).configureEach {
        options.errorprone.disableWarningsInGeneratedCode = true
        options.errorprone.excludedPaths = "(.*/org/dcm/generated/.*|.*/org/dcm/k8s/generated/.*)"
     }
 
-    sourceCompatibility = '12'
+    sourceCompatibility = '15'
 
     publishing {
         publications {

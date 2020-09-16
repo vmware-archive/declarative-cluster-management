@@ -74,6 +74,7 @@ class LoadBalance {
         System.out.println(conn.selectFrom(table(PHYSICAL_MACHINES_TABLE)).fetch());
         System.out.println(conn.selectFrom(table(VIRTUAL_MACHINES_TABLE)).fetch());
     }
+
     /**
      * Invoke to solve for a given database (physical and virtual machine tables).
      *
