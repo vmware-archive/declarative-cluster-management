@@ -3,7 +3,7 @@
  */
 
 plugins {
-  id 'com.github.johnrengelman.shadow' version "${shadowJarPluginVersion}""
+  id 'com.github.johnrengelman.shadow' version "${shadowJarPluginVersion}"
 }
 
 dependencies {
