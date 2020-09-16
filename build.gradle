@@ -55,7 +55,7 @@ subprojects {
        options.errorprone.excludedPaths = "(.*/org/dcm/generated/.*|.*/org/dcm/k8s/generated/.*)"
     }
 
-    sourceCompatibility = '15'
+    sourceCompatibility = "${commonSourceLevel}"
 
     publishing {
         publications {

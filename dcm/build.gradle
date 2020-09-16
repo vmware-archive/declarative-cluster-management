@@ -23,7 +23,7 @@ description = 'dcm'
 
 // Use this block to compile DCM for a specific JDK release
 // compileJava {
-//   options.compilerArgs = ['--release', '12']
+//   options.compilerArgs = ["--release", "12"]
 // }
 
 publishing {
