@@ -7,21 +7,24 @@ plugins {
     id 'maven-publish'
 }
 
-
 dependencies {
-    implementation 'org.freemarker:freemarker:2.3.28'
-    implementation 'org.apache.commons:commons-csv:1.5'
-    implementation 'org.apache.commons:commons-text:1.4'
-    implementation 'commons-io:commons-io:2.4'
-    implementation 'com.facebook.presto:presto-parser:0.238.2'
-    implementation 'com.squareup:javapoet:1.11.1'
-    implementation 'com.google:ortools:7.8'
-    implementation 'com.google.protobuf:protobuf-java:3.8.0'
-    testImplementation 'com.h2database:h2:1.4.200'
+    implementation "org.freemarker:freemarker:${freemarkerVersion}"
+    implementation "org.apache.commons:commons-csv:${commonsCsvVersion}"
+    implementation "org.apache.commons:commons-text:${commonsTextVersion}"
+    implementation "commons-io:commons-io:${commonsIoVersion}"
+    implementation "com.facebook.presto:presto-parser:${prestoParserVersion}"
+    implementation "com.squareup:javapoet:${javapoetVersion}"
+    implementation "com.google:ortools:${orToolsVersion}"
+    implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
+    testImplementation "com.h2database:h2:${h2Version}"
 }
 
 description = 'dcm'
 
+// Use this block to compile DCM for a specific JDK release
+// compileJava {
+//   options.compilerArgs = ["--release", "12"]
+// }
 
 publishing {
     repositories {

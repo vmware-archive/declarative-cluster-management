@@ -3,8 +3,8 @@
  */
 
 plugins {
-    id 'nu.studer.jooq' version '4.2'
-    id "com.gorylenko.gradle-git-properties" version "2.2.2"
+    id 'nu.studer.jooq' version "${jooqPluginVersion}"
+    id "com.gorylenko.gradle-git-properties" version "${gitPropertiesVersion}"
 }
 
 
@@ -14,14 +14,14 @@ apply plugin: "application"
 
 dependencies {
     implementation project(':dcm')
-    implementation 'com.zaxxer:HikariCP:3.4.2'
-    implementation 'io.fabric8:kubernetes-client:4.10.1'
-    implementation 'io.fabric8:kubernetes-server-mock:4.10.1'
-    implementation 'io.dropwizard.metrics:metrics-core:4.1.0-rc3'
-    implementation 'commons-cli:commons-cli:1.4'
-    implementation 'commons-io:commons-io:2.7'
-    implementation 'com.h2database:h2:1.4.200'
-    jooqRuntime 'org.jooq:jooq-meta-extensions:3.13.1'
+    implementation "com.zaxxer:HikariCP:${hikariCPVersion}"
+    implementation "io.fabric8:kubernetes-client:${fabricK8sClientVersion}"
+    implementation "io.fabric8:kubernetes-server-mock:${fabricK8sClientVersion}"
+    implementation "io.dropwizard.metrics:metrics-core:${metricsVersion}"
+    implementation "commons-cli:commons-cli:${commonsCliVersion}"
+    implementation "commons-io:commons-io:${commonsIoVersion}"
+    implementation "com.h2database:h2:${h2Version}"
+    jooqRuntime "org.jooq:jooq-meta-extensions:${jooqVersion}"
 }
 
 gitProperties {
