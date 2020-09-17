@@ -40,17 +40,13 @@ publishing {
     
     publications {
         maven(MavenPublication) {
+            from(components.java)
             groupId = "${dcmGroupId}"
             artifactId = "${dcmArtifactId}"
             version = "${dcmVersion}"
             pom {
                 description = "Library for building declarative cluster managers. Please refer to the README at github.com/vmware/declarative-cluster-management/ for instructions on setting up solvers before use."
             }
-        }
-    }
-    publications {
-        gpr(MavenPublication) {
-            from(components.java)
         }
     }
 }
