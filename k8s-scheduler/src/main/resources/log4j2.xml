@@ -16,10 +16,10 @@
         </Logger>
         <Logger name="org.jooq.tools.LoggerListener" additivity="false" level="off">
         </Logger>
-        <Logger name="org.dcm.PodResourceEventHandler" additivity="false" level="info">
+        <Logger name="PodResourceEventHandler" additivity="false" level="info">
             <AppenderRef ref="console" />
         </Logger>
-        <Logger name="org.dcm.EmulatedPodDeployer" additivity="false" level="info">
+        <Logger name="com.vmware.dcm.EmulatedPodDeployer" additivity="false" level="info">
             <AppenderRef ref="console" />
         </Logger>
         <Root level="info" additivity="false">

@@ -52,7 +52,7 @@ subprojects {
 
     tasks.withType(JavaCompile).configureEach {
        options.errorprone.disableWarningsInGeneratedCode = true
-       options.errorprone.excludedPaths = "(.*/org/dcm/generated/.*|.*/org/dcm/k8s/generated/.*)"
+       options.errorprone.excludedPaths = "(.*/com/vmware/dcm/generated/.*|.*/com/vmware/dcm/k8s/generated/.*)"
     }
 
     sourceCompatibility = "${commonSourceLevel}"

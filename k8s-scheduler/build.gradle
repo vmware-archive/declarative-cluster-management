@@ -42,7 +42,7 @@ jooq {
      }
    }
    target {
-      packageName = 'org.dcm.k8s.generated'
+      packageName = 'com.vmware.dcm.k8s.generated'
       directory = 'build/generated-sources/jooq'
    }
   } 
@@ -64,10 +64,10 @@ def integrationTest = tasks.register("integrationTest2", Test) {
 
 
 application {
-    mainClass = 'org.dcm.Scheduler'
+    mainClass = 'Scheduler'
 }
 
 task(runBenchmark, dependsOn: 'classes', type: JavaExec) {
-   main = 'org.dcm.EmulatedCluster'
+   main = 'EmulatedCluster'
    classpath = sourceSets.main.runtimeClasspath
 }
