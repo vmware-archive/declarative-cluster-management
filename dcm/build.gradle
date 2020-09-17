@@ -40,7 +40,7 @@ publishing {
     
     publications {
         maven(MavenPublication) {
-            groupId = 'org.dcm'
+            groupId = 'com.vmware.dcm'
             artifactId = 'dcm'
             version = "${dcmVersion}"
             pom {

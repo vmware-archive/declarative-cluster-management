@@ -6,12 +6,12 @@
 
 <FindBugsFilter>
     <Match>
-        <Package name="org.dcm.generated"/>
+        <Package name="com.vmware.dcm.generated"/>
     </Match>
     <Match>
-        <Package name="org.dcm.k8s.generated"/>
+        <Package name="com.vmware.dcm.k8s.generated"/>
     </Match>
     <Match>
-        <Package name="org.dcm.k8s.generated.tables"/>
+        <Package name="com.vmware.dcm.k8s.generated.tables"/>
     </Match>
 </FindBugsFilter>
