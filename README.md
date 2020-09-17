@@ -9,7 +9,7 @@ Modern cluster management systems like Kubernetes routinely grapple
 with hard combinatorial optimization problems: load balancing,
 placement, scheduling, and configuration. Implementing application-specific algorithms to
 solve these problems is notoriously hard to do, making it challenging to evolve the system over time 
-and add new features. DCM is tool to overcome this challenge. It enables programmers to build schedulers 
+and add new features. DCM is a tool to overcome this challenge. It enables programmers to build schedulers 
 and cluster managers using a high-level declarative language (SQL). 
 
 With DCM, building a scheduler involves representing cluster state in an SQL database, and writing constraints
