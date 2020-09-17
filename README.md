@@ -79,7 +79,7 @@ We use gradle as our build system. You can run the following command once you've
 We suggest reading going through use case shown in the `examples/` folder, where we demonstrate a
 simple cluster manager.
 
-- Let's start with `examples/src/main/java/org/dcm/examples/LoadBalance.java`, a simple example to illustrate
+- Let's start with `examples/src/main/java/com/vmware/dcm/examples/LoadBalance.java`, a simple example to illustrate
   how one would load balance VMs across physical machines using DCM.
   
 - The first step to using DCM is to set up a database connection, and instantiate a model using
@@ -134,7 +134,7 @@ simple cluster manager.
     }
   ```
 
-- Let's now drive our simple example with some tests. Have a look at `examples/src/test/java/org/dcm/examples/LoadBalanceTest.java`.
+- Let's now drive our simple example with some tests. Have a look at `examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java`.
   All the tests populate the database with the following initial state using the `LoadBalanceTest.addInventory()` method:
   
   ```
