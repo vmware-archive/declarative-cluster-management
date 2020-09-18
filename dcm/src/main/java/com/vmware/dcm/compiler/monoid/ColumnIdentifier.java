@@ -38,7 +38,7 @@ public class ColumnIdentifier extends Expr {
         return field.getIRTable().getAliasedName();
     }
 
-    /**
+    /*
      * True if this column was referenced in the original view using a dereference. False otherwise.
      * XXX: Is only consumed by the MiniZinc backend, and is likely not required
      */

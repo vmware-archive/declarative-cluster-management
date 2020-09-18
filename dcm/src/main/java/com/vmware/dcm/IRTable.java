@@ -79,6 +79,7 @@ public class IRTable {
 
     /**
      * Returns the Jooq Table associated with this IRTable
+     * @return the Jooq Table associated with this IRTable
      */
     public Table<? extends Record> getTable() {
         return Preconditions.checkNotNull(jooqTable);
@@ -105,6 +106,7 @@ public class IRTable {
 
     /**
      * Returns the number of rows in the table backed by this IRTable
+     * @return the number of rows in the table backed by this IRTable
      */
     public int getNumRows() {
         Preconditions.checkNotNull(jooqTable);
@@ -114,6 +116,7 @@ public class IRTable {
 
     /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
+     * @return the table name corresponding to this IRTable
      */
     public String getName() {
         return name;
@@ -122,6 +125,7 @@ public class IRTable {
 
     /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
+     * @return the alias for this IRTable
      */
     public String getAliasedName() {
         return alias;
@@ -129,6 +133,7 @@ public class IRTable {
 
     /**
      * Adds a IRColumn to the table
+     * @param irColumn the field/column to add to this IRTable
      */
     public void addField(final IRColumn irColumn) {
         //add to map with all the irColumns so we update values more easily later
@@ -138,13 +143,13 @@ public class IRTable {
         }
     }
 
-
     public Optional<IRPrimaryKey> getPrimaryKey() {
         return Objects.requireNonNull(primaryKey);
     }
 
     /**
      * Sets this table primaryKey
+     * @param pk primary key to set
      */
     public void setPrimaryKey(final IRPrimaryKey pk) {
         Preconditions.checkNotNull(jooqTable);
@@ -154,6 +159,8 @@ public class IRTable {
     /**
      * Returns a list of foreign keys, where each one is Map between this table field, and the referenced
      * table foreign key field.
+     * @return a list of foreign keys, where each one is Map between this table field, and the referenced
+     *        table foreign key field.
      */
     public List<IRForeignKey> getForeignKeys() {
         Preconditions.checkNotNull(jooqTable);
@@ -172,6 +179,8 @@ public class IRTable {
 
     /**
      * Returns the IRColumn based on the SQL field
+     * @param field field to seaerch for
+     * @return the IRColumn corresponding to the `field` parameter
      */
     IRColumn getField(final Field field) {
         Preconditions.checkNotNull(jooqTable);
@@ -180,6 +189,7 @@ public class IRTable {
 
     /**
      * Updates a table field with a list of values
+     * @param recentData a result set to update this column to
      */
     void updateValues(final Result<? extends Record> recentData) {
         Preconditions.checkNotNull(jooqTable);
@@ -192,6 +202,7 @@ public class IRTable {
 
     /**
      * Get the most recently invoked result set for this table.
+     * @return the current result set for this column
      */
     public Result<? extends Record> getCurrentData() {
         Preconditions.checkNotNull(recentData);
@@ -232,6 +243,7 @@ public class IRTable {
 
     /**
      * Returns all the IRColumns of the current table
+     * @return all the IRColumns of the current table
      */
     public Map<String, IRColumn> getIRColumns() {
         return irColumns;

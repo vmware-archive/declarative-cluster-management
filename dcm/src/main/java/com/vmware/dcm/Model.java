@@ -221,7 +221,7 @@ public class Model {
      * tables have variable columns, they will reflect the changes made by the solver.
      *
      * @param tables a set of table names
-     * @return A map where keys correspond to the supplied "tables" parameter, and the values are Result<> objects
+     * @return A map where keys correspond to the supplied "tables" parameter, and the values are Result objects
      *         representing rows of the corresponding tables, with modifications made by the solver
      */
     public synchronized Map<String, Result<? extends Record>> solve(final Set<String> tables)
@@ -246,7 +246,7 @@ public class Model {
      * table has variable columns, the returned result will reflect the changes made by the solver.
      *
      * @param tableName a table name
-     * @return A Result<> object representing rows of the corresponding tables, with modifications made by the solver
+     * @return A Result object representing rows of the corresponding tables, with modifications made by the solver
      */
     public synchronized Result<? extends Record> solve(final String tableName)
             throws ModelException {

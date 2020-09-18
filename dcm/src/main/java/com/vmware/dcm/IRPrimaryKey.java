@@ -32,6 +32,7 @@ public class IRPrimaryKey {
 
     /**
      * Returns all the fields that compose this primary key
+     * @return all the fields that compose this primary key
      */
     public List<IRColumn> getPrimaryKeyFields() {
         return primaryKeyFields;
@@ -39,11 +40,16 @@ public class IRPrimaryKey {
 
     /**
      * Returns true if this primaryKey has a controllable field
+     * @return true if this primaryKey has a controllable field
      */
     public boolean hasControllableColumn() {
         return primaryKeyFields.stream().anyMatch(IRColumn::isControllable);
     }
 
+    /**
+     * Returns the irTable for which this primary key is configured
+     * @return the irTable for which this primary key is configured
+     */
     public IRTable getIRTable() {
         return irTable;
     }

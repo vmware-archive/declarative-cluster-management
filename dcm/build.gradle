@@ -5,6 +5,7 @@
 
 plugins {
     id 'maven-publish'
+    id 'signing'
 }
 
 dependencies {
@@ -25,6 +26,11 @@ description = 'dcm'
 // compileJava {
 //   options.compilerArgs = ["--release", "12"]
 // }
+
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
 
 publishing {
     repositories {
@@ -49,4 +55,8 @@ publishing {
             }
         }
     }
+}
+
+signing {
+    sign publishing.publications.maven
 }

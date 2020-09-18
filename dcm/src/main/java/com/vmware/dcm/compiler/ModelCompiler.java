@@ -45,6 +45,8 @@ public class ModelCompiler {
     /**
      * Entry point to compile views into list comprehensions
      * @param views a list of strings, each of which is a view statement
+     * @param backend an ISolverBackend instance.
+     * @return A list of strings representing the program that was compiled
      */
     @CanIgnoreReturnValue
     public List<String> compile(final List<ViewsWithChecks> views, final ISolverBackend backend) {
