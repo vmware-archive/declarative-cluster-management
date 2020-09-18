@@ -45,6 +45,18 @@ To use DCM from a Maven-based project, use the following dependency:
 </dependency>
 ```
 
+For now, one of DCM's dependencies is only available on Jcenter. You will also need
+to add Jcenter to your list of repositories:
+
+```
+<repositories>
+    <repository>
+      <id>jcenter</id>
+      <url>https://jcenter.bintray.com/</url>
+    </repository>
+</repositories>
+```
+
 ### Pre-requisites for developers
 
 1. Gradle and JDK 12 for building.
