@@ -159,6 +159,7 @@ public class OrToolsSolver implements ISolverBackend {
         /**
          * Number of solver threads. Corresponds to CP-SAT's setNumSearchWorkers parameter.
          * @param numThreads number of solver threads to use. Defaults to {@value NUM_THREADS_DEFAULT}.
+         * @return the current Builder object with `numThreads` set
          */
         public Builder setNumThreads(final int numThreads) {
             this.numThreads = numThreads;
@@ -169,6 +170,7 @@ public class OrToolsSolver implements ISolverBackend {
          * Solver timeout. If this parameter is set too low for the problem size involved, expect a ModelException
          * for not finding a solution. Corresponds to CP-SAT's setNumSearchWorkers parameter.
          * @param maxTimeInSeconds timeout value in seconds. Defaults to {@value MAX_TIME_IN_SECONDS}.
+         * @return the current Builder object with `maxTimeInSeconds` set
          */
         public Builder setMaxTimeInSeconds(final int maxTimeInSeconds) {
             this.maxTimeInSeconds = maxTimeInSeconds;
@@ -179,6 +181,7 @@ public class OrToolsSolver implements ISolverBackend {
          * Configures whether we attempt to pattern match and apply an optimization that uses scalar products
          * in certain kinds of aggregates.
          * @param tryScalarProductEncoding true to apply scalar product optimization. Defaults to true.
+         * @return the current Builder object with `tryScalarProductEncoding` set
          */
         public Builder setTryScalarProductEncoding(final boolean tryScalarProductEncoding) {
             this.tryScalarProductEncoding = tryScalarProductEncoding;
@@ -190,6 +193,7 @@ public class OrToolsSolver implements ISolverBackend {
          * "spreading" joins.
          * @param useFullReifiedConstraintsForJoinPreferences uses full-reified encodings if true, half-reified
          *                                                    encodings otherwise. Defaults to false.
+         * @return the current Builder object with `useFullReifiedConstraintsForJoinPreferences` set
          */
         public Builder setUseFullReifiedConstraintsForJoinPreferences(final boolean
                                                                       useFullReifiedConstraintsForJoinPreferences) {
@@ -203,6 +207,7 @@ public class OrToolsSolver implements ISolverBackend {
          * loops in the generated code.
          *
          * @param useIndicesForEqualityBasedJoins generated code uses indexes if possible. Defaults to true.
+         * @return the current Builder object with `useIndicesForEqualityBasedJoins` set
          */
         public Builder setUseIndicesForEqualityBasedJoins(final boolean useIndicesForEqualityBasedJoins) {
             this.useIndicesForEqualityBasedJoins = useIndicesForEqualityBasedJoins;

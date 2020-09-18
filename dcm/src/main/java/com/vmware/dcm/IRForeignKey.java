@@ -26,6 +26,8 @@ public class IRForeignKey {
      *
      * Has to be public so mnz_data.ftl and mnz_model.ftl template files can find the corresponding methods
      *
+     * @param childTable the child table in the FK relationship
+     * @param parentTable the parent table in the FK relationship
      * @param fk SQL foreign key field
      */
     IRForeignKey(final IRTable childTable, final IRTable parentTable, final ForeignKey<? extends Record, ?> fk) {
@@ -60,6 +62,7 @@ public class IRForeignKey {
 
     /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
+     * @return returns the child table in this FK relation
      */
     public IRTable getChildTable() {
         return childTable;
@@ -67,6 +70,7 @@ public class IRForeignKey {
 
     /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
+     * @return returns the fields represented in this FK relation
      */
     public Map<IRColumn, IRColumn> getFields() {
         return fields;
@@ -74,6 +78,7 @@ public class IRForeignKey {
 
     /**
      * Returns true if this foreign key is defined on a variable column, false otherwise
+     * @return true if this foreign key is defined on a variable column, false otherwise
      */
     public boolean hasConstraint() {
         return !this.fields.isEmpty() && this.hasControllableField();

@@ -118,7 +118,12 @@ public class IRContext {
      *************************/
 
     // TODO: this should ideally happen at input time.
-    public void addAliasedOrViewTable(final IRTable tableAlias) {
-        irTables.putIfAbsent(tableAlias.getAliasedName().toUpperCase(Locale.US), tableAlias);
+
+    /**
+     * Track an IRTable that is either an alias for an existing table or a view table
+     * @param table the alias or view table to track
+     */
+    public void addAliasedOrViewTable(final IRTable table) {
+        irTables.putIfAbsent(table.getAliasedName().toUpperCase(Locale.US), table);
     }
 }

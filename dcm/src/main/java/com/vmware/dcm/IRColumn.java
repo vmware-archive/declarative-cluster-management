@@ -21,7 +21,6 @@ import java.util.Optional;
 
 /**
  * Represents a jooqField within an SQL table used within MiniZinz models
- *
  */
 public class IRColumn {
     private static final String FIELD_PREFIX_SEP = "__";
@@ -105,6 +104,10 @@ public class IRColumn {
 
     /**
      * Builds a IRColumn from a SQL jooqField parsing its type and tags
+     * @param irTable the IRTable that this column belongs to
+     * @param jooqField the Field that this column corresponds to
+     * @param fieldType the FieldType of this column
+     * @param fieldNameInitial the initial name for this column
      */
     public IRColumn(@Nullable final IRTable irTable, @Nullable final Field jooqField,
                     final FieldType fieldType, final String fieldNameInitial) {
@@ -154,13 +157,15 @@ public class IRColumn {
 
     /**
      * Returns the IRTable corresponding to this IRColumn
+     * @return the IRTable corresponding to this IRColumn
      */
     public IRTable getIRTable() {
         return Preconditions.checkNotNull(irTable);
     }
 
     /**
-     * Returns the Jooq Field that backs an IRColumn
+     * Returns the Jooq Field that backs this IRColumn
+     * @return the Jooq Field that backs this IRColumn
      */
     public Field getJooqField() {
         return Preconditions.checkNotNull(jooqField);
@@ -168,6 +173,7 @@ public class IRColumn {
 
     /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
+     * @return the column name
      */
     public String getName() {
         return name;
@@ -175,6 +181,7 @@ public class IRColumn {
 
     /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
+     * @return the column's FieldType
      */
     public FieldType getType() {
         return Preconditions.checkNotNull(type);
@@ -182,6 +189,7 @@ public class IRColumn {
 
     /**
      * Sets the foreignKeyParent of this jooqField, if this jooqField is a ForeignKey from another table jooqField
+     * @param parent sets the foreign key paraent for this column
      */
     void setForeignKeyParent(final IRColumn parent) {
         Preconditions.checkNotNull(type);
