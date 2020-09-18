@@ -55,6 +55,7 @@ publishing {
             version = "${dcmVersion}"
 
             pom {
+                name = "Declarative Cluster Management (DCM) Library"
                 url = "https://github.com/vmware/declarative-cluster-management/"
                 description = "Library for building declarative cluster managers. Please refer to the README at github.com/vmware/declarative-cluster-management/ for instructions on setting up solvers before use."
 
