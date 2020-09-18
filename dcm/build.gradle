@@ -33,11 +33,13 @@ java {
 publishing {
     repositories {
         maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/vmware/declarative-cluster-management")
+            name = "Sonatype"
+            def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+            def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
+            url = project.hasProperty('release') ? releasesRepoUrl : snapshotsRepoUrl
             credentials {
-                username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
-                password = project.findProperty("gpr.key") ?: System.getenv("DCM_GITHUB_TOKEN")
+                username = project.findProperty("ossrhUsername")
+                password = project.findProperty("ossrhPassword")
             }
         }
     }
@@ -45,36 +47,35 @@ publishing {
     publications {
         maven(MavenPublication) {
             from(components.java)
+
             groupId = "${dcmGroupId}"
             artifactId = "${dcmArtifactId}"
             version = "${dcmVersion}"
-            url = "https://github.com/vmware/declarative-cluster-management/"
-
-            scm {
-                connection "scm:git:https://github.com/vmware/declarative-cluster-management.git"
-                developerConnection "scm:git:git@github.com:vmware/declarative-cluster-management.git"
-                url "https://github.com/vmware/declarative-cluster-management/"
-            }
 
             pom {
-                description = "Library for building declarative cluster managers.
-                               Please refer to the README at github.com/vmware/declarative-cluster-management/
-                               for instructions on setting up solvers before use."
-            }
+                url = "https://github.com/vmware/declarative-cluster-management/"
+                description = "Library for building declarative cluster managers. Please refer to the README at github.com/vmware/declarative-cluster-management/ for instructions on setting up solvers before use."
 
-            developers {
-                developer {
-                    id = "lalithsuresh"
-                    name = "Lalith Suresh"
-                    email = "lsuresh@vmware.com"
-                    url = "https://github.com/lalithsuresh"
+                developers {
+                    developer {
+                        id = "lalithsuresh"
+                        name = "Lalith Suresh"
+                        email = "lsuresh@vmware.com"
+                        url = "https://github.com/lalithsuresh"
+                    }
                 }
-            }
 
-            licenses {
-                license {
-                    name "The BSD-2 license"
-                    url "https://opensource.org/licenses/BSD-2-Clause"
+                scm {
+                    connection = "scm:git:https://github.com/vmware/declarative-cluster-management.git"
+                    developerConnection = "scm:git:git@github.com:vmware/declarative-cluster-management.git"
+                    url = "https://github.com/vmware/declarative-cluster-management/"
+                }
+
+                licenses {
+                    license {
+                        name = "The BSD-2 license"
+                        url = "https://opensource.org/licenses/BSD-2-Clause"
+                    }
                 }
             }
         }
