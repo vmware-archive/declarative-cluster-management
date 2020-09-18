@@ -17,6 +17,7 @@ import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.util.Domain;
+import com.skaggsm.ortools.OrToolsHelper;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
@@ -30,14 +31,6 @@ import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRPrimaryKey;
 import com.vmware.dcm.IRTable;
 import com.vmware.dcm.ModelException;
-import com.vmware.dcm.compiler.monoid.GroupByQualifier;
-import com.vmware.dcm.compiler.monoid.IsNotNullPredicate;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.MonoidVisitor;
-import com.vmware.dcm.compiler.monoid.Qualifier;
-import com.vmware.dcm.compiler.monoid.TableRowGenerator;
-import com.vmware.dcm.compiler.monoid.VoidType;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.monoid.CheckQualifier;
@@ -45,12 +38,20 @@ import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
 import com.vmware.dcm.compiler.monoid.ExistsPredicate;
 import com.vmware.dcm.compiler.monoid.Expr;
 import com.vmware.dcm.compiler.monoid.GroupByComprehension;
+import com.vmware.dcm.compiler.monoid.GroupByQualifier;
+import com.vmware.dcm.compiler.monoid.IsNotNullPredicate;
 import com.vmware.dcm.compiler.monoid.IsNullPredicate;
 import com.vmware.dcm.compiler.monoid.JoinPredicate;
 import com.vmware.dcm.compiler.monoid.MonoidComprehension;
+import com.vmware.dcm.compiler.monoid.MonoidFunction;
 import com.vmware.dcm.compiler.monoid.MonoidLiteral;
+import com.vmware.dcm.compiler.monoid.MonoidVisitor;
+import com.vmware.dcm.compiler.monoid.Qualifier;
 import com.vmware.dcm.compiler.monoid.SimpleVisitor;
+import com.vmware.dcm.compiler.monoid.TableRowGenerator;
 import com.vmware.dcm.compiler.monoid.UnaryOperator;
+import com.vmware.dcm.compiler.monoid.VoidType;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -130,8 +131,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final boolean configUseIndicesForEqualityBasedJoins;
 
     static {
-        Preconditions.checkNotNull(System.getenv(OR_TOOLS_LIB_ENV));
-        System.load(System.getenv(OR_TOOLS_LIB_ENV));
+        OrToolsHelper.loadLibrary();
     }
 
     @Nullable private IGeneratedBackend generatedBackend;

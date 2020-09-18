@@ -26,6 +26,7 @@ subprojects {
     repositories {
         mavenLocal()
         mavenCentral()
+        jcenter() // Used for community contributed or-tools package
     }
 
     dependencies {
