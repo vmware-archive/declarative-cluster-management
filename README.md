@@ -33,7 +33,19 @@ To learn more about DCM, we suggest going through the following research papers:
 
 ## Try it out
 
-### Pre-requisites
+### Maven dependency
+
+To use DCM from a Maven-based project, use the following dependency:
+
+```
+<dependency>
+    <groupId>com.vmware.dcm</groupId>
+    <artifactId>dcm</artifactId>
+    <version>0.2.0</version>
+</dependency>
+```
+
+### Pre-requisites for developers
 
 1. Gradle and JDK 12 for building.
 
@@ -41,30 +53,13 @@ To learn more about DCM, we suggest going through the following research papers:
 
 3. We currently support two solver backends. Make sure to install both of them to run the build: 
 
-   * **MiniZinc (version 2.3.2)**. You can download it from: [https://www.minizinc.org/software.html](https://www.minizinc.org/software.html)
+   * **Google OR-tools CP-SAT (version 7.8)**. This is available by default when using the maven dependency. 
 
-     Make sure you are able to invoke the `minizinc` binary from your commandline.
-
-   * **Google OR-tools CP-SAT (version 7.8)**. To install, download the binary package (*not the flatzinc packages*) for your platform from: [https://github.com/google/or-tools/releases/tag/v7.8](https://github.com/google/or-tools/releases/tag/v7.8)
-
-     Untar the downloaded bundle and run the following command in the `<or-tools>/lib/` folder to install the or-tools jar file (requires Maven):
-
-     ```
-      $: mvn install:install-file -Dfile=com.google.ortools.jar -DgroupId=com.google -DartifactId=ortools -Dversion=7.8 -Dpackaging=jar
-     ```
-
-     Next, set up the following environment variable to point to the or-tools shared library:
-
-     On OSX:
-     ```
-      export OR_TOOLS_LIB=<or-tools>/lib/libjniortools.jnilib
-     ```
-
-     On Linux:
-     ```
-      export OR_TOOLS_LIB=<or-tools>/lib/libjniortools.so
-     
-     ```
+   * **MiniZinc (version 2.3.2)**. This backend is currently being deprecated. If you want to use it,
+   you will have to install MiniZinc out-of-band. 
+   
+   To do so, download MiniZinc from [https://www.minizinc.org/software.html](https://www.minizinc.org/software.html)
+   ... and make sure you are able to invoke the `minizinc` binary from your commandline.
 
 ### Building
 
