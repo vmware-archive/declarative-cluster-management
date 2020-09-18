@@ -20,8 +20,6 @@ dependencies {
     testImplementation "com.h2database:h2:${h2Version}"
 }
 
-description = 'dcm'
-
 // Use this block to compile DCM for a specific JDK release
 // compileJava {
 //   options.compilerArgs = ["--release", "12"]
@@ -50,8 +48,34 @@ publishing {
             groupId = "${dcmGroupId}"
             artifactId = "${dcmArtifactId}"
             version = "${dcmVersion}"
+            url = "https://github.com/vmware/declarative-cluster-management/"
+
+            scm {
+                connection "scm:git:https://github.com/vmware/declarative-cluster-management.git"
+                developerConnection "scm:git:git@github.com:vmware/declarative-cluster-management.git"
+                url "https://github.com/vmware/declarative-cluster-management/"
+            }
+
             pom {
-                description = "Library for building declarative cluster managers. Please refer to the README at github.com/vmware/declarative-cluster-management/ for instructions on setting up solvers before use."
+                description = "Library for building declarative cluster managers.
+                               Please refer to the README at github.com/vmware/declarative-cluster-management/
+                               for instructions on setting up solvers before use."
+            }
+
+            developers {
+                developer {
+                    id = "lalithsuresh"
+                    name = "Lalith Suresh"
+                    email = "lsuresh@vmware.com"
+                    url = "https://github.com/lalithsuresh"
+                }
+            }
+
+            licenses {
+                license {
+                    name "The BSD-2 license"
+                    url "https://opensource.org/licenses/BSD-2-Clause"
+                }
             }
         }
     }
