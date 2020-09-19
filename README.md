@@ -1,5 +1,6 @@
 [![Build Status](https://circleci.com/gh/vmware/declarative-cluster-management.svg?style=svg)](https://circleci.com/gh/vmware/declarative-cluster-management)
 [![codecov](https://codecov.io/gh/vmware/declarative-cluster-management/branch/master/graph/badge.svg)](https://codecov.io/gh/vmware/declarative-cluster-management)
+[![Maven Central](https://img.shields.io/maven-central/v/com.vmware.dcm/dcm.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22com.vmware.dcm%22%20AND%20a:%22dcm%22)
 
 # Declarative Cluster Management
 
