@@ -109,7 +109,7 @@ three methods: `Model.build()`, `model.updateData()` and `model.solve()`.
 
 We welcome all feedback and contributions! :heart:
 
-Please use Github [Issues](https://github.com/vmware/declarative-cluster-management/) for user questions
+Please use Github [issues](https://github.com/vmware/declarative-cluster-management/) for user questions
 and bug reports.
 
 Check out the [contributing](CONTRIBUTING.md) guide if you'd like to send us a pull request.
