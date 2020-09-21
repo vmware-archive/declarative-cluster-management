@@ -8,10 +8,9 @@
 1. [Overview](#overview)
 2. [Download](#download)  
 3. [Pre-requisites for use](#pre-requisites-for-use)
-4. [Building](#building)
-5. [DCM API and tutorial](#dcm-api)
-7. [Information for developers](#information-for-developers)
-8. [Learn more](#learn-more)
+4. [DCM API and tutorial](#dcm-api)
+5. [Information for developers](#information-for-developers)
+6. [Learn more](#learn-more)
 
 ### Overview
 
@@ -86,7 +85,7 @@ repositories {
    ... and make sure you are able to invoke the `minizinc` binary from your commandline.
 
 
-### DCM API
+### DCM API and tutorial
 
 The [Model](dcm/src/main/java/com/vmware/dcm/Model.java) class serves as DCM's public API. It exposes
 three methods: `Model.build()`, `model.updateData()` and `model.solve()`. We encourage you
