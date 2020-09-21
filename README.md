@@ -17,21 +17,6 @@ With DCM, building a scheduler involves representing cluster state in an SQL dat
 and policies that should apply on that state using SQL. Behind-the-scenes, the DCM compiler and runtime generates an 
 encoding of the constraints into an optimization model, which it solves using an off-the-shelf solver. 
 
-### References
-
-To learn more about DCM, we suggest going through the following research papers:
-
-* [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://www.usenix.org/conference/osdi20/accepted-papers) <br>
-  Lalith Suresh, Joao Loff, Faria Kalim, Sangeetha Abdu Jyothi, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Pranshu Jain, Michael Gasch. 
-  To appear, 14th USENIX Symposium on Operating Systems Design and Implementation, (OSDI 2020).
-
-* [Automating Cluster Management with Weave](https://arxiv.org/pdf/1909.03130.pdf)<br>
-  Lalith Suresh, Joao Loff, Faria Kalim, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Zeeshan Lokhandwala, Mukesh Hira, Mooly Sagiv. arXiv preprint arXiv:1909.03130 (2019).
-
-* [Synthesizing Cluster Management Code for Distributed Systems](https://dl.acm.org/citation.cfm?id=3321444)<br>
-  Lalith Suresh, João Loff, Nina Narodytska, Leonid Ryzhyk, Mooly Sagiv, and Brian Oki. In Proceedings of the Workshop on Hot Topics in Operating Systems (HotOS 2019).
-  ACM, New York, NY, USA, 45-50. DOI: https://doi.org/10.1145/3317550.3321444
-
 ## Try it out
 
 ### Maven dependency
@@ -360,3 +345,19 @@ To run a specific integration test class (example: `SchedulerIT` from the `k8s-s
 ```bash
 $: KUBECONFIG=~/.kube/kind-config-dcm-it ./gradlew :k8s-scheduler:integrationTest --tests SchedulerIT
 ```
+
+
+### References
+
+To learn more about DCM, we suggest going through the following research papers:
+
+* [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://www.usenix.org/conference/osdi20/accepted-papers) <br>
+  Lalith Suresh, Joao Loff, Faria Kalim, Sangeetha Abdu Jyothi, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Pranshu Jain, Michael Gasch. 
+  To appear, 14th USENIX Symposium on Operating Systems Design and Implementation, (OSDI 2020).
+
+* [Automating Cluster Management with Weave](https://arxiv.org/pdf/1909.03130.pdf)<br>
+  Lalith Suresh, Joao Loff, Faria Kalim, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Zeeshan Lokhandwala, Mukesh Hira, Mooly Sagiv. arXiv preprint arXiv:1909.03130 (2019).
+
+* [Synthesizing Cluster Management Code for Distributed Systems](https://dl.acm.org/citation.cfm?id=3321444)<br>
+  Lalith Suresh, João Loff, Nina Narodytska, Leonid Ryzhyk, Mooly Sagiv, and Brian Oki. In Proceedings of the Workshop on Hot Topics in Operating Systems (HotOS 2019).
+  ACM, New York, NY, USA, 45-50. DOI: https://doi.org/10.1145/3317550.3321444
