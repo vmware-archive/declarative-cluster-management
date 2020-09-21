@@ -39,7 +39,7 @@ The high-level architecture is shown in the diagram below.
 
 ### Download
 
-The DCM project's groupId is `com.vmware.dcm`, and the artifactId for the DCM library is `dcm`.
+The DCM project's groupId is `com.vmware.dcm` and its artifactId is `dcm`.
 We make DCM's artifacts available through Maven Central.
 
 To use DCM from a Maven-based project, use the following dependency:
