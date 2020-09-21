@@ -323,28 +323,28 @@ Start reading from the
    }
    ```  
       
-  In the above case, we borrow the capacity constraint from the previous example. We then create an intermediate
-  view (`spare_cpu`) that computes the spare CPU capacity on each physical machine. We then state an objective function, 
-  which are specified as SQL queries that return a single scalar value --- DCM will try to find assignments that maximize 
-  the value of that query. In this case, we maximize the minimum spare CPU capacity, which has the intended load
-  balancing effect. The result should therefore print something like:
+   In the above case, we borrow the capacity constraint from the previous example. We then create an intermediate
+   view (`spare_cpu`) that computes the spare CPU capacity on each physical machine. We then state an objective function, 
+   which are specified as SQL queries that return a single scalar value --- DCM will try to find assignments that maximize 
+   the value of that query. In this case, we maximize the minimum spare CPU capacity, which has the intended load
+   balancing effect. The result should therefore print something like:
   
-  ```
-  +----+----+------+------------------------------+
-  |NAME| CPU|MEMORY|CONTROLLABLE__PHYSICAL_MACHINE|
-  +----+----+------+------------------------------+
-  |vm0 |  10|    10|pm4                           |
-  |vm1 |  10|    10|pm0                           |
-  |vm2 |  10|    10|pm0                           |
-  |vm3 |  10|    10|pm2                           |
-  |vm4 |  10|    10|pm4                           |
-  |vm5 |  10|    10|pm3                           |
-  |vm6 |  10|    10|pm3                           |
-  |vm7 |  10|    10|pm2                           |
-  |vm8 |  10|    10|pm1                           |
-  |vm9 |  10|    10|pm1                           |
-  +----+----+------+------------------------------+
-  ``` 
+   ```
+   +----+----+------+------------------------------+
+   |NAME| CPU|MEMORY|CONTROLLABLE__PHYSICAL_MACHINE|
+   +----+----+------+------------------------------+
+   |vm0 |  10|    10|pm4                           |
+   |vm1 |  10|    10|pm0                           |
+   |vm2 |  10|    10|pm0                           |
+   |vm3 |  10|    10|pm2                           |
+   |vm4 |  10|    10|pm4                           |
+   |vm5 |  10|    10|pm3                           |
+   |vm6 |  10|    10|pm3                           |
+   |vm7 |  10|    10|pm2                           |
+   |vm8 |  10|    10|pm1                           |
+   |vm9 |  10|    10|pm1                           |
+   +----+----+------+------------------------------+
+   ``` 
 
 ### Information for developers
 
