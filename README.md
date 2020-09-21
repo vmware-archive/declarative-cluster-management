@@ -31,6 +31,8 @@ cluster state.  Under the covers, the generated program efficiently encodes the 
 optimization problem  that can be solved using off-the-shelf solvers, freeing developers from having to 
 design ad-hoc heuristics.
 
+The high-level architecture is shown in the diagram below.
+
 <p align="center">
   <img src="https://github.com/vmware/declarative-cluster-management/blob/master/docs/arch_detailed.png"/>
 </p>
@@ -78,8 +80,8 @@ repositories {
 
 ### Pre-requisites for use
 
-1. We build the repository using JDK 12. Please file a Pull Request if you'd like the artifacts to be built for
-   an older JDK.
+1. We build the repository using JDK 12. Please file an [issue](https://github.com/vmware/declarative-cluster-management/)
+ if you'd like the artifacts to be built for an older JDK.
 
 2. We test regularly on OSX and Ubuntu 18.04.
 
