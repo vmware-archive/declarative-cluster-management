@@ -1,5 +1,5 @@
 [![License](https://img.shields.io/badge/License-BSD%202--Clause-green.svg)](https://opensource.org/licenses/BSD-2-Clause)
-[![Build Status](https://circleci.com/gh/vmware/declarative-cluster-management.svg?style=svg)](https://circleci.com/gh/vmware/declarative-cluster-management)
+[![Build Status](https://circleci.com/gh/vmware/declarative-cluster-management.svg?style=shield)](https://circleci.com/gh/vmware/declarative-cluster-management)
 [![codecov](https://codecov.io/gh/vmware/declarative-cluster-management/branch/master/graph/badge.svg)](https://codecov.io/gh/vmware/declarative-cluster-management)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/vmware/declarative-cluster-management)
 
@@ -8,9 +8,10 @@
 1. [Overview](#overview)
 2. [Download](#download)  
 3. [Pre-requisites for use](#pre-requisites-for-use)
-4. [DCM API and tutorial](#dcm-api)
-5. [Information for developers](#information-for-developers)
-6. [Learn more](#learn-more)
+4. [Documentation](#documentation)
+5. [Contributing](#contributing)
+6. [Information for developers](#information-for-developers)
+7. [Learn more](#learn-more)
 
 ### Overview
 
@@ -18,13 +19,21 @@ Modern cluster management systems like Kubernetes routinely grapple
 with hard combinatorial optimization problems: load balancing,
 placement, scheduling, and configuration. Implementing application-specific algorithms to
 solve these problems is notoriously hard to do, making it challenging to evolve the system over time 
-and add new features. DCM is a tool to overcome this challenge. It enables programmers to build schedulers 
+and add new features. 
+
+DCM is a tool to overcome this challenge. It enables programmers to build schedulers 
 and cluster managers using a high-level declarative language (SQL). 
 
-With DCM, building a scheduler involves representing cluster state in an SQL database, and writing constraints
-and policies that should apply on that state using SQL. Behind-the-scenes, the DCM compiler and runtime generates an 
-encoding of the constraints into an optimization model, which it solves using an off-the-shelf solver. 
+Specifically, developers need to represent cluster state in an SQL database, and write constraints
+and policies that should apply on that state using SQL. From the SQL specification, the DCM compiler synthesizes a 
+program that at runtime, can be invoked to compute policy-compliant cluster management decisions given the latest 
+cluster state.  Under the covers, the generated program efficiently encodes the cluster state as an 
+optimization problem  that can be solved using off-the-shelf solvers, freeing developers from having to 
+design ad-hoc heuristics.
 
+<p align="center">
+  <img src="https://github.com/vmware/declarative-cluster-management/blob/master/docs/arch_detailed.png"/>
+</p>
 
 ### Download
 
@@ -85,11 +94,23 @@ repositories {
    ... and make sure you are able to invoke the `minizinc` binary from your commandline.
 
 
-### DCM API and tutorial
+### Documentation
 
 The [Model](dcm/src/main/java/com/vmware/dcm/Model.java) class serves as DCM's public API. It exposes
-three methods: `Model.build()`, `model.updateData()` and `model.solve()`. We encourage you
-to check out the [tutorial](docs/tutorial.md) to learn how to use this API.
+three methods: `Model.build()`, `model.updateData()` and `model.solve()`. 
+
+* Check out the [tutorial](docs/tutorial.md) to learn how to use DCM by building a simple VM load balancer
+* Check out our [research papers](#learn-more) for the back story behind DCM
+* The Model API [Javadocs](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html)
+
+### Contributing
+
+We welcome all feedback and contributions! :heart:
+
+Please use Github [Issues](https://github.com/vmware/declarative-cluster-management/) for user questions
+and bug reports.
+
+Check out the [contributing](CONTRIBUTING.md) guide if you'd like to send us a pull request.
 
 ### Information for developers
 
