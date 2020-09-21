@@ -44,7 +44,7 @@ We make DCM's artifacts available through Maven Central.
 
 To use DCM from a Maven-based project, use the following dependency:
 
-```
+```xml
 <dependency>
     <groupId>com.vmware.dcm</groupId>
     <artifactId>dcm</artifactId>
@@ -62,7 +62,7 @@ For now, one of DCM's dependencies is only available on Jcenter (we expect this 
 Until then, you also need to add Jcenter to your list of repositories.
 
 Maven:
-```
+```xml
 <repositories>
     <repository>
       <id>jcenter</id>
