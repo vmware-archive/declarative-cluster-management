@@ -2,9 +2,17 @@
 [![codecov](https://codecov.io/gh/vmware/declarative-cluster-management/branch/master/graph/badge.svg)](https://codecov.io/gh/vmware/declarative-cluster-management)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/vmware/declarative-cluster-management)
 
-# Declarative Cluster Management
+## Declarative Cluster Management
 
-## Overview
+1. [Overview](#overview)
+2. [Download](#download)  
+3. [Pre-requisites for use](#pre-requisites-for-use)
+4. [Building](#building)
+5. [Using the DCM library](#using-the-dcm-library)
+6. [Information for developers](#information-for-developers)
+7. [Learn more](#learn-more)
+
+### Overview
 
 Modern cluster management systems like Kubernetes routinely grapple
 with hard combinatorial optimization problems: load balancing,
@@ -17,9 +25,11 @@ With DCM, building a scheduler involves representing cluster state in an SQL dat
 and policies that should apply on that state using SQL. Behind-the-scenes, the DCM compiler and runtime generates an 
 encoding of the constraints into an optimization model, which it solves using an off-the-shelf solver. 
 
-## Try it out
 
-### Maven dependency
+### Download
+
+The DCM project's groupId is `com.vmware.dcm`, and the artifactId for the DCM library is `dcm`.
+We make DCM's artifacts available through Maven Central.
 
 To use DCM from a Maven-based project, use the following dependency:
 
@@ -31,9 +41,16 @@ To use DCM from a Maven-based project, use the following dependency:
 </dependency>
 ```
 
-For now, one of DCM's dependencies is only available on Jcenter. You will also need
-to add Jcenter to your list of repositories:
+To use within a Gradle-based project:
 
+```
+implementation 'com.vmware.dcm:dcm:0.2.0'
+```
+
+For now, one of DCM's dependencies is only available on Jcenter (we expect this to change soon). 
+Until then, you also need to add Jcenter to your list of repositories.
+
+Maven:
 ```
 <repositories>
     <repository>
@@ -43,17 +60,25 @@ to add Jcenter to your list of repositories:
 </repositories>
 ```
 
-### Pre-requisites for developers
+Gradle:
+```
+repositories {
+    jcenter()
+}
+```
 
-1. Gradle and JDK 12 for building.
+### Pre-requisites for use
+
+1. We build the repository using JDK 12. Please file a Pull Request if you'd like the artifacts to be built for
+   an older JDK.
 
 2. We test regularly on OSX and Ubuntu 18.04.
 
-3. We currently support two solver backends. Make sure to install both of them to run the build: 
+3. We currently support two solver backends. 
 
    * **Google OR-tools CP-SAT (version 7.8)**. This is available by default when using the maven dependency. 
 
-   * **MiniZinc (version 2.3.2)**. This backend is currently being deprecated. If you want to use it,
+   * **MiniZinc (version 2.3.2)**. This backend is currently being deprecated. If you still want to use it,
    you will have to install MiniZinc out-of-band. 
    
    To do so, download MiniZinc from [https://www.minizinc.org/software.html](https://www.minizinc.org/software.html)
@@ -61,15 +86,15 @@ to add Jcenter to your list of repositories:
 
 ### Building
 
-We use gradle as our build system. You can run the following command once you've set up the solvers as listed above:
+We use gradle as our build system. You can run the following command once you've set up both solvers as listed above:
 
 ```
  $: ./gradlew build
 ```
 
-## How do I use DCM?
+### Using the DCM library
 
-We suggest reading going through use case shown in the `examples/` folder, where we demonstrate a
+We suggest reading going through the use case shown in the `examples/` folder, where we demonstrate a
 simple cluster manager.
 
 - Let's start with `examples/src/main/java/com/vmware/dcm/examples/LoadBalance.java`, a simple example to illustrate
@@ -311,7 +336,7 @@ simple cluster manager.
 
 
 
-## Information for developers
+### Information for developers
 
 The entire build including unit tests can be triggered from the root folder with:
 ```bash
@@ -347,7 +372,7 @@ $: KUBECONFIG=~/.kube/kind-config-dcm-it ./gradlew :k8s-scheduler:integrationTes
 ```
 
 
-### References
+### Learn more
 
 To learn more about DCM, we suggest going through the following research papers:
 
