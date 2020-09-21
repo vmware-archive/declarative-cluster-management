@@ -2,9 +2,9 @@
 
 In this tutorial, we will build 
 a simple load balancer that distributes VMs across physical machines using DCM.
-The code for this tutorial can be found in the [examples](examples/) folder.
+The code for this tutorial can be found in the [examples](../examples/) folder.
 Start reading from the 
-[LoadBalance](examples/src/main/java/com/vmware/dcm/examples/LoadBalance.java) class.
+[LoadBalance](../examples/src/main/java/com/vmware/dcm/examples/LoadBalance.java) class.
 
 1. The first step is to set up a database connection and instantiate a model using
    `Model.build()`. The `setup()` helper method returns a [JOOQ](https://github.com/jooq/) connection to an 
@@ -60,7 +60,7 @@ Start reading from the
    ```
 
 4. Let's now drive our simple example with some tests. Have a look at the 
-   [LoadBalanceTest.java](examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java) class.
+   [LoadBalanceTest.java](../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java) class.
    All tests populate the database with the following initial state using the `LoadBalanceTest.addInventory()` 
    method:
   
