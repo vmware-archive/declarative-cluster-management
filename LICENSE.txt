@@ -1,6 +1,6 @@
 Declarative Cluster Management
 
-Copyright (c) 2019 VMware, Inc.  All rights reserved
+Copyright (c) 2019, 2020 VMware, Inc.  All rights reserved
 
 The BSD-2 license (the "License") set forth below applies to all parts of the
 Declarative Cluster Management project.  You may not use this file except in
