@@ -1957,12 +1957,8 @@ public class ModelTest {
         return DriverManager.getConnection(url, properties);
     }
 
-    static Stream solvers() {
-        if (System.getenv().get(OrToolsSolver.OR_TOOLS_LIB_ENV) != null) {
-            return Stream.of(SolverConfig.OrToolsSolver, SolverConfig.MinizincSolver);
-        } else {
-            return Stream.of(SolverConfig.MinizincSolver);
-        }
+    static Stream<SolverConfig> solvers() {
+        return Stream.of(SolverConfig.OrToolsSolver, SolverConfig.MinizincSolver);
     }
 
     enum SolverConfig {
