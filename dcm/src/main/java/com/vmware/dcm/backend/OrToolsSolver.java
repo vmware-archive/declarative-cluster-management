@@ -6,6 +6,7 @@
 
 package com.vmware.dcm.backend;
 
+import com.google.common.annotations.Beta;
 import com.google.common.base.CaseFormat;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
@@ -223,7 +224,9 @@ public class OrToolsSolver implements ISolverBackend {
          *
          * @param value generated code uses half-reified constraints for top-level constraints if true,
          *              uses fully-reified constraints otherwise. Defaults to true.
+         * @return the current Builder object with `useHalfReifiedConstraintsForHardConstraints` set
          */
+        @Beta
         public Builder setUseHalfReifiedConstraintsForHardConstraints(final boolean value) {
             this.useHalfReifiedConstraintsForHardConstraints = value;
             return this;
