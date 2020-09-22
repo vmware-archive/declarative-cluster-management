@@ -1,6 +1,7 @@
 [![License](https://img.shields.io/badge/License-BSD%202--Clause-green.svg)](https://opensource.org/licenses/BSD-2-Clause)
 [![Build Status](https://circleci.com/gh/vmware/declarative-cluster-management.svg?style=shield)](https://circleci.com/gh/vmware/declarative-cluster-management)
 [![codecov](https://codecov.io/gh/vmware/declarative-cluster-management/branch/master/graph/badge.svg)](https://codecov.io/gh/vmware/declarative-cluster-management)
+[![Maven Central](https://img.shields.io/maven-central/v/com.vmware.dcm/dcm.svg?color=green)](https://search.maven.org/search?q=g:%22com.vmware.dcm%22%20AND%20a:%22dcm%22)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/vmware/declarative-cluster-management)
 
 ## Declarative Cluster Management
