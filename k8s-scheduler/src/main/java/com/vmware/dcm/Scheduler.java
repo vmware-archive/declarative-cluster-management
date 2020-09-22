@@ -183,6 +183,7 @@ public final class Scheduler {
                 return Model.build(conn, solver, policies);
             case "ORTOOLS":
                 final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
+                                                     .setUseHalfReifiedConstraintsForHardConstraints(true)
                                                      .setNumThreads(numThreads)
                                                      .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
                 return Model.build(conn, orToolsSolver, policies);

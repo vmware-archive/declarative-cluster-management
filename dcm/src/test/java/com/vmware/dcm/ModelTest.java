@@ -16,6 +16,7 @@ import org.jooq.Result;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -751,7 +752,36 @@ public class ModelTest {
         assertEquals(3, fetch.get(0).intValue());
     }
 
+    @Test
+    public void testSoftMembershipArray() {
+        // model and data files will use this as its name
+        final String modelName = "testSoftMembershipArray";
 
+        // create database
+        final DSLContext conn = setup();
+
+        conn.execute("CREATE TABLE t1 (" +
+                "controllable__c1 integer NOT NULL, " +
+                "c2 array NOT NULL" +
+                ")"
+        );
+
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW objective_t1 AS " +
+                "SELECT sum(contains(c2, controllable__c1)) FROM t1;");
+
+        // insert data
+        conn.execute("insert into t1 values (1, ARRAY[100])");
+
+        // Should not be opt
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
+        model.updateData();
+        model.solveModelAndReflectTableChanges();
+
+        final List<Integer> fetch = conn.selectFrom("t1").fetch("CONTROLLABLE__C1", Integer.class);
+        assertEquals(1, fetch.size());
+        assertEquals(100, fetch.get(0).intValue());
+    }
 
     @ParameterizedTest
     @MethodSource("solvers")
@@ -1205,7 +1235,7 @@ public class ModelTest {
                 ")"
         );
         final List<String> views = toListOfViews("CREATE VIEW constraint_c1 AS " +
-                "SELECT * FROM t1 check controllable__c1 >= -10 and controllable__c1 >= -20;");
+                "SELECT * FROM t1 check controllable__c1 <= -10 and controllable__c1 >= -20;");
 
         // insert data
         conn.execute("insert into t1 values (1)");
@@ -1217,7 +1247,7 @@ public class ModelTest {
 
         final List<Integer> fetch = conn.selectFrom("t1").fetch("CONTROLLABLE__C1", Integer.class);
         assertEquals(1, fetch.size());
-        assertEquals(-10, fetch.get(0).intValue());
+        assertTrue(fetch.get(0) <= -10 && fetch.get(0) >= -20);
     }
 
     @ParameterizedTest
@@ -1927,12 +1957,8 @@ public class ModelTest {
         return DriverManager.getConnection(url, properties);
     }
 
-    static Stream solvers() {
-        if (System.getenv().get(OrToolsSolver.OR_TOOLS_LIB_ENV) != null) {
-            return Stream.of(SolverConfig.OrToolsSolver, SolverConfig.MinizincSolver);
-        } else {
-            return Stream.of(SolverConfig.MinizincSolver);
-        }
+    static Stream<SolverConfig> solvers() {
+        return Stream.of(SolverConfig.OrToolsSolver, SolverConfig.MinizincSolver);
     }
 
     enum SolverConfig {

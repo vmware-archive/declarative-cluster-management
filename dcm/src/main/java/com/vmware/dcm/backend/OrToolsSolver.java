@@ -6,6 +6,7 @@
 
 package com.vmware.dcm.backend;
 
+import com.google.common.annotations.Beta;
 import com.google.common.base.CaseFormat;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
@@ -129,6 +130,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final boolean configTryScalarProductEncoding;
     private final boolean configUseFullReifiedConstraintsForJoinPreferences;
     private final boolean configUseIndicesForEqualityBasedJoins;
+    private final boolean configUseHalfReifiedConstraintsForHardConstraints;
 
     static {
         OrToolsHelper.loadLibrary();
@@ -140,12 +142,14 @@ public class OrToolsSolver implements ISolverBackend {
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
                           final boolean configUseFullReifiedConstraintsForJoinPreferences,
-                          final boolean configUseIndicesForEqualityBasedJoins) {
+                          final boolean configUseIndicesForEqualityBasedJoins,
+                          final boolean configUseHalfReifiedConstraintsForHardConstraints) {
         this.configNumThreads = configNumThreads;
         this.configMaxTimeInSeconds = configMaxTimeInSeconds;
         this.configTryScalarProductEncoding = configTryScalarProductEncoding;
         this.configUseFullReifiedConstraintsForJoinPreferences = configUseFullReifiedConstraintsForJoinPreferences;
         this.configUseIndicesForEqualityBasedJoins = configUseIndicesForEqualityBasedJoins;
+        this.configUseHalfReifiedConstraintsForHardConstraints = configUseHalfReifiedConstraintsForHardConstraints;
     }
 
     public static class Builder {
@@ -154,6 +158,7 @@ public class OrToolsSolver implements ISolverBackend {
         private boolean tryScalarProductEncoding = true;
         private boolean useFullReifiedConstraintsForJoinPreferences = false;
         private boolean useIndicesForEqualityBasedJoins = true;
+        private boolean useHalfReifiedConstraintsForHardConstraints = true;
 
 
         /**
@@ -214,9 +219,23 @@ public class OrToolsSolver implements ISolverBackend {
             return this;
         }
 
+        /**
+         * Configures whether to attempt encoding top-level hard constraints using half-reified constraints
+         *
+         * @param value generated code uses half-reified constraints for top-level constraints if true,
+         *              uses fully-reified constraints otherwise. Defaults to true.
+         * @return the current Builder object with `useHalfReifiedConstraintsForHardConstraints` set
+         */
+        @Beta
+        public Builder setUseHalfReifiedConstraintsForHardConstraints(final boolean value) {
+            this.useHalfReifiedConstraintsForHardConstraints = value;
+            return this;
+        }
+
         public OrToolsSolver build() {
             return new OrToolsSolver(numThreads, maxTimeInSeconds, tryScalarProductEncoding,
-                                     useFullReifiedConstraintsForJoinPreferences, useIndicesForEqualityBasedJoins);
+                                     useFullReifiedConstraintsForJoinPreferences, useIndicesForEqualityBasedJoins,
+                                     useHalfReifiedConstraintsForHardConstraints);
         }
     }
 
@@ -843,7 +862,10 @@ public class OrToolsSolver implements ISolverBackend {
     private CodeBlock topLevelConstraint(final Expr expr, final String joinPredicateStr,
                                     @Nullable final GroupContext groupContext, final TranslationContext context) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
-        final String statement = maybeWrapped(expr, groupContext, context);
+        final String statement = maybeWrapped(expr, groupContext,
+                                              configUseHalfReifiedConstraintsForHardConstraints
+                                                      ? context.withEnterHalfReifiedContext()
+                                                      : context.withEnterFullReifiedContext());
 
         if (joinPredicateStr.isEmpty()) {
             return CodeBlock.builder().addStatement("model.addEquality($L, 1)", statement).build();
@@ -1423,7 +1445,9 @@ public class OrToolsSolver implements ISolverBackend {
         protected String visitUnaryOperator(final UnaryOperator node, final TranslationContext context) {
             switch (node.getOperator()) {
                 case NOT:
-                    return apply(String.format("o.not(%s)", visit(node.getArgument(), context)), context);
+                    return apply(String.format("o.not(%s, %s)", visit(node.getArgument(),
+                                                                      context.withEnterFullReifiedContext()),
+                                                                      context.halfReifiedContext), context);
                 case MINUS:
                     return apply(String.format("o.mult(-1, %s)", visit(node.getArgument(), context)), context);
                 case PLUS:
@@ -1436,31 +1460,33 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
                                                       final TranslationContext context) {
-            final String left = visit(node.getLeft(), context);
-            final String right = visit(node.getRight(), context);
             final BinaryOperatorPredicate.Operator op = node.getOperator();
+            final TranslationContext nextLevelContext = reificationContext(context, op);
+            final String left = visit(node.getLeft(), nextLevelContext);
+            final String right = visit(node.getRight(), nextLevelContext);
             final String leftType = inferType(node.getLeft());
             final String rightType = inferType(node.getRight());
+            final boolean halfReify = context.halfReifiedContext;
 
             if (leftType.equals("IntVar") || rightType.equals("IntVar")) {
                 // We need to generate an IntVar.
                 switch (op) {
                     case EQUAL:
-                        return apply(String.format("o.eq(%s, %s)", left, right), context);
+                        return apply(String.format("o.eq(%s, %s, %s)", left, right, halfReify), context);
                     case NOT_EQUAL:
-                        return apply(String.format("o.ne(%s, %s)", left, right), context);
+                        return apply(String.format("o.ne(%s, %s, %s)", left, right, halfReify), context);
                     case AND:
-                        return apply(String.format("o.and(%s, %s)", left, right), context);
+                        return apply(String.format("o.and(%s, %s, %s)", left, right, halfReify), context);
                     case OR:
-                        return apply(String.format("o.or(%s, %s)", left, right), context);
+                        return apply(String.format("o.or(%s, %s, %s)", left, right, halfReify), context);
                     case LESS_THAN_OR_EQUAL:
-                        return apply(String.format("o.leq(%s, %s)", left, right), context);
+                        return apply(String.format("o.leq(%s, %s, %s)", left, right, halfReify), context);
                     case LESS_THAN:
-                        return apply(String.format("o.lt(%s, %s)", left, right), context);
+                        return apply(String.format("o.lt(%s, %s, %s)", left, right, halfReify), context);
                     case GREATER_THAN_OR_EQUAL:
-                        return apply(String.format("o.geq(%s, %s)", left, right), context);
+                        return apply(String.format("o.geq(%s, %s, %s)", left, right, halfReify), context);
                     case GREATER_THAN:
-                        return apply(String.format("o.gt(%s, %s)", left, right), context);
+                        return apply(String.format("o.gt(%s, %s, %s)", left, right, halfReify), context);
                     case ADD:
                         return apply(String.format("o.plus(%s, %s)", left, right), context);
                     case SUBTRACT:
@@ -1470,9 +1496,9 @@ public class OrToolsSolver implements ISolverBackend {
                     case DIVIDE:
                         return apply(String.format("o.div(%s, %s)", left, right), context);
                     case IN:
-                        return apply(String.format("o.in%s(%s, %s)", rightType, left, right), context);
+                        return apply(String.format("o.in%s(%s, %s, %s)", rightType, left, right, halfReify), context);
                     case CONTAINS:
-                        return apply(String.format("o.inObjectArr(%s, %s)", right, left), context);
+                        return apply(String.format("o.inObjectArr(%s, %s, %s)", right, left, halfReify), context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1736,6 +1762,17 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
+    private TranslationContext reificationContext(final TranslationContext context,
+                                                  final BinaryOperatorPredicate.Operator op) {
+        switch (op) {
+            case AND:
+            case OR:
+                return context;
+            default:
+                return context.withEnterFullReifiedContext();
+        }
+    }
+
     /**
      * Used to extract a variable computed within each iteration of a loop into a list for later use (for
      * example, aggregate functions).
@@ -1866,23 +1903,40 @@ public class OrToolsSolver implements ISolverBackend {
     private static class TranslationContext {
         private final Deque<OutputIR.Block> scopeStack;
         private final boolean isFunctionContext;
+        private final boolean halfReifiedContext;
 
-        private TranslationContext(final Deque<OutputIR.Block> declarations, final boolean isFunctionContext) {
+        private TranslationContext(final Deque<OutputIR.Block> declarations, final boolean isFunctionContext,
+                                   final boolean halfReifiedContext) {
             this.scopeStack = declarations;
             this.isFunctionContext = isFunctionContext;
+            this.halfReifiedContext = halfReifiedContext;
         }
 
         private TranslationContext(final boolean isFunctionContext) {
-            this(new ArrayDeque<>(), isFunctionContext);
+            this(new ArrayDeque<>(), isFunctionContext, false);
         }
 
         TranslationContext withEnterFunctionContext() {
             final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
-            return new TranslationContext(stackCopy, true);
+            return new TranslationContext(stackCopy, true, halfReifiedContext);
         }
 
         boolean isFunctionContext() {
             return isFunctionContext;
+        }
+
+        TranslationContext withEnterHalfReifiedContext() {
+            final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
+            return new TranslationContext(stackCopy, isFunctionContext, true);
+        }
+
+        TranslationContext withEnterFullReifiedContext() {
+            final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
+            return new TranslationContext(stackCopy, isFunctionContext, false);
+        }
+
+        boolean isHalfReifiedContext() {
+            return halfReifiedContext;
         }
 
         void enterScope(final OutputIR.Block block) {

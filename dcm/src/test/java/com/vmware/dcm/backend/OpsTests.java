@@ -382,7 +382,7 @@ public class OpsTests {
         final long l = encoding.toLong("hello");
         final IntVar right = model.newIntVar(0, l * 2, "");
 
-        final IntVar eq = ops.eq("hello", right);
+        final IntVar eq = ops.eq("hello", right, false);
         model.addEquality(eq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -396,7 +396,7 @@ public class OpsTests {
         final long l = encoding.toLong("hello");
         final IntVar right = model.newIntVar(l, l + 1, "");
 
-        final IntVar eq = ops.eq("hello", right);
+        final IntVar eq = ops.eq("hello", right, false);
         model.addDifferent(eq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -409,7 +409,7 @@ public class OpsTests {
     public void eqVarLongWithEquality() {
         final IntVar right = model.newIntVar(0, 20, "");
 
-        final IntVar eq = ops.eq(10L, right);
+        final IntVar eq = ops.eq(10L, right, true);
         model.addEquality(eq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -422,7 +422,7 @@ public class OpsTests {
     public void eqVarBooleanTrueWithEquality() {
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar eq = ops.eq(true, right);
+        final IntVar eq = ops.eq(true, right, false);
         model.addEquality(eq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -435,7 +435,7 @@ public class OpsTests {
     public void eqVarBooleanFalseWithEquality() {
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar eq = ops.eq(false, right);
+        final IntVar eq = ops.eq(false, right, true);
         model.addEquality(eq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -448,7 +448,7 @@ public class OpsTests {
     public void eqVarBooleanTrueNegated() {
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar eq = ops.eq(true, right);
+        final IntVar eq = ops.eq(true, right, false);
         model.addEquality(eq, 0L);
 
         final CpSolver solver = new CpSolver();
@@ -462,7 +462,7 @@ public class OpsTests {
         final long l = encoding.toLong("hello");
         final IntVar right = model.newIntVar(0, l * 2, "");
 
-        final IntVar ne = ops.ne("hello", right);
+        final IntVar ne = ops.ne("hello", right, true);
         model.addEquality(ne, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -476,7 +476,7 @@ public class OpsTests {
         final long l = encoding.toLong("hello");
         final IntVar right = model.newIntVar(l, l + 1, "");
 
-        final IntVar ne = ops.ne("hello", right);
+        final IntVar ne = ops.ne("hello", right, false);
         model.addDifferent(ne, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -490,7 +490,7 @@ public class OpsTests {
     public void neVarLongWithEquality() {
         final IntVar right = model.newIntVar(10, 11, "");
 
-        final IntVar ne = ops.ne(10L, right);
+        final IntVar ne = ops.ne(10L, right, true);
         model.addEquality(ne, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -503,7 +503,7 @@ public class OpsTests {
     public void neVarBooleanTrueWithEquality() {
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar ne = ops.ne(true, right);
+        final IntVar ne = ops.ne(true, right, true);
         model.addEquality(ne, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -516,7 +516,7 @@ public class OpsTests {
     public void neVarBooleanFalseWithEquality() {
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar ne = ops.ne(false, right);
+        final IntVar ne = ops.ne(false, right, true);
         model.addEquality(ne, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -529,7 +529,7 @@ public class OpsTests {
     public void neVarBooleanTrueNegated() {
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar ne = ops.ne(true, right);
+        final IntVar ne = ops.ne(true, right, false);
         model.addEquality(ne, 0L);
 
         final CpSolver solver = new CpSolver();
@@ -541,7 +541,7 @@ public class OpsTests {
     @Test
     public void ltWithConstantRight() {
         final IntVar left = model.newIntVar(0, 1L, "");
-        final IntVar lt = ops.lt(left, 1);
+        final IntVar lt = ops.lt(left, 1, true);
         model.addEquality(lt, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -555,7 +555,7 @@ public class OpsTests {
         final IntVar left = model.newIntVar(0, 1L, "");
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar lt = ops.lt(left, right);
+        final IntVar lt = ops.lt(left, right, true);
         model.addEquality(lt, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -568,7 +568,7 @@ public class OpsTests {
     @Test
     public void leqWithConstantRight() {
         final IntVar left = model.newIntVar(0, 100L, "");
-        final IntVar leq = ops.leq(left, 1);
+        final IntVar leq = ops.leq(left, 1, true);
         model.addEquality(leq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -582,7 +582,7 @@ public class OpsTests {
         final IntVar left = model.newIntVar(0, 1L, "");
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar leq = ops.leq(left, right);
+        final IntVar leq = ops.leq(left, right, true);
         model.addEquality(leq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -594,7 +594,7 @@ public class OpsTests {
     @Test
     public void gtWithConstantRight() {
         final IntVar left = model.newIntVar(0, 2L, "");
-        final IntVar gt = ops.gt(left, 1);
+        final IntVar gt = ops.gt(left, 1, true);
         model.addEquality(gt, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -608,7 +608,7 @@ public class OpsTests {
         final IntVar left = model.newIntVar(0, 1L, "");
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar gt = ops.gt(left, right);
+        final IntVar gt = ops.gt(left, right, true);
         model.addEquality(gt, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -621,7 +621,7 @@ public class OpsTests {
     @Test
     public void geqWithConstantRight() {
         final IntVar left = model.newIntVar(0, 100L, "");
-        final IntVar geq = ops.geq(left, 99L);
+        final IntVar geq = ops.geq(left, 99L, true);
         model.addEquality(geq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -635,7 +635,7 @@ public class OpsTests {
         final IntVar left = model.newIntVar(0, 1L, "");
         final IntVar right = model.newIntVar(0, 1L, "");
 
-        final IntVar geq = ops.geq(left, right);
+        final IntVar geq = ops.geq(left, right, true);
         model.addEquality(geq, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -650,7 +650,7 @@ public class OpsTests {
         strings.forEach(encoding::toLong);
         final IntVar var = model.newIntVar(0, 6L, "");
 
-        final IntVar in = ops.inString(var, List.of("1", "5"));
+        final IntVar in = ops.inString(var, List.of("1", "5"), true);
         model.addEquality(in, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -665,7 +665,7 @@ public class OpsTests {
         final List<Long> longs = List.of(2L, 3L);
         final IntVar var = model.newIntVar(0, 6L, "");
 
-        final IntVar in = ops.inLong(var, longs);
+        final IntVar in = ops.inLong(var, longs, true);
         model.addEquality(in, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -679,7 +679,7 @@ public class OpsTests {
         final List<Integer> ints = List.of(2, 3);
         final IntVar var = model.newIntVar(0, 6, "");
 
-        final IntVar in = ops.inInteger(var, ints);
+        final IntVar in = ops.inInteger(var, ints, true);
         model.addEquality(in, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -693,7 +693,7 @@ public class OpsTests {
         final List<Integer> ints = List.of(2, 3);
         final IntVar var = model.newIntVar(0, 6, "");
 
-        final IntVar in = ops.inInteger(var, ints);
+        final IntVar in = ops.inInteger(var, ints, true);
         model.addEquality(in, 0L);
 
         final CpSolver solver = new CpSolver();
@@ -709,7 +709,7 @@ public class OpsTests {
                                           model.newIntVar(7, 8, ""));
         final IntVar var = model.newIntVar(-100, 100, "");
 
-        final IntVar in = ops.inIntVar(var, vars);
+        final IntVar in = ops.inIntVar(var, vars, false);
         model.addEquality(in, 1L);
 
         final CpSolver solver = new CpSolver();
@@ -726,7 +726,7 @@ public class OpsTests {
                                           model.newIntVar(7, 8, ""));
         final IntVar var = model.newIntVar(0, 10, "");
 
-        final IntVar in = ops.inIntVar(var, vars);
+        final IntVar in = ops.inIntVar(var, vars, false);
         model.addEquality(in, 0L);
 
         final CpSolver solver = new CpSolver();

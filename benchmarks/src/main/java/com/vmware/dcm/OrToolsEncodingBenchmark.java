@@ -47,12 +47,12 @@ public class OrToolsEncodingBenchmark {
         @Nullable Model model = null;
 
         @Param({"true", "false"})
-        static boolean fullReification;
+        static boolean fullReificationJoinPrefs;
 
-        @Param({"true", "false"})
+        @Param({"true"})
         static boolean useCumulative;
 
-        @Param({"true", "false"})
+        @Param({"true"})
         static boolean useScalarProduct;
 
         @Setup(Level.Iteration)
@@ -77,10 +77,10 @@ public class OrToolsEncodingBenchmark {
                             "select * from t2 " +
                             "join t1 " +
                             "     on t2.controllable__c1 = t1.c1 " +
-                            "having capacity_constraint(t2.controllable__c1, t1.c1, " +
+                            "check capacity_constraint(t2.controllable__c1, t1.c1, " +
                             "                           t2.d1, t1.c2) = true",
                     "create view constraint_symmetry as " +
-                            "select * from t2 group by d1 having increasing(controllable__c1) = true"
+                            "select * from t2 group by d1 check increasing(controllable__c1) = true"
             ) : List.of(
                     "create view load_view as " +
                             "select t1.c2 as capacity, sum(t2.d1) as load from t2 " +
@@ -93,7 +93,7 @@ public class OrToolsEncodingBenchmark {
                     "create view objective_c2 as " +
                             "select min(load) from load_view",
                     "create view constraint_symmetry as " +
-                            "select * from t2 group by d1 having increasing(controllable__c1) = true"
+                            "select * from t2 group by d1 check increasing(controllable__c1) = true"
             );
 
             for (int i = 0; i < 1000; i++) {
@@ -105,7 +105,7 @@ public class OrToolsEncodingBenchmark {
             }
 
             final OrToolsSolver solver = new OrToolsSolver.Builder()
-                    .setUseFullReifiedConstraintsForJoinPreferences(fullReification)
+                    .setUseFullReifiedConstraintsForJoinPreferences(fullReificationJoinPrefs)
                     .setTryScalarProductEncoding(useScalarProduct)
                     .setMaxTimeInSeconds(100)
                     .build();
