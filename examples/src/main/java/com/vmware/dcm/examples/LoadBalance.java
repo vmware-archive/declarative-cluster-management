@@ -11,20 +11,15 @@ import com.vmware.dcm.Model;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
-import org.jooq.SQLDialect;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.List;
-import java.util.Properties;
 import java.util.stream.Collectors;
 
-import static java.sql.DriverManager.getConnection;
 import static org.jooq.impl.DSL.table;
 import static org.jooq.impl.DSL.using;
 
@@ -94,15 +89,9 @@ class LoadBalance {
      * Sets up an in-memory Apache Derby database.
      */
     private DSLContext setup() {
-        final Properties properties = new Properties();
-        properties.setProperty("foreign_keys", "true");
         try {
             // Create a fresh database
-            final String connectionURL = "jdbc:h2:mem:;create=true";
-            final Connection conn = getConnection(connectionURL, properties);
-            final DSLContext using = using(conn, SQLDialect.H2);
-            using.execute("create schema curr");
-            using.execute("set schema curr");
+            final DSLContext using = using("jdbc:h2:mem:");
             final InputStream resourceAsStream = this.getClass().getResourceAsStream("/schema.sql");
             final BufferedReader reader =
                     new BufferedReader(new InputStreamReader(resourceAsStream, StandardCharsets.UTF_8));
@@ -117,7 +106,7 @@ class LoadBalance {
             reader.close();
             semiColonSeparated.forEach(using::execute);
             return using;
-        } catch (final SQLException | IOException e) {
+        } catch (final IOException e) {
             throw new RuntimeException(e);
         }
     }
