@@ -53,7 +53,6 @@ import static org.jooq.impl.DSL.values;
  */
 public class Model {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
-    private static final String CURRENT_SCHEMA = "CURR";
     private final DSLContext dbCtx;
     private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
@@ -64,7 +63,10 @@ public class Model {
 
     private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
                   final List<String> constraints) {
-        assert !tables.isEmpty();
+        if (tables.isEmpty()) {
+            throw new ModelException("Model does not contain any constraints or " +
+                                     "constraints do not refer to any tables");
+        }
         this.dbCtx = dbCtx;
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
@@ -180,8 +182,7 @@ public class Model {
         for (final Table<?> t : dslMeta.getTables()) {
             // If there are no constraints, access all tables in the CURR schema.
             // Else, only access the tables that are referenced by the constraints.
-            if ((constraints.size() == 0 && t.getSchema().getName().equals(CURRENT_SCHEMA))
-                    || accessedTableNames.contains(t.getName())) {
+            if (accessedTableNames.contains(t.getName())) {
                 tables.add(t);
 
                 // Also add tables referenced by foreign keys.

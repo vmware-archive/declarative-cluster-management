@@ -13,19 +13,13 @@ import com.vmware.dcm.backend.OrToolsSolver;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
-import org.jooq.SQLDialect;
-import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.File;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Properties;
 import java.util.stream.Stream;
 
 import static org.jooq.impl.DSL.using;
@@ -35,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Tests Weave's use of a constraint solver. Place the mzn files in src/text/java/.../resources folder to
@@ -44,29 +39,6 @@ public class ModelTest {
     static {
         System.getProperties().setProperty("org.jooq.no-logo", "true");
     }
-
-    @ParameterizedTest
-    @MethodSource("solvers")
-    public void noopTest(final SolverConfig solver) {
-        final String modelName = "noopConstraints";
-
-        final DSLContext conn = setup();
-        conn.execute("create table placement(groupId integer, hostId varchar(36))");
-
-        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
-
-        conn.execute("insert into placement values (1, 'h1')");
-        conn.execute("insert into placement values (2, 'h2')");
-        conn.execute("insert into placement values (3, 'h3')");
-        conn.execute("insert into placement values (4, 'h4')");
-
-        model.updateData();
-        model.solveModelAndReflectTableChanges();
-
-        final Result<Record> fetch = conn.selectFrom("curr.placement").fetch();
-        assertEquals(4, fetch.size());
-    }
-
 
     @ParameterizedTest
     @MethodSource("solvers")
@@ -141,18 +113,20 @@ public class ModelTest {
         final String modelName = "noopConstraints";
 
         final DSLContext conn = setup();
-        conn.execute("create table placement(groupId integer, hostId varchar(36))");
+        conn.execute("create table placement(controllable__groupId integer)");
+        final String constraint = "create view constraint_c1 as " +
+                                  "select * from placement check controllable__groupId = 1";
+        final Model model = buildModel(conn, solver, Collections.singletonList(constraint), modelName);
 
-        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
-
-        conn.execute("insert into placement values (1, 'h1')");
-        conn.execute("insert into placement values (2, 'h2')");
-        conn.execute("insert into placement values (3, 'h3')");
-        conn.execute("insert into placement values (4, 'h4')");
+        conn.execute("insert into placement values (10)");
+        conn.execute("insert into placement values (10)");
+        conn.execute("insert into placement values (10)");
+        conn.execute("insert into placement values (10)");
 
         model.updateData();
         final Result<? extends Record> placement = model.solve("PLACEMENT");
         assertEquals(4, placement.size());
+        placement.forEach(e -> assertEquals(1, e.get(0)));
     }
 
 
@@ -164,61 +138,12 @@ public class ModelTest {
         final DSLContext conn = setup();
         conn.execute("create table placement(groupId varchar(100))");
 
-        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
-
-        conn.insertInto(DSL.table("placement"))
-            .values(Collections.singletonList(null)).execute();
-
-        model.updateData();
-        model.solveModelAndReflectTableChanges();
-
-        final Result<Record> fetch = conn.selectFrom("curr.placement").fetch();
-        assertEquals(1, fetch.size());
-    }
-
-    @ParameterizedTest
-    @MethodSource("solvers")
-    public void longSolverTest(final SolverConfig solver) {
-        // model and data files will use this as its name
-        final String modelName = "longSolverTest";
-
-        // create database
-        final DSLContext conn = setup();
-        conn.execute("create table HOSTS(" +
-                "HOST_ID varchar(36)," +
-                "CONTROLLABLE__IN_SEGMENT boolean," +
-                "PRIMARY KEY (HOST_ID)" +
-                ")");
-        conn.execute("create table STRIPES(" +
-                "STRIPE_ID integer, " +
-                "CONTROLLABLE__HOST_ID varchar(36)," +
-                "PRIMARY KEY (STRIPE_ID, CONTROLLABLE__HOST_ID)," +
-                "FOREIGN KEY(CONTROLLABLE__HOST_ID) REFERENCES HOSTS(HOST_ID)" +
-                ")");
-
-        // build model - fails when building for the first time
-        final Model model = buildModel(conn, solver, Collections.emptyList(), modelName);
-
-        final int NUM_HOSTS = 20;
-        final int NUM_STRIPES = 4;
-
-        // insert hosts
-        for (int i = 0; i < NUM_HOSTS; i++) {
-            conn.execute("insert into HOSTS values ('h" + i + "', true)");
+        try {
+            buildModel(conn, solver, Collections.emptyList(), modelName);
+            fail();
+        } catch (final ModelException e) {
+            // should throw exception
         }
-
-        // insert stripes which do not use all the hosts (in this case h3)
-        for (int i = 0; i < NUM_STRIPES; i++) {
-            conn.execute("insert into STRIPES values (" + i + ",'h1')");
-            conn.execute("insert into STRIPES values (" + i + ",'h2')");
-            conn.execute("insert into STRIPES values (" + i + ",'h3')");
-        }
-
-        // update and solve
-        model.updateData();
-        model.solveModelAndReflectTableChanges();
-
-        // TODO: missing the assert. What to expect when the solver can return multiple results?
     }
 
     @ParameterizedTest
@@ -1904,27 +1829,11 @@ public class ModelTest {
     }
 
     /*
-     * Sets up an in-memory Apache Derby database that we use for all tests.
+     * Sets up an in-memory H2 database that we use for all tests.
      */
     private DSLContext setup() {
-        final Properties properties = new Properties();
-        properties.setProperty("foreign_keys", "true");
-        try {
-            // Create a fresh database
-            final String connectionURL = "jdbc:h2:mem:;create=true";
-            final Connection conn = getConnection(connectionURL, properties);
-            final DSLContext using = using(conn, SQLDialect.H2);
-            using.execute("create schema curr");
-            using.execute("set schema curr");
-            return using;
-        } catch (final SQLException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @CanIgnoreReturnValue
-    private Connection getConnection(final String url, final Properties properties) throws SQLException {
-        return DriverManager.getConnection(url, properties);
+        // Create a fresh database
+        return using("jdbc:h2:mem:");
     }
 
     static Stream solvers() {
