@@ -141,7 +141,7 @@ public class QuickStartTest {
 
         // Time to specify a constraint! Just for fun, let's assign tasks to machines such that
         // the machine IDs sum up to 6.
-        final String constraint = "create view always_assign_to_machine_5 as " +
+        final String constraint = "create view example_constraint as " +
                 "select * from tasks check sum(controllable__worker_id) = 6";
 
         // Create a DCM model using the database connection and the above constraint
