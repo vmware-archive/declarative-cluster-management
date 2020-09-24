@@ -103,6 +103,7 @@ repositories {
 Here is a [complete program](examples/src/test/java/com/vmware/dcm/examples/QuickStartTest.java) 
 that you can run to get a feel for DCM. 
 
+<!-- embedme examples/src/test/java/com/vmware/dcm/examples/QuickStartTest.java#L8-L61 -->
 ```java
 import com.vmware.dcm.Model;
 import org.jooq.DSLContext;
@@ -127,7 +128,7 @@ public class QuickStartTest {
         // A table representing tasks, that need to be assigned to machines by DCM.
         // To do so, create a variable column (prefixed by controllable__).
         conn.execute("create table tasks(task_id integer, controllable__worker_id integer, " +
-                     "foreign key (controllable__worker_id) references machines(id))");
+                "foreign key (controllable__worker_id) references machines(id))");
 
         // Add four machines
         conn.execute("insert into machines values(1)");
@@ -152,7 +153,7 @@ public class QuickStartTest {
 
         // Solve and return the tasks table. The controllable__worker_id column will either be [1, 5] or [5, 1]
         final List<Integer> column = model.solve("TASKS")
-                                          .map(e -> e.get("CONTROLLABLE__WORKER_ID", Integer.class));
+                .map(e -> e.get("CONTROLLABLE__WORKER_ID", Integer.class));
         assertEquals(2, column.size());
         assertTrue(column.contains(1));
         assertTrue(column.contains(5));
@@ -185,6 +186,14 @@ sure to setup both solvers first):
 
 ```bash
 $: ./gradlew build
+```
+
+To avoid documentation drift, code snippets in a documentation file (like the README or tutorial) 
+are embedded directly from source files that are continuously tested. To refresh these documentation
+files:
+
+```bash
+$: npx embedme <file>
 ```
 
 The Kubernetes scheduler also comes with integration tests that run against a real Kubernetes cluster. 

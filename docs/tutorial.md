@@ -11,6 +11,7 @@ Start reading from the
    initialized, in-memory database for our example. We will describe the kinds of constraints we can pass to the 
    model starting from step 5:
 
+   <!-- embedme ../examples/src/main/java/com/vmware/dcm/examples/LoadBalance.java#L41-L44 -->
    ```java
    LoadBalance(final List<String> constraints) {
        conn = setup();
@@ -21,6 +22,7 @@ Start reading from the
    The database returned by the `setup()` method is initialized with the following schema, representing a 
    table each for physical and virtual machines:
 
+    <!-- embedme ../examples/src/main/resources/schema.sql#L5-L18 -->
    ```sql
    create table physical_machine (
        name varchar(30) primary key,
@@ -48,15 +50,16 @@ Start reading from the
 3. To actually run the load balancer, we simply invoke `LoadBalance.run()`, which uses two key methods from the DCM
    Model API -- `model.updateData()` and `model.solve()`:
 
+   <!-- embedme ../examples/src/main/java/com/vmware/dcm/examples/LoadBalance.java#L78-L85 -->
    ```java
    Result<? extends Record> run() {
        // Pull the latest state from the DB
        model.updateData();
-
+   
        // Run the solver and return the virtual machines table with solver-identified values for the
        // controllable__physical_machines column
        return model.solve(VIRTUAL_MACHINES_TABLE);
-    }
+   }
    ```
 
 4. Let's now drive our simple example with some tests. Have a look at the 
@@ -94,6 +97,7 @@ Start reading from the
 5. Let's now introduce some constraints. We'll start with a very simple hard constraint: 
    assign all VMs to physical machine `pm3`:
 
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L25-L38 -->
    ```java
    /*
     * A simple constraint that forces all assignments to go the same node
@@ -107,7 +111,7 @@ Start reading from the
        addInventory(lb);
        final Result<? extends Record> results = lb.run();
        System.out.println(results);
-       results.forEach(e -> assertEquals(e.get("CONTROLLABLE__PHYSICAL_MACHINE"), "pm3"));
+       results.forEach(e -> assertEquals("pm3", e.get("CONTROLLABLE__PHYSICAL_MACHINE")));
    }
    ```
    To specify a hard constraint, we create a view with a `check` clause. The `check` clause
@@ -135,7 +139,8 @@ Start reading from the
 6. Now let's get serious and add a capacity constraint. We want to ensure that the
    sum of demands from all VMs assigned to a physical machine does not exceed the capacity of that machine. 
    To specify that, we write the following constraint:
-  
+
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L40-L64 -->
    ```java
    /*
     * We now add a capacity constraint to make sure that no physical machine is assigned more VMs
@@ -151,7 +156,7 @@ Start reading from the
                "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
                "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
                "check sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
-               "      sum(virtual_machine.memory) <= physical_machine.memory_capacity";
+               "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
    
        final LoadBalance lb = new LoadBalance(Collections.singletonList(capacityConstraint));
        addInventory(lb);
@@ -160,7 +165,6 @@ Start reading from the
        final Set<String> setOfPhysicalMachines = results.stream()
                                                     .map(e -> e.get("CONTROLLABLE__PHYSICAL_MACHINE", String.class))
                                                     .collect(Collectors.toSet());
-       System.out.println(result);
        assertTrue(setOfPhysicalMachines.size() >= 2);
    }
    ```
@@ -186,6 +190,7 @@ Start reading from the
 7. Note that the constraints we have seen so far are hard constraints. Let's now add a soft constraint, a load balancing
    objective:
    
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L66-L99 -->
    ```java
    /*
     * Add a load balancing objective function. This should spread out VMs across all physical machines.
@@ -212,7 +217,7 @@ Start reading from the
        final String distributeLoadCpu = "create view objective_load_cpu as select min(cpu_spare) from spare_cpu";
    
        final LoadBalance lb =
-                 new LoadBalance(List.of(capacityConstraint, spareCpu, distributeLoadCpu));
+               new LoadBalance(List.of(capacityConstraint, spareCpu, distributeLoadCpu));
        addInventory(lb);
        final Result<? extends Record> result = lb.run();
        final Set<String> setOfPhysicalMachines = result.stream()

@@ -8,7 +8,6 @@ create table physical_machine (
     memory_capacity integer
 );
 
-
 -- controllable__physical_machine represents a variable that the solver will assign values to
 create table virtual_machine (
     name varchar(30) primary key not null,
