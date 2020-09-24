@@ -21,6 +21,7 @@ jobs:
       # run tests!
       - run: ./gradlew build test codeCoverageReport -i
       - run: bash <(curl -s https://codecov.io/bash) -f build/reports/jacoco/codeCoverageReport/codeCoverageReport.xml
+      - run: bash verify_docs.sh
 
       # collect test metadata
       - run:

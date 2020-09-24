@@ -75,7 +75,7 @@ public class LoadBalanceTest {
                 "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
                 "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
                 "check sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
-                "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
+                "      sum(virtual_machine.memory) <= physical_machine.memory_capacity";
 
         final String spareCpu = "create view spare_cpu as " +
                 "select physical_machine.cpu_capacity - sum(virtual_machine.cpu) as cpu_spare " +
