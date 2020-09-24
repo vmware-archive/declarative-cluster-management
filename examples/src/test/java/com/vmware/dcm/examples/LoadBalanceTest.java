@@ -23,18 +23,6 @@ public class LoadBalanceTest {
     private static final int NUM_VIRTUAL_MACHINES = 10;
 
     /*
-     * We don't supply any constraints. So the solver will arbitrarily pick a few nodes to assign
-     * these VMs to.
-     */
-    @Test
-    public void testNoConstraints() {
-        final LoadBalance lb = new LoadBalance(Collections.emptyList());
-        addInventory(lb);
-        final Result<? extends Record> results = lb.run();
-        assertEquals(NUM_VIRTUAL_MACHINES, results.size());
-    }
-
-    /*
      * A simple constraint that forces all assignments to go the same node
      */
     @Test
