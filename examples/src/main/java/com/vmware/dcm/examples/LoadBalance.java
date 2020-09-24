@@ -86,11 +86,10 @@ class LoadBalance {
 
 
     /*
-     * Sets up an in-memory Apache Derby database.
+     * Sets up an in-memory database.
      */
     private DSLContext setup() {
         try {
-            // Create a fresh database
             final DSLContext using = using("jdbc:h2:mem:");
             final InputStream resourceAsStream = this.getClass().getResourceAsStream("/schema.sql");
             final BufferedReader reader =
