@@ -1,4 +1,4 @@
-package com.vmware.dcm.viewupdater;
+package com.vmware.dcm.backend.viewupdater;
 
 import ddlogapi.DDlogCommand;
 
