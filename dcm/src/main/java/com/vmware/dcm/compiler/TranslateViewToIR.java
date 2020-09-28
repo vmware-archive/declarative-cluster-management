@@ -345,9 +345,9 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
                 exprs.add(expr);
             } else if (selectItem instanceof AllColumns) {
                 tables.forEach(
-                        table -> table.getIRColumns().forEach((fieldName, irColumn) -> {
-                            exprs.add(new ColumnIdentifier(table.getName(), irColumn, false));
-                        })
+                        table ->
+                            table.getIRColumns().forEach((fieldName, irColumn) ->
+                                exprs.add(new ColumnIdentifier(table.getName(), irColumn, false)))
                 );
             }
         }

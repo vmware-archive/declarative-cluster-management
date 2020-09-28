@@ -65,7 +65,7 @@ public class ModelCompiler {
     }
 
     private void splitByType(final List<ViewsWithChecks> viewsWithChecks, final ReferencedSymbols symbols) {
-        viewsWithChecks.stream().forEach(view -> {
+        viewsWithChecks.forEach(view -> {
                 final CreateView createView = view.getCreateView();
                 final String viewName = createView.getName().toString();
                 if (view.getCheckExpression().isPresent()) {
@@ -180,9 +180,7 @@ public class ModelCompiler {
         @Override
         protected Void visitAllColumns(final AllColumns node, final Optional<String> context) {
             tablesReferencedInView.forEach(
-                table -> table.getIRColumns().forEach((fieldName, irColumn) -> {
-                    viewTable.addField(irColumn);
-                })
+                table -> table.getIRColumns().forEach((fieldName, irColumn) -> viewTable.addField(irColumn))
             );
             return null;
         }

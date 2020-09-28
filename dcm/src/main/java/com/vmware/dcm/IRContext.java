@@ -113,12 +113,7 @@ public class IRContext {
                     .collect(Collectors.toList());
     }
 
-    /*************************
-     * Helper methods
-     *************************/
-
     // TODO: this should ideally happen at input time.
-
     /**
      * Track an IRTable that is either an alias for an existing table or a view table
      * @param table the alias or view table to track

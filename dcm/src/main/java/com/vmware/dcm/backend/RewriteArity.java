@@ -8,9 +8,6 @@ package com.vmware.dcm.backend;
 
 
 import com.google.common.base.Preconditions;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.Qualifier;
-import com.vmware.dcm.compiler.monoid.VoidType;
 import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.monoid.ComprehensionRewriter;
@@ -19,7 +16,10 @@ import com.vmware.dcm.compiler.monoid.Expr;
 import com.vmware.dcm.compiler.monoid.GroupByComprehension;
 import com.vmware.dcm.compiler.monoid.Head;
 import com.vmware.dcm.compiler.monoid.MonoidComprehension;
+import com.vmware.dcm.compiler.monoid.MonoidFunction;
 import com.vmware.dcm.compiler.monoid.MonoidLiteral;
+import com.vmware.dcm.compiler.monoid.Qualifier;
+import com.vmware.dcm.compiler.monoid.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -118,9 +118,7 @@ class RewriteArity extends ComprehensionRewriter {
             return input;
         }
         final Head newHead = new Head(Collections.singletonList(varQualifiers.get(0)));
-        final MonoidComprehension rewrittenComprehension =
-                new MonoidComprehension(newHead, nonVarQualifiers);
-        return rewrittenComprehension;
+        return new MonoidComprehension(newHead, nonVarQualifiers);
     }
 
     private static MonoidComprehension maybeRewriteFunctions(final MonoidComprehension input,

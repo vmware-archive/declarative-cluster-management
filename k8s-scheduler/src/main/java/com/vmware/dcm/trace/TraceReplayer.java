@@ -12,6 +12,7 @@ import com.google.common.util.concurrent.ListenableScheduledFuture;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
+import com.vmware.dcm.IPodDeployer;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -20,7 +21,6 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
-import com.vmware.dcm.IPodDeployer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -170,7 +170,7 @@ public class TraceReplayer {
                                     final boolean createAffinityRequirements) {
         // Load the template file and update its contents to generate a new deployment template
         final String podFile = createAffinityRequirements ? "pod-with-affinity.yml" : "pod-only.yml";
-        final List<Pod> podsToCreate = IntStream.range(0, count)
+        return IntStream.range(0, count)
                 .mapToObj(podCount -> {
                     try (final InputStream fileStream =
                                  getClass().getClassLoader().getResourceAsStream(podFile)) {
@@ -220,6 +220,5 @@ public class TraceReplayer {
                     }
                 })
                 .collect(Collectors.toList());
-        return podsToCreate;
     }
 }

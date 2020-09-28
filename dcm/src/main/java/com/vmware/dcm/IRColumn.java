@@ -41,7 +41,7 @@ public class IRColumn {
      * the value of the latter.
      */
     public enum FieldTag {
-        CONTROLLABLE, INPUT;
+        CONTROLLABLE, INPUT
     }
 
     /**

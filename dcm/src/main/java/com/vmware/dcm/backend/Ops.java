@@ -608,7 +608,7 @@ public class Ops {
             }
         }
         final IntVar enforcement = model.newBoolVar("");
-        model.addBoolOr(bools.toArray(new IntVar[0])).onlyEnforceIf(enforcement);;
+        model.addBoolOr(bools.toArray(new IntVar[0])).onlyEnforceIf(enforcement);
         model.maximize(enforcement);
     }
 }

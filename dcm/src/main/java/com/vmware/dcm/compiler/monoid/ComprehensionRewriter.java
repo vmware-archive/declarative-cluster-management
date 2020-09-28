@@ -6,8 +6,6 @@
 
 package com.vmware.dcm.compiler.monoid;
 
-import com.google.common.base.Preconditions;
-
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -47,7 +45,6 @@ public class ComprehensionRewriter extends MonoidVisitor<Expr, VoidType> {
     @Override
     protected Expr visitUnaryOperator(final UnaryOperator node, final VoidType context) {
         final Expr argument = this.visit(node.getArgument(), context);
-        Preconditions.checkArgument(argument != null);
         return new UnaryOperator(node.getOperator(), argument);
     }
 

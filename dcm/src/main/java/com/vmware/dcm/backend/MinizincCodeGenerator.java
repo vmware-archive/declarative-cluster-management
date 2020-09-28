@@ -9,30 +9,30 @@ package com.vmware.dcm.backend;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRForeignKey;
-import com.vmware.dcm.compiler.UsesControllableFields;
-import com.vmware.dcm.compiler.monoid.GroupByQualifier;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.Qualifier;
-import com.vmware.dcm.compiler.monoid.VoidType;
-import org.apache.commons.text.StringEscapeUtils;
-import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRPrimaryKey;
 import com.vmware.dcm.IRTable;
+import com.vmware.dcm.compiler.UsesControllableFields;
 import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
 import com.vmware.dcm.compiler.monoid.ExistsPredicate;
 import com.vmware.dcm.compiler.monoid.Expr;
 import com.vmware.dcm.compiler.monoid.GroupByComprehension;
+import com.vmware.dcm.compiler.monoid.GroupByQualifier;
 import com.vmware.dcm.compiler.monoid.Head;
 import com.vmware.dcm.compiler.monoid.JoinPredicate;
 import com.vmware.dcm.compiler.monoid.MonoidComprehension;
+import com.vmware.dcm.compiler.monoid.MonoidFunction;
 import com.vmware.dcm.compiler.monoid.MonoidLiteral;
+import com.vmware.dcm.compiler.monoid.Qualifier;
 import com.vmware.dcm.compiler.monoid.SimpleVisitor;
 import com.vmware.dcm.compiler.monoid.TableRowGenerator;
 import com.vmware.dcm.compiler.monoid.UnaryOperator;
+import com.vmware.dcm.compiler.monoid.VoidType;
+import org.apache.commons.text.StringEscapeUtils;
 
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
@@ -236,8 +236,8 @@ public class MinizincCodeGenerator extends SimpleVisitor {
                 // tag that separates tables and the name of the new table
                 StringEscapeUtils.escapeJava(MinizincString.MNZ_OUTPUT_TABLENAME_TAG), table.getName(),
                 // header of the CSV-like output with all the table fields
-                table.getIRColumns().entrySet().stream().map(f -> f.getValue().getName())
-                                               .collect(Collectors.joining(csvDelimiter)),
+                table.getIRColumns().values().stream().map(IRColumn::getName)
+                                             .collect(Collectors.joining(csvDelimiter)),
                 // a MiniZinc show() for each column
                 String.join(" ++ \"" + csvDelimiter + "\" ++ ", shows),
                 // table rows names
