@@ -9,22 +9,16 @@ package com.vmware.dcm;
 import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.tree.CreateView;
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.OrToolsSolver;
 import com.vmware.dcm.compiler.ModelCompiler;
-import org.jooq.Constraint;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Meta;
 import org.jooq.Record;
 import org.jooq.Result;
-import org.jooq.RowN;
 import org.jooq.Table;
-import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,9 +31,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import static org.jooq.impl.DSL.row;
-import static org.jooq.impl.DSL.values;
 
 
 /**
@@ -56,7 +47,6 @@ public class Model {
     private final DSLContext dbCtx;
     private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
-    private final Multimap<Table<?>, Constraint> jooqTableConstraintMap;
     private final ModelCompiler compiler;
     private final IRContext irContext;
     private final ISolverBackend backend;
@@ -114,21 +104,8 @@ public class Model {
 
         // parse model from SQL tables
         jooqTableToIRTable = new HashMap<>(augmentedTableList.size());
-        jooqTableConstraintMap = HashMultimap.create();
         irTables = new HashMap<>(augmentedTableList.size());
         parseModel(augmentedTableList);
-        for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
-            // TODO: uncomment if removal of pk constraints is needed
-            // final UniqueKey pk = table.getPrimaryKey();
-            // constraints.put(table, pk.constraint());
-            // dbCtx.alterTable(table).drop(pk.constraint()).execute();
-
-            // remove fk constraints
-            final Table<? extends Record> table = entry.getKey();
-            for (final ForeignKey<? extends Record, ?> fk : table.getReferences()) {
-                jooqTableConstraintMap.put(table, fk.constraint());
-            }
-        }
         irContext = new IRContext(irTables);
         compiler = new ModelCompiler(irContext);
         compiler.compile(constraintViews, backend);
@@ -164,9 +141,9 @@ public class Model {
     }
 
     /**
-     * Finds all the tables that are on the CURRENT_SCHEMA on the given DSLContext
+     * Finds all the tables that are referenced by the supplied constraints
      *
-     * @return list of all the tables on the CURRENT_SCHEMA
+     * @return list of all the tables referenced by constraints
      */
     private static List<Table<?>> getTablesFromContext(final DSLContext dslContext, final List<String> constraints) {
         final Set<String> accessedTableNames = new HashSet<>();
@@ -180,13 +157,11 @@ public class Model {
         final Meta dslMeta = dslContext.meta();
         final List<Table<?>> tables = new ArrayList<>();
         for (final Table<?> t : dslMeta.getTables()) {
-            // If there are no constraints, access all tables in the CURR schema.
-            // Else, only access the tables that are referenced by the constraints.
+            // Only access the tables that are referenced by the constraints.
             if (accessedTableNames.contains(t.getName())) {
                 tables.add(t);
 
                 // Also add tables referenced by foreign keys.
-                // TODO: this might be overly conservative
                 t.getReferences().forEach(
                     fk -> tables.add(fk.getKey().getTable())
                 );
@@ -200,21 +175,6 @@ public class Model {
      */
     public synchronized void updateData() {
         updateDataFields();
-    }
-
-    /**
-     * Solves the current model by running the current modelFile and dataFile against MiniZinc
-     * This method should only be used for testing.
-     */
-    @VisibleForTesting
-    synchronized void solveModelAndReflectTableChanges() throws ModelException {
-        // run the solver and get a result set per table
-        LOG.info("Running the solver");
-        final long start = System.nanoTime();
-        final Map<IRTable, Result<? extends Record>> recordsPerTable = backend.runSolver(dbCtx, irTables);
-        LOG.info("Solver has run successfully in {}ns. Processing records.", System.nanoTime() - start);
-        // write changes to each table
-        updateTables(recordsPerTable);
     }
 
     /**
@@ -252,103 +212,6 @@ public class Model {
     public synchronized Result<? extends Record> solve(final String tableName)
             throws ModelException {
         return solve(Set.of(tableName)).get(tableName);
-    }
-
-    /**
-     * Updates the database tables based on the output from the backend.
-     */
-    @SuppressWarnings("unchecked")
-    private void updateTables(final Map<IRTable, Result<? extends Record>> recordsPerTable) {
-        LOG.info("Removing constraints");
-
-        // We temporarily remove constraints so we avoid SQL errors related to ForeignKey errors
-        removeConstraints(jooqTableConstraintMap);
-
-        for (final Map.Entry<IRTable, Result<? extends Record>> tableEntry : recordsPerTable.entrySet()) {
-            final IRTable irTable = tableEntry.getKey();
-            LOG.info("Updating rows for table: {}", irTable.getName());
-
-            // if a table has no variables, there will be no new values from the solver to write
-            // hence we just skip that value
-            if (irTable.getVars().isEmpty()) {
-                continue;
-            }
-
-            final Table table = irTable.getTable();
-            final Result<? extends Record> records = tableEntry.getValue();
-
-            // transform the result into a temporary VALUES table
-            // https://www.jooq.org/doc/latest/manual/sql-building/table-expressions/values/
-            final RowN[] valuesRows = records.stream().map(Record::valuesRow).toArray(RowN[]::new);
-
-            // Rundown of the different query parts:
-            // - Current Table:
-            //      dbCtx.selectFrom(table)
-            // - Temporary VALUES table built from the backend output
-            //      dbCtx.selectFrom(values(valuesRows).as(table, table.fields()))
-
-            // Delete rows on current table that are not in the backend's output.
-            // It is computed as: Current Table MINUS output table
-            final Result<? extends Record> rowsToDelete = dbCtx.selectFrom(table)
-                    .except(dbCtx.selectFrom(values(valuesRows).as(table, table.fields())))
-                    .fetchInto(table);
-
-            if (rowsToDelete.size() == 0) {
-                continue;
-            }
-
-            // jOOQ's `batchDelete` won't work here because it needs a list of `UpdatableRecord`s,
-            // but `UpdatableRecord` only exists for tables with a primary key.
-            // Since we are not assuming that, we execute an row-by-row delete.
-            dbCtx.transaction(configuration -> {
-                final DSLContext txCtx = DSL.using(configuration);
-                for (final Record recordToDelete : rowsToDelete) {
-                    txCtx.delete(table).where(row(table.fields()).eq(recordToDelete.intoArray())).execute();
-                }
-
-            });
-
-            // Insert new rows from the backend's output.
-            // It is computed as: backend output table MINUS Current Table
-            dbCtx.insertInto(table)
-                    .select(dbCtx.selectFrom(values(valuesRows).as(table, table.fields()))
-                                 .except(dbCtx.selectFrom(table)))
-                    .execute();
-        }
-
-        // FIXME: If any exception is thrown while performing the operations in the tables we might not be able to
-        // restore the constraints here again. Even if we add a try-finally block, there might be the case when the
-        // table was left at an inconsistent state and then when we are unable to restore constraints
-        // TODO: Observe the different exceptions that might get thrown in this method and handle them overtime
-
-        // After updating the DB we restore the constraints that we removed before
-        restoreConstraints(jooqTableConstraintMap);
-
-        LOG.info("Wrote output to the given DB context! You can read changes now.");
-    }
-
-    /**
-     * Restore previously removed constraints
-     */
-    private void restoreConstraints(final Multimap<Table<?>, Constraint> constraints) {
-        for (final Map.Entry<Table<?>, Constraint> entry : constraints.entries()) {
-            final Table<?> table = entry.getKey();
-            final Constraint constraint = entry.getValue();
-            LOG.info("Restoring constraint: {} on table: {}", constraint, table);
-            dbCtx.alterTable(table).add(constraint).execute();
-        }
-    }
-
-    /**
-     * Removes existing foreign key constraints
-     */
-    private void removeConstraints(final Multimap<Table<?>, Constraint> constraints) {
-        for (final Map.Entry<Table<?>, Constraint> entry : constraints.entries()) {
-            final Table<?> table = entry.getKey();
-            final Constraint constraint = entry.getValue();
-            LOG.info("Removing constraint: {} on table: {}", constraint, table);
-            dbCtx.alterTable(table).drop(constraint).execute();
-        }
     }
 
     /**

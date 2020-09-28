@@ -14,12 +14,14 @@ import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.File;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.jooq.impl.DSL.using;
@@ -194,10 +196,9 @@ public class ModelTest {
 
         // update and solve
         model.updateData();
-        model.solveModelAndReflectTableChanges();
 
-        final List<?> results = conn.selectFrom("STRIPES")
-                .fetch("CONTROLLABLE__HOST_ID");
+        final List<String> results = model.solve("STRIPES")
+                .map(e -> e.get("CONTROLLABLE__HOST_ID", String.class));
 
         // check the size of the stripes
         assertTrue(results.contains("h3"));
@@ -248,10 +249,9 @@ public class ModelTest {
 
         // update and solve
         model.updateData();
-        model.solveModelAndReflectTableChanges();
 
-        final List<?> results = conn.selectFrom("STRIPES")
-                .fetch("CONTROLLABLE__HOST_ID");
+        final List<String> results = model.solve("STRIPES")
+                .map(e -> e.get("CONTROLLABLE__HOST_ID", String.class));
 
         // check the size of the stripes
         assertTrue(results.contains("h1"));
@@ -303,10 +303,8 @@ public class ModelTest {
 
         // update and solve
         model.updateData();
-        model.solveModelAndReflectTableChanges();
-
-        final List<?> results = conn.selectFrom("STRIPES")
-                .fetch("CONTROLLABLE__HOST_ID");
+        final List<String> results = model.solve("STRIPES")
+                .map(e -> e.get("CONTROLLABLE__HOST_ID", String.class));
 
         // check the size of the stripes
         assertTrue(results.contains("h1") || results.contains("h2") || results.contains("h3"));
@@ -380,10 +378,10 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h1', 3)");
         conn.execute("insert into HOSTS values ('h2', 3)");
 
-        // build model - fails when building for the first time
+        // TODO: Strange
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
     @ParameterizedTest
@@ -420,10 +418,10 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 2)");
         conn.execute("insert into HOSTS values ('h3', 3)");
 
-        // build model
+        // TODO: strange
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
 
@@ -454,12 +452,9 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
 
-        final List<?> results = conn.selectFrom("T1")
-                .fetch("CONTROLLABLE__C2");
-
-        // check the size of the stripes
+        final List<Integer> results = model.solve("T1")
+                .map(e -> e.get("CONTROLLABLE__C2", int.class));
         assertFalse(results.contains(1));
     }
 
@@ -491,19 +486,16 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
-
-        final List<?> results = conn.selectFrom("T1")
-                .fetch("CONTROLLABLE__C2");
+        final List<Integer> results = model.solve("T1")
+                .map(e -> e.get("CONTROLLABLE__C2", int.class));
 
         // check the size of the stripes
         assertFalse(results.contains(1));
     }
 
 
-    @ParameterizedTest
-    @MethodSource("solvers")
-    public void testAggregateKubernetesBug(final SolverConfig solver) {
+    @Test
+    public void testAggregateKubernetesBug() {
         // model and data files will use this as its name
         final String modelName = "testAggregateWithMultiplePredicates";
 
@@ -571,7 +563,9 @@ public class ModelTest {
                 "   having count(node_labels.label_key) = (select count(*) from labels_to_check_for_presence));");
 
         // build model
-        buildModel(conn, solver, views, modelName);
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
+        model.updateData();
+        model.solve("POD_INFO");
     }
 
     @ParameterizedTest
@@ -601,10 +595,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 2)");
         conn.execute("insert into HOSTS values ('h3', 3)");
 
-        // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
 
@@ -633,10 +626,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 2)");
         conn.execute("insert into HOSTS values ('h3', 3)");
 
-        // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
 
@@ -666,12 +658,10 @@ public class ModelTest {
         conn.execute("insert into t1 values (2)");
         conn.execute("insert into t2 values (3)");
 
-        // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
 
-        final List<Integer> fetch = conn.selectFrom("t1").fetch("CONTROLLABLE__C1", Integer.class);
+        final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
         assertEquals(1, fetch.size());
         assertEquals(3, fetch.get(0).intValue());
     }
@@ -702,10 +692,9 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 2)");
         conn.execute("insert into HOSTS values ('h3', 3)");
 
-        // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
     @ParameterizedTest
@@ -751,10 +740,9 @@ public class ModelTest {
         conn.execute("insert into pod_info values ('p1', 'Pending', 'n1')");
         conn.execute("insert into pod_ports_request values ('p1', '127.0.0.1', 1841, 'tcp')");
 
-        // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("POD_INFO");
     }
 
 
@@ -792,10 +780,9 @@ public class ModelTest {
         conn.execute("insert into node_info values (1, 10)");
         conn.execute("insert into pod_info values ('p1', 'Pending', 1, 5)");
 
-        // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("POD_INFO");
     }
 
     @ParameterizedTest
@@ -822,8 +809,7 @@ public class ModelTest {
         conn.execute("insert into t2 values (2)");
         final Model model = buildModel(conn, solver, Collections.singletonList(pod_info_constant), modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
-        final Result<Record> t1 = conn.selectFrom("t1").fetch();
+        final Result<? extends Record> t1 = model.solve("T1");
         assertEquals(1, t1.get(0).get("CONTROLLABLE__C2"));
         assertEquals(2, t1.get(1).get("CONTROLLABLE__C2"));
         assertNotEquals(3, t1.get(2).get("CONTROLLABLE__C2"));
@@ -867,10 +853,9 @@ public class ModelTest {
         for (int i = 0; i < 100; i++) {
             conn.execute(String.format("insert into pod_info values ('p%s', 'Pending', 'n1', 5)", i));
         }
-        // Should not be opt
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("POD_INFO");
     }
 
 
@@ -902,7 +887,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
     @ParameterizedTest
@@ -946,7 +931,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
 
@@ -990,7 +975,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
     @Disabled
@@ -1042,7 +1027,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("HOSTS");
     }
 
 
@@ -1086,9 +1071,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
-
-        // Should not be unsat.
+        model.solve("HOSTS");
     }
 
 
@@ -1113,7 +1096,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("T1");
     }
 
 
@@ -1138,9 +1121,8 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
 
-        final List<Integer> fetch = conn.selectFrom("t1").fetch("CONTROLLABLE__C1", Integer.class);
+        final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
         assertEquals(1, fetch.size());
         assertEquals(-10, fetch.get(0).intValue());
     }
@@ -1234,7 +1216,7 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
+        model.solve("POD_INFO");
     }
 
 
@@ -1272,8 +1254,8 @@ public class ModelTest {
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        model.solveModelAndReflectTableChanges();
-        final Result<Record> podInfo = conn.selectFrom("POD_INFO").fetch();
+
+        final Result<? extends Record> podInfo = model.solve("POD_INFO");
         assertEquals(1, podInfo.size());
         assertTrue(podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n1") ||
                             podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n2"));
@@ -1378,6 +1360,7 @@ public class ModelTest {
 
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
+        model.solve("POD_INFO");
     }
 
     @ParameterizedTest
@@ -1436,7 +1419,9 @@ public class ModelTest {
             "  sum(pod_info.memory_request) < node_info.memory_allocatable and\n" +
             "  sum(pod_info.pods_request) < node_info.pods_allocatable;");
 
-        buildModel(conn, solver, views, modelName);
+        final Model model = buildModel(conn, solver, views, modelName);
+        model.updateData();
+        model.solve("POD_INFO");
     }
 
     @ParameterizedTest
@@ -1656,7 +1641,7 @@ public class ModelTest {
         final List<String> views = toListOfViews(stringBuilder.toString());
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        assertThrows(ModelException.class, model::solveModelAndReflectTableChanges);
+        assertThrows(ModelException.class, () -> model.solve("POD_INFO"));
     }
 
     private void insert_data(final DSLContext conn) {
@@ -1701,9 +1686,8 @@ public class ModelTest {
     }
 
 
-    @ParameterizedTest
-    @MethodSource("solvers")
-    public void corfuModel(final SolverConfig solver) {
+    @Test
+    public void corfuModel() {
         // model and data files will use this as its name
         final String modelName = "corfuModel";
 
@@ -1760,7 +1744,6 @@ public class ModelTest {
         );
 
         // non-constraint views
-        // TODO: this is the correct view but atm the compiler doesnt support that
         final List<String> views = toListOfViews("create view constraint_retain_old_values_hosts as\n" +
                 "select * from hosts check epoch_id = (select max(epoch_id) from hosts as A) or\n" +
                 "         (controllable__is_layout_server = is_layout_server and\n" +
@@ -1787,7 +1770,9 @@ public class ModelTest {
                 "         controllable__in_segment = true");
 
         // build model
-        buildModel(conn, solver, views, modelName);
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
+        model.updateData();
+        model.solve(Set.of("HOSTS", "STRIPES"));
     }
 
     /**
@@ -1836,12 +1821,8 @@ public class ModelTest {
         return using("jdbc:h2:mem:");
     }
 
-    static Stream solvers() {
-        if (System.getenv().get(OrToolsSolver.OR_TOOLS_LIB_ENV) != null) {
-            return Stream.of(SolverConfig.OrToolsSolver, SolverConfig.MinizincSolver);
-        } else {
-            return Stream.of(SolverConfig.MinizincSolver);
-        }
+    static Stream<SolverConfig> solvers() {
+        return Stream.of(SolverConfig.OrToolsSolver, SolverConfig.MinizincSolver);
     }
 
     enum SolverConfig {
