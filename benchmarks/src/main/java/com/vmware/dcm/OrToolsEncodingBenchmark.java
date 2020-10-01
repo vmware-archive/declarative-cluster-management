@@ -77,10 +77,10 @@ public class OrToolsEncodingBenchmark {
                             "select * from t2 " +
                             "join t1 " +
                             "     on t2.controllable__c1 = t1.c1 " +
-                            "having capacity_constraint(t2.controllable__c1, t1.c1, " +
+                            "check capacity_constraint(t2.controllable__c1, t1.c1, " +
                             "                           t2.d1, t1.c2) = true",
                     "create view constraint_symmetry as " +
-                            "select * from t2 group by d1 having increasing(controllable__c1) = true"
+                            "select * from t2 check increasing(controllable__c1) = true"
             ) : List.of(
                     "create view load_view as " +
                             "select t1.c2 as capacity, sum(t2.d1) as load from t2 " +
@@ -89,19 +89,21 @@ public class OrToolsEncodingBenchmark {
                             "group by t1.c1, t1.c2",
                     "create view constraint_c1 as " +
                             "select * from load_view " +
-                            "where load <= capacity",
+                            "check load <= capacity",
                     "create view objective_c2 as " +
                             "select min(load) from load_view",
                     "create view constraint_symmetry as " +
-                            "select * from t2 group by d1 having increasing(controllable__c1) = true"
+                            "select * from t2 check increasing(controllable__c1) = true"
             );
 
-            for (int i = 0; i < 1000; i++) {
+            for (int i = 0; i < 5000; i++) {
                 conn.execute(String.format("insert into t1 values(%s, %s)", i,
                         50 + ThreadLocalRandom.current().nextInt(1, 100)));
             }
             for (int i = 0; i < 50; i++) {
-                conn.execute("insert into t2 values(null, 1)");
+                conn.execute(
+                        String.format("insert into t2 values(null, %s)",
+                                ThreadLocalRandom.current().nextInt(1, 50)));
             }
 
             final OrToolsSolver solver = new OrToolsSolver.Builder()
