@@ -14,12 +14,10 @@ import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearExpr;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 
-@EnabledIfEnvironmentVariable(named = "OR_TOOLS_LIB", matches = ".*libjniortools.*")
 public class OrToolsIntervalsTest {
 
     static {
