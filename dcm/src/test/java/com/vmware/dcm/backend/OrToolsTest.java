@@ -15,14 +15,12 @@ import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
 import com.google.ortools.util.Domain;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
-@EnabledIfEnvironmentVariable(named = "OR_TOOLS_LIB", matches = ".*libjniortools.*")
 public class OrToolsTest {
 
     static {
