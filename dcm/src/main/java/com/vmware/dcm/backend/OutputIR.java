@@ -29,9 +29,11 @@ import java.util.stream.Collectors;
 class OutputIR {
     private static final String TEMP_VAR_PREFIX = "i";
     private final AtomicInteger intermediateVariableCounter;
+    private final AtomicInteger tupleVariableCounter;
 
     OutputIR() {
         this.intermediateVariableCounter = new AtomicInteger(0);
+        this.tupleVariableCounter = new AtomicInteger(0);
     }
 
     Block newBlock(final String name) {
@@ -82,12 +84,14 @@ class OutputIR {
         private final List<BlockExpr> body;
         private final Declarations declarations;
         private final List<BlockExpr> insertionOrder = new ArrayList<>();
+        private final String tupleName;
 
         private Block(final String name) {
             super(name);
             this.body = new ArrayList<>();
             this.header = new LinkedHashSet<>();
             this.declarations = new Declarations(name);
+            this.tupleName = "t" + tupleVariableCounter.incrementAndGet();
         }
 
         boolean addHeader(final CodeBlock blockExpr) {
@@ -125,6 +129,10 @@ class OutputIR {
                     .collect(Collectors.toList());
             assert loops.size() == 1 && loops.get(0) instanceof ForBlock;
             return (ForBlock) loops.get(0);
+        }
+
+        public String getTupleName() {
+            return tupleName;
         }
 
         @Override

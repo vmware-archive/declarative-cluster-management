@@ -396,9 +396,8 @@ public class OrToolsSolver implements ISolverBackend {
             );
 
             final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName,
-                        CodeBlock.of("for (final Tuple$L<$L> t: data)", innerTupleSize, headItemsTupleTypeParamters),
-                        "data.size()"
-            );
+                        CodeBlock.of("for (final Tuple$L<$L> dataTuple: data)", innerTupleSize,
+                                      headItemsTupleTypeParamters), "data.size()");
             forBlock.addBody(dataForBlock);
 
             // (3) Filter if necessary
@@ -421,8 +420,9 @@ public class OrToolsSolver implements ISolverBackend {
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
                                                  .map(e -> exprToStr(e, true, groupContext, context))
                                                  .collect(Collectors.joining(", "));
-                forBlock.addBody(statement("final $1N<$2L> t = new $1N<>($3L)",
-                                            typeSpec, viewTupleGenericParameters, tupleResult));
+                forBlock.addBody(statement("final $1N<$2L> $3L = new $1N<>($4L)",
+                                            typeSpec, viewTupleGenericParameters,
+                                            context.getTupleVarName(), tupleResult));
 
                 // Record field name indices for view
                 // TODO: wrap this block into a helper.
@@ -430,7 +430,7 @@ public class OrToolsSolver implements ISolverBackend {
                 inner.getHead().getSelectExprs().forEach(
                         e -> updateFieldIndex(e, viewName, fieldIndex)
                 );
-                forBlock.addBody(statement("$L.add(t)", tableNameStr(viewName)));
+                forBlock.addBody(statement("$L.add($L)", tableNameStr(viewName), context.getTupleVarName()));
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
@@ -776,8 +776,9 @@ public class OrToolsSolver implements ISolverBackend {
                                           final TranslationContext context) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
         // Create a tuple for the result set
-        block.addBody(statement("final Tuple$1L<$2L> t = new Tuple$1L<>(\n    $3L\n    )",
-                                 tupleSize, headItemsListTupleGenericParameters, headItemsStr));
+        block.addBody(statement("final Tuple$1L<$2L> $3L = new Tuple$1L<>(\n    $4L\n    )",
+                                 tupleSize, headItemsListTupleGenericParameters,
+                                 context.getTupleVarName(), headItemsStr));
 
         // Update result set
         if (groupByQualifier != null) {
@@ -791,10 +792,10 @@ public class OrToolsSolver implements ISolverBackend {
             block.addBody(statement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
                            numberOfGroupByColumns, Objects.requireNonNull(viewGroupByTupleTypeParameters.get(viewName)),
                            groupString));
-            block.addBody(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add(t)",
-                                     viewRecords, ArrayList.class));
+            block.addBody(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add($L)",
+                                     viewRecords, ArrayList.class, context.getTupleVarName()));
         } else {
-            block.addBody(statement("$L.add(t)", viewRecords));
+            block.addBody(statement("$L.add($L)", viewRecords, context.getTupleVarName()));
         }
         return block;
     }
@@ -1539,7 +1540,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isFunctionContext() && currentSubQueryContext != null) {
                 final String tempTableName = currentSubQueryContext.subQueryName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
-                return apply(String.format("t.value%s()", fieldIndex), context);
+                return apply(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), context);
             }
 
             // Within a group-by, we refer to values from the intermediate group by table. This involves an
@@ -1547,7 +1548,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isFunctionContext() && currentGroupContext != null) {
                 final String tempTableName = currentGroupContext.tempTableName.toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
-                return apply(String.format("t.value%s()", fieldIndex), context);
+                return apply(String.format("dataTuple.value%s()", fieldIndex), context);
             }
 
             final String tableName = node.getField().getIRTable().getName();
@@ -1908,6 +1909,10 @@ public class OrToolsSolver implements ISolverBackend {
 
         String declareVariable(final String expression, final OutputIR.Block block) {
             return block.declare(expression);
+        }
+
+        String getTupleVarName() {
+            return currentScope().getTupleName();
         }
     }
 
