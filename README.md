@@ -229,7 +229,7 @@ $: KUBECONFIG=~/.kube/kind-config-dcm-it ./gradlew :k8s-scheduler:integrationTes
 
 To learn more about DCM, we suggest going through the following research papers:
 
-* [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://www.usenix.org/conference/osdi20/accepted-papers) <br>
+* [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://lalith.in/papers/dcm-osdi2020.pdf) <br>
   Lalith Suresh, Joao Loff, Faria Kalim, Sangeetha Abdu Jyothi, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Pranshu Jain, Michael Gasch. 
   To appear, 14th USENIX Symposium on Operating Systems Design and Implementation, (OSDI 2020).
 
