@@ -8,8 +8,8 @@ package com.vmware.dcm;
 
 import com.google.common.base.Splitter;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.vmware.dcm.backend.MinizincSolver;
-import com.vmware.dcm.backend.OrToolsSolver;
+import com.vmware.dcm.backend.minizinc.MinizincSolver;
+import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;

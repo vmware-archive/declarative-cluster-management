@@ -7,7 +7,7 @@
 package com.vmware.dcm;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.vmware.dcm.backend.MinizincSolver;
+import com.vmware.dcm.backend.minizinc.MinizincSolver;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.openjdk.jmh.annotations.Benchmark;

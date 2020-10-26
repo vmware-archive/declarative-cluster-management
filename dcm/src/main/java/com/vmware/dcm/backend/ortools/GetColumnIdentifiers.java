@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.backend;
+package com.vmware.dcm.backend.ortools;
 
 import com.vmware.dcm.compiler.monoid.VoidType;
 import com.vmware.dcm.compiler.monoid.ColumnIdentifier;

@@ -10,7 +10,7 @@ import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.tree.CreateView;
 import com.vmware.dcm.backend.ISolverBackend;
-import com.vmware.dcm.backend.OrToolsSolver;
+import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.ModelCompiler;
 import org.jooq.DSLContext;
 import org.jooq.Field;

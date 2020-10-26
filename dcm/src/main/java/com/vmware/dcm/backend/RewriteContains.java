@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
 public class RewriteContains extends ComprehensionRewriter {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteContains.class);
 
-    static MonoidComprehension apply(final MonoidComprehension comprehension) {
+    public static MonoidComprehension apply(final MonoidComprehension comprehension) {
         LOG.trace("Invoking RewriteContains on {}", comprehension);
         final RewriteContains rewriter = new RewriteContains();
         final Expr result = rewriter.visit(comprehension);

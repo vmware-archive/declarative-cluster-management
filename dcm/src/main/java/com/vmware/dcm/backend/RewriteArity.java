@@ -33,10 +33,10 @@ import java.util.stream.Collectors;
  * sum([col | predicate-based-on-var...]) into expressions of the form
  * sum([col * (predicate-based-on-var) | non-var-q]).
  */
-class RewriteArity extends ComprehensionRewriter {
+public class RewriteArity extends ComprehensionRewriter {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteArity.class);
 
-    static MonoidComprehension apply(final MonoidComprehension comprehension) {
+    public static MonoidComprehension apply(final MonoidComprehension comprehension) {
         final RewriteArity rewriter = new RewriteArity();
         final Expr result = rewriter.visit(comprehension);
         return comprehension instanceof GroupByComprehension ?

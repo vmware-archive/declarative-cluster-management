@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.backend;
+package com.vmware.dcm.backend.ortools;
 
 import com.google.common.base.CaseFormat;
 import com.google.common.base.Joiner;
@@ -31,6 +31,11 @@ import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRPrimaryKey;
 import com.vmware.dcm.IRTable;
 import com.vmware.dcm.ModelException;
+import com.vmware.dcm.backend.GetVarQualifiers;
+import com.vmware.dcm.backend.IGeneratedBackend;
+import com.vmware.dcm.backend.ISolverBackend;
+import com.vmware.dcm.backend.RewriteArity;
+import com.vmware.dcm.backend.RewriteContains;
 import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.monoid.CheckQualifier;
@@ -306,7 +311,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         final TypeSpec.Builder backendClassBuilder = TypeSpec.classBuilder(GENERATED_BACKEND_NAME)
                 .addAnnotation(AnnotationSpec.builder(Generated.class)
-                                 .addMember("value", "$S", "com.vmware.dcm.backend.OrToolsSolver")
+                                 .addMember("value", "$S", "com.vmware.dcm.backend.ortools.OrToolsSolver")
                                  .build())
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .addSuperinterface(IGeneratedBackend.class)

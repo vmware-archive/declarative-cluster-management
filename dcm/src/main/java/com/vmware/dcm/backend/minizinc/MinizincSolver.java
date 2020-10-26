@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.backend;
+package com.vmware.dcm.backend.minizinc;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
@@ -15,6 +15,8 @@ import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRTable;
 import com.vmware.dcm.ModelException;
+import com.vmware.dcm.backend.ISolverBackend;
+import com.vmware.dcm.backend.RewriteArity;
 import com.vmware.dcm.compiler.monoid.MonoidComprehension;
 import freemarker.cache.ClassTemplateLoader;
 import freemarker.template.Configuration;

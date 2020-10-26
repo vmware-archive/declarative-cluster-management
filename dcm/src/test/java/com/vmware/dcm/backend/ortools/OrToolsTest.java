@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.backend;
+package com.vmware.dcm.backend.ortools;
 
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
@@ -14,6 +14,8 @@ import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.SatParameters;
 import com.google.ortools.util.Domain;
+import com.vmware.dcm.backend.ortools.OrToolsSolver;
+import com.vmware.dcm.backend.ortools.StringEncoding;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.ThreadLocalRandom;

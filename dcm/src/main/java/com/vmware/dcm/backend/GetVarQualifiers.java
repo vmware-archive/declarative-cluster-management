@@ -30,14 +30,14 @@ import java.util.List;
 /**
  * Separates qualifiers in an expression into vars and non-vars.
  */
-class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, GetVarQualifiers.QualifiersList> {
+public class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, GetVarQualifiers.QualifiersList> {
     private final boolean skipAggregates;
 
     GetVarQualifiers(final boolean skipAggregates) {
         this.skipAggregates = skipAggregates;
     }
 
-    static QualifiersList apply(final Expr expr, final boolean skipAggregates) {
+    public static QualifiersList apply(final Expr expr, final boolean skipAggregates) {
         final GetVarQualifiers visitor = new GetVarQualifiers(skipAggregates);
         return visitor.visit(expr);
     }
@@ -166,7 +166,7 @@ class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, Ge
     /**
      * Container to propagate var and non-var qualifiers
      */
-    static class QualifiersList {
+    public static class QualifiersList {
         private final List<Qualifier> varQualifiers;
         private final List<Qualifier> nonVarQualifiers;
 

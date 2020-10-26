@@ -7,7 +7,7 @@
 package com.vmware.dcm;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.vmware.dcm.backend.OrToolsSolver;
+import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.openjdk.jmh.annotations.Benchmark;

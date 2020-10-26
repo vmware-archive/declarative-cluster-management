@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.backend;
+package com.vmware.dcm.backend.minizinc;
 
 import com.vmware.dcm.compiler.monoid.MonoidFunction;
 import com.vmware.dcm.compiler.monoid.VoidType;
