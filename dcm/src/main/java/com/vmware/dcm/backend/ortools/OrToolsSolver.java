@@ -80,11 +80,9 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -265,7 +263,7 @@ public class OrToolsSolver implements ISolverBackend {
                     final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     translationContext.enterScope(outerBlock);
                     final OutputIR.Block block = addView(name, rewrittenComprehension, false, translationContext);
-                    translationContext.leaveScope();
+                    output.addCode(translationContext.leaveScope().toString());
                     output.addCode(block.toString());
                 });
         constraintViews
@@ -277,7 +275,7 @@ public class OrToolsSolver implements ISolverBackend {
                         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                         translationContext.enterScope(outerBlock);
                         final OutputIR.Block block = addView(name, rewrittenComprehension, true, translationContext);
-                        translationContext.leaveScope();
+                        output.addCode(translationContext.leaveScope().toString());
                         output.addCode(block.toString());
                     } else {
                         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
@@ -297,7 +295,6 @@ public class OrToolsSolver implements ISolverBackend {
                     final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     objFunctionContext.enterScope(outerBlock);
                     final String exprStr = exprToStr(rewrittenComprehension, objFunctionContext);
-                    objFunctionContext.leaveScope();
                     output.addCode(outerBlock.toString());
                     output.addStatement("final $T $L = $L", IntVar.class, name, exprStr);
                 });
@@ -568,7 +565,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private LinkedHashSet<ColumnIdentifier> getColumnsAccessed(final Expr expr) {
-        final GetColumnIdentifiers visitor = new GetColumnIdentifiers();
+        final GetColumnIdentifiers visitor = new GetColumnIdentifiers(false);
         visitor.visit(expr);
         return visitor.getColumnIdentifiers();
     }
@@ -1590,12 +1587,12 @@ public class OrToolsSolver implements ISolverBackend {
             visitor.visit(headSelectItem);
             final boolean headSelectItemContainsMonoidFunction = visitor.getFound();
 
-            final OutputIR.Block currentBlock = context.currentScope();
+            attemptConstantSubqueryOptimization(node, subQueryBlock, context);
+
             final TranslationContext newCtx = context.withEnterFunctionContext();
             // If the head contains a function, then this is a scalar subquery
             if (headSelectItemContainsMonoidFunction) {
                 newCtx.enterScope(subQueryBlock);
-                currentBlock.addBody(subQueryBlock);
                 final String ret = apply(innerVisitor.visit(headSelectItem, newCtx), context);
                 newCtx.leaveScope();
                 return ret;
@@ -1606,7 +1603,6 @@ public class OrToolsSolver implements ISolverBackend {
                 final String type = inferType(node.getHead().getSelectExprs().get(0));
                 final String listName =
                         extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
-                currentBlock.addBody(subQueryBlock);
                 newCtx.leaveScope();
                 return apply(listName, subQueryBlock, context);
             }
@@ -1624,12 +1620,13 @@ public class OrToolsSolver implements ISolverBackend {
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
 
-            final OutputIR.Block currentBlock = context.currentScope();
             final TranslationContext newCtx = context.withEnterFunctionContext();
+
+            attemptConstantSubqueryOptimization(node, subQueryBlock, context);
+
             // if scalar subquery
             if (headSelectItem instanceof MonoidFunction) {
                 newCtx.enterScope(subQueryBlock);
-                currentBlock.addBody(subQueryBlock);
                 final String ret = apply(innerVisitor.visit(headSelectItem, newCtx), context);
                 newCtx.leaveScope();
                 return ret;
@@ -1640,7 +1637,6 @@ public class OrToolsSolver implements ISolverBackend {
                 final String type = inferType(node.getComprehension().getHead().getSelectExprs().get(0));
                 final String listName =
                         extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
-                currentBlock.addBody(subQueryBlock);
                 newCtx.leaveScope();
                 // Treat as a vector
                 return apply(listName, subQueryBlock, context);
@@ -1740,6 +1736,20 @@ public class OrToolsSolver implements ISolverBackend {
                     extractListFromLoop(coefficientsItem, outerBlock, forLoop, coefficientsType);
             return CodeBlock.of("o.scalProd($L, $L)", listOfVariablesItem, listOfCoefficientsItem).toString();
         }
+
+        /**
+         * Constant sub-queries can be floated to the root block so that we evaluate them only once
+         */
+        private void attemptConstantSubqueryOptimization(final MonoidComprehension node,
+                                                         final OutputIR.Block subQueryBlock,
+                                                         final TranslationContext context) {
+            if (IsConstantSubquery.apply(node)) {
+                final OutputIR.Block rootBlock = context.getRootBlock();
+                rootBlock.addBody(subQueryBlock);
+            } else {
+                context.currentScope().addBody(subQueryBlock);
+            }
+        }
     }
 
     /**
@@ -1778,7 +1788,7 @@ public class OrToolsSolver implements ISolverBackend {
      * @return the name of the list being extracted
      */
     @SuppressFBWarnings("UPM_UNCALLED_PRIVATE_METHOD") // false positive
-    private  String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
+    private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
                                        final String loopBlockName, final String variableType) {
         final OutputIR.Block forLoop = outerBlock.getForLoopByName(loopBlockName);
         return extractListFromLoop(variableToExtract, outerBlock, forLoop, variableType);
@@ -1863,62 +1873,6 @@ public class OrToolsSolver implements ISolverBackend {
 
     private String getTempViewName() {
         return  "tmp" + intermediateViewCounter.getAndIncrement();
-    }
-
-    /**
-     * Represents context required for code generation. It maintains a stack of blocks
-     * in the IR, that is used to correctly scope variable declarations and accesses.
-     */
-    private static class TranslationContext {
-        private final Deque<OutputIR.Block> scopeStack;
-        private final boolean isFunctionContext;
-
-        private TranslationContext(final Deque<OutputIR.Block> declarations, final boolean isFunctionContext) {
-            this.scopeStack = declarations;
-            this.isFunctionContext = isFunctionContext;
-        }
-
-        private TranslationContext(final boolean isFunctionContext) {
-            this(new ArrayDeque<>(), isFunctionContext);
-        }
-
-        TranslationContext withEnterFunctionContext() {
-            final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
-            return new TranslationContext(stackCopy, true);
-        }
-
-        boolean isFunctionContext() {
-            return isFunctionContext;
-        }
-
-        void enterScope(final OutputIR.Block block) {
-            scopeStack.addLast(block);
-        }
-
-        OutputIR.Block currentScope() {
-            return Objects.requireNonNull(scopeStack.getLast());
-        }
-
-        OutputIR.Block leaveScope() {
-            return scopeStack.removeLast();
-        }
-
-        String declareVariable(final String expression) {
-            for (final OutputIR.Block block: scopeStack) {
-                if (block.hasDeclaration(expression)) {
-                    return block.getDeclaredName(expression);
-                }
-            }
-            return scopeStack.getLast().declare(expression);
-        }
-
-        String declareVariable(final String expression, final OutputIR.Block block) {
-            return block.declare(expression);
-        }
-
-        String getTupleVarName() {
-            return currentScope().getTupleName();
-        }
     }
 
     private static CodeBlock statement(final String format, final Object... args) {
