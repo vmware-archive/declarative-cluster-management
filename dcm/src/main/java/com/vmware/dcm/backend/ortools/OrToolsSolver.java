@@ -642,17 +642,13 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     /**
-     * Returns a list of CodeBlocks corresponding to a for loop statement per TableRowGenerator
+     * Translates a TableRowGenerator into a for loop statement
      */
-    private List<CodeBlock> forLoopsFromTableRowGenerators(final List<TableRowGenerator> tableRowGenerators) {
-        final List<CodeBlock> loopStatements = new ArrayList<>();
-        tableRowGenerators.forEach(tr -> {
-            final String tableName = tr.getTable().getName();
-            final String tableNumRowsStr = tableNumRowsStr(tableName);
-            final String iterStr = iterStr(tr.getTable().getAliasedName());
-            loopStatements.add(CodeBlock.of("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr));
-        });
-        return loopStatements;
+    private CodeBlock forLoopFromTableRowGenerator(final TableRowGenerator tableRowGenerator) {
+        final String tableName = tableRowGenerator.getTable().getName();
+        final String tableNumRowsStr = tableNumRowsStr(tableName);
+        final String iterStr = iterStr(tableRowGenerator.getTable().getAliasedName());
+        return CodeBlock.of("for (int $1L = 0; $1L < $2L; $1L++)", iterStr, tableNumRowsStr);
     }
 
     /**
@@ -672,7 +668,8 @@ public class OrToolsSolver implements ISolverBackend {
     private List<CodeBlock> forLoopsOrIndicesFromTableRowGenerators(final List<TableRowGenerator> tableRowGenerators,
                                                                          final List<JoinPredicate> joinPredicates) {
         final TableRowGenerator forLoopTable = tableRowGenerators.get(0);
-        final List<CodeBlock> loopStatements = new ArrayList<>(forLoopsFromTableRowGenerators(List.of(forLoopTable)));
+        final List<CodeBlock> loopStatements = new ArrayList<>();
+        loopStatements.add(forLoopFromTableRowGenerator(forLoopTable));
 
         // For now, we always use a scan for the first Table being iterated over.
         // XXX: It would be better to look at all join predicates and determine which tables should be scanned
@@ -698,7 +695,7 @@ public class OrToolsSolver implements ISolverBackend {
                 }
                 // By default, we'll stick to producing nested for loops
                 LOG.warn("{} are being iterated using nested for loops", tableRowGenerators);
-                return forLoopsFromTableRowGenerators(List.of(tr)).get(0);
+                return forLoopFromTableRowGenerator(tr);
             })
             .forEach(loopStatements::add);
         return loopStatements;
@@ -1265,7 +1262,7 @@ public class OrToolsSolver implements ISolverBackend {
                              .map(q -> (TableRowGenerator) q).collect(Collectors.toList());
         tableRowGenerators.forEach(
                 tableRowGenerator -> {
-                    final CodeBlock codeBlock = forLoopsFromTableRowGenerators(List.of(tableRowGenerator)).get(0);
+                    final CodeBlock codeBlock = forLoopFromTableRowGenerator(tableRowGenerator);
                     final OutputIR.ForBlock forBlock = outputIR.newForBlock("", codeBlock);
                     block.addBody(forBlock);
                     tableToForBlock.put(tableRowGenerator.getTable().getName(), forBlock);
