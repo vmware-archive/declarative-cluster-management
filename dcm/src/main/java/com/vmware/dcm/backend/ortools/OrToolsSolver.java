@@ -1070,6 +1070,7 @@ public class OrToolsSolver implements ISolverBackend {
                .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
                .addStatement("final Map<IRTable, Result<? extends Record>> result = new $T<>()", HashMap.class)
                .addCode("final Object[] obj = new Object[1]; // Used to update controllable fields;\n");
+
         for (final IRTable table: context.getTables()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
@@ -1080,12 +1081,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                                                  .isControllable())
                                                                    .map(Map.Entry::getKey)
                                                                    .collect(Collectors.toSet());
-            // If the table does not have vars, we can return the original input as is
-            if (controllableColumns.isEmpty()) {
-                // Is an input table/view
-                output.addStatement("result.put(context.getTable($1S), context.getTable($1S).getCurrentData())",
-                                     tableName);
-            } else {
+            // Only tables with variable columns become outputs
+            if (!controllableColumns.isEmpty()) {
                 table.getIRColumns().forEach(
                     (name, field) -> {
                         // Else, we update the records corresponding to the table.
