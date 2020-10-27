@@ -1350,7 +1350,7 @@ public class OrToolsSolver implements ISolverBackend {
             // We have a special case for sums, because of an optimization where a sum of products can be better
             // represented as a scalar product in or-tools
             if (node.getFunction().equals(MonoidFunction.Function.SUM)) {
-                return maybeOptimizeSumIntoScalarProduct(node.getArgument().get(0), context.currentScope(),
+                return attemptSumAsScalarProductOptimization(node.getArgument().get(0), context.currentScope(),
                                                          forLoop, context);
             }
 
@@ -1687,9 +1687,9 @@ public class OrToolsSolver implements ISolverBackend {
          * @param context the current translation context
          * @return A variable that yields the result of the sum
          */
-        private String maybeOptimizeSumIntoScalarProduct(final Expr node, final OutputIR.Block outerBlock,
-                                                         final OutputIR.Block forLoop,
-                                                         final TranslationContext context) {
+        private String attemptSumAsScalarProductOptimization(final Expr node, final OutputIR.Block outerBlock,
+                                                             final OutputIR.Block forLoop,
+                                                             final TranslationContext context) {
             if (configTryScalarProductEncoding && node instanceof BinaryOperatorPredicate) {
                 final BinaryOperatorPredicate operation = (BinaryOperatorPredicate) node;
                 final BinaryOperatorPredicate.Operator op = operation.getOperator();
