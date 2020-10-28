@@ -180,7 +180,7 @@ class InferType extends MonoidVisitor<String, VoidType> {
         }
     }
 
-    // TODO: passing viewTupleTypeParameters makes this class tightly coupled with OrToolsSolver.
+    // TODO: passing viewTupleTypeParameters makes this class tightly coupled with TupleMetadata.
     static String forExpr(final Expr expr, final Map<String, String> viewTupleTypeParameters) {
         final InferType visitor = new InferType(viewTupleTypeParameters);
         final String result = visitor.visit(expr);

@@ -107,7 +107,6 @@ public class OrToolsSolver implements ISolverBackend {
     private static final String GENERATED_BACKEND_CLASS_FILE_PATH = "/tmp";
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
-    private static final String GENERATED_FIELD_NAME_PREFIX = "GenField";
     private static final MethodSpec INT_VAR_NO_BOUNDS = MethodSpec.methodBuilder("INT_VAR_NO_BOUNDS")
                                     .addModifiers(Modifier.PRIVATE)
                                     .addParameter(CpModel.class, "model", Modifier.FINAL)
@@ -115,8 +114,6 @@ public class OrToolsSolver implements ISolverBackend {
                                     .returns(IntVar.class)
                                     .addStatement("return model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, name)")
                                     .build();
-    private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
-    private final AtomicInteger generatedFieldNameCounter = new AtomicInteger(0);
     private final AtomicInteger intermediateViewCounter = new AtomicInteger(0);
     private final TupleMetadata tupleMetadata = new TupleMetadata();
     private final TupleGen tupleGen = new TupleGen();
@@ -344,12 +341,8 @@ public class OrToolsSolver implements ISolverBackend {
             final int groupByQualifiersSize = groupByQualifier.getGroupByExprs().size();
             final String groupByTupleTypeParameters = tupleMetadata.getGroupByTupleType(intermediateView);
             final String headItemsTupleTypeParamters = tupleMetadata.getViewTupleType(intermediateView);
+            final int innerTupleSize = tupleMetadata.getTupleSize(intermediateView);
 
-            // when duplicates appear for viewToFieldIndex, we increment the fieldIndex counter but do not add a new
-            // entry. This means that the highest fieldIndex (and not the size of the map) is equal to tuple size.
-            // The indices are 0-indexed.
-            final int innerTupleSize = Collections.max(viewToFieldIndex.get(intermediateView.toUpperCase(Locale.US))
-                                                                       .values()) + 1;
             // (1) Create the result set
             block.addBody(CodeBlock.builder()
                                  .add("\n")
@@ -418,11 +411,7 @@ public class OrToolsSolver implements ISolverBackend {
                                             context.getTupleVarName(), tupleResult));
 
                 // Record field name indices for view
-                // TODO: wrap this block into a helper.
-                final AtomicInteger fieldIndex = new AtomicInteger(0);
-                inner.getHead().getSelectExprs().forEach(
-                        e -> updateFieldIndex(e, viewName, fieldIndex)
-                );
+                tupleMetadata.computeViewIndices(viewName, inner.getHead().getSelectExprs());
                 forBlock.addBody(statement("$L.add($L)", tableNameStr(viewName), context.getTupleVarName()));
             }
             else  {
@@ -489,9 +478,9 @@ public class OrToolsSolver implements ISolverBackend {
                 isConstraint, context);
 
         // Identify head items to be accessed within loop
-        final AtomicInteger fieldIndex = new AtomicInteger();
+        tupleMetadata.computeViewIndices(viewName, headItemsList);
         final String headItemsStr = headItemsList.stream()
-                .map(expr -> convertToFieldAccess(expr, viewName, fieldIndex, context))
+                .map(expr -> exprToStr(expr, context) + " /* " + expr.getField().getName() + " */")
                 .collect(Collectors.joining(",\n    "));
 
         viewBlock.addBody(resultSetDeclBlock);
@@ -557,45 +546,6 @@ public class OrToolsSolver implements ISolverBackend {
         final GetColumnIdentifiers visitor = new GetColumnIdentifiers(false);
         visitor.visit(expr);
         return visitor.getColumnIdentifiers();
-    }
-
-    /**
-     * Translates a field access within a loop into an index in the tuple returned per iteration of the loop
-     *
-     * @param expr The expression to create a field for
-     * @param viewName the view within which this expression is being visited
-     * @param fieldIndexCounter the counter to use for generating field access indices
-     * @param context the translation context
-     * @return A string representing the field being accessed
-     */
-    private String convertToFieldAccess(final Expr expr, final String viewName, final AtomicInteger fieldIndexCounter,
-                                        final TranslationContext context) {
-        Preconditions.checkArgument(expr instanceof ColumnIdentifier);
-        final String fieldName = updateFieldIndex(expr, viewName, fieldIndexCounter);
-        return exprToStr(expr, context) + " /* " + fieldName + " */";
-    }
-
-    /**
-     * Updates the tracked index for a field within a loop's result set
-     *
-     * @param argument The expression to create a field for
-     * @param viewName the view within which this expression is being visited
-     * @param fieldIndexCounter the counter to use for generating field access indices
-     * @return A string representing the field being accessed
-     */
-    private String updateFieldIndex(final Expr argument, final String viewName, final AtomicInteger fieldIndexCounter) {
-        final String fieldName = argument.getAlias().orElseGet(() -> {
-                        if (argument instanceof ColumnIdentifier) {
-                            return ((ColumnIdentifier) argument).getField().getName();
-                        } else {
-                            return GENERATED_FIELD_NAME_PREFIX + generatedFieldNameCounter.getAndIncrement();
-                        }
-                    }
-                )
-                .toUpperCase(Locale.US);
-        viewToFieldIndex.computeIfAbsent(viewName.toUpperCase(Locale.US), (k) -> new HashMap<>())
-                        .compute(fieldName, (k, v) -> fieldIndexCounter.getAndIncrement());
-        return fieldName;
     }
 
     /**
@@ -1104,8 +1054,8 @@ public class OrToolsSolver implements ISolverBackend {
         if (fieldName.contains("CONTROLLABLE")) {
             return String.format("%s[%s]", fieldNameStr(tableName, fieldName), iterStr);
         } else {
-            if (viewToFieldIndex.containsKey(tableName)) {
-                final int fieldIndex = viewToFieldIndex.get(tableName).get(fieldName);
+            if (tupleMetadata.canBeAccessedWithViewIndices(tableName)) {
+                final int fieldIndex = tupleMetadata.getViewIndexForField(tableName, fieldName);
                 return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr, fieldIndex);
             } else {
                 final String type = tupleMetadata.getTypeForField(tableName, fieldName);
@@ -1517,7 +1467,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
             if (context.isFunctionContext() && currentSubQueryContext != null) {
                 final String tempTableName = currentSubQueryContext.getSubQueryName().toUpperCase(Locale.US);
-                final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
+                final int fieldIndex = tupleMetadata.getViewIndexForField(tempTableName, node.getField().getName());
                 return apply(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), context);
             }
 
@@ -1525,7 +1475,7 @@ public class OrToolsSolver implements ISolverBackend {
             // indirection from columns to tuple indices
             if (context.isFunctionContext() && currentGroupContext != null) {
                 final String tempTableName = currentGroupContext.getTempTableName().toUpperCase(Locale.US);
-                final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
+                final int fieldIndex = tupleMetadata.getViewIndexForField(tempTableName, node.getField().getName());
                 return apply(String.format("dataTuple.value%s()", fieldIndex), context);
             }
 

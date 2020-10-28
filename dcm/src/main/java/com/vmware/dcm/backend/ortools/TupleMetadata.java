@@ -8,6 +8,7 @@ package com.vmware.dcm.backend.ortools;
 import com.google.common.base.Preconditions;
 import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRTable;
+import com.vmware.dcm.ModelException;
 import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
 import com.vmware.dcm.compiler.monoid.Expr;
 
@@ -21,13 +22,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
- * Resolves the tuple types for tables, views and group by tables, into their
- * corresponding Java types. For example, a table with an integer and a variable
+ * Tracks metadata about tuples. Specifically, it tracks the tuple types for tables, views and group by tables,
+ * and resolves them into their corresponding Java types. For example, a table with an integer and a variable
  * column will have the Java parameter type recorded as a String, "Integer, IntVar".
+ * For tuples created by views we create, it also tracks the indices of fields within the tuple.
  */
 public class TupleMetadata {
-    private static final String GENERATED_FIELD_NAME_PREFIX = "GenField";
-    private final AtomicInteger generatedFieldNameCounter = new AtomicInteger(0);
     private final Map<String, Map<String, String>> tableToFieldToType = new HashMap<>();
     private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
@@ -37,12 +37,11 @@ public class TupleMetadata {
         Preconditions.checkArgument(!tableToFieldToType.containsKey(table.getAliasedName()));
         return table.getIRColumns().entrySet().stream()
                 .map(e -> {
-                            final String retVal = InferType.typeStringFromColumn(e.getValue());
-                            // Tracks the type of each field.
-                            tableToFieldToType.computeIfAbsent(table.getAliasedName(), (k) -> new HashMap<>())
-                                    .putIfAbsent(e.getKey(), retVal);
-                            return retVal;
-                        }
+                        final String retVal = InferType.typeStringFromColumn(e.getValue());
+                        tableToFieldToType.computeIfAbsent(table.getAliasedName(), (k) -> new HashMap<>())
+                                          .putIfAbsent(e.getKey(), retVal);
+                        return retVal;
+                    }
                 ).collect(Collectors.joining(", "));
     }
 
@@ -61,25 +60,21 @@ public class TupleMetadata {
      *
      * @param viewName the view within which this expression is being visited
      * @param exprs The expressions to create a field for
-     * @return A string representing the fields being accessed
      */
-    <T extends Expr> String computeViewIndices(final String viewName, final List<T> exprs) {
+    <T extends Expr> void computeViewIndices(final String viewName, final List<T> exprs) {
         final AtomicInteger counter = new AtomicInteger(0);
-        return exprs.stream().map(argument -> {
+        exprs.forEach(argument -> {
                 final String fieldName = argument.getAlias().orElseGet(() -> {
                         if (argument instanceof ColumnIdentifier) {
                             return ((ColumnIdentifier) argument).getField().getName();
-                        } else {
-                            return GENERATED_FIELD_NAME_PREFIX + generatedFieldNameCounter.getAndIncrement();
                         }
+                        throw new ModelException("Non-column fields need an alias: " + argument);
                     }
-                )
-                        .toUpperCase(Locale.US);
+                ).toUpperCase(Locale.US);
                 viewToFieldIndex.computeIfAbsent(viewName.toUpperCase(Locale.US), (k) -> new HashMap<>())
                         .compute(fieldName, (k, v) -> counter.getAndIncrement());
-                return fieldName;
             }
-        ).collect(Collectors.joining(",\n    "));
+        );
     }
 
     String getGroupByTupleType(final String viewName) {
@@ -102,9 +97,11 @@ public class TupleMetadata {
         return viewToFieldIndex.containsKey(tableName);
     }
 
-    // when duplicates appear for viewToFieldIndex, we increment the fieldIndex counter but do not add a new
-    // entry. This means that the highest fieldIndex (and not the size of the map) is equal to tuple size.
-    // The indices are 0-indexed.
+    /*
+     * When duplicates appear for viewToFieldIndex, we increment the fieldIndex counter but do not add a new
+     * entry. This means that the highest fieldIndex (and not the size of the map) is equal to tuple size.
+     * The indices are 0-indexed.
+     */
     int getTupleSize(final String tableName) {
         return Collections.max(viewToFieldIndex.get(tableName.toUpperCase(Locale.US)).values()) + 1;
     }
