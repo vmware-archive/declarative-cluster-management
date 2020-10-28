@@ -118,7 +118,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
     private final AtomicInteger generatedFieldNameCounter = new AtomicInteger(0);
     private final AtomicInteger intermediateViewCounter = new AtomicInteger(0);
-    private final TypeTracker typeTracker = new TypeTracker();
+    private final TupleMetadata tupleMetadata = new TupleMetadata();
     private final TupleGen tupleGen = new TupleGen();
     private final OutputIR outputIR = new OutputIR();
     private final int configNumThreads;
@@ -342,8 +342,8 @@ public class OrToolsSolver implements ISolverBackend {
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
             // in two steps...
             final int groupByQualifiersSize = groupByQualifier.getGroupByExprs().size();
-            final String groupByTupleTypeParameters = typeTracker.getGroupByTupleType(intermediateView);
-            final String headItemsTupleTypeParamters = typeTracker.getViewTupleType(intermediateView);
+            final String groupByTupleTypeParameters = tupleMetadata.getGroupByTupleType(intermediateView);
+            final String headItemsTupleTypeParamters = tupleMetadata.getViewTupleType(intermediateView);
 
             // when duplicates appear for viewToFieldIndex, we increment the fieldIndex counter but do not add a new
             // entry. This means that the highest fieldIndex (and not the size of the map) is equal to tuple size.
@@ -363,7 +363,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final int selectExprSize = inner.getHead().getSelectExprs().size();
                 final TypeSpec typeSpec = tupleGen.getTupleType(selectExprSize);
                 final String viewTupleGenericParameters =
-                        typeTracker.computeViewTupleType(tableNameStr(viewName),
+                        tupleMetadata.computeViewTupleType(tableNameStr(viewName),
                                                                    inner.getHead().getSelectExprs());
                 block.addBody(
                     statement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
@@ -462,7 +462,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
         final String headItemsListTupleGenericParameters =
-                typeTracker.computeViewTupleType(viewName, headItemsList);
+                tupleMetadata.computeViewTupleType(viewName, headItemsList);
         Preconditions.checkArgument(!headItemsListTupleGenericParameters.isEmpty(),
                 "Generic parameters list for " + comprehension + " was empty");
 
@@ -613,7 +613,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Create group by tuple
             final int numberOfGroupColumns = groupByQualifier.getGroupByExprs().size();
             final String groupByTupleGenericParameters =
-                    typeTracker.computeGroupByTupleType(viewName, groupByQualifier.getGroupByExprs());
+                    tupleMetadata.computeGroupByTupleType(viewName, groupByQualifier.getGroupByExprs());
             final TypeSpec groupTupleSpec = tupleGen.getTupleType(numberOfGroupColumns);
             block.addHeader(statement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
                                         groupTupleSpec, groupByTupleGenericParameters,
@@ -777,7 +777,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             // Organize the collected tuples from the nested for loops by groupByTuple
             block.addBody(statement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
-                           numberOfGroupByColumns, Objects.requireNonNull(typeTracker.getGroupByTupleType(viewName)),
+                           numberOfGroupByColumns, Objects.requireNonNull(tupleMetadata.getGroupByTupleType(viewName)),
                            groupString));
             block.addBody(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add($L)",
                                      viewRecords, ArrayList.class, context.getTupleVarName()));
@@ -855,7 +855,7 @@ public class OrToolsSolver implements ISolverBackend {
         if (expr instanceof MonoidLiteral && ((MonoidLiteral) expr).getValue() instanceof Boolean) {
             exprStr = (Boolean) ((MonoidLiteral) expr).getValue() ? "1" : "0";
         }
-        return typeTracker.inferType(expr).equals("IntVar") ? exprStr : String.format("o.toConst(%s)", exprStr);
+        return tupleMetadata.inferType(expr).equals("IntVar") ? exprStr : String.format("o.toConst(%s)", exprStr);
     }
 
     /**
@@ -871,7 +871,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             // ...1) figure out the jooq record type (e.g., Record3<Integer, String, Boolean>)
             final Class<?> recordType = Class.forName("org.jooq.Record" + table.getIRColumns().size());
-            final String recordTypeParameters = typeTracker.computeTableTupleType(table);
+            final String recordTypeParameters = tupleMetadata.computeTableTupleType(table);
 
             if (table.isAliasedTable()) {
                 continue;
@@ -898,7 +898,7 @@ public class OrToolsSolver implements ISolverBackend {
                                 tableNameStr(table.getName()),
                                 Collectors.class,
                                 pkCol.get(0).getName(),
-                                typeTracker.getTypeForField(table, pkCol.get(0))
+                                tupleMetadata.getTypeForField(table, pkCol.get(0))
                         ));
             }
 
@@ -1108,7 +1108,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final int fieldIndex = viewToFieldIndex.get(tableName).get(fieldName);
                 return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr, fieldIndex);
             } else {
-                final String type = typeTracker.getTypeForField(tableName, fieldName);
+                final String type = tupleMetadata.getTypeForField(tableName, fieldName);
                 return String.format("%s.get(%s).get(\"%s\", %s.class)",
                         tableNameStr(tableName), iterStr, fieldName, type);
             }
@@ -1210,7 +1210,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private String generateTupleGenericParameters(final Expr expr) {
-        return typeTracker.inferType(expr);
+        return tupleMetadata.inferType(expr);
     }
 
     private void populateQualifiersByVarType(final MonoidComprehension comprehension, final QualifiersByType var,
@@ -1272,7 +1272,7 @@ public class OrToolsSolver implements ISolverBackend {
                     context.leaveScope();
                     final String parameter = extractListFromLoop(variableToAssignTo, context.currentScope(),
                                                                 forBlock,
-                                                                typeTracker.inferType(columnArg));
+                                                                tupleMetadata.inferType(columnArg));
 
                     if (i == 0) { // vars
                         vars.add(parameter);
@@ -1334,7 +1334,7 @@ public class OrToolsSolver implements ISolverBackend {
             final String processedArgument = visit(node.getArgument().get(0), context.withEnterFunctionContext());
             context.leaveScope();
 
-            final String argumentType = typeTracker.inferType(node.getArgument().get(0));
+            final String argumentType = tupleMetadata.inferType(node.getArgument().get(0));
             final boolean argumentIsIntVar = argumentType.equals("IntVar");
 
             final String listOfProcessedItem =
@@ -1384,7 +1384,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Override
         protected String visitIsNullPredicate(final IsNullPredicate node, final TranslationContext context) {
-            final String type = typeTracker.inferType(node.getArgument());
+            final String type = tupleMetadata.inferType(node.getArgument());
             final String processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(!type.equals("IntVar"));
             return apply(String.format("%s == null", processedArgument), context);
@@ -1392,7 +1392,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Override
         protected String visitIsNotNullPredicate(final IsNotNullPredicate node, final TranslationContext context) {
-            final String type = typeTracker.inferType(node.getArgument());
+            final String type = tupleMetadata.inferType(node.getArgument());
             final String processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(!type.equals("IntVar"));
             return apply(String.format("%s != null", processedArgument), context);
@@ -1418,8 +1418,8 @@ public class OrToolsSolver implements ISolverBackend {
             final String left = visit(node.getLeft(), context);
             final String right = visit(node.getRight(), context);
             final BinaryOperatorPredicate.Operator op = node.getOperator();
-            final String leftType = typeTracker.inferType(node.getLeft());
-            final String rightType = typeTracker.inferType(node.getRight());
+            final String leftType = tupleMetadata.inferType(node.getLeft());
+            final String rightType = tupleMetadata.inferType(node.getRight());
 
             if (leftType.equals("IntVar") || rightType.equals("IntVar")) {
                 // We need to generate an IntVar.
@@ -1576,7 +1576,7 @@ public class OrToolsSolver implements ISolverBackend {
                 // Else, treat the result as a vector
                 newCtx.enterScope(subQueryBlock.getForLoopByName(newSubqueryName));
                 final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), newCtx);
-                final String type = typeTracker.inferType(node.getHead().getSelectExprs().get(0));
+                final String type = tupleMetadata.inferType(node.getHead().getSelectExprs().get(0));
                 final String listName =
                         extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
                 newCtx.leaveScope();
@@ -1609,7 +1609,7 @@ public class OrToolsSolver implements ISolverBackend {
                 newCtx.enterScope(subQueryBlock.getForLoopByName(newSubqueryName));
                 final String processedHeadItem =
                     innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0), newCtx);
-                final String type = typeTracker.inferType(node.getComprehension().getHead().getSelectExprs().get(0));
+                final String type = tupleMetadata.inferType(node.getComprehension().getHead().getSelectExprs().get(0));
                 final String listName =
                         extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
                 newCtx.leaveScope();
@@ -1670,8 +1670,8 @@ public class OrToolsSolver implements ISolverBackend {
                 final BinaryOperatorPredicate.Operator op = operation.getOperator();
                 final Expr left = operation.getLeft();
                 final Expr right = operation.getRight();
-                final String leftType = typeTracker.inferType(left);
-                final String rightType = typeTracker.inferType(right);
+                final String leftType = tupleMetadata.inferType(left);
+                final String rightType = tupleMetadata.inferType(right);
                 // TODO: The multiply may not necessarily be the top level operation.
                 if (op.equals(BinaryOperatorPredicate.Operator.MULTIPLY)) {
                     if (leftType.equals("IntVar") && !rightType.equals("IntVar")) {
@@ -1686,7 +1686,7 @@ public class OrToolsSolver implements ISolverBackend {
             context.enterScope(forLoop);
             final String processedArgument = visit(node, context.withEnterFunctionContext());
             context.leaveScope();
-            final String argumentType = typeTracker.inferType(node);
+            final String argumentType = tupleMetadata.inferType(node);
             final String function = argumentType.equals("IntVar") ? "sumV" : "sum";
             final String listOfProcessedItem =
                     extractListFromLoop(processedArgument, context.currentScope(), forLoop, argumentType);
