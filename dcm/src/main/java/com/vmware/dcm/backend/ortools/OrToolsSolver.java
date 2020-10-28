@@ -1066,9 +1066,9 @@ public class OrToolsSolver implements ISolverBackend {
                     (name, field) -> {
                         // Else, we update the records corresponding to the table.
                         if (controllableColumns.contains(name)) {
-                            final int i = intermediateViewCounter.incrementAndGet();
-                            output.addStatement("final Result<? extends Record> tmp$L = " +
-                                    "context.getTable($S).getCurrentData()", i, tableName);
+                            final String tempViewName = getTempViewName();
+                            output.addStatement("final Result<? extends Record> $L = " +
+                                    "context.getTable($S).getCurrentData()", tempViewName, tableName);
                             output.beginControlFlow("for (int i = 0; i < $L; i++)",
                                     tableNumRowsStr(tableName));
                             if (field.getType().equals(IRColumn.FieldType.STRING)) {
@@ -1078,9 +1078,9 @@ public class OrToolsSolver implements ISolverBackend {
                                 output.addStatement("obj[0] = solver.value($L[i])",
                                         fieldNameStr(tableName, field.getName()));
                             }
-                            output.addStatement("tmp$L.get(i).from(obj, $S)", i, field.getName());
+                            output.addStatement("$L.get(i).from(obj, $S)", tempViewName, field.getName());
                             output.endControlFlow();
-                            output.addStatement("result.put(context.getTable($S), tmp$L)", tableName, i);
+                            output.addStatement("result.put(context.getTable($S), $L)", tableName, tempViewName);
                         }
                     }
                 );
