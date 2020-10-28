@@ -52,10 +52,8 @@ import com.vmware.dcm.compiler.monoid.MonoidFunction;
 import com.vmware.dcm.compiler.monoid.MonoidLiteral;
 import com.vmware.dcm.compiler.monoid.MonoidVisitor;
 import com.vmware.dcm.compiler.monoid.Qualifier;
-import com.vmware.dcm.compiler.monoid.SimpleVisitor;
 import com.vmware.dcm.compiler.monoid.TableRowGenerator;
 import com.vmware.dcm.compiler.monoid.UnaryOperator;
-import com.vmware.dcm.compiler.monoid.VoidType;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -110,7 +108,6 @@ public class OrToolsSolver implements ISolverBackend {
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
     private static final String GENERATED_FIELD_NAME_PREFIX = "GenField";
-    private static final String SUBQUERY_NAME_PREFIX = "subquery";
     private static final MethodSpec INT_VAR_NO_BOUNDS = MethodSpec.methodBuilder("INT_VAR_NO_BOUNDS")
                                     .addModifiers(Modifier.PRIVATE)
                                     .addParameter(CpModel.class, "model", Modifier.FINAL)
@@ -121,7 +118,6 @@ public class OrToolsSolver implements ISolverBackend {
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
     private final AtomicInteger generatedFieldNameCounter = new AtomicInteger(0);
     private final AtomicInteger intermediateViewCounter = new AtomicInteger(0);
-    private final AtomicInteger subqueryCounter = new AtomicInteger(0);
     private final Map<String, Map<String, String>> tableToFieldToType = new HashMap<>();
     private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
@@ -256,10 +252,10 @@ public class OrToolsSolver implements ISolverBackend {
             throw new IllegalStateException(e);
         }
 
+        final TranslationContext translationContext = new TranslationContext(false);
         nonConstraintViews
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final TranslationContext translationContext = new TranslationContext(false);
                     final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     translationContext.enterScope(outerBlock);
                     final OutputIR.Block block = viewBlock(name, rewrittenComprehension, false, translationContext);
@@ -271,7 +267,6 @@ public class OrToolsSolver implements ISolverBackend {
                     final List<MonoidFunction> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
                     if (capacityConstraints.isEmpty()) {
                         final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                        final TranslationContext translationContext = new TranslationContext(false);
                         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                         translationContext.enterScope(outerBlock);
                         final OutputIR.Block block = viewBlock(name, rewrittenComprehension, true, translationContext);
@@ -279,7 +274,6 @@ public class OrToolsSolver implements ISolverBackend {
                         output.addCode(block.toString());
                     } else {
                         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                        final TranslationContext translationContext = new TranslationContext(false);
                         translationContext.enterScope(outerBlock);
                         final OutputIR.Block block = createCapacityConstraint(name, comprehension, translationContext,
                                                                               capacityConstraints);
@@ -291,10 +285,9 @@ public class OrToolsSolver implements ISolverBackend {
         objectiveFunctions
                 .forEach((name, comprehension) -> {
                     final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final TranslationContext objFunctionContext = new TranslationContext(false);
                     final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                    objFunctionContext.enterScope(outerBlock);
-                    final String exprStr = exprToStr(rewrittenComprehension, objFunctionContext);
+                    translationContext.enterScope(outerBlock);
+                    final String exprStr = exprToStr(rewrittenComprehension, translationContext);
                     output.addCode(outerBlock.toString());
                     output.addStatement("final $T $L = $L", IntVar.class, name, exprStr);
                 });
@@ -1336,8 +1329,8 @@ public class OrToolsSolver implements ISolverBackend {
 
         @Override
         protected String visitMonoidFunction(final MonoidFunction node, final TranslationContext context) {
-            final String vectorName = currentSubQueryContext == null ? currentGroupContext.groupViewName
-                                                                     : currentSubQueryContext.subQueryName;
+            final String vectorName = currentSubQueryContext == null ? currentGroupContext.getGroupViewName()
+                                                                     : currentSubQueryContext.getSubQueryName();
             // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
             // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
             final OutputIR.Block forLoop = context.currentScope().getForLoopByName(vectorName);
@@ -1369,7 +1362,7 @@ public class OrToolsSolver implements ISolverBackend {
                         // TODO: another sign that groupContext/subQueryContext should be handled by ExprContext
                         //  and scopes
                         final String scanOver = currentSubQueryContext == null ?
-                                                   "data" : currentSubQueryContext.subQueryName;
+                                                   "data" : currentSubQueryContext.getSubQueryName();
                         return apply(argumentIsIntVar
                                       ? CodeBlock.of("o.toConst($L.size())", scanOver).toString()
                                       : CodeBlock.of("$L.size()", scanOver).toString(), context);
@@ -1520,7 +1513,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String tableName = node.getTableName();
                 final String fieldName = node.getField().getName();
                 int columnNumber = 0;
-                for (final ColumnIdentifier ci: currentGroupContext.qualifier.getGroupByColumnIdentifiers()) {
+                for (final ColumnIdentifier ci: currentGroupContext.getQualifier().getGroupByColumnIdentifiers()) {
                     if (ci.getTableName().equalsIgnoreCase(tableName)
                             && ci.getField().getName().equalsIgnoreCase(fieldName)) {
                         return apply(String.format("group.value%s()", columnNumber), context);
@@ -1535,7 +1528,7 @@ public class OrToolsSolver implements ISolverBackend {
             //  scope to be searching for the indices.
             // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
             if (context.isFunctionContext() && currentSubQueryContext != null) {
-                final String tempTableName = currentSubQueryContext.subQueryName.toUpperCase(Locale.US);
+                final String tempTableName = currentSubQueryContext.getSubQueryName().toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
                 return apply(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), context);
             }
@@ -1543,7 +1536,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Within a group-by, we refer to values from the intermediate group by table. This involves an
             // indirection from columns to tuple indices
             if (context.isFunctionContext() && currentGroupContext != null) {
-                final String tempTableName = currentGroupContext.tempTableName.toUpperCase(Locale.US);
+                final String tempTableName = currentGroupContext.getTempTableName().toUpperCase(Locale.US);
                 final int fieldIndex = viewToFieldIndex.get(tempTableName).get(node.getField().getName());
                 return apply(String.format("dataTuple.value%s()", fieldIndex), context);
             }
@@ -1569,7 +1562,7 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitMonoidComprehension(final MonoidComprehension node, final TranslationContext context) {
             // We are in a subquery.
-            final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
+            final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final ExprToStrVisitor innerVisitor =
@@ -1606,12 +1599,11 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected String visitGroupByComprehension(final GroupByComprehension node, final TranslationContext context) {
             // We are in a subquery.
-            final String newSubqueryName = SUBQUERY_NAME_PREFIX + subqueryCounter.incrementAndGet();
+            final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
-            final ExprToStrVisitor innerVisitor =
-                    new ExprToStrVisitor(allowControllable, currentGroupContext,
-                            new SubQueryContext(newSubqueryName));
+            final ExprToStrVisitor innerVisitor = new ExprToStrVisitor(allowControllable, currentGroupContext,
+                                                                       new SubQueryContext(newSubqueryName));
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
 
@@ -1787,43 +1779,6 @@ public class OrToolsSolver implements ISolverBackend {
                                        final String loopBlockName, final String variableType) {
         final OutputIR.Block forLoop = outerBlock.getForLoopByName(loopBlockName);
         return extractListFromLoop(variableToExtract, outerBlock, forLoop, variableType);
-    }
-
-
-    private static class ContainsMonoidFunction extends SimpleVisitor {
-        boolean found = false;
-
-        @Override
-        protected VoidType visitMonoidFunction(final MonoidFunction node, final VoidType context) {
-            found = true;
-            return super.visitMonoidFunction(node, context);
-        }
-
-        boolean getFound() {
-            return found;
-        }
-    }
-
-    // TODO: consolidate into TranslationContext
-    private static class GroupContext {
-        private final GroupByQualifier qualifier;
-        private final String tempTableName;
-        private final String groupViewName;
-
-        private GroupContext(final GroupByQualifier qualifier, final String tempTableName, final String groupViewName) {
-            this.qualifier = qualifier;
-            this.tempTableName = tempTableName;
-            this.groupViewName = groupViewName;
-        }
-    }
-
-    // TODO: consolidate into TranslationContext
-    private static class SubQueryContext {
-        private final String subQueryName;
-
-        private SubQueryContext(final String subQueryName) {
-            this.subQueryName = subQueryName;
-        }
     }
 
     private static class QualifiersByType {
