@@ -114,6 +114,7 @@ public class ModelTest {
     @Test
     public void allDifferentTest() {
         final DSLContext conn = DSL.using("jdbc:h2:mem:");
+
         conn.execute("create table t1(id integer, controllable__var integer)");
 
         final String all_different = "create view constraint_all_different as " +
@@ -197,7 +198,6 @@ public class ModelTest {
         assertNotEquals(controllableVars.get(0), controllableVars.get(1));
         assertEquals(3, controllableVars.get(2));
     }
-
 
     @ParameterizedTest
     @MethodSource("solvers")
