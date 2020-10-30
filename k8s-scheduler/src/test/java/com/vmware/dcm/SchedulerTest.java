@@ -6,12 +6,16 @@
 
 package com.vmware.dcm;
 
-import com.google.common.base.Splitter;
 import com.google.common.collect.Sets;
+import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import com.vmware.ddlog.ir.DDlogProgram;
 import com.vmware.ddlog.translator.Translator;
 import ddlogapi.DDlogAPI;
+import ddlogapi.DDlogCommand;
 import ddlogapi.DDlogException;
+import ddlogapi.DDlogRecCommand;
+import ddlogapi.DDlogRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.LabelSelector;
@@ -39,8 +43,6 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
-import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -51,14 +53,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -88,24 +86,27 @@ public class SchedulerTest {
     @Test
     public void testddlog() throws IOException, DDlogException, IllegalAccessException, NoSuchFieldException {
         final Translator t = new Translator(null);
-        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/aug7_scheduler_tables.sql");
-        try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
-                StandardCharsets.UTF_8))) {
-            final String schemaAsString = tables.lines()
-                    .filter(line -> !line.startsWith("--")) // remove SQL comments
-                    .collect(Collectors.joining("\n"));
-            final List<String> semiColonSeparated = Splitter.on(";")
-                    .trimResults()
-                    .omitEmptyStrings()
-                    .splitToList(schemaAsString);
-            semiColonSeparated.forEach(e -> {
-                System.out.println(e);
-                t.translateSqlStatement(e);
-            });
-        }
+        final String s1 = "create table hosts (id integer, capacity integer)";
+        final String v1 = "create view good_hosts as select distinct * from hosts where capacity < 50";
+        t.translateSqlStatement(s1);
+        t.translateSqlStatement(v1);
         final DDlogProgram dDlogProgram = t.getDDlogProgram();
         writeProgramToFile(dDlogProgram.toString());
-        DDlogAPI.compileDDlogProgram("/tmp/program.dl", true, "/Users/lsuresh/code/differential-datalog/lib", "/Users/lsuresh/code/differential-datalog/sql/lib/");
+        DDlogAPI.compileDDlogProgram("/tmp/program.dl", true, "/Users/lsuresh/code/ddlog-git/lib", "/Users/lsuresh/code/ddlog-git/sql/lib/");
+        DDlogAPI.loadDDlog();
+
+        final DDlogAPI dDlogAPI = new DDlogAPI(1, null, false);
+        final DDlogRecord rec = new DDlogRecord(7);
+        final DDlogRecord cap = new DDlogRecord(20);
+        final DDlogRecord struct = DDlogRecord.makeStruct("Thosts", rec, cap);
+        final int id = dDlogAPI.getTableId("Rhosts");
+        final DDlogRecCommand command = new DDlogRecCommand(DDlogCommand.Kind.Insert, id, struct);
+        dDlogAPI.transactionStart();
+        dDlogAPI.applyUpdates(new DDlogRecCommand[]{command});
+        dDlogAPI.transactionCommitDumpChanges(s -> System.out.println("I'm here! " + s.relid()));
+        dDlogAPI.dumpTable("Rhosts", (record, l) -> {
+            System.out.println("Dumping " + record.getInt());
+        });
     }
 
     public File writeProgramToFile(String programBody) throws IOException {
