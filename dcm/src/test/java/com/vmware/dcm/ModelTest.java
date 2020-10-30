@@ -13,6 +13,7 @@ import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,6 +23,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.jooq.impl.DSL.using;
@@ -107,6 +109,34 @@ public class ModelTest {
         assertEquals(1, fetch.get(1).get("CONTROLLABLE__C3"));
         assertEquals(2, fetch.get(2).get("CONTROLLABLE__C3"));
         assertEquals(2, fetch.get(3).get("CONTROLLABLE__C3"));
+    }
+
+    @Test
+    public void allDifferentTest() {
+        // Create an in-memory database and get a JOOQ connection to it
+        final DSLContext conn = DSL.using("jdbc:h2:mem:");
+
+        // All different
+        conn.execute("create table t1(id integer, controllable__var integer)");
+
+        final String all_different = "create view constraint_all_different as " +
+                "select * from t1 check all_different(controllable__var) = true";
+
+        final String domain = "create view constraint_domain as " +
+                "select * from t1 check controllable__var <= 10 and controllable__var >= 1";
+
+        conn.execute("insert into t1 values (1, null)");
+        conn.execute("insert into t1 values (2, null)");
+        conn.execute("insert into t1 values (3, null)");
+
+        // Create a DCM model using the database connection and the above constraint
+        final Model model = Model.build(conn, List.of(all_different, domain));
+        model.updateData();
+
+        final Result<? extends Record> results = model.solve("T1");
+        final Set<Integer> controllableVars = results.stream().map(e -> e.get("CONTROLLABLE__VAR", Integer.class))
+                .collect(Collectors.toSet());
+        assertEquals(3, controllableVars.size());
     }
 
     @ParameterizedTest

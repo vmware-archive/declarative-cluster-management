@@ -457,6 +457,12 @@ public class Ops {
         return true;
     }
 
+
+    public <T> void allDifferent(final List<IntVar> array) {
+        final IntVar[] intVars = array.toArray(new IntVar[0]);
+        model.addAllDifferent(intVars);
+    }
+
     public IntVar toConst(final boolean expr) {
         return expr ? trueVar : falseVar;
     }

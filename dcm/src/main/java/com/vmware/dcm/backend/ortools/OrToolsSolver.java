@@ -1316,10 +1316,12 @@ public class OrToolsSolver implements ISolverBackend {
                 case ALL_EQUAL:
                     function = "allEqual";
                     break;
+                case ALL_DIFFERENT:
+                    context.currentScope().addBody(statement("o.allDifferent($L)", listOfProcessedItem));
+                    return apply("model.newConstant(1)", context);
                 case INCREASING:
                     context.currentScope().addBody(statement("o.increasing($L)", listOfProcessedItem));
                     return apply("model.newConstant(1)", context);
-                case ALL_DIFFERENT:
                 default:
                     throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
             }
