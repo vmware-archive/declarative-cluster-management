@@ -87,15 +87,17 @@ public class SchedulerTest {
     public void testddlog() throws IOException, DDlogException, IllegalAccessException, NoSuchFieldException {
         final Translator t = new Translator(null);
         final String s1 = "create table hosts (id integer, capacity integer)";
+        final String v2 = "create view hostsv as select distinct * from hosts";
         final String v1 = "create view good_hosts as select distinct * from hosts where capacity < 50";
         t.translateSqlStatement(s1);
+        t.translateSqlStatement(v2);
         t.translateSqlStatement(v1);
         final DDlogProgram dDlogProgram = t.getDDlogProgram();
         writeProgramToFile(dDlogProgram.toString());
         DDlogAPI.compileDDlogProgram("/tmp/program.dl", true, "/Users/lsuresh/code/ddlog-git/lib", "/Users/lsuresh/code/ddlog-git/sql/lib/");
         DDlogAPI.loadDDlog();
 
-        final DDlogAPI dDlogAPI = new DDlogAPI(1, null, false);
+        final DDlogAPI dDlogAPI = new DDlogAPI(1, null, true);
         final DDlogRecord rec = new DDlogRecord(7);
         final DDlogRecord cap = new DDlogRecord(20);
         final DDlogRecord struct = DDlogRecord.makeStruct("Thosts", rec, cap);
@@ -104,8 +106,8 @@ public class SchedulerTest {
         dDlogAPI.transactionStart();
         dDlogAPI.applyUpdates(new DDlogRecCommand[]{command});
         dDlogAPI.transactionCommitDumpChanges(s -> System.out.println("I'm here! " + s.relid()));
-        dDlogAPI.dumpTable("Rhosts", (record, l) -> {
-            System.out.println("Dumping " + record.getInt());
+        dDlogAPI.dumpTable("Rhostsv", (record, l) -> {
+            System.out.println("Dumping");
         });
     }
 
