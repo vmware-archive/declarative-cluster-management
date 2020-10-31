@@ -113,10 +113,7 @@ public class ModelTest {
 
     @Test
     public void allDifferentTest() {
-        // Create an in-memory database and get a JOOQ connection to it
         final DSLContext conn = DSL.using("jdbc:h2:mem:");
-
-        // All different
         conn.execute("create table t1(id integer, controllable__var integer)");
 
         final String all_different = "create view constraint_all_different as " +
@@ -129,7 +126,6 @@ public class ModelTest {
         conn.execute("insert into t1 values (2, null)");
         conn.execute("insert into t1 values (3, null)");
 
-        // Create a DCM model using the database connection and the above constraint
         final Model model = Model.build(conn, List.of(all_different, domain));
         model.updateData();
 
@@ -137,6 +133,35 @@ public class ModelTest {
         final Set<Integer> controllableVars = results.stream().map(e -> e.get("CONTROLLABLE__VAR", Integer.class))
                 .collect(Collectors.toSet());
         assertEquals(3, controllableVars.size());
+    }
+
+    @Test
+    public void whereClauseWithChecks() {
+        final DSLContext conn = DSL.using("jdbc:h2:mem:");
+        conn.execute("create table t1(id integer, controllable__var integer)");
+
+        final String constraint_where1 = "create view constraint_where1 as " +
+                "select * from t1 where id <= 2 check controllable__var = 7";
+
+        final String constraint_where2 = "create view constraint_where2 as " +
+                "select * from t1 where id > 2 check controllable__var = 3";
+
+        final String domain = "create view constraint_domain as " +
+                "select * from t1 check controllable__var <= 10 and controllable__var >= 1";
+
+        conn.execute("insert into t1 values (1, null)");
+        conn.execute("insert into t1 values (2, null)");
+        conn.execute("insert into t1 values (3, null)");
+
+        final Model model = Model.build(conn, List.of(constraint_where1, constraint_where2, domain));
+        model.updateData();
+
+        final Result<? extends Record> results = model.solve("T1");
+        final List<Integer> controllableVars = results.stream().map(e -> e.get("CONTROLLABLE__VAR", Integer.class))
+                .collect(Collectors.toList());
+        assertEquals(7, controllableVars.get(0));
+        assertEquals(7, controllableVars.get(1));
+        assertEquals(3, controllableVars.get(2));
     }
 
     @ParameterizedTest

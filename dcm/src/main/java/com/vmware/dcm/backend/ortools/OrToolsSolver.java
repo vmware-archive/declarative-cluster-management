@@ -474,8 +474,7 @@ public class OrToolsSolver implements ISolverBackend {
         context.enterScope(iterationBlock);
 
         // Filter out nested for loops using an if(predicate) statement
-        final OutputIR.Block nonVarFiltersBlock = nonVarFiltersBlock(viewName, nonVarQualifiers,
-                isConstraint, context);
+        final OutputIR.Block nonVarFiltersBlock = nonVarFiltersBlock(viewName, nonVarQualifiers, context);
 
         // Identify head items to be accessed within loop
         tupleMetadata.computeViewIndices(viewName, headItemsList);
@@ -659,14 +658,11 @@ public class OrToolsSolver implements ISolverBackend {
      * whether a result-set or constraint applies to a row within a view
      */
     private OutputIR.Block nonVarFiltersBlock(final String viewName, final QualifiersByType nonVarQualifiers,
-                                              final boolean isConstraint, final TranslationContext context) {
+                                              final TranslationContext context) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
                 .map(expr -> exprToStr(expr, false, null, context))
                 .collect(Collectors.joining(" \n    && "));
-        // For non constraint views, where clauses are a filter criterion, whereas for constraint views, they
-        // are the constraint itself.
-        final String wherePredicateStr = isConstraint ? "" :
-                                         nonVarQualifiers.wherePredicates.stream()
+        final String wherePredicateStr = nonVarQualifiers.wherePredicates.stream()
                                                 .map(expr -> exprToStr(expr, false, null, context))
                                                 .collect(Collectors.joining(" \n    && "));
         final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
