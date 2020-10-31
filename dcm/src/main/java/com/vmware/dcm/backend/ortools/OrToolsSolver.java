@@ -1001,20 +1001,15 @@ public class OrToolsSolver implements ISolverBackend {
                 continue;
             }
             final String tableName = table.getName();
-            final Set<String> controllableColumns = table.getIRColumns().entrySet().stream()
-                                                                   .filter(e -> e.getValue() // IRColumn
-                                                                                 .isControllable())
-                                                                   .map(Map.Entry::getKey)
-                                                                   .collect(Collectors.toSet());
             // Only tables with variable columns become outputs
-            if (!controllableColumns.isEmpty()) {
+            if (table.hasVars()) {
+                final String tempViewName = getTempViewName();
+                output.addStatement("final Result<? extends Record> $L = " +
+                        "context.getTable($S).getCurrentData()", tempViewName, tableName);
                 table.getIRColumns().forEach(
                     (name, field) -> {
                         // Else, we update the records corresponding to the table.
-                        if (controllableColumns.contains(name)) {
-                            final String tempViewName = getTempViewName();
-                            output.addStatement("final Result<? extends Record> $L = " +
-                                    "context.getTable($S).getCurrentData()", tempViewName, tableName);
+                        if (field.isControllable()) {
                             output.beginControlFlow("for (int i = 0; i < $L; i++)",
                                     tableNumRowsStr(tableName));
                             if (field.getType().equals(IRColumn.FieldType.STRING)) {
@@ -1026,10 +1021,10 @@ public class OrToolsSolver implements ISolverBackend {
                             }
                             output.addStatement("$L.get(i).from(obj, $S)", tempViewName, field.getName());
                             output.endControlFlow();
-                            output.addStatement("result.put(context.getTable($S), $L)", tableName, tempViewName);
                         }
                     }
                 );
+                output.addStatement("result.put(context.getTable($S), $L)", tableName, tempViewName);
             }
         }
         output.addStatement("return result");

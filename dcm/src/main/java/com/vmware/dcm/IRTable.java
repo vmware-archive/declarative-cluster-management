@@ -14,14 +14,12 @@ import org.jooq.Table;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 
 /**
@@ -83,25 +81,6 @@ public class IRTable {
      */
     public Table<? extends Record> getTable() {
         return Preconditions.checkNotNull(jooqTable);
-    }
-
-
-    /**
-     * Used in the mnz_data.ftl and mnz_model.ftl template files
-     *
-     * @return Get all the irColumns that are variables
-     */
-    Collection<IRColumn> getVars() {
-        return filterFieldsByTag(IRColumn.FieldTag.CONTROLLABLE);
-    }
-
-    /**
-     * Returns IRColumns that have a specific tag
-     */
-    private List<IRColumn> filterFieldsByTag(final IRColumn.FieldTag filterTag) {
-        return irColumns.values().stream()
-                .filter(f -> f.getTag() == filterTag)
-                .collect(Collectors.toList());
     }
 
     /**
