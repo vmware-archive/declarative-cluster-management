@@ -91,7 +91,7 @@ class EmulatedCluster {
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
         traceReplayer.runTrace(client, traceFileName, deployer, "dcm-scheduler", cpuScaleDown,
-                memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion);
+                memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion, 5);
     }
 
     private static Node addNode(final String nodeName, final Map<String, String> labels,
@@ -152,22 +152,22 @@ class EmulatedCluster {
         return pod;
     }
 
-    public static void main(final String[] args) throws Exception {
+    public static void runWorkload(final String[] args) throws Exception {
         final EmulatedCluster emulatedCluster = new EmulatedCluster();
         final Options options = new Options();
 
         options.addRequiredOption("n", "numNodes", true,
-                        "Number of nodes in experiment");
+                "Number of nodes in experiment");
         options.addRequiredOption("f", "traceFile", true,
-                        "Trace file to use from k8s-scheduler/src/test/resources/");
+                "Trace file to use from k8s-scheduler/src/test/resources/");
         options.addRequiredOption("c", "cpuScaleDown", true,
-                        "Factor by which to scale down CPU resource demands for pods");
+                "Factor by which to scale down CPU resource demands for pods");
         options.addRequiredOption("m", "memScaleDown", true,
-                        "Factor by which to scale down Memory resource demands for pods");
+                "Factor by which to scale down Memory resource demands for pods");
         options.addRequiredOption("t", "timeScaleDown", true,
-                        "Factor by which to scale down arrival rate for pods");
+                "Factor by which to scale down arrival rate for pods");
         options.addRequiredOption("s", "startTimeCutOff", true,
-                        "N, where we replay first N seconds of trace");
+                "N, where we replay first N seconds of trace");
         options.addOption("p", "proportion", true,
                 "P, from 0 to 100, indicating the proportion of pods that have affinity requirements");
         final CommandLineParser parser = new DefaultParser();
@@ -179,14 +179,18 @@ class EmulatedCluster {
         final int timeScaleDown = Integer.parseInt(cmd.getOptionValue("timeScaleDown"));
         final int startTimeCutOff = Integer.parseInt(cmd.getOptionValue("startTimeCutOff"));
         final int affinityRequirementsProportion = Integer.parseInt(cmd.hasOption("proportion") ?
-                                                                    cmd.getOptionValue("proportion") : "0");
+                cmd.getOptionValue("proportion") : "0");
         assert affinityRequirementsProportion >= 0 && affinityRequirementsProportion <= 100;
         LOG.info("Running experiment with parameters: numNodes: {}, traceFile: {}, cpuScaleDown: {}, " +
-                    "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}",
+                        "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}",
                 numNodes, traceFile, cpuScaleDown, memScaleDown,
                 timeScaleDown, startTimeCutOff, affinityRequirementsProportion);
         emulatedCluster.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
-                                            startTimeCutOff, affinityRequirementsProportion);
+                startTimeCutOff, affinityRequirementsProportion);
+    }
+
+    public static void main(final String[] args) throws Exception {
+        runWorkload(args);
         System.exit(0); // without this, there are non-daemon threads that prevent JVM shutdown
     }
 }

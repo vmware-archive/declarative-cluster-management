@@ -58,7 +58,7 @@ public class TraceReplayer {
                          final int timeScaleDown, final int startTimeCutOff, final int affinityProportion)
                                                                                                 throws Exception {
         runTrace(client, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
-                startTimeCutOff, 0, 60);
+                startTimeCutOff, affinityProportion, 60);
     }
 
     public void runTrace(final NamespacedKubernetesClient client, final String fileName, final IPodDeployer deployer,
@@ -148,7 +148,7 @@ public class TraceReplayer {
                         " will happen at {}s. Sleeping for {}s before teardown.", totalPods, maxStart,
                 maxEnd, maxEnd);
 
-        final List<Object> objects = Futures.successfulAsList(deletions).get(maxEnd + 100, TimeUnit.SECONDS);
+        final List<Object> objects = Futures.successfulAsList(deletions).get(maxEnd + 30, TimeUnit.SECONDS);
         assert objects.size() != 0;
     }
 
