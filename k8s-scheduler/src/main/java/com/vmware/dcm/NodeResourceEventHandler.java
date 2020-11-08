@@ -303,7 +303,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     private List<Insert<NodeImagesRecord>> addNodeImages(final DSLContext conn, final Node node) {
         final List<Insert<NodeImagesRecord>> inserts = new ArrayList<>();
         for (final ContainerImage image: node.getStatus().getImages()) {
-            for (final String imageName: image.getNames()) {
+            for (final String imageName: Optional.ofNullable(image.getNames()).orElse(Collections.emptyList())) {
                 final int imageSizeInMb = (int) (((float) image.getSizeBytes()) / 1024 / 1024);
                 inserts.add(
                     conn.insertInto(Tables.NODE_IMAGES)
