@@ -11,7 +11,9 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.vmware.dcm.backend.minizinc.MinizincSolver;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.Record;
+import org.jooq.Record2;
 import org.jooq.Result;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
@@ -26,6 +28,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.jooq.impl.DSL.field;
 import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,6 +45,40 @@ import static org.junit.jupiter.api.Assertions.fail;
 public class ModelTest {
     static {
         System.getProperties().setProperty("org.jooq.no-logo", "true");
+    }
+
+
+    @Test
+    public void testUpdateDataWithResultFetcher() {
+        final DSLContext conn = setup();
+        conn.execute("create table t1(c1 integer, controllable__c2 integer, primary key (c1))");
+
+        final List<String> views = toListOfViews("" +
+                "create view constraint_with_join AS " +
+                "select * from t1 " +
+                "check c1 = controllable__c2;"
+        );
+
+        final Field<Integer> f1 = field("C1", Integer.class);
+        final Field<Integer> f2 = field("CONTROLLABLE__C2", Integer.class);
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testWithUpdateData");
+        model.updateData((table) -> {
+            final Result<Record2<Integer, Integer>> result = conn.newResult(f1, f2);
+            final Record2<Integer, Integer> record1 = conn.newRecord(f1, f2);
+            record1.setValue(f1, 78);
+            record1.setValue(f2, 93); // will get over-written by constraint
+            result.add(record1);
+            final Record2<Integer, Integer> record2 = conn.newRecord(f1, f2);
+            record2.setValue(f1, 84);
+            record2.setValue(f2, 91); // will get over-written by constraint
+            result.add(record2);
+            return result;
+        });
+        final Result<? extends Record> result = model.solve("T1");
+        assertEquals(result.get(0).get(0), 78);
+        assertEquals(result.get(0).get(1), 78);
+        assertEquals(result.get(1).get(0), 84);
+        assertEquals(result.get(1).get(1), 84);
     }
 
     @ParameterizedTest

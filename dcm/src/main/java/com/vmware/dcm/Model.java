@@ -28,8 +28,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -171,10 +173,20 @@ public class Model {
     }
 
     /**
-     * Updates the data file within a model by getting the latest data from the tables
+     * Updates the input data for a model by getting the latest data from the required tables.
      */
     public synchronized void updateData() {
-        updateDataFields();
+        updateDataFields(this::defaultFetcher);
+    }
+
+    /**
+     * Updates the input data for a model by using the supplied callback to retrieve the
+     * result-set for each table or view.
+     *
+     * @param fetcher a function that given a JOOQ Table, fetches the corresponding result set as a JOOQ Result.
+     */
+    public synchronized void updateData(final Function<Table<?>, Result<? extends Record>> fetcher) {
+        updateDataFields(fetcher);
     }
 
     /**
@@ -260,13 +272,14 @@ public class Model {
     /**
      * Scans tables to update the data associated with the model
      */
-    private void updateDataFields() {
+    private void updateDataFields(final Function<Table<?>, Result<? extends Record>> fetcher) {
         final long updateData = System.nanoTime();
         for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
             final Table<? extends Record> table = entry.getKey();
             final IRTable irTable = entry.getValue();
             final long start = System.nanoTime();
-            final Result<? extends Record> recentData = dbCtx.selectFrom(table).fetch();
+            final Result<? extends Record> recentData = fetcher.apply(table);
+            Objects.requireNonNull(recentData, "Table Result<?> was null");
             final long select = System.nanoTime();
             irTable.updateValues(recentData);
             final long updateValues = System.nanoTime();
@@ -276,5 +289,9 @@ public class Model {
         }
         compiler.updateData(irContext, backend);
         LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
+    }
+
+    Result<? extends Record> defaultFetcher(final Table<?> table) {
+        return dbCtx.selectFrom(table).fetch();
     }
 }
