@@ -41,98 +41,92 @@ import static org.jooq.impl.DSL.using;
 public class H2Bench {
     private static final int NUM_TABLES = 30;
 
-    @State(Scope.Benchmark)
-    @SuppressWarnings("all")
-    public static class BenchmarkState {
+    final DBConnectionPool dbConnectionPool = setupDbConnectionPool();
+    final DSLContext conn = setup();
+    final AtomicInteger integer = new AtomicInteger(0);
 
-        final DBConnectionPool dbConnectionPool = setupDbConnectionPool();
-        final DSLContext conn = setup();
-        final AtomicInteger integer = new AtomicInteger(0);
-
-        @Setup(Level.Invocation)
-        public void setUpDb() {
-            for (int t = 0; t < NUM_TABLES; t++) {
-                conn.execute(String.format("delete from t%s where c2 >= 0", t));
-                for (int i = 0; i < 1000; i++) {
-                    final int val = integer.incrementAndGet();
-                    conn.execute(String.format("insert into t%s values ('%s', %s)", t, val, val));
-                }
-            }
-        }
-
-        private DBConnectionPool setupDbConnectionPool() {
-            final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-            for (int t = 0; t < NUM_TABLES; t++) {
-                dbConnectionPool.getConnectionToDb()
-                        .execute(String.format("create table t%s (c1 varchar(36) primary key, c2 integer)", t));
-            }
-            return dbConnectionPool;
-        }
-
-        private DSLContext setup() {
-            final Properties properties = new Properties();
-            properties.setProperty("foreign_keys", "true");
-            try {
-                // Create a fresh database
-                final String connectionURL = "jdbc:h2:mem:create=true";
-                final Connection conn = getConnection(connectionURL, properties);
-                final DSLContext using = using(conn, SQLDialect.H2);
-                using.execute("create schema curr");
-                using.execute("set schema curr");
-                for (int t = 0; t < NUM_TABLES; t++) {
-                    using.execute(String.format("create table t%s (c1 varchar(36) primary key, c2 integer)", t));
-                }
-                return using;
-            } catch (final SQLException e) {
-                throw new RuntimeException(e);
+    @Setup(Level.Invocation)
+    public void setUpDb() {
+        for (int t = 0; t < NUM_TABLES; t++) {
+            conn.execute(String.format("delete from t%s where c2 >= 0", t));
+            for (int i = 0; i < 1000; i++) {
+                final int val = integer.incrementAndGet();
+                conn.execute(String.format("insert into t%s values ('%s', %s)", t, val, val));
             }
         }
     }
 
+    private DBConnectionPool setupDbConnectionPool() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        for (int t = 0; t < NUM_TABLES; t++) {
+            dbConnectionPool.getConnectionToDb()
+                    .execute(String.format("create table t%s (c1 varchar(36) primary key, c2 integer)", t));
+        }
+        return dbConnectionPool;
+    }
+
+    private DSLContext setup() {
+        final Properties properties = new Properties();
+        properties.setProperty("foreign_keys", "true");
+        try {
+            // Create a fresh database
+            final String connectionURL = "jdbc:h2:mem:create=true";
+            final Connection conn = getConnection(connectionURL, properties);
+            final DSLContext using = using(conn, SQLDialect.H2);
+            using.execute("create schema curr");
+            using.execute("set schema curr");
+            for (int t = 0; t < NUM_TABLES; t++) {
+                using.execute(String.format("create table t%s (c1 varchar(36) primary key, c2 integer)", t));
+            }
+            return using;
+        } catch (final SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     @Benchmark
-    public void simple(final H2Bench.BenchmarkState state, final Blackhole blackhole) {
+    public void simple(final Blackhole blackhole) {
         IntStream.range(0, NUM_TABLES).forEach(
             t -> {
-                final Result<Record> fetch = state.conn.selectFrom("t" + t).fetch();
+                final Result<Record> fetch = conn.selectFrom("t" + t).fetch();
                 blackhole.consume(fetch);
             }
         );
     }
 
     @Benchmark
-    public void withPool(final H2Bench.BenchmarkState state, final Blackhole blackhole) {
+    public void withPool(final Blackhole blackhole) {
         IntStream.range(0, NUM_TABLES).forEach(
             t -> {
-                final Result<Record> fetch = state.dbConnectionPool.getConnectionToDb().selectFrom("t" + t).fetch();
+                final Result<Record> fetch = dbConnectionPool.getConnectionToDb().selectFrom("t" + t).fetch();
                 blackhole.consume(fetch);
             }
         );
     }
 
     @Benchmark
-    public void simpleParallel(final H2Bench.BenchmarkState state, final Blackhole blackhole) {
+    public void simpleParallel(final Blackhole blackhole) {
         IntStream.range(0, NUM_TABLES).parallel().forEach(
             t -> {
-                final Result<Record> fetch = state.conn.selectFrom("t" + t).fetch();
+                final Result<Record> fetch = conn.selectFrom("t" + t).fetch();
                 blackhole.consume(fetch);
             }
         );
     }
 
     @Benchmark
-    public void withPoolParallel(final H2Bench.BenchmarkState state, final Blackhole blackhole) {
+    public void withPoolParallel(final Blackhole blackhole) {
         IntStream.range(0, NUM_TABLES).parallel().forEach(
             t -> {
-                final Result<Record> fetch = state.dbConnectionPool.getConnectionToDb().selectFrom("t" + t).fetch();
+                final Result<Record> fetch = dbConnectionPool.getConnectionToDb().selectFrom("t" + t).fetch();
                 blackhole.consume(fetch);
             }
         );
     }
 
     @Benchmark
-    public void withSingleConnectionFromPool(final H2Bench.BenchmarkState state, final Blackhole blackhole) {
-        final DSLContext connectionToDb = state.dbConnectionPool.getConnectionToDb();
+    public void withSingleConnectionFromPool(final Blackhole blackhole) {
+        final DSLContext connectionToDb = dbConnectionPool.getConnectionToDb();
         IntStream.range(0, NUM_TABLES).forEach(
             t -> {
                 final Result<Record> fetch = connectionToDb.selectFrom("t" + t).fetch();
@@ -142,8 +136,8 @@ public class H2Bench {
     }
 
     @Benchmark
-    public void withSingleConnectionFromPoolParallel(final H2Bench.BenchmarkState state, final Blackhole blackhole) {
-        final DSLContext connectionToDb = state.dbConnectionPool.getConnectionToDb();
+    public void withSingleConnectionFromPoolParallel(final Blackhole blackhole) {
+        final DSLContext connectionToDb = dbConnectionPool.getConnectionToDb();
         IntStream.range(0, NUM_TABLES).parallel().forEach(
             t -> {
                 final Result<Record> fetch = connectionToDb.selectFrom("t" + t).fetch();
