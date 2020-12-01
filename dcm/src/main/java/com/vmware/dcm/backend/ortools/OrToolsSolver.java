@@ -123,6 +123,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final boolean configTryScalarProductEncoding;
     private final boolean configUseFullReifiedConstraintsForJoinPreferences;
     private final boolean configUseIndicesForEqualityBasedJoins;
+    private final boolean configPrintDiagnostics;
 
     static {
         OrToolsHelper.loadLibrary();
@@ -134,12 +135,14 @@ public class OrToolsSolver implements ISolverBackend {
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
                           final boolean configUseFullReifiedConstraintsForJoinPreferences,
-                          final boolean configUseIndicesForEqualityBasedJoins) {
+                          final boolean configUseIndicesForEqualityBasedJoins,
+                          final boolean configPrintDiagnostics) {
         this.configNumThreads = configNumThreads;
         this.configMaxTimeInSeconds = configMaxTimeInSeconds;
         this.configTryScalarProductEncoding = configTryScalarProductEncoding;
         this.configUseFullReifiedConstraintsForJoinPreferences = configUseFullReifiedConstraintsForJoinPreferences;
         this.configUseIndicesForEqualityBasedJoins = configUseIndicesForEqualityBasedJoins;
+        this.configPrintDiagnostics = configPrintDiagnostics;
     }
 
     public static class Builder {
@@ -148,6 +151,7 @@ public class OrToolsSolver implements ISolverBackend {
         private boolean tryScalarProductEncoding = true;
         private boolean useFullReifiedConstraintsForJoinPreferences = false;
         private boolean useIndicesForEqualityBasedJoins = true;
+        private boolean printDiagnostics = false;
 
 
         /**
@@ -208,9 +212,23 @@ public class OrToolsSolver implements ISolverBackend {
             return this;
         }
 
+
+        /**
+         * Configures whether or not to print diagnostics for each invocation of solve()
+         *
+         * @param printDiagnostics generated code prints timing and solver diagnostics on each invocation.
+         *                         Defaults to true.
+         * @return the current Builder object with `printDiagnostics` set
+         */
+        public Builder setPrintDiagnostics(final boolean printDiagnostics) {
+            this.printDiagnostics = printDiagnostics;
+            return this;
+        }
+
         public OrToolsSolver build() {
             return new OrToolsSolver(numThreads, maxTimeInSeconds, tryScalarProductEncoding,
-                                     useFullReifiedConstraintsForJoinPreferences, useIndicesForEqualityBasedJoins);
+                                     useFullReifiedConstraintsForJoinPreferences, useIndicesForEqualityBasedJoins,
+                                     printDiagnostics);
         }
     }
 
@@ -987,7 +1005,7 @@ public class OrToolsSolver implements ISolverBackend {
                .addComment("Start solving")
                .addStatement(printTime("Model creation"))
                .addStatement("final $1T solver = new $1T()", CpSolver.class)
-               .addStatement("solver.getParameters().setLogSearchProgress(true)")
+               .addStatement("solver.getParameters().setLogSearchProgress($L)", configPrintDiagnostics)
                .addStatement("solver.getParameters().setCpModelProbingLevel(0)")
                .addStatement("solver.getParameters().setNumSearchWorkers($L)", configNumThreads)
                .addStatement("solver.getParameters().setMaxTimeInSeconds($L)", configMaxTimeInSeconds)
@@ -1745,7 +1763,11 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private CodeBlock printTime(final String event) {
-        return CodeBlock.of("System.out.println(\"$L: we are at \" + (System.nanoTime() - startTime));", event);
+        if (configPrintDiagnostics) {
+            return CodeBlock.of("System.out.println(\"$L: we are at \" + (System.nanoTime() - startTime));", event);
+        } else {
+            return CodeBlock.of("");
+        }
     }
 
     private String getTempViewName() {
