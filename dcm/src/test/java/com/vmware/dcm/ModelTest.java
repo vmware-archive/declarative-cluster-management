@@ -47,7 +47,6 @@ public class ModelTest {
         System.getProperties().setProperty("org.jooq.no-logo", "true");
     }
 
-
     @Test
     public void testUpdateDataWithResultFetcher() {
         final DSLContext conn = setup();
@@ -1933,7 +1932,9 @@ public class ModelTest {
                 final MinizincSolver minizincSolver = new MinizincSolver(modelFile, dataFile, new Conf());
                 return Model.build(conn, minizincSolver, views);
             case OrToolsSolver:
-                final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder().build();
+                final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
+                                                        .setPrintDiagnostics(true)
+                                                        .build();
                 return Model.build(conn, orToolsSolver, views);
             default:
                 throw new IllegalArgumentException(solverBackend.toString());
