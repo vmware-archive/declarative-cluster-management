@@ -113,7 +113,7 @@ public class ModelTest {
 
     @Test
     public void testAllEqual() {
-        final String modelName = "indexAccess";
+        final String modelName = "testAllEqual";
 
         final DSLContext conn = setup();
         conn.execute("create table t1(c1 integer, controllable__c2 integer, primary key (c1))");
