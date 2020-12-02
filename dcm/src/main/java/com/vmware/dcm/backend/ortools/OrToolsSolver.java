@@ -1323,8 +1323,13 @@ public class OrToolsSolver implements ISolverBackend {
                     function = String.format("minV%s", argumentType);
                     break;
                 case ALL_EQUAL:
-                    function = "allEqual";
-                    break;
+                    if (argumentIsIntVar) {
+                        context.currentScope().addBody(statement("o.allEqualVar($L)", listOfProcessedItem));
+                        return apply("model.newConstant(1)", context);
+                    } else {
+                        function = "allEqualPrimitive";
+                        break;
+                    }
                 case ALL_DIFFERENT:
                     context.currentScope().addBody(statement("o.allDifferent($L)", listOfProcessedItem));
                     return apply("model.newConstant(1)", context);

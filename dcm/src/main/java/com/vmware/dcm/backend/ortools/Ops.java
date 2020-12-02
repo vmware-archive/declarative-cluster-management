@@ -448,7 +448,7 @@ public class Ops {
         return !var;
     }
 
-    public <T> boolean allEqual(final List<T> array) {
+    public <T> boolean allEqualPrimitive(final List<T> array) {
         for (int i = 0; i < array.size() - 1; i++) {
             if (array.get(i) != array.get(i + 1)) {
                 return false;
@@ -457,6 +457,11 @@ public class Ops {
         return true;
     }
 
+    public void allEqualVar(final List<IntVar> array) {
+        for (int i = 0; i < array.size() - 1; i++) {
+            model.addEquality(array.get(i), array.get(i + 1));
+        }
+    }
 
     public <T> void allDifferent(final List<IntVar> array) {
         final IntVar[] intVars = array.toArray(new IntVar[0]);

@@ -111,6 +111,35 @@ public class ModelTest {
         assertEquals(425, fetch.get(1).get("CONTROLLABLE__C2"));
     }
 
+    @Test
+    public void testAllEqual() {
+        final String modelName = "indexAccess";
+
+        final DSLContext conn = setup();
+        conn.execute("create table t1(c1 integer, controllable__c2 integer, primary key (c1))");
+
+        final List<String> views = toListOfViews(
+                "CREATE VIEW constraint_with_all_equal AS " +
+                "SELECT * FROM t1 " +
+                "check all_equal(controllable__c2) = true; " +
+                "CREATE VIEW constraint_domain AS " +
+                "SELECT * FROM t1 " +
+                "check controllable__c2 > 1 and controllable__c2 < 10;"
+        );
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
+
+        conn.execute("insert into t1 values (1, 123)");
+        conn.execute("insert into t1 values (2, 425)");
+
+        model.updateData();
+        final Result<? extends Record> fetch = model.solve("T1");
+        System.out.println(fetch);
+        assertEquals(2, fetch.size());
+        assertEquals(fetch.get(0).get("CONTROLLABLE__C2"), fetch.get(1).get("CONTROLLABLE__C2"));
+    }
+
+
     @ParameterizedTest
     @MethodSource("solvers")
     public void nullTest(final SolverConfig solver) {
