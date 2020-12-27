@@ -18,7 +18,7 @@ import java.util.function.Consumer;
 
 /**
  * Subscribes to Kubernetes pod events and streams them to a flowable. Notably, it does not write
- * it to the database unlike the NodeResourceEventHandler. We do this to have tigher control over
+ * it to the database unlike the NodeResourceEventHandler. We do this to have tighter control over
  * batching these writes to the database.
  */
 class PodResourceEventHandler implements ResourceEventHandler<Pod> {
@@ -45,7 +45,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
     public void onUpdateSync(final Pod oldPod, final Pod newPod) {
         final String oldPodScheduler = oldPod.getSpec().getSchedulerName();
-        final String newPodScheduler = oldPod.getSpec().getSchedulerName();
+        final String newPodScheduler = newPod.getSpec().getSchedulerName();
         assert oldPodScheduler.equals(newPodScheduler);
         LOG.trace("{} => {} pod update received", oldPod.getMetadata().getName(), newPod.getMetadata().getName());
         podEventNotification.accept(new PodEvent(PodEvent.Action.UPDATED, newPod));
