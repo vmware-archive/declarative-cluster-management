@@ -9,6 +9,7 @@ spec:
   containers:
     - name: cache
       image: k8s.gcr.io/pause
+      imagePullPolicy: IfNotPresent
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

@@ -35,3 +35,4 @@ spec:
       containers:
         - name: web-app
           image: k8s.gcr.io/pause
+          imagePullPolicy: IfNotPresent
