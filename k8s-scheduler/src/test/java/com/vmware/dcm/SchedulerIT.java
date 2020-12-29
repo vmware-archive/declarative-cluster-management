@@ -61,7 +61,7 @@ public class SchedulerIT extends ITBase {
         final List<Pod> items =
                 fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
         assertEquals(newPodsToCreate, items.size());
-        items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
+        items.forEach(pod -> assertNotEquals("kube-master", pod.getSpec().getNodeName()));
         stateSync.shutdown();
         scheduler.shutdown();
     }
@@ -91,7 +91,7 @@ public class SchedulerIT extends ITBase {
         waitUntil(fabricClient, (n) -> hasNRunningPods(newPodsToCreate));
         final List<Pod> items = fabricClient.pods().inNamespace(TEST_NAMESPACE).list().getItems();
         assertEquals(newPodsToCreate, items.size());
-        items.forEach(pod -> assertNotEquals(pod.getSpec().getNodeName(), "kube-master"));
+        items.forEach(pod -> assertNotEquals("kube-master", pod.getSpec().getNodeName()));
 
         final Map<String, List<String>> podsByNode = new HashMap<>();
 
