@@ -71,14 +71,14 @@ class PodEventsToDatabase {
     PodEventsToDatabase(final DBConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            conn.execute("create or replace trigger nodeInfoResourceUpdateOnInsert " +
-                         "after insert on pod_info for each row " +
+            conn.execute("create or replace trigger nodeInfoResourceUpdateOnPodInsert " +
+                         "after insert on " + Tables.POD_INFO.getName() + " for each row " +
                          "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
-            conn.execute("create or replace trigger nodeInfoResourceUpdateOnUpdate " +
-                         "after update on pod_info for each row " +
+            conn.execute("create or replace trigger nodeInfoResourceUpdateOnPodUpdate " +
+                         "after update on " + Tables.POD_INFO.getName() + " for each row " +
                          "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
-            conn.execute("create or replace trigger nodeInfoResourceUpdateOnDelete " +
-                          "after delete on pod_info for each row " +
+            conn.execute("create or replace trigger nodeInfoResourceUpdateOnPodDelete " +
+                          "after delete on " + Tables.POD_INFO.getName() + " for each row " +
                           "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
         } catch (final DataAccessException e) {
             LOG.error(e.getLocalizedMessage());
@@ -100,19 +100,20 @@ class PodEventsToDatabase {
         public void fire(final Connection connection, final Object[] oldRow, final Object[] newRow)
                          throws SQLException {
             try (final PreparedStatement stmt = connection.prepareStatement(
-                    "update node_info set node_info.cpu_allocated = node_info.cpu_allocated + ?," +
-                     "node_info.memory_allocated = node_info.memory_allocated + ?," +
-                     "node_info.ephemeral_storage_allocated = node_info.ephemeral_storage_allocated + ?," +
-                     "node_info.pods_allocated = node_info.pods_allocated + ? " +
-                     "where node_info.name = ?")) {
-                final boolean isInsert = (oldRow == null && newRow != null && newRow[2] != null);
-                final boolean isDeletion = (oldRow != null && newRow == null && oldRow[2] != null);
+                    "update " + Tables.NODE_INFO.getName() +
+                    " set cpu_allocated = cpu_allocated + ?," +
+                     "memory_allocated = memory_allocated + ?," +
+                     "ephemeral_storage_allocated = ephemeral_storage_allocated + ?," +
+                     "pods_allocated = pods_allocated + ? " +
+                     "where name = ?")) {
+                final boolean isInsert = (oldRow == null && newRow != null && newRow[3] != null);
+                final boolean isDeletion = (oldRow != null && newRow == null && oldRow[3] != null);
                 final boolean isNodeNameUpdate =
-                        oldRow != null && newRow != null && oldRow[2] == null && newRow[2] != null;
+                        oldRow != null && newRow != null && oldRow[3] == null && newRow[3] != null;
                 if (isDeletion) {
-                    applyPodInfoUpdateAgainstNode(stmt, oldRow, (String) oldRow[2], true);
+                    updateNodeAgainstPodInfo(stmt, oldRow, (String) oldRow[3], true);
                 } else if (isInsert || isNodeNameUpdate) {
-                    applyPodInfoUpdateAgainstNode(stmt, newRow, (String) newRow[2], false);
+                    updateNodeAgainstPodInfo(stmt, newRow, (String) newRow[3], false);
                 }
             }
         }
@@ -125,14 +126,14 @@ class PodEventsToDatabase {
         public void remove() {
         }
 
-        private void applyPodInfoUpdateAgainstNode(final PreparedStatement statement, final Object[] row,
-                                                   final String nodeName, final boolean isDeletion)
-                                                   throws SQLException {
+        private void updateNodeAgainstPodInfo(final PreparedStatement statement, final Object[] podRow,
+                                              final String nodeName, final boolean isDeletion)
+                                              throws SQLException {
             final int sign = isDeletion ? -1 : 1;
-            statement.setLong(1, sign * ((long) row[4])); // CPU_REQUEST
-            statement.setLong(2, sign * ((long) row[5])); // MEMORY_REQUEST
-            statement.setLong(3, sign * ((long) row[6])); // EPHEMERAL_STORAGE_REQUEST
-            statement.setLong(4, sign * ((long) row[7])); // PODS_REQUEST
+            statement.setLong(1, sign * ((long) podRow[5])); // CPU_REQUEST
+            statement.setLong(2, sign * ((long) podRow[6])); // MEMORY_REQUEST
+            statement.setLong(3, sign * ((long) podRow[7])); // EPHEMERAL_STORAGE_REQUEST
+            statement.setLong(4, sign * ((long) podRow[8])); // PODS_REQUEST
             statement.setString(5, nodeName);
             statement.execute();
         }
@@ -156,12 +157,13 @@ class PodEventsToDatabase {
     }
 
     private void addPod(final Pod pod) {
-        LOG.trace("Adding pod {} (resourceVersion: {})", pod.getMetadata().getName(),
-                  pod.getMetadata().getResourceVersion());
+        LOG.trace("Adding pod {} (uid: {}, resourceVersion: {})",
+                  pod.getMetadata().getName(), pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
         if (pod.getMetadata().getUid() != null &&
             deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
-            LOG.trace("Received stale event for pod that we already deleted: {} {}. Ignoring",
-                     pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
+            LOG.trace("Received stale event for pod that we already deleted: {} (uid: {}, resourceVersion {}). " +
+                      "Ignoring", pod.getMetadata().getName(), pod.getMetadata().getUid(),
+                      pod.getMetadata().getResourceVersion());
             return;
         }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
@@ -178,8 +180,8 @@ class PodEventsToDatabase {
     }
 
     private void deletePod(final Pod pod) {
-        LOG.trace("Deleting pod {} (resourceVersion: {})", pod.getMetadata().getName(),
-                                                           pod.getMetadata().getResourceVersion());
+        LOG.trace("Deleting pod {} (uid: {}, resourceVersion: {})",
+                  pod.getMetadata().getName(), pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
         if (pod.getMetadata().getUid() != null &&
@@ -188,23 +190,25 @@ class PodEventsToDatabase {
         }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             conn.deleteFrom(Tables.POD_INFO)
-                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName())).execute();
+                .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid())).execute();
         }
     }
 
     private void updatePod(final Pod pod) {
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final PodInfoRecord existingPodInfoRecord = conn.selectFrom(Tables.POD_INFO)
-                    .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                    .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid()))
                     .fetchOne();
             if (existingPodInfoRecord == null) {
-                LOG.trace("Pod {} does not exist. Skipping", pod.getMetadata().getName());
+                LOG.trace("Pod {} (uid: {}) does not exist. Skipping",
+                          pod.getMetadata().getName(), pod.getMetadata().getUid());
                 return;
             }
             final long incomingResourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
             if (existingPodInfoRecord.getResourceversion() >= incomingResourceVersion) {
-                LOG.trace("Received a stale pod event {} (resourceVersion: {}). Ignoring",
-                         pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
+                LOG.trace("Received a stale pod event {} (uid: {}, resourceVersion: {}). Ignoring",
+                          pod.getMetadata().getName(), pod.getMetadata().getUid(),
+                          pod.getMetadata().getResourceVersion());
                 return;
             }
             if (pod.getSpec().getNodeName() == null &&
@@ -215,12 +219,13 @@ class PodEventsToDatabase {
             }
             if (pod.getMetadata().getUid() != null &&
                     deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
-                LOG.trace("Received stale event for pod that we already deleted: {} {}. Ignoring",
-                        pod.getMetadata().getName(), pod.getMetadata().getResourceVersion());
+                LOG.trace("Received stale event for pod that we already deleted: {} (uid: {}, resourceVersion: {}). " +
+                          "Ignoring", pod.getMetadata().getName(), pod.getMetadata().getUid(),
+                          pod.getMetadata().getResourceVersion());
                 return;
             }
-            LOG.trace("Updating pod {} (resourceVersion: {})", pod.getMetadata().getName(),
-                      pod.getMetadata().getResourceVersion());
+            LOG.trace("Updating pod {} (uid: {}, resourceVersion: {})", pod.getMetadata().getName(),
+                      pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
             final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
             conn.batch(insertOrUpdate).execute();
         }
@@ -282,7 +287,8 @@ class PodEventsToDatabase {
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
         final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
-        LOG.trace("Insert/Update pod {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+        LOG.trace("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+                pod.getMetadata().getUid(),
                 pod.getMetadata().getName(),
                 pod.getStatus().getPhase(),
                 pod.getSpec().getNodeName(),
@@ -302,6 +308,7 @@ class PodEventsToDatabase {
                 getQosClass(resourceRequirements).toString(),
                 resourceVersion);
         final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
+                p.UID,
                 p.POD_NAME,
                 p.STATUS,
                 p.NODE_NAME,
@@ -320,7 +327,8 @@ class PodEventsToDatabase {
                 p.EQUIVALENCE_CLASS,
                 p.QOS_CLASS,
                 p.RESOURCEVERSION)
-                .values(pod.getMetadata().getName(),
+                .values(pod.getMetadata().getUid(),
+                        pod.getMetadata().getName(),
                         pod.getStatus().getPhase(),
                         pod.getSpec().getNodeName(),
                         pod.getMetadata().getNamespace(),
@@ -340,6 +348,7 @@ class PodEventsToDatabase {
                         resourceVersion
                 )
                 .onDuplicateKeyUpdate()
+                .set(p.UID, pod.getMetadata().getUid())
                 .set(p.POD_NAME, pod.getMetadata().getName())
                 .set(p.STATUS, pod.getStatus().getPhase())
                 .set(p.NODE_NAME, pod.getSpec().getNodeName())
@@ -398,7 +407,8 @@ class PodEventsToDatabase {
                 // use at this node
                 if (pod.getSpec().getNodeName() != null && portInfo.getHostPort() != null) {
                     inserts.add(conn.insertInto(Tables.CONTAINER_HOST_PORTS)
-                                .values(pod.getSpec().getNodeName(),
+                                .values(pod.getMetadata().getUid(),
+                                        pod.getSpec().getNodeName(),
                                         portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
                                         portInfo.getHostPort(),
                                         portInfo.getProtocol()));
@@ -407,13 +417,13 @@ class PodEventsToDatabase {
                 // this in the pod_ports_request table
                 else if (pod.getStatus().getPhase().equals("") && portInfo.getHostPort() != null) {
                     inserts.add(conn.insertInto(Tables.POD_PORTS_REQUEST)
-                                .values(pod.getMetadata().getName(),
+                                .values(pod.getMetadata().getUid(),
                                         portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
                                         portInfo.getHostPort(),
                                         portInfo.getProtocol()));
                 }
             }
-            inserts.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getName(), container.getImage()));
+            inserts.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getUid(), container.getImage()));
         }
         return inserts;
     }
@@ -435,7 +445,7 @@ class PodEventsToDatabase {
                 final String labelValue = entry.getValue();
                 podNodeSelectorLabels.add(
                 conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                        .values(pod.getMetadata().getName(), term, matchExpression, numMatchExpressions,
+                        .values(pod.getMetadata().getUid(), term, matchExpression, numMatchExpressions,
                                 labelKey, Operators.In.toString(), labelValue));
             }
         }
@@ -448,7 +458,7 @@ class PodEventsToDatabase {
         if (labels != null) {
             return labels.entrySet().stream().map(
                     (label) -> conn.insertInto(Tables.POD_LABELS)
-                         .values(pod.getMetadata().getName(), label.getKey(), label.getValue())
+                         .values(pod.getMetadata().getUid(), label.getKey(), label.getValue())
             ).collect(Collectors.toList());
         }
         return Collections.emptyList();
@@ -461,7 +471,7 @@ class PodEventsToDatabase {
         final List<Insert<PodTolerationsRecord>> inserts = new ArrayList<>();
         for (final Toleration toleration: pod.getSpec().getTolerations()) {
             inserts.add(conn.insertInto(Tables.POD_TOLERATIONS)
-                    .values(pod.getMetadata().getName(),
+                    .values(pod.getMetadata().getUid(),
                             toleration.getKey(),
                             toleration.getValue(),
                             toleration.getEffect() == null ? "Equal" : toleration.getEffect(),
@@ -488,22 +498,23 @@ class PodEventsToDatabase {
                 final int numMatchExpressions = term.getMatchExpressions().size();
                 for (final NodeSelectorRequirement expr: term.getMatchExpressions()) {
                     matchExpressionNumber += 1;
-                    LOG.trace("Pod:{}, Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, op:{}, " +
-                            "values:{}", pod.getMetadata().getName(), termNumber, matchExpressionNumber,
-                            numMatchExpressions, expr.getKey(), expr.getOperator(), expr.getValues());
+                    LOG.trace("Pod:{} (uid: {}), Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, " +
+                              "op:{}, values:{}", pod.getMetadata().getName(), pod.getMetadata().getUid(), termNumber,
+                              matchExpressionNumber, numMatchExpressions, expr.getKey(), expr.getOperator(),
+                              expr.getValues());
 
                     if (expr.getValues() != null) {
                         for (final String value : expr.getValues()) {
                             inserts.add(
                                 conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                        .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                                        .values(pod.getMetadata().getUid(), termNumber, matchExpressionNumber,
                                                 numMatchExpressions, expr.getKey(), expr.getOperator(), value)
                             );
                         }
                     } else {
                         inserts.add(
                             conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                            .values(pod.getMetadata().getUid(), termNumber, matchExpressionNumber,
                                     numMatchExpressions, expr.getKey(), expr.getOperator(), null)
                         );
                     }
@@ -562,7 +573,7 @@ class PodEventsToDatabase {
 
                     inserts.add(
                         conn.insertInto(finalTable)
-                            .values(pod.getMetadata().getName(), termNumber, matchExpressionNumber,
+                            .values(pod.getMetadata().getUid(), termNumber, matchExpressionNumber,
                                     numMatchExpressions, expr.getKey(), operator, expr.getValues(),
                                     term.getTopologyKey())
                     );

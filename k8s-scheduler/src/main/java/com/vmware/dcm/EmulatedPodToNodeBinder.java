@@ -36,20 +36,21 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
         this.dbConnectionPool = dbConnectionPool;
     }
 
-    public Update<PodInfoRecord> bindOne(final String namespace, final String podName, final String nodeName) {
-        LOG.info("Binding {}/pod:{} to node:{}", namespace, podName, nodeName);
+    public Update<PodInfoRecord> bindOne(final String namespace, final String podName, final String podUid,
+                                         final String nodeName) {
+        LOG.info("Binding {}/pod:{} (uid: {}) to node:{}", namespace, podName, podUid, nodeName);
 
         // Mimic a binding notification
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             return conn.update(Tables.POD_INFO)
                     .set(Tables.POD_INFO.STATUS, "Running")
-                    .where(Tables.POD_INFO.POD_NAME.eq(podName));
+                    .where(Tables.POD_INFO.UID.eq(podUid));
         }
     }
 
-    public ListenableFuture<Boolean> waitForPodBinding(final String podname) {
+    public ListenableFuture<Boolean> waitForPodBinding(final String podUid) {
         final SettableFuture<Boolean> settableFuture = SettableFuture.create();
-        waitForPodBinding.put(podname, settableFuture);
+        waitForPodBinding.put(podUid, settableFuture);
         return settableFuture;
     }
 
@@ -58,20 +59,21 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
         ForkJoinPool.commonPool().execute(
             () -> {
                 final List<Update<PodInfoRecord>> updates = records.stream().map(record -> {
+                            final String podUid = record.get(Tables.PODS_TO_ASSIGN.UID);
                             final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
                             final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
                             final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
                             LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
-                            return bindOne(namespace, podName, nodeName);
+                            return bindOne(namespace, podName, podUid, nodeName);
                         }
                 ).collect(Collectors.toList());
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
                     conn.batch(updates).execute();
                 }
                 records.forEach(record -> {
-                    final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                    if (waitForPodBinding.containsKey(podName)) {
-                        waitForPodBinding.get(podName).set(true);
+                    final String podUid = record.get(Tables.PODS_TO_ASSIGN.UID);
+                    if (waitForPodBinding.containsKey(podUid)) {
+                        waitForPodBinding.get(podUid).set(true);
                     }
                 });
             }

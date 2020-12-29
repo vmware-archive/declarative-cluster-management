@@ -6,6 +6,8 @@
 
 package com.vmware.dcm;
 
+import com.google.common.collect.BiMap;
+import com.google.common.collect.HashBiMap;
 import com.google.common.collect.Sets;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
@@ -48,11 +50,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -85,8 +88,7 @@ public class SchedulerTest {
         for (int i = 0; i < 10; i++) {
             final String nodeName = "n" + i;
             final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu",
-                    new Quantity(String.valueOf(100)));
+            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(100)));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(100)));
             nodeHandler.onAddSync(node);
 
@@ -94,7 +96,7 @@ public class SchedulerTest {
             final String systemPodName = "system-pod-" + nodeName;
             final Pod systemPod;
             final String status = "Running";
-            systemPod = newPod(systemPodName, status, Collections.emptyMap(), Collections.emptyMap());
+            systemPod = newPod(systemPodName, status);
             systemPod.getSpec().setNodeName(nodeName);
             nodeHandler.onAddSync(node);
             eventsToDatabase.handle(new PodEvent(PodEvent.Action.ADDED, systemPod));
@@ -128,7 +130,7 @@ public class SchedulerTest {
         resourceRequests.put("cpu", new Quantity(String.valueOf(10)));
         resourceRequests.put("memory", new Quantity(String.valueOf(1)));
         resourceRequests.put("pods", new Quantity("1"));
-        pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+        pod = newPod(podName);
 
         // Assumes that there is only one container
         pod.getSpec().getContainers().get(0)
@@ -140,25 +142,25 @@ public class SchedulerTest {
 
         // Update a property other than node name
         conn.update(Tables.POD_INFO).set(Tables.POD_INFO.PRIORITY, 10)
-                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid()))
                 .execute();
         checkThatResourcesNotReflected.run();
 
         // Update the pending pod to run on n5
         conn.update(Tables.POD_INFO).set(Tables.POD_INFO.NODE_NAME, "n5")
-                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid()))
                 .execute();
         checkThatResourcesReflected.run();
 
         // Again, update a property other than node name
-        conn.update(Tables.POD_INFO).set(Tables.POD_INFO.PRIORITY, 10)
-                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+        conn.update(Tables.POD_INFO).set(Tables.POD_INFO.PRIORITY, 20)
+                .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid()))
                 .execute();
         checkThatResourcesReflected.run();
 
         // Remove the node
         conn.delete(Tables.POD_INFO)
-                .where(Tables.POD_INFO.POD_NAME.eq(pod.getMetadata().getName()))
+                .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid()))
                 .execute();
         checkThatResourcesNotReflected.run();
     }
@@ -186,7 +188,8 @@ public class SchedulerTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final PodEventsToDatabase handler = new PodEventsToDatabase(dbConnectionPool);
         final String podName = "p1";
-        final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.singletonMap("k", "v"));
+        final Pod pod = newPod(podName, UUID.randomUUID(), "Pending", Collections.emptyMap(),
+                Collections.singletonMap("k", "v"));
         handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
         assertTrue(conn.fetchExists(Tables.POD_INFO));
         assertTrue(conn.fetchExists(Tables.POD_LABELS));
@@ -207,7 +210,7 @@ public class SchedulerTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final PodEventsToDatabase handler = new PodEventsToDatabase(dbConnectionPool);
 
-        final Pod pod = newPod("pod1", "Pending", Collections.emptyMap(), Collections.emptyMap());
+        final Pod pod = newPod("pod1");
         pod.getSpec().setContainers(new ArrayList<>());
 
         for (int i = 0; i < 2; i++) {
@@ -297,7 +300,7 @@ public class SchedulerTest {
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Running");
             pod.getSpec().setNodeName("n" + i);
             handler.onAddSync(pod);
         }
@@ -307,10 +310,12 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true,
+                NUM_THREADS);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
-        results.forEach(r -> assertEquals("n" + nodeToAssignTo, r.get("CONTROLLABLE__NODE_NAME", String.class)));
+        results.forEach(r -> assertEquals("n" + nodeToAssignTo,
+                r.get("CONTROLLABLE__NODE_NAME", String.class)));
     }
 
     @SuppressWarnings("UnusedMethod")
@@ -344,6 +349,7 @@ public class SchedulerTest {
         // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
         // node selector
         final Set<String> podsWithoutLabels = new HashSet<>();
+        final BiMap<String, String> podNameToUid = HashBiMap.create(numPods);
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
             final Map<String, String> selectorLabels = new HashMap<>();
@@ -356,7 +362,9 @@ public class SchedulerTest {
             } else {
                 podsWithoutLabels.add(podName);
             }
-            handler.onAddSync(newPod(podName, "Pending", selectorLabels, Collections.emptyMap()));
+            final Pod pod = newPod(podName, UUID.randomUUID(), "Pending", selectorLabels, Collections.emptyMap());
+            podNameToUid.put(podName, pod.getMetadata().getUid());
+            handler.onAddSync(pod);
         }
 
         // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
@@ -379,20 +387,21 @@ public class SchedulerTest {
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Running");
             pod.getSpec().setNodeName("n" + i);
+            podNameToUid.put(podName, pod.getMetadata().getUid());
             handler.onAddSync(pod);
         }
 
         // First, we check if the computed intermediate view is correct
         final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
-                                                              .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
+                                                              .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_UID,
                                                                            Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
-        podsToMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(p)));
-        podsPartialMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(p)));
-        podsWithoutLabels.forEach(p -> assertFalse(podsToNodesMap.containsKey(p)));
+        podsToMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(podNameToUid.get(p))));
+        podsPartialMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(podNameToUid.get(p))));
+        podsWithoutLabels.forEach(p -> assertFalse(podsToNodesMap.containsKey(podNameToUid.get(p))));
         for (final Map.Entry<String, List<String>> record: podsToNodesMap.entrySet()) {
-            final String pod = record.getKey();
+            final String pod = podNameToUid.inverse().get(record.getKey());
             final Set<String> nodes = new HashSet<>(record.getValue());
             if (podsToMatch.contains(pod)) {
                 assertEquals(nodesToMatch, nodes);
@@ -402,13 +411,13 @@ public class SchedulerTest {
                 fail();
             }
         }
-
         // Now test the solver itself
         final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true,
+                NUM_THREADS);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
         results.forEach(r -> {
@@ -461,9 +470,10 @@ public class SchedulerTest {
         final Set<String> podsToAssign = new HashSet<>(allPods.subList(0, numPodsToModify));
 
         // Add all pods
+        final BiMap<String, String> podNameToUid = HashBiMap.create(numPods);
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
-            final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName);
             if (podsToAssign.contains(podName)) {
                 final NodeSelector selector = new NodeSelectorBuilder()
                                                             .withNodeSelectorTerms(terms)
@@ -471,6 +481,7 @@ public class SchedulerTest {
                 pod.getSpec().getAffinity().getNodeAffinity()
                    .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
             }
+            podNameToUid.put(podName, pod.getMetadata().getUid());
             handler.onAddSync(pod);
         }
 
@@ -496,20 +507,22 @@ public class SchedulerTest {
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Running");
             pod.getSpec().setNodeName("n" + i);
+            podNameToUid.put(podName, pod.getMetadata().getUid());
             handler.onAddSync(pod);
         }
 
         // First, we check if the computed intermediate views are correct
         final Map<String, List<String>> podsToNodesMap = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES)
-                                                             .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_NAME,
+                                                             .fetchGroups(Tables.POD_NODE_SELECTOR_MATCHES.POD_UID,
                                                                           Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
-        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.containsKey(p),
+        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.containsKey(podNameToUid.get(p)),
                                                shouldBeAffineToLabelledNodes || shouldBeAffineToRemainingNodes));
         podsToNodesMap.forEach(
-            (pod, nodeList) -> {
-                assertTrue(podsToAssign.contains(pod));
+            (uid, nodeList) -> {
+                final String podName = podNameToUid.inverse().get(uid);
+                assertTrue(podsToAssign.contains(podName));
                 nodeList.forEach(
                     node -> {
                         if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
@@ -527,17 +540,18 @@ public class SchedulerTest {
         );
 
         assertEquals(Sets.newHashSet(conn.selectFrom(Tables.POD_NODE_SELECTOR_LABELS)
-                                .fetch("POD_NAME")),
+                                .fetch("POD_UID")),
                      Sets.newHashSet(conn.selectFrom(Tables.POD_INFO)
                                 .where(Tables.POD_INFO.HAS_NODE_SELECTOR_LABELS.eq(true))
-                                .fetch("POD_NAME")));
+                                .fetch("UID")));
 
         // Now test the solver itself
         final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true,
+                NUM_THREADS);
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
@@ -626,7 +640,7 @@ public class SchedulerTest {
         // requirements, that means that that pod will not have any candidate nodes to be placed on.
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
-            final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName);
             if (podsToAssign.contains(podName)) {
                 pod.getMetadata().setLabels(podLabelsInput);
 
@@ -662,7 +676,7 @@ public class SchedulerTest {
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Running");
             pod.getSpec().setNodeName("n" + i);
             handler.onAddSync(pod);
         }
@@ -670,7 +684,8 @@ public class SchedulerTest {
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
+                NUM_THREADS);
         if (cannotBePlacedAnywhere) {
             assertThrows(ModelException.class, scheduler::runOneLoop);
         } else {
@@ -876,7 +891,7 @@ public class SchedulerTest {
             resourceRequests.put("cpu", new Quantity(String.valueOf(cpuRequests.get(i))));
             resourceRequests.put("memory", new Quantity(String.valueOf(memoryRequests.get(i))));
             resourceRequests.put("pods", new Quantity("1"));
-            pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            pod = newPod(podName);
 
             // Assumes that there is only one container
             pod.getSpec().getContainers().get(0)
@@ -899,7 +914,7 @@ public class SchedulerTest {
             final String podName = "system-pod-" + nodeName;
             final Pod pod;
             final String status = "Running";
-            pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+            pod = newPod(podName, status);
             pod.getSpec().setNodeName(nodeName);
             handler.onAddSync(pod);
         }
@@ -970,7 +985,7 @@ public class SchedulerTest {
         // requirements, that means that that pod will not have any candidate nodes to be placed on.
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
-            final Pod pod = newPod(podName, "Pending", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName);
             if (tolerations.get(i).size() != 0) {
                 pod.getSpec().setTolerations(tolerations.get(i));
             }
@@ -987,7 +1002,7 @@ public class SchedulerTest {
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Running");
             pod.getSpec().setNodeName("n" + i);
             handler.onAddSync(pod);
         }
@@ -1166,7 +1181,7 @@ public class SchedulerTest {
 
             // Add one system pod per node
             final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running", Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, "Running");
             pod.getSpec().setNodeName("n" + i);
             handler.onAddSync(pod);
         }
@@ -1227,19 +1242,23 @@ public class SchedulerTest {
     }
 
     static Pod newPod(final String name) {
-        return newPod(name, "Pending", Collections.emptyMap(), Collections.emptyMap());
+        return newPod(name, "Pending");
     }
 
-    static Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
-                         final Map<String, String> labels) {
+    static Pod newPod(final String name, final String status) {
+        return newPod(name, UUID.randomUUID(), status, Collections.emptyMap(), Collections.emptyMap());
+    }
+
+    static Pod newPod(final String podName, final UUID uid, final String phase,
+                      final Map<String, String> selectorLabels, final Map<String, String> labels) {
         final Pod pod = new Pod();
         final ObjectMeta meta = new ObjectMeta();
+        meta.setUid(uid.toString());
         meta.setName(podName);
         meta.setLabels(labels);
         meta.setCreationTimestamp("1");
         meta.setNamespace("default");
         meta.setResourceVersion("0");
-        meta.setUid("0");
         final PodSpec spec = new PodSpec();
         spec.setSchedulerName(Scheduler.SCHEDULER_NAME);
         spec.setPriority(0);
@@ -1266,6 +1285,11 @@ public class SchedulerTest {
     }
 
     static Node newNode(final String nodeName, final Map<String, String> labels,
+                        final List<NodeCondition> conditions) {
+        return newNode(nodeName, UUID.randomUUID(), labels, conditions);
+    }
+
+    static Node newNode(final String nodeName, final UUID uid, final Map<String, String> labels,
                  final List<NodeCondition> conditions) {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
@@ -1284,6 +1308,7 @@ public class SchedulerTest {
         spec.setTaints(Collections.emptyList());
         node.setSpec(spec);
         final ObjectMeta meta = new ObjectMeta();
+        meta.setUid(uid.toString());
         meta.setName(nodeName);
         meta.setLabels(labels);
         node.setMetadata(meta);

@@ -38,7 +38,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
 
     public void onAddSync(final Pod pod) {
-        LOG.trace("{} pod add received", pod.getMetadata().getName());
+        LOG.trace("{} (uid: {}) pod add received", pod.getMetadata().getName(), pod.getMetadata().getUid());
         podEventNotification.accept(new PodEvent(PodEvent.Action.ADDED, pod)); // might be better to add pods in a batch
 
     }
@@ -47,14 +47,15 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
         final String oldPodScheduler = oldPod.getSpec().getSchedulerName();
         final String newPodScheduler = newPod.getSpec().getSchedulerName();
         assert oldPodScheduler.equals(newPodScheduler);
-        LOG.trace("{} => {} pod update received", oldPod.getMetadata().getName(), newPod.getMetadata().getName());
+        LOG.trace("{} => {} (uid: {}) pod update received", oldPod.getMetadata().getName(),
+                  newPod.getMetadata().getName(), newPod.getMetadata().getUid());
         podEventNotification.accept(new PodEvent(PodEvent.Action.UPDATED, newPod));
     }
 
     public void onDeleteSync(final Pod pod, final boolean deletedFinalStateUnknown) {
         final long now = System.nanoTime();
-        LOG.trace("{} pod deleted ({}) in {}ns!", pod.getMetadata().getName(), deletedFinalStateUnknown,
-                                                  (System.nanoTime() - now));
+        LOG.trace("{} (uid: {}) pod deleted ({}) in {}ns!", pod.getMetadata().getName(), pod.getMetadata().getUid(),
+                  deletedFinalStateUnknown, (System.nanoTime() - now));
         podEventNotification.accept(new PodEvent(PodEvent.Action.DELETED, pod));
     }
 

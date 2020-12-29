@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import javax.annotation.Nullable;
 import java.net.HttpURLConnection;
 import java.util.Collections;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -53,12 +54,14 @@ public class KubernetesStateSyncTest {
         final String rv2 = "11";
         final String rv3 = "12";
         final String rv4 = "13";
+        final String podUid = UUID.randomUUID().toString();
         assertNotNull(server);
         final NamespacedKubernetesClient client = server.getClient();
         final Node node = SchedulerTest.newNode("n1", Collections.emptyMap(), Collections.emptyList());
         final PodBuilder podBuilder = new PodBuilder().withNewMetadata()
                                                          .withName("pod1")
                                                          .withNamespace("test")
+                                                         .withUid(podUid)
                                                          .withCreationTimestamp("10")
                                                          .withResourceVersion(rv2)
                                                       .endMetadata()

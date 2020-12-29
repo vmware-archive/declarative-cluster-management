@@ -54,7 +54,7 @@ class Policies {
                                   "      pods_to_assign.controllable__node_name in " +
                                   "         (select node_name " +
                                   "          from pod_node_selector_matches " +
-                                  "          where pods_to_assign.pod_name = pod_node_selector_matches.pod_name)";
+                                  "          where pods_to_assign.uid = pod_node_selector_matches.pod_uid)";
         return new Policy("NodeSelectorPredicate", constraint);
     }
 
@@ -68,15 +68,15 @@ class Policies {
                                   "from pods_to_assign " +
                                   "check pods_to_assign.has_pod_affinity_requirements = false or " +
 
-            // Affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are affine to it
+            // Affinity to pending pods: for pods_to_assign.uid, find the pending pods that are affine to it
             // from inter_pod_affinity_matches_pending. We get this latter set of pending pods by joining
             // inter_pod_affinity_matches_pending with pods_to_assign (inner).
             "      (pods_to_assign.controllable__node_name in " +
             "         (select b.controllable__node_name" +
             "          from pods_to_assign as b" +
             "          join inter_pod_affinity_matches_pending" +
-            "           on inter_pod_affinity_matches_pending.pod_name = pods_to_assign.pod_name" +
-            "           and contains(inter_pod_affinity_matches_pending.matches, b.pod_name)" +
+            "           on inter_pod_affinity_matches_pending.pod_uid = pods_to_assign.uid" +
+            "           and contains(inter_pod_affinity_matches_pending.matches, b.uid)" +
             "       ))" +
                 // pending pods
 
@@ -84,7 +84,7 @@ class Policies {
             "   or pods_to_assign.controllable__node_name in " +
             "         (select inter_pod_affinity_matches_scheduled.node_name " +
             "          from inter_pod_affinity_matches_scheduled " +
-            "          where pods_to_assign.pod_name = inter_pod_affinity_matches_scheduled.pod_name)"; // running pods
+            "          where pods_to_assign.uid = inter_pod_affinity_matches_scheduled.pod_uid)"; // running pods
         return new Policy("InterPodAffinity", constraint);
     }
 
@@ -98,22 +98,22 @@ class Policies {
             "select * " +
             "from pods_to_assign " +
             "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
-            // Anti-affinity to pending pods: for pods_to_assign.pod_name, find the pending pods that are
+            // Anti-affinity to pending pods: for pods_to_assign.uid, find the pending pods that are
             // anti-affine to it from inter_pod_anti_affinity_matches_pending. We get this latter set of
             // pending pods by joining inter_pod_anti_affinity_matches_pending with pods_to_assign (inner).
             "      (pods_to_assign.controllable__node_name not in " +
             "         (select b.controllable__node_name" +
             "          from pods_to_assign as b" +
             "          join inter_pod_anti_affinity_matches_pending" +
-            "           on inter_pod_anti_affinity_matches_pending.pod_name = pods_to_assign.pod_name" +
-            "           and contains(inter_pod_anti_affinity_matches_pending.matches, b.pod_name)))";
+            "           on inter_pod_anti_affinity_matches_pending.pod_uid = pods_to_assign.uid" +
+            "           and contains(inter_pod_anti_affinity_matches_pending.matches, b.uid)))";
 
         final String constraintScheduled =
                 "create view constraint_pod_anti_affinity_scheduled as " +
                 "select * " +
                 "from pods_to_assign " +
                 "join inter_pod_anti_affinity_matches_scheduled on  " +
-                "     pods_to_assign.pod_name = inter_pod_anti_affinity_matches_scheduled.pod_name " +
+                "     pods_to_assign.uid = inter_pod_anti_affinity_matches_scheduled.pod_uid " +
                 "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
                 "      not(contains(inter_pod_anti_affinity_matches_scheduled.matches, " +
                 "                   pods_to_assign.controllable__node_name))";
@@ -169,7 +169,7 @@ class Policies {
                 "join nodes_that_have_tolerations" +
                 "    on pods_to_assign.controllable__node_name = nodes_that_have_tolerations.node_name " +
                 "check exists(select * from pods_that_tolerate_node_taints as A " +
-                "              where A.pod_name = pods_to_assign.pod_name" +
+                "              where A.pod_uid  = pods_to_assign.uid" +
                 "                and A.node_name = pods_to_assign.controllable__node_name) = true";
         return new Policy("NodeTaintsPredicate", constraint);
     }
