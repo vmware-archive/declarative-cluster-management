@@ -104,23 +104,23 @@ public class SchedulerTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final Runnable checkThatResourcesNotReflected = () -> conn.selectFrom(Tables.NODE_INFO).fetch()
                                         .forEach(r -> {
-                                            assertEquals(r.getCpuAllocated(), 0);
-                                            assertEquals(r.getMemoryAllocated(), 0);
-                                            assertEquals(r.getEphemeralStorageAllocated(), 0);
-                                            assertEquals(r.getPodsAllocated(), 1);
+                                            assertEquals(0, r.getCpuAllocated());
+                                            assertEquals(0, r.getMemoryAllocated());
+                                            assertEquals(0, r.getEphemeralStorageAllocated());
+                                            assertEquals(1, r.getPodsAllocated());
                                         });
         final Runnable checkThatResourcesReflected = () -> conn.selectFrom(Tables.NODE_INFO).fetch()
                         .forEach(r -> {
                             if (!r.getName().equals("n5")) {
-                                assertEquals(r.getCpuAllocated(), 0);
-                                assertEquals(r.getMemoryAllocated(), 0);
-                                assertEquals(r.getEphemeralStorageAllocated(), 0);
-                                assertEquals(r.getPodsAllocated(), 1);
+                                assertEquals(0, r.getCpuAllocated());
+                                assertEquals(0, r.getMemoryAllocated());
+                                assertEquals(0, r.getEphemeralStorageAllocated());
+                                assertEquals(1, r.getPodsAllocated());
                             } else {
-                                assertEquals(r.getCpuAllocated(), 10000);
-                                assertEquals(r.getMemoryAllocated(), 1);
-                                assertEquals(r.getEphemeralStorageAllocated(), 0);
-                                assertEquals(r.getPodsAllocated(), 2);
+                                assertEquals(10000, r.getCpuAllocated());
+                                assertEquals(1, r.getMemoryAllocated());
+                                assertEquals(0, r.getEphemeralStorageAllocated());
+                                assertEquals(2, r.getPodsAllocated());
                             }
                         });
 
