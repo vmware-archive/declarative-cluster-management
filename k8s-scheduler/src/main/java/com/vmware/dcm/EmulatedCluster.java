@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -66,7 +67,7 @@ class EmulatedCluster {
         scheduler.startScheduler(new EmulatedPodToNodeBinder(dbConnectionPool), 100, 50);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
-            final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            final Node node = addNode(nodeName, UUID.randomUUID(), Collections.emptyMap(), Collections.emptyList());
             node.getStatus().getCapacity().put("cpu", new Quantity("2"));
             node.getStatus().getCapacity().put("memory", new Quantity("2000"));
             node.getStatus().getCapacity().put("pods", new Quantity("110"));
@@ -75,13 +76,12 @@ class EmulatedCluster {
             // Add one system pod per node
             final String podName = "system-pod-" + nodeName;
             final String status = "Running";
-            final Pod pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+            final Pod pod = newPod(podName, UUID.randomUUID(), status, Collections.emptyMap(), Collections.emptyMap());
             final Map<String, Quantity> resourceRequests = new HashMap<>();
             resourceRequests.put("cpu", new Quantity("100m"));
             resourceRequests.put("memory", new Quantity("1"));
             resourceRequests.put("pods", new Quantity("1"));
             pod.getMetadata().setNamespace("kube-system");
-            pod.getMetadata().setUid("13131" + i);
             pod.getMetadata().setResourceVersion("1");
             pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
             pod.getSpec().setNodeName(nodeName);
@@ -94,7 +94,7 @@ class EmulatedCluster {
                 memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion, 5);
     }
 
-    private static Node addNode(final String nodeName, final Map<String, String> labels,
+    private static Node addNode(final String nodeName, final UUID uid, final Map<String, String> labels,
                                 final List<NodeCondition> conditions) {
         final Node node = new Node();
         final NodeStatus status = new NodeStatus();
@@ -113,16 +113,18 @@ class EmulatedCluster {
         spec.setTaints(Collections.emptyList());
         node.setSpec(spec);
         final ObjectMeta meta = new ObjectMeta();
+        meta.setUid(uid.toString());
         meta.setName(nodeName);
         meta.setLabels(labels);
         node.setMetadata(meta);
         return node;
     }
 
-    private static Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
-                              final Map<String, String> labels) {
+    private static Pod newPod(final String podName, final UUID uid, final String phase,
+                              final Map<String, String> selectorLabels, final Map<String, String> labels) {
         final Pod pod = new Pod();
         final ObjectMeta meta = new ObjectMeta();
+        meta.setUid(uid.toString());
         meta.setName(podName);
         meta.setLabels(labels);
         meta.setCreationTimestamp("1");

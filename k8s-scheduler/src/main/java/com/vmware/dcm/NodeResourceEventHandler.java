@@ -182,6 +182,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
 
         final NodeInfo n = Tables.NODE_INFO;
         return conn.insertInto(Tables.NODE_INFO,
+                n.UID,
                 n.NAME,
                 n.UNSCHEDULABLE,
                 n.OUT_OF_DISK,
@@ -202,7 +203,8 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                 n.MEMORY_ALLOCATED,
                 n.EPHEMERAL_STORAGE_ALLOCATED,
                 n.PODS_ALLOCATED)
-            .values(node.getMetadata().getName(),
+            .values(node.getMetadata().getUid(),
+                    node.getMetadata().getName(),
                     getUnschedulable,
                     outOfDisk,
                     memoryPressure,
@@ -224,6 +226,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                     0L // pods allocated default
             )
             .onDuplicateKeyUpdate()
+            .set(n.UID, node.getMetadata().getUid())
             .set(n.NAME, node.getMetadata().getName())
             .set(n.UNSCHEDULABLE, getUnschedulable)
             .set(n.OUT_OF_DISK, outOfDisk)
@@ -274,7 +277,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
 
     private void deleteNode(final Node node, final DSLContext conn) {
         conn.deleteFrom(Tables.NODE_INFO)
-            .where(Tables.NODE_INFO.NAME.eq(node.getMetadata().getName()))
+            .where(Tables.NODE_INFO.UID.eq(node.getMetadata().getUid()))
             .execute();
         LOG.info("Node {} deleted", node.getMetadata().getName());
     }

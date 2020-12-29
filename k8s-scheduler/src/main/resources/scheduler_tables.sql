@@ -1,6 +1,7 @@
 create table node_info
 (
-  name varchar(36) not null primary key,
+  uid char(36) not null primary key,
+  name varchar(253) not null,
   unschedulable boolean not null,
   out_of_disk boolean not null,
   memory_pressure boolean not null,
@@ -24,10 +25,11 @@ create table node_info
 
 create table pod_info
 (
-  pod_name varchar(100) not null primary key,
+  uid char(36) not null primary key,
+  pod_name varchar(253) not null,
   status varchar(36) not null,
-  node_name varchar(36) null,
-  namespace varchar(100) not null,
+  node_name varchar(253) null,
+  namespace varchar(253) not null,
   cpu_request bigint not null,
   memory_request bigint not null,
   ephemeral_storage_request bigint not null,
@@ -41,72 +43,74 @@ create table pod_info
   has_pod_anti_affinity_requirements boolean not null,
   equivalence_class bigint not null,
   qos_class varchar(10) not null,
-  resourceVersion bigint not null
+  resourceVersion bigint not null,
+  constraint uc_namespaced_pod_name unique (pod_name, namespace)
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.
 -- It is used to enforce the PodFitsHostPorts constraint.
 create table pod_ports_request
 (
-  pod_name varchar(100) not null,
+  pod_uid char(36) not null,
   host_ip varchar(100) not null,
   host_port integer not null,
   host_protocol varchar(10) not null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade
+  foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
 -- This table tracks the set of hostports in use at each node.
 -- Also used to enforce the PodFitsHostPorts constraint.
 create table container_host_ports
 (
-  pod_name varchar(100) not null,
-  node_name varchar(36) not null,
+  pod_uid char(36) not null,
+  node_name varchar(253) not null,
   host_ip varchar(100) not null,
   host_port integer not null,
   host_protocol varchar(10) not null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade,
+  foreign key(pod_uid) references pod_info(uid) on delete cascade,
   foreign key(node_name) references node_info(name) on delete cascade
 );
 
 -- Tracks the set of node selector labels per pod.
 create table pod_node_selector_labels
 (
-  pod_name varchar(100) not null,
+  pod_uid char(36) not null,
   term integer not null,
   match_expression integer not null,
   num_match_expressions integer not null,
-  label_key varchar(100) not null,
+  -- up to 253 for prefix, up to 63 for name and one for /
+  label_key varchar(317) not null,
   label_operator varchar(12) not null,
-  label_value varchar(36) null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade
+  label_value varchar(63) null,
+  foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
 -- Tracks the set of pod affinity match expressions.
 create table pod_affinity_match_expressions
 (
-  pod_name varchar(100) not null,
+  pod_uid char(36) not null,
   label_selector integer not null,
   match_expression integer not null,
   num_match_expressions integer not null,
-  label_key varchar(100) not null,
+  label_key varchar(317) not null,
   label_operator varchar(30) not null,
   label_value array not null,
   topology_key varchar(100) not null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade
+  foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
 -- Tracks the set of pod anti-affinity match expressions.
 create table pod_anti_affinity_match_expressions
 (
-  pod_name varchar(100) not null,
+  pod_uid char(36) not null,
   label_selector integer not null,
   match_expression integer not null,
   num_match_expressions integer not null,
-  label_key varchar(100) not null,
+  label_key varchar(317) not null,
   label_operator varchar(30) not null,
   label_value array not null,
   topology_key varchar(100) not null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade
+  foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
 
@@ -114,19 +118,19 @@ create table pod_anti_affinity_match_expressions
 -- any of them are also node selector labels
 create table pod_labels
 (
-  pod_name varchar(100) not null,
-  label_key varchar(100) not null,
-  label_value varchar(36) not null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade,
-  primary key(pod_name, label_key, label_value)
+  pod_uid char(36) not null,
+  label_key varchar(317) not null,
+  label_value varchar(63) not null,
+  foreign key(pod_uid) references pod_info(uid) on delete cascade,
+  primary key(pod_uid, label_key, label_value)
 );
 
 -- Tracks the set of labels per node
 create table node_labels
 (
-  node_name varchar(36) not null,
-  label_key varchar(100) not null,
-  label_value varchar(36) not null,
+  node_name varchar(253) not null,
+  label_key varchar(317) not null,
+  label_value varchar(63) not null,
   foreign key(node_name) references node_info(name) on delete cascade
 );
 
@@ -134,40 +138,40 @@ create table node_labels
 create table volume_labels
 (
   volume_name varchar(36) not null,
-  pod_name varchar(100) not null,
-  label_key varchar(100) not null,
-  label_value varchar(36) not null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade
+  pod_uid char(36) not null,
+  label_key varchar(317) not null,
+  label_value varchar(63) not null,
+  foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
 -- For pods that have ports exposed
 create table pod_by_service
 (
-  pod_name varchar(100) not null,
+  pod_uid char(36) not null,
   service_name varchar(100) not null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade
+  foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
 -- Service affinity labels
 create table service_affinity_labels
 (
-  label_key varchar(100) not null
+  label_key varchar(317) not null
 );
 
 
 -- Labels present on node
 create table labels_to_check_for_presence
 (
-  label_key varchar(100) not null,
+  label_key varchar(317) not null,
   present boolean not null
 );
 
 -- Node taints
 create table node_taints
 (
-  node_name varchar(36) not null,
-  taint_key varchar(100) not null,
-  taint_value varchar(100),
+  node_name varchar(253) not null,
+  taint_key varchar(317) not null,
+  taint_value varchar(63),
   taint_effect varchar(100) not null,
   foreign key(node_name) references node_info(name) on delete cascade
 );
@@ -175,19 +179,19 @@ create table node_taints
 -- Pod taints.
 create table pod_tolerations
 (
-  pod_name varchar(100) not null,
-  tolerations_key varchar(100),
-  tolerations_value varchar(100),
+  pod_uid char(36) not null,
+  tolerations_key varchar(317),
+  tolerations_value varchar(63),
   tolerations_effect varchar(100),
   tolerations_operator varchar(100),
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade
+  foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
 -- Tracks the set of node images that are already
 -- available at a node
 create table node_images
 (
-  node_name varchar(36) not null,
+  node_name varchar(253) not null,
   image_name varchar(200) not null,
   image_size bigint not null,
   foreign key(node_name) references node_info(name) on delete cascade
@@ -196,9 +200,9 @@ create table node_images
 -- Tracks the container images required by each pod
 create table pod_images
 (
-  pod_name varchar(100) not null,
+  pod_uid char(36) not null,
   image_name varchar(200) not null,
-  foreign key(pod_name) references pod_info(pod_name) on delete cascade
+  foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
 -- Select all pods that need to be scheduled.
@@ -208,6 +212,7 @@ create table pod_images
 -- nodes that we can assign pods to.
 create view pods_to_assign_no_limit as
 select
+  uid,
   pod_name,
   status,
   node_name as controllable__node_name,
@@ -228,6 +233,7 @@ where status = 'Pending' and node_name is null and schedulerName = 'dcm-schedule
 
 create view assigned_pods as
 select
+  uid,
   pod_name,
   status,
   node_name,
@@ -266,15 +272,15 @@ select pods_to_assign.controllable__node_name as controllable__node_name,
        pod_ports_request.host_protocol as host_protocol
 from pods_to_assign
 join pod_ports_request
-     on pod_ports_request.pod_name = pods_to_assign.pod_name;
+     on pod_ports_request.pod_uid = pods_to_assign.uid;
 
 -- Pod node selectors
 create view pod_node_selector_matches as
-select pods_to_assign.pod_name as pod_name,
+select pods_to_assign.uid as pod_uid,
        node_labels.node_name as node_name
 from pods_to_assign
 join pod_node_selector_labels
-     on pods_to_assign.pod_name = pod_node_selector_labels.pod_name
+     on pods_to_assign.uid = pod_node_selector_labels.pod_uid
 join node_labels
         on
            (pod_node_selector_labels.label_operator = 'In'
@@ -285,7 +291,7 @@ join node_labels
         or (pod_node_selector_labels.label_operator = 'NotIn')
         or (pod_node_selector_labels.label_operator = 'DoesNotExist')
 where pods_to_assign.has_node_selector_labels = true
-group by pods_to_assign.pod_name,  node_labels.node_name, pod_node_selector_labels.term,
+group by pods_to_assign.uid, node_labels.node_name, pod_node_selector_labels.term,
          pod_node_selector_labels.label_operator, pod_node_selector_labels.num_match_expressions
 having case pod_node_selector_labels.label_operator
             when 'NotIn'
@@ -298,14 +304,14 @@ having case pod_node_selector_labels.label_operator
 
 
 create index pod_info_idx on pod_info (status, node_name);
-create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_name);
+create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_uid);
 create index node_labels_idx on node_labels (label_key, label_value);
 
 -- Inter pod affinity
 create view inter_pod_affinity_matches_inner_exists_pending as
 select
-  pods_to_assign_A.pod_name as pods_to_assign_pod_name,
-  pod_labels.pod_name as pod_labels_pod_name,
+  pods_to_assign_A.uid as pods_to_assign_pod_uid,
+  pod_labels.pod_uid as pod_labels_pod_uid,
   pod_affinity_match_expressions.label_selector,
   pod_affinity_match_expressions.topology_key,
   pod_affinity_match_expressions.label_operator,
@@ -314,18 +320,18 @@ select
   pods_to_assign_B.controllable__node_name as node_name
 from
   pods_to_assign as pods_to_assign_A
-  join pod_affinity_match_expressions on pods_to_assign_A.pod_name = pod_affinity_match_expressions.pod_name
+  join pod_affinity_match_expressions on pods_to_assign_A.uid = pod_affinity_match_expressions.pod_uid
   join pod_labels on (
     pod_affinity_match_expressions.label_operator = 'Exists'
     and pod_affinity_match_expressions.label_key = pod_labels.label_key
   )
-  join pods_to_assign as pods_to_assign_B on pod_labels.pod_name = pods_to_assign_B.pod_name
+  join pods_to_assign as pods_to_assign_B on pod_labels.pod_uid = pods_to_assign_B.uid
   where pods_to_assign_A.has_pod_affinity_requirements = true;
 
 create view inter_pod_affinity_matches_inner_exists_scheduled as
 select
-  pods_to_assign.pod_name as pods_to_assign_pod_name,
-  pod_labels.pod_name as pod_labels_pod_name,
+  pods_to_assign.uid as pods_to_assign_pod_uid,
+  pod_labels.pod_uid as pod_labels_pod_uid,
   pod_affinity_match_expressions.label_selector,
   pod_affinity_match_expressions.topology_key,
   pod_affinity_match_expressions.label_operator,
@@ -334,18 +340,18 @@ select
   assigned_pods.node_name
 from
   pods_to_assign
-  join pod_affinity_match_expressions on pods_to_assign.pod_name = pod_affinity_match_expressions.pod_name
+  join pod_affinity_match_expressions on pods_to_assign.uid = pod_affinity_match_expressions.pod_uid
   join pod_labels on (
     pod_affinity_match_expressions.label_operator = 'Exists'
     and pod_affinity_match_expressions.label_key = pod_labels.label_key
   )
-  join assigned_pods on pod_labels.pod_name = assigned_pods.pod_name
+  join assigned_pods on pod_labels.pod_uid = assigned_pods.uid
   where pods_to_assign.has_pod_affinity_requirements = true;
 
 create view inter_pod_affinity_matches_inner_in_pending as
 select
-  pods_to_assign_A.pod_name as pods_to_assign_pod_name,
-  pod_labels.pod_name as pod_labels_pod_name,
+  pods_to_assign_A.uid as pods_to_assign_pod_uid,
+  pod_labels.pod_uid as pod_labels_pod_uid,
   pod_affinity_match_expressions.label_selector,
   pod_affinity_match_expressions.topology_key,
   pod_affinity_match_expressions.label_operator,
@@ -354,19 +360,19 @@ select
   pods_to_assign_B.controllable__node_name as node_name
 from
   pods_to_assign as pods_to_assign_A
-  join pod_affinity_match_expressions on pods_to_assign_A.pod_name = pod_affinity_match_expressions.pod_name
+  join pod_affinity_match_expressions on pods_to_assign_A.uid = pod_affinity_match_expressions.pod_uid
   join pod_labels on (
     pod_affinity_match_expressions.label_operator = 'In'
     and pod_affinity_match_expressions.label_key = pod_labels.label_key
     and pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value))
   )
-  join pods_to_assign as pods_to_assign_B on pod_labels.pod_name = pods_to_assign_B.pod_name
+  join pods_to_assign as pods_to_assign_B on pod_labels.pod_uid = pods_to_assign_B.uid
   where pods_to_assign_A.has_pod_affinity_requirements = true;
 
 create view inter_pod_affinity_matches_inner_in_scheduled as
 select
-  pods_to_assign.pod_name as pods_to_assign_pod_name,
-  pod_labels.pod_name as pod_labels_pod_name,
+  pods_to_assign.uid as pods_to_assign_pod_uid,
+  pod_labels.pod_uid as pod_labels_pod_uid,
   pod_affinity_match_expressions.label_selector,
   pod_affinity_match_expressions.topology_key,
   pod_affinity_match_expressions.label_operator,
@@ -375,27 +381,27 @@ select
   assigned_pods.node_name
 from
   pods_to_assign
-  join pod_affinity_match_expressions on pods_to_assign.pod_name = pod_affinity_match_expressions.pod_name
+  join pod_affinity_match_expressions on pods_to_assign.uid = pod_affinity_match_expressions.pod_uid
   join pod_labels on (
     pod_affinity_match_expressions.label_operator = 'In'
     and pod_affinity_match_expressions.label_key = pod_labels.label_key
     and pod_labels.label_value in (unnest(pod_affinity_match_expressions.label_value))
   )
-  join assigned_pods on pod_labels.pod_name = assigned_pods.pod_name
+  join assigned_pods on pod_labels.pod_uid = assigned_pods.uid
   where pods_to_assign.has_pod_affinity_requirements = true;
 
 create view inter_pod_affinity_matches_inner_pending as
 select
-  pods_to_assign_pod_name as pod_name,
-  pod_labels_pod_name as matches,
+  pods_to_assign_pod_uid as pod_uid,
+  pod_labels_pod_uid as matches,
   node_name as node_name
 from
   ((select * from inter_pod_affinity_matches_inner_in_pending)
     union
       (select * from inter_pod_affinity_matches_inner_exists_pending))
 group by
-  pods_to_assign_pod_name,
-  pod_labels_pod_name,
+  pods_to_assign_pod_uid,
+  pod_labels_pod_uid,
   label_selector,
   topology_key,
   label_operator,
@@ -406,16 +412,16 @@ having
 
 create view inter_pod_affinity_matches_inner_scheduled as
 select
-  pods_to_assign_pod_name as pod_name,
-  pod_labels_pod_name as matches,
+  pods_to_assign_pod_uid as pod_uid,
+  pod_labels_pod_uid as matches,
   node_name as node_name
 from
   ((select * from inter_pod_affinity_matches_inner_in_scheduled)
     union
       (select * from inter_pod_affinity_matches_inner_exists_scheduled))
 group by
-  pods_to_assign_pod_name,
-  pod_labels_pod_name,
+  pods_to_assign_pod_uid,
+  pod_labels_pod_uid,
   label_selector,
   topology_key,
   label_operator,
@@ -425,23 +431,23 @@ having
   count(distinct match_expression) = num_match_expressions;
 
 create view inter_pod_affinity_matches_pending as
-select pod_name, array_agg(matches) as matches, num_matches from
-   (select *, count(*) over (partition by pod_name) as num_matches
+select pod_uid, array_agg(matches) as matches, num_matches from
+   (select *, count(*) over (partition by pod_uid) as num_matches
     from inter_pod_affinity_matches_inner_pending)
-where (num_matches = 1 or pod_name != matches)
-group by pod_name, num_matches;
+where (num_matches = 1 or pod_uid != matches)
+group by pod_uid, num_matches;
 
 create view inter_pod_affinity_matches_scheduled as
-select *, count(*) over (partition by pod_name) as num_matches from inter_pod_affinity_matches_inner_scheduled;
+select *, count(*) over (partition by pod_uid) as num_matches from inter_pod_affinity_matches_inner_scheduled;
 
-create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_name);
-create index pod_anti_affinity_match_expressions_idx on pod_anti_affinity_match_expressions (pod_name);
+create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_uid);
+create index pod_anti_affinity_match_expressions_idx on pod_anti_affinity_match_expressions (pod_uid);
 create index pod_labels_idx on pod_labels (label_key, label_value);
 
 create view inter_pod_anti_affinity_matches_inner_exists_pending as
 select
-  pods_to_assign_A.pod_name as pods_to_assign_pod_name,
-  pod_labels.pod_name as pod_labels_pod_name,
+  pods_to_assign_A.uid as pods_to_assign_pod_uid,
+  pod_labels.pod_uid as pod_labels_pod_uid,
   pod_anti_affinity_match_expressions.label_selector,
   pod_anti_affinity_match_expressions.topology_key,
   pod_anti_affinity_match_expressions.label_operator,
@@ -450,18 +456,18 @@ select
   pods_to_assign_B.controllable__node_name as node_name
 from
   pods_to_assign as pods_to_assign_A
-  join pod_anti_affinity_match_expressions on pods_to_assign_A.pod_name = pod_anti_affinity_match_expressions.pod_name
+  join pod_anti_affinity_match_expressions on pods_to_assign_A.uid = pod_anti_affinity_match_expressions.pod_uid
   join pod_labels on (
     pod_anti_affinity_match_expressions.label_operator = 'Exists'
     and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
   )
-  join pods_to_assign as pods_to_assign_B on pod_labels.pod_name = pods_to_assign_B.pod_name
+  join pods_to_assign as pods_to_assign_B on pod_labels.pod_uid = pods_to_assign_B.uid
   where pods_to_assign_A.has_pod_anti_affinity_requirements = true;
 
 create view inter_pod_anti_affinity_matches_inner_exists_scheduled as
 select
-  pods_to_assign.pod_name as pods_to_assign_pod_name,
-  pod_labels.pod_name as pod_labels_pod_name,
+  pods_to_assign.uid as pods_to_assign_pod_uid,
+  pod_labels.pod_uid as pod_labels_pod_uid,
   pod_anti_affinity_match_expressions.label_selector,
   pod_anti_affinity_match_expressions.topology_key,
   pod_anti_affinity_match_expressions.label_operator,
@@ -470,18 +476,18 @@ select
   assigned_pods.node_name
 from
   pods_to_assign
-  join pod_anti_affinity_match_expressions on pods_to_assign.pod_name = pod_anti_affinity_match_expressions.pod_name
+  join pod_anti_affinity_match_expressions on pods_to_assign.uid = pod_anti_affinity_match_expressions.pod_uid
   join pod_labels on (
     pod_anti_affinity_match_expressions.label_operator = 'Exists'
     and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
   )
-  join assigned_pods on pod_labels.pod_name = assigned_pods.pod_name
+  join assigned_pods on pod_labels.pod_uid = assigned_pods.uid
   where pods_to_assign.has_pod_anti_affinity_requirements = true;
 
 create view inter_pod_anti_affinity_matches_inner_in_pending as
 select
-  pods_to_assign_A.pod_name as pods_to_assign_pod_name,
-  pod_labels.pod_name as pod_labels_pod_name,
+  pods_to_assign_A.uid as pods_to_assign_pod_uid,
+  pod_labels.pod_uid as pod_labels_pod_uid,
   pod_anti_affinity_match_expressions.label_selector,
   pod_anti_affinity_match_expressions.topology_key,
   pod_anti_affinity_match_expressions.label_operator,
@@ -490,19 +496,19 @@ select
   pods_to_assign_A.controllable__node_name as node_name
 from
   pods_to_assign as pods_to_assign_A
-  join pod_anti_affinity_match_expressions on pods_to_assign_A.pod_name = pod_anti_affinity_match_expressions.pod_name
+  join pod_anti_affinity_match_expressions on pods_to_assign_A.uid = pod_anti_affinity_match_expressions.pod_uid
   join pod_labels on (
     pod_anti_affinity_match_expressions.label_operator = 'In'
     and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
     and pod_labels.label_value in (unnest(pod_anti_affinity_match_expressions.label_value))
   )
-  join pods_to_assign as pods_to_assign_B on pod_labels.pod_name = pods_to_assign_B.pod_name
+  join pods_to_assign as pods_to_assign_B on pod_labels.pod_uid = pods_to_assign_B.uid
   where pods_to_assign_A.has_pod_anti_affinity_requirements = true;
 
 create view inter_pod_anti_affinity_matches_inner_in_scheduled as
 select
-  pods_to_assign.pod_name as pods_to_assign_pod_name,
-  pod_labels.pod_name as pod_labels_pod_name,
+  pods_to_assign.uid as pods_to_assign_pod_uid,
+  pod_labels.pod_uid as pod_labels_pod_uid ,
   pod_anti_affinity_match_expressions.label_selector,
   pod_anti_affinity_match_expressions.topology_key,
   pod_anti_affinity_match_expressions.label_operator,
@@ -511,27 +517,27 @@ select
   assigned_pods.node_name
 from
   pods_to_assign
-  join pod_anti_affinity_match_expressions on pods_to_assign.pod_name = pod_anti_affinity_match_expressions.pod_name
+  join pod_anti_affinity_match_expressions on pods_to_assign.uid = pod_anti_affinity_match_expressions.pod_uid
   join pod_labels on (
     pod_anti_affinity_match_expressions.label_operator = 'In'
     and pod_anti_affinity_match_expressions.label_key = pod_labels.label_key
     and pod_labels.label_value in (unnest(pod_anti_affinity_match_expressions.label_value))
   )
-  join assigned_pods on pod_labels.pod_name = assigned_pods.pod_name
+  join assigned_pods on pod_labels.pod_uid = assigned_pods.uid
   where pods_to_assign.has_pod_anti_affinity_requirements = true;
 
 create view inter_pod_anti_affinity_matches_inner_pending as
 select
-  pods_to_assign_pod_name as pod_name,
-  pod_labels_pod_name as matches,
+  pods_to_assign_pod_uid as pod_uid,
+  pod_labels_pod_uid as matches,
   node_name as node_name
 from
   ((select * from inter_pod_anti_affinity_matches_inner_in_pending)
     union
       (select * from inter_pod_anti_affinity_matches_inner_exists_pending))
 group by
-  pods_to_assign_pod_name,
-  pod_labels_pod_name,
+  pods_to_assign_pod_uid,
+  pod_labels_pod_uid,
   label_selector,
   topology_key,
   label_operator,
@@ -542,16 +548,16 @@ having
 
 create view inter_pod_anti_affinity_matches_inner_scheduled as
 select
-  pods_to_assign_pod_name as pod_name,
-  pod_labels_pod_name as matches,
+  pods_to_assign_pod_uid as pod_uid,
+  pod_labels_pod_uid as matches,
   node_name as node_name
 from
   ((select * from inter_pod_anti_affinity_matches_inner_in_scheduled)
     union
       (select * from inter_pod_anti_affinity_matches_inner_exists_scheduled))
 group by
-  pods_to_assign_pod_name,
-  pod_labels_pod_name,
+  pods_to_assign_pod_uid,
+  pod_labels_pod_uid,
   label_selector,
   topology_key,
   label_operator,
@@ -562,17 +568,17 @@ having
 
 
 create view inter_pod_anti_affinity_matches_pending as
-select pod_name, array_agg(matches) as matches, num_matches from
-   (select *, count(*) over (partition by pod_name) as num_matches
+select pod_uid, array_agg(matches) as matches, num_matches from
+   (select *, count(*) over (partition by pod_uid) as num_matches
     from inter_pod_anti_affinity_matches_inner_pending)
-where (pod_name != matches)
-group by pod_name, num_matches;
+where (pod_uid != matches)
+group by pod_uid, num_matches;
 
 create view inter_pod_anti_affinity_matches_scheduled as
-select pod_name, array_agg(node_name) as matches, num_matches from
-(select *, count(*) over (partition by pod_name) as num_matches from inter_pod_anti_affinity_matches_inner_scheduled)
-where (pod_name != matches)
-group by pod_name, num_matches;
+select pod_uid, array_agg(node_name) as matches, num_matches from
+(select *, count(*) over (partition by pod_uid) as num_matches from inter_pod_anti_affinity_matches_inner_scheduled)
+where (pod_uid != matches)
+group by pod_uid, num_matches;
 
 -- Spare capacity
 create view spare_capacity_per_node as
@@ -594,18 +600,18 @@ where unschedulable = false and
 
 -- Taints and tolerations
 create view pods_that_tolerate_node_taints as
-select pods_to_assign.pod_name as pod_name,
+select pods_to_assign.uid as pod_uid,
        A.node_name as node_name
 from pods_to_assign
 join pod_tolerations
-     on pods_to_assign.pod_name = pod_tolerations.pod_name
+     on pods_to_assign.uid = pod_tolerations.pod_uid
 join (select *, count(*) over (partition by node_name) as num_taints from node_taints) as A
      on pod_tolerations.tolerations_key = A.taint_key
      and (pod_tolerations.tolerations_effect = null
           or pod_tolerations.tolerations_effect = A.taint_effect)
      and (pod_tolerations.tolerations_operator = 'Exists'
           or pod_tolerations.tolerations_value = A.taint_value)
-group by pod_tolerations.pod_name, A.node_name, A.num_taints
+group by pod_tolerations.pod_uid, A.node_name, A.num_taints
 having count(*) = A.num_taints;
 
 create view nodes_that_have_tolerations as

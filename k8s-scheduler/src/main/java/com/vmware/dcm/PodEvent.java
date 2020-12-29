@@ -36,7 +36,9 @@ class PodEvent {
     public String toString() {
         return "PodEvent{" +
                 "action=" + action.name() +
-                ", pod=" + pod.getMetadata().getName() +
+                ", uid=" + pod.getMetadata().getUid() +
+                ", name=" + pod.getMetadata().getName() +
+                ", namespace=" + pod.getMetadata().getNamespace() +
                 '}';
     }
 }
