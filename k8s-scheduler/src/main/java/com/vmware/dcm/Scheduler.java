@@ -123,7 +123,6 @@ public final class Scheduler {
         );
     }
 
-    @SuppressWarnings("unchecked")
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
         int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
         while (fetchCount > 0) {
