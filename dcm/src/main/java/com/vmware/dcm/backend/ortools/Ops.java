@@ -14,6 +14,7 @@ import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
+import com.vmware.dcm.ModelException;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.ArrayList;
@@ -486,7 +487,8 @@ public class Ops {
                 vec -> Preconditions.checkArgument(varsToAssign.size() == vec.size())
         );
         if (domain.size() == 0) {
-            throw new RuntimeException("Empty domain for capacity constraint " + demands + " " + capacities);
+            // Providing an empty domain to a set of vars is trivially false.
+            throw new ModelException("Empty domain for capacity constraint " + demands + " " + capacities);
         }
 
         if (domain.get(0) instanceof String) {
@@ -499,6 +501,8 @@ public class Ops {
             final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((Long) o)).toArray();
             capacityConstraint(varsToAssign, domainArr, demands, capacities);
         } else {
+            // Keep this a runtime exception because this can only happen if the compiler
+            // did not correctly type check
             throw new RuntimeException("Unexpected type of list: " + domain);
         }
     }
