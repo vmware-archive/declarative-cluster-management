@@ -1796,7 +1796,7 @@ public class ModelTest {
         final List<String> views = toListOfViews(stringBuilder.toString());
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
-        assertThrows(ModelException.class, () -> model.solve("POD_INFO"));
+        assertThrows(SolverException.class, () -> model.solve("POD_INFO"));
     }
 
     private void insert_data(final DSLContext conn) {

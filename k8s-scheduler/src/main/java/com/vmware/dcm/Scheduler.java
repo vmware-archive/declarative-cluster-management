@@ -114,8 +114,9 @@ public final class Scheduler {
                         } catch (final InterruptedException e) {
                             Thread.currentThread().interrupt();
                             break;
-                        } catch (final ModelException e) {
-                            LOG.error("Received Model Exception. Dumping DB state to /tmp/", e);
+                        } catch (final SolverException e) {
+                            LOG.error("Received Model Exception (reason: {}). Dumping DB state to /tmp/",
+                                      e.reason(), e);
                             DebugUtils.dbDump(dbConnectionPool.getConnectionToDb());
                         }
                     }

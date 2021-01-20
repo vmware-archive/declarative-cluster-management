@@ -14,7 +14,7 @@ import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
-import com.vmware.dcm.ModelException;
+import com.vmware.dcm.SolverException;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.ArrayList;
@@ -488,7 +488,7 @@ public class Ops {
         );
         if (domain.size() == 0) {
             // Providing an empty domain to a set of vars is trivially false.
-            throw new ModelException("Empty domain for capacity constraint " + demands + " " + capacities);
+            throw new SolverException("Empty domain for capacity constraint " + demands + " " + capacities);
         }
 
         if (domain.get(0) instanceof String) {

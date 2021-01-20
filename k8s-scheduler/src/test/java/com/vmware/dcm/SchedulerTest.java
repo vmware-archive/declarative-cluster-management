@@ -9,6 +9,8 @@ package com.vmware.dcm;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import com.google.common.collect.Sets;
+import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.LabelSelector;
@@ -36,8 +38,6 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
-import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -50,11 +50,11 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
@@ -555,7 +555,7 @@ public class SchedulerTest {
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             // Should be unsat
-            assertThrows(ModelException.class, scheduler::runOneLoop);
+            assertThrows(SolverException.class, scheduler::runOneLoop);
         } else {
             final Result<? extends Record> results = scheduler.runOneLoop();
             assertEquals(numPods, results.size());
@@ -687,7 +687,7 @@ public class SchedulerTest {
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
         if (cannotBePlacedAnywhere) {
-            assertThrows(ModelException.class, scheduler::runOneLoop);
+            assertThrows(SolverException.class, scheduler::runOneLoop);
         } else {
             final Result<? extends Record> result = scheduler.runOneLoop();
             for (final Record record: result) {
@@ -930,7 +930,7 @@ public class SchedulerTest {
                                             .collect(Collectors.toList());
             assertTrue(assertOn.test(nodes));
         } else {
-            assertThrows(ModelException.class, scheduler::runOneLoop);
+            assertThrows(SolverException.class, scheduler::runOneLoop);
         }
     }
 
@@ -1018,7 +1018,7 @@ public class SchedulerTest {
                     .collect(Collectors.toList());
             assertTrue(assertOn.test(nodes));
         } else {
-            assertThrows(ModelException.class, scheduler::runOneLoop);
+            assertThrows(SolverException.class, scheduler::runOneLoop);
         }
     }
 

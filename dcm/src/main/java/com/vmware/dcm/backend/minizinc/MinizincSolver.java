@@ -15,6 +15,7 @@ import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRTable;
 import com.vmware.dcm.ModelException;
+import com.vmware.dcm.SolverException;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
 import com.vmware.dcm.compiler.monoid.MonoidComprehension;
@@ -359,13 +360,13 @@ public class MinizincSolver implements ISolverBackend {
 
                 mnz = pb.redirectError(stderr).redirectOutput(stdout).start();
             } catch (final IOException e) {
-                throw new ModelException("Could not execute MiniZinc", e);
+                throw new SolverException("Could not execute MiniZinc: " + e);
             }
             // wait for minizinc to solve the model
             try {
                 mnz.waitFor();
             } catch (final InterruptedException e) {
-                throw new ModelException("MiniZinc was interrupted", e);
+                throw new SolverException("MiniZinc was interrupted: " + e);
             }
 
             LOG.info("Solver command completed. Parsing output.");
@@ -379,7 +380,7 @@ public class MinizincSolver implements ISolverBackend {
                                 String.format("MiniZinc exited with error code %d:%n%s", mnz.exitValue(), errorOutput));
                     }
                 } catch (final IOException ioe) {
-                    throw new ModelException("Could not execute MiniZinc", ioe);
+                    throw new SolverException("Could not execute MiniZinc: " + ioe);
                 }
             }
 
@@ -395,8 +396,7 @@ public class MinizincSolver implements ISolverBackend {
                 while ((line = stdInput.readLine()) != null) {
                     // if we find the unsatisfiable line in the output we throw an exception
                     if (line.equals(MNZ_UNSATISFIABLE)) {
-                        throw new ModelException("Model UNSATISFIABLE. Please verify your " +
-                                                                 "model and data.");
+                        throw new SolverException("Model UNSATISFIABLE. Please verify your model and data.");
                     }
                     // break at first solution. Since we are not specifying '--all-solutions' the solver
                     // will only output the last solution
@@ -412,7 +412,7 @@ public class MinizincSolver implements ISolverBackend {
                 // LOG.info("MNZ OUTPUT = " + output.toString());
                 return output.toString();
             } catch (final IOException ioe) {
-                throw new ModelException("Could not execute MiniZinc", ioe);
+                throw new SolverException("Could not execute MiniZinc: " + ioe);
             }
         } finally {
             if (debugMode) {

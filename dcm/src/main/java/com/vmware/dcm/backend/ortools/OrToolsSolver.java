@@ -30,7 +30,7 @@ import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRPrimaryKey;
 import com.vmware.dcm.IRTable;
-import com.vmware.dcm.ModelException;
+import com.vmware.dcm.SolverException;
 import com.vmware.dcm.backend.GetVarQualifiers;
 import com.vmware.dcm.backend.IGeneratedBackend;
 import com.vmware.dcm.backend.ISolverBackend;
@@ -1047,7 +1047,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
         output.addStatement("return result");
         output.endControlFlow();
-        output.addStatement("throw new $T($S + status)", ModelException.class, "Could not solve ");
+        output.addStatement("throw new $T(status.toString())", SolverException.class);
     }
 
     private static String tableNameStr(final String tableName) {
