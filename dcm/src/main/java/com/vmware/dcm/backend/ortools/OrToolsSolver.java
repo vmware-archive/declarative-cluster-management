@@ -1228,10 +1228,19 @@ public class OrToolsSolver implements ISolverBackend {
                     final OutputIR.ForBlock forBlock = tableToForBlock.get(columnArg.getTableName());
                     context.enterScope(forBlock);
                     final String variableToAssignTo = exprToStr(columnArg, context);
+                    final String type = tupleMetadata.inferType(columnArg);
+                    final boolean shouldCoerce = (i == 2 || i == 3) && !type.equals("Long");
+                    if (shouldCoerce) {
+                        // if demands/capacities are in Integer domain, we coerce to longs
+                        forBlock.addBody(statement("final long $L_l = (long) $L", variableToAssignTo,
+                                                                                  variableToAssignTo));
+                    }
                     context.leaveScope();
-                    final String parameter = extractListFromLoop(variableToAssignTo, context.currentScope(),
-                                                                forBlock,
-                                                                tupleMetadata.inferType(columnArg));
+                    final String parameter = extractListFromLoop(shouldCoerce ?
+                                                                    variableToAssignTo + "_l" : variableToAssignTo,
+                                                                 context.currentScope(),
+                                                                 forBlock,
+                                                                 shouldCoerce ? "Long" : type);
 
                     if (i == 0) { // vars
                         vars.add(parameter);

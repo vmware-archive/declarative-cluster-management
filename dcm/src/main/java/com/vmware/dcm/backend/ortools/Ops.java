@@ -7,7 +7,6 @@
 package com.vmware.dcm.backend.ortools;
 
 import com.google.common.base.Preconditions;
-import com.google.common.primitives.Ints;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.IntervalVar;
@@ -478,10 +477,12 @@ public class Ops {
     }
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final List<?> domain,
-                                   final List<List<Integer>> demands, final List<List<Integer>> capacities) {
+                                   final List<List<Long>> demands, final List<List<Long>> capacities) {
         // Create the variables.
         capacities.forEach(
-                vec -> Preconditions.checkArgument(domain.size() == vec.size())
+                vec -> {
+                    Preconditions.checkArgument(domain.size() == vec.size());
+                }
         );
         demands.forEach(
                 vec -> Preconditions.checkArgument(varsToAssign.size() == vec.size())
@@ -508,7 +509,7 @@ public class Ops {
     }
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final long[] domainArr,
-                                   final List<List<Integer>> demands, final List<List<Integer>> capacities) {
+                                   final List<List<Long>> demands, final List<List<Long>> capacities) {
         final int scale = 1000;
         Preconditions.checkArgument(demands.size() == capacities.size());
 
@@ -534,19 +535,19 @@ public class Ops {
         }
 
         // Convert to list of arrays
-        final List<int[]> nodeCapacities =
-                capacities.stream().map(vec -> vec.stream().mapToInt(Integer::intValue).toArray())
+        final List<long[]> nodeCapacities =
+                capacities.stream().map(vec -> vec.stream().mapToLong(Long::longValue).toArray())
                         .collect(Collectors.toList());
-        final List<Integer> maxCapacities = nodeCapacities.stream().map(Ints::max)
+        final List<Long> maxCapacities = nodeCapacities.stream().map(la -> Arrays.stream(la).max().getAsLong())
                 .collect(Collectors.toList());
         final int numResources = demands.size();
 
         // For each resource, create dummy demands to accommodate heterogeneous capacities
-        final List<List<Integer>> updatedDemands = new ArrayList<>(demands.size());
+        final List<List<Long>> updatedDemands = new ArrayList<>(demands.size());
         for (int i = 0; i < numResources; i++) {
-            final List<Integer> demand = new ArrayList<>(demands.get(i));
-            final int maxCapacity = maxCapacities.get(i);
-            for (final int value : nodeCapacities.get(i)) {
+            final List<Long> demand = new ArrayList<>(demands.get(i));
+            final long maxCapacity = maxCapacities.get(i);
+            for (final long value : nodeCapacities.get(i)) {
                 demand.add(maxCapacity - value);
             }
             updatedDemands.add(demand);
@@ -556,11 +557,11 @@ public class Ops {
         );
 
         // Scale demands by max-capacities. This normalizes all resource capacities/demands into the same range (0-100)
-        final List<int[]> taskDemands = new ArrayList<>(maxCapacities.size());
+        final List<long[]> taskDemands = new ArrayList<>(maxCapacities.size());
         for (int i = 0; i < maxCapacities.size(); i++) {
-            final int capacity = maxCapacities.get(i);
-            final int[] scaledDemands = updatedDemands.get(i)
-                    .stream().mapToInt(e -> ((e * scale) / capacity))
+            final long capacity = maxCapacities.get(i);
+            final long[] scaledDemands = updatedDemands.get(i)
+                    .stream().mapToLong(e -> ((e * scale) / capacity))
                     .toArray();
             taskDemands.add(scaledDemands);
         }
@@ -580,9 +581,9 @@ public class Ops {
         model.minimize(LinearExpr.sum(maximumLoads));
 
         // Prefer less loaded nodes
-        final int[] nodeIdToLoad = new int[domainArr.length];
+        final long[] nodeIdToLoad = new long[domainArr.length];
         for (int node = 0; node < domainArr.length; node++) {
-            int incidentLoadOnNode = 0;
+            long incidentLoadOnNode = 0;
             for (int task = 0; task < numTasks; task++) {
                 for (int resource = 0; resource < numResources; resource++) {
                     incidentLoadOnNode +=
@@ -594,14 +595,14 @@ public class Ops {
         }
         final long[] domainSortedByLoad = IntStream.range(0, domainArr.length)
                 .boxed()
-                .sorted(Comparator.comparingInt(idx -> -nodeIdToLoad[idx]))
+                .sorted(Comparator.comparingLong(idx -> -nodeIdToLoad[idx]))
                 .mapToLong(idx -> domainArr[idx])
                 .toArray();
         final int maxNumBuckets = 10;
         final int bucketSize = Math.max(domainSortedByLoad.length / maxNumBuckets, 1);
 
         Preconditions.checkArgument(domainSortedByLoad.length == domainArr.length);
-        long nodesConsidered = 0;
+        int nodesConsidered = 0;
 
         final List<IntVar> bools = new ArrayList<>();
         for (int i = 0; i < domainSortedByLoad.length; i += bucketSize) {
