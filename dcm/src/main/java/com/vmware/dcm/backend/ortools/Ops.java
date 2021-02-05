@@ -553,12 +553,10 @@ public class Ops {
         }
 
         // Cumulative score
-        final IntVar[] maximumLoads = new IntVar[maxCapacities.size()];
         for (int i = 0; i < numResources; i++) {
             final IntVar max = model.newIntVar(0, maxCapacities.get(i), "");
             model.addCumulative(tasksIntervals, updatedDemands.get(i), max);
-            maximumLoads[i] = max;
+            model.minimize(max);
         }
-        model.minimize(LinearExpr.sum(maximumLoads));
     }
 }
