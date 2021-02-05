@@ -121,7 +121,6 @@ public class OrToolsSolver implements ISolverBackend {
     private final int configNumThreads;
     private final int configMaxTimeInSeconds;
     private final boolean configTryScalarProductEncoding;
-    private final boolean configUseFullReifiedConstraintsForJoinPreferences;
     private final boolean configUseIndicesForEqualityBasedJoins;
     private final boolean configPrintDiagnostics;
 
@@ -134,13 +133,11 @@ public class OrToolsSolver implements ISolverBackend {
 
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
-                          final boolean configUseFullReifiedConstraintsForJoinPreferences,
                           final boolean configUseIndicesForEqualityBasedJoins,
                           final boolean configPrintDiagnostics) {
         this.configNumThreads = configNumThreads;
         this.configMaxTimeInSeconds = configMaxTimeInSeconds;
         this.configTryScalarProductEncoding = configTryScalarProductEncoding;
-        this.configUseFullReifiedConstraintsForJoinPreferences = configUseFullReifiedConstraintsForJoinPreferences;
         this.configUseIndicesForEqualityBasedJoins = configUseIndicesForEqualityBasedJoins;
         this.configPrintDiagnostics = configPrintDiagnostics;
     }
@@ -149,7 +146,6 @@ public class OrToolsSolver implements ISolverBackend {
         private int numThreads = NUM_THREADS_DEFAULT;
         private int maxTimeInSeconds = MAX_TIME_IN_SECONDS;
         private boolean tryScalarProductEncoding = true;
-        private boolean useFullReifiedConstraintsForJoinPreferences = false;
         private boolean useIndicesForEqualityBasedJoins = true;
         private boolean printDiagnostics = false;
 
@@ -187,20 +183,6 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         /**
-         * Configures whether we introduce full or half-reified booleans when encoding preferences for
-         * "spreading" joins.
-         * @param useFullReifiedConstraintsForJoinPreferences uses full-reified encodings if true, half-reified
-         *                                                    encodings otherwise. Defaults to false.
-         * @return the current Builder object with `useFullReifiedConstraintsForJoinPreferences` set
-         */
-        public Builder setUseFullReifiedConstraintsForJoinPreferences(final boolean
-                                                                      useFullReifiedConstraintsForJoinPreferences) {
-            this.useFullReifiedConstraintsForJoinPreferences = useFullReifiedConstraintsForJoinPreferences;
-            return this;
-        }
-
-
-        /**
          * Configures whether we construct and leverage indexes for equality based joins, instead of nested for
          * loops in the generated code.
          *
@@ -227,8 +209,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         public OrToolsSolver build() {
             return new OrToolsSolver(numThreads, maxTimeInSeconds, tryScalarProductEncoding,
-                                     useFullReifiedConstraintsForJoinPreferences, useIndicesForEqualityBasedJoins,
-                                     printDiagnostics);
+                                     useIndicesForEqualityBasedJoins, printDiagnostics);
         }
     }
 
@@ -992,8 +973,7 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement("final long startTime = $T.nanoTime()", System.class)
                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
                .addStatement("final $1T encoder = new $1T()", StringEncoding.class)
-               .addStatement("final $1T o = new $1T(model, encoder, $2L)", Ops.class,
-                             configUseFullReifiedConstraintsForJoinPreferences)
+               .addStatement("final $1T o = new $1T(model, encoder)", Ops.class)
                .addCode("\n");
     }
 
