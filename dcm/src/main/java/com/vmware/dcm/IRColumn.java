@@ -48,7 +48,7 @@ public class IRColumn {
      * For now, we coerce SQL types to float, int, string, boolean and arrays.
      */
     public enum FieldType {
-        FLOAT, INT, STRING, BOOL, ARRAY;
+        FLOAT, LONG, INT, STRING, BOOL, ARRAY;
 
         /**
          * Returns the coerced type of an SQL field
@@ -59,6 +59,7 @@ public class IRColumn {
         public static FieldType fromField(final Field<?> f) {
             switch (f.getDataType().getSQLType()) {
                 case Types.BIGINT:
+                    return FieldType.LONG;
                 case Types.INTEGER:
                 case Types.SMALLINT:
                 case Types.TINYINT:

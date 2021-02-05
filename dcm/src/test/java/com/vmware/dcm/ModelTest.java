@@ -19,6 +19,7 @@ import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.File;
@@ -938,6 +939,67 @@ public class ModelTest {
         final Model model = buildModel(conn, solver, views, modelName);
         model.updateData();
         model.solve("POD_INFO");
+    }
+
+    @ParameterizedTest
+    @MethodSource("capacityConstraintInputs")
+    public void testCapacityConstraint(final String columnType, final List<Number> capacities,
+                                       final List<Number> demands, final boolean shouldPass) {
+        // create database
+        final DSLContext conn = setup();
+
+        conn.execute(String.format("CREATE TABLE t1 (" +
+                "c1 %s PRIMARY KEY, " +
+                "c2 %s " +
+                ")", columnType, columnType)
+        );
+        conn.execute(String.format("CREATE TABLE t2 (" +
+                "controllable__c1 %s null, " +
+                "d1 %s, " +
+                "FOREIGN KEY(controllable__c1) REFERENCES t1(c1)" +
+                ")", columnType, columnType)
+        );
+
+        final List<String> views = List.of("create view constraint_c1 as " +
+                        "select * from t2 " +
+                        "join t1 " +
+                        "     on t2.controllable__c1 = t1.c1 " +
+                        "check capacity_constraint(t2.controllable__c1, t1.c1, " +
+                        "                           t2.d1, t1.c2) = true");
+
+        for (int i = 0; i < capacities.size(); i++) {
+            conn.execute(String.format("insert into t1 values (%s, %s)", i, capacities.get(i)));
+        }
+
+        for (final Number demand : demands) {
+            conn.execute(String.format("insert into t2 values (null, %s)", demand));
+        }
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "capacity");
+        model.updateData();
+        if (!shouldPass) {
+            assertThrows(SolverException.class, () -> model.solve("t2"));
+        } else {
+            model.solve("t2");
+        }
+    }
+
+    public static Stream<Arguments> capacityConstraintInputs() {
+        final String intT = "integer";
+        final String longT = "bigint";
+        final long largeInt = ((long) Integer.MAX_VALUE) * 2;
+        return Stream.of(
+                Arguments.of(intT, List.of(0, 0), List.of(1, 1), false),
+                Arguments.of(intT, List.of(0, 0), List.of(-1, 1), false),
+                Arguments.of(intT, List.of(-5, 0), List.of(1, -5), false),
+                Arguments.of(intT, List.of(1, 0), List.of(1, 1), false),
+                Arguments.of(intT, List.of(1, 0), List.of(1, 0), true),
+                Arguments.of(intT, List.of(1, 1), List.of(1, 1), true),
+                Arguments.of(longT, List.of(0, 0), List.of(1, 1), false),
+                Arguments.of(longT, List.of(largeInt, 0), List.of(largeInt, largeInt), false),
+                Arguments.of(longT, List.of(largeInt, 0), List.of(largeInt, 0), true),
+                Arguments.of(longT, List.of(largeInt, largeInt), List.of(largeInt, largeInt), true)
+        );
     }
 
     @ParameterizedTest

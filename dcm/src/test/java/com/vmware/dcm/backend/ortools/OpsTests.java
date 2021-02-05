@@ -53,7 +53,7 @@ public class OpsTests {
     @Test
     public void testSum() {
         final List<Integer> entries = List.of(1, 2, 3, 4);
-        assertEquals(10, ops.sum(entries));
+        assertEquals(10, ops.sumInteger(entries));
     }
 
     @Test
