@@ -47,9 +47,6 @@ public class OrToolsEncodingBenchmark {
         @Nullable Model model = null;
 
         @Param({"true", "false"})
-        static boolean fullReification;
-
-        @Param({"true", "false"})
         static boolean useCumulative;
 
         @Param({"true", "false"})
@@ -107,7 +104,6 @@ public class OrToolsEncodingBenchmark {
             }
 
             final OrToolsSolver solver = new OrToolsSolver.Builder()
-                    .setUseFullReifiedConstraintsForJoinPreferences(fullReification)
                     .setTryScalarProductEncoding(useScalarProduct)
                     .setMaxTimeInSeconds(100)
                     .build();

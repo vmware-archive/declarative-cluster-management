@@ -14,31 +14,25 @@ import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
 import com.vmware.dcm.SolverException;
-import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class Ops {
     private final CpModel model;
     private final StringEncoding encoder;
     private final IntVar trueVar;
     private final IntVar falseVar;
-    private final boolean configUseFullReifiedConstraintsForJoinPreferences;
 
 
-    public Ops(final CpModel model, final StringEncoding encoding,
-               final boolean configUseFullReifiedConstraintsForJoinPreferences) {
+    public Ops(final CpModel model, final StringEncoding encoding) {
         this.model = model;
         this.encoder = encoding;
         this.trueVar = model.newConstant(1);
         this.falseVar = model.newConstant(0);
-        this.configUseFullReifiedConstraintsForJoinPreferences = configUseFullReifiedConstraintsForJoinPreferences;
     }
 
     public int sum(final List<Integer> data) {
@@ -480,9 +474,7 @@ public class Ops {
                                    final List<List<Long>> demands, final List<List<Long>> capacities) {
         // Create the variables.
         capacities.forEach(
-                vec -> {
-                    Preconditions.checkArgument(domain.size() == vec.size());
-                }
+                vec -> Preconditions.checkArgument(domain.size() == vec.size())
         );
         demands.forEach(
                 vec -> Preconditions.checkArgument(varsToAssign.size() == vec.size())
@@ -510,7 +502,6 @@ public class Ops {
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final long[] domainArr,
                                    final List<List<Long>> demands, final List<List<Long>> capacities) {
-        final int scale = 1000;
         Preconditions.checkArgument(demands.size() == capacities.size());
 
         final IntVar[] taskToNodeAssignment = varsToAssign.toArray(IntVar[]::new);
@@ -543,88 +534,31 @@ public class Ops {
         final int numResources = demands.size();
 
         // For each resource, create dummy demands to accommodate heterogeneous capacities
-        final List<List<Long>> updatedDemands = new ArrayList<>(demands.size());
+        final List<long[]> updatedDemands = new ArrayList<>(demands.size());
         for (int i = 0; i < numResources; i++) {
             final List<Long> demand = new ArrayList<>(demands.get(i));
             final long maxCapacity = maxCapacities.get(i);
             for (final long value : nodeCapacities.get(i)) {
                 demand.add(maxCapacity - value);
             }
-            updatedDemands.add(demand);
+            updatedDemands.add(demand.stream().mapToLong(Long::longValue).toArray());
         }
         updatedDemands.forEach(
-                vec -> Preconditions.checkArgument(vec.size() == (numTasks + capacities.get(0).size()))
+                vec -> Preconditions.checkArgument(vec.length == (numTasks + capacities.get(0).size()))
         );
-
-        // Scale demands by max-capacities. This normalizes all resource capacities/demands into the same range (0-100)
-        final List<long[]> taskDemands = new ArrayList<>(maxCapacities.size());
-        for (int i = 0; i < maxCapacities.size(); i++) {
-            final long capacity = maxCapacities.get(i);
-            final long[] scaledDemands = updatedDemands.get(i)
-                    .stream().mapToLong(e -> ((e * scale) / capacity))
-                    .toArray();
-            taskDemands.add(scaledDemands);
-        }
 
         // 2. Capacity constraints
         for (int i = 0; i < numResources; i++) {
-            model.addCumulative(tasksIntervals, taskDemands.get(i), model.newConstant(scale));
+            model.addCumulative(tasksIntervals, updatedDemands.get(i), maxCapacities.get(i));
         }
 
         // Cumulative score
         final IntVar[] maximumLoads = new IntVar[maxCapacities.size()];
         for (int i = 0; i < numResources; i++) {
-            final IntVar max = model.newIntVar(0, scale, "");
-            model.addCumulative(tasksIntervals, taskDemands.get(i), max);
+            final IntVar max = model.newIntVar(0, maxCapacities.get(i), "");
+            model.addCumulative(tasksIntervals, updatedDemands.get(i), max);
             maximumLoads[i] = max;
         }
         model.minimize(LinearExpr.sum(maximumLoads));
-
-        // Prefer less loaded nodes
-        final long[] nodeIdToLoad = new long[domainArr.length];
-        for (int node = 0; node < domainArr.length; node++) {
-            long incidentLoadOnNode = 0;
-            for (int task = 0; task < numTasks; task++) {
-                for (int resource = 0; resource < numResources; resource++) {
-                    incidentLoadOnNode +=
-                            (capacities.get(resource).get(node) - (taskDemands.get(resource)[task] * 100))
-                                    / capacities.get(resource).get(node);
-                }
-            }
-            nodeIdToLoad[node] = incidentLoadOnNode;
-        }
-        final long[] domainSortedByLoad = IntStream.range(0, domainArr.length)
-                .boxed()
-                .sorted(Comparator.comparingLong(idx -> -nodeIdToLoad[idx]))
-                .mapToLong(idx -> domainArr[idx])
-                .toArray();
-        final int maxNumBuckets = 10;
-        final int bucketSize = Math.max(domainSortedByLoad.length / maxNumBuckets, 1);
-
-        Preconditions.checkArgument(domainSortedByLoad.length == domainArr.length);
-        int nodesConsidered = 0;
-
-        final List<IntVar> bools = new ArrayList<>();
-        for (int i = 0; i < domainSortedByLoad.length; i += bucketSize) {
-            final long[] subArray = Arrays.copyOfRange(domainSortedByLoad, i, i + bucketSize);
-            for (final IntVar assignmentVar: taskToNodeAssignment) {
-                final IntVar boolVar;
-                if (configUseFullReifiedConstraintsForJoinPreferences) {
-                    boolVar = inLong(assignmentVar, Arrays.asList(ArrayUtils.toObject(subArray)));
-                } else {
-                    boolVar = model.newBoolVar("");
-                    model.addLinearExpressionInDomain(assignmentVar, Domain.fromValues(subArray))
-                            .onlyEnforceIf(boolVar);
-                }
-                bools.add(boolVar);
-            }
-            nodesConsidered += subArray.length;
-            if (nodesConsidered >= (taskToNodeAssignment.length * 2)) {
-                break;
-            }
-        }
-        final IntVar enforcement = model.newBoolVar("");
-        model.addBoolOr(bools.toArray(new IntVar[0])).onlyEnforceIf(enforcement);
-        model.maximize(enforcement);
     }
 }
