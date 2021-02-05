@@ -84,6 +84,9 @@ class MinizincString {
         if (type.equals(IRColumn.FieldType.STRING)) {
             return "STRING_LITERALS";
         }
+        if (type.equals(IRColumn.FieldType.LONG)) {
+            return "int"; // Minizinc int
+        }
         return type.name().toLowerCase(Locale.US);
     }
 }

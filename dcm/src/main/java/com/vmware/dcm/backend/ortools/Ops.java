@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class Ops {
+    private static final long DOMAIN_MIN = Integer.MIN_VALUE;
+    private static final long DOMAIN_MAX = Integer.MAX_VALUE;
     private final CpModel model;
     private final StringEncoding encoder;
     private final IntVar trueVar;
@@ -35,7 +37,7 @@ public class Ops {
         this.falseVar = model.newConstant(0);
     }
 
-    public int sum(final List<Integer> data) {
+    public int sumInteger(final List<Integer> data) {
         int ret = 0;
         for (final Integer d: data) {
             ret += d;
@@ -43,15 +45,30 @@ public class Ops {
         return ret;
     }
 
+    public long sumLong(final List<Long> data) {
+        long ret = 0;
+        for (final long d: data) {
+            ret += d;
+        }
+        return ret;
+    }
+
     public IntVar sumV(final List<IntVar> data) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addEquality(ret, LinearExpr.sum(data.toArray(new IntVar[0])));
         return ret;
     }
 
     // TODO: add test case to OpsTests
-    public IntVar scalProd(final List<IntVar> variables, final List<Integer> coefficients) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+    public IntVar scalProdLong(final List<IntVar> variables, final List<Long> coefficients) {
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
+        model.addEquality(ret, LinearExpr.scalProd(variables.toArray(new IntVar[0]),
+                coefficients.stream().mapToLong(Long::longValue).toArray()));
+        return ret;
+    }
+
+    public IntVar scalProdInteger(final List<IntVar> variables, final List<Integer> coefficients) {
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addEquality(ret, LinearExpr.scalProd(variables.toArray(new IntVar[0]),
                                                    coefficients.stream().mapToInt(Integer::intValue).toArray()));
         return ret;
@@ -84,7 +101,7 @@ public class Ops {
     }
 
     public IntVar maxVIntVar(final List<IntVar> data) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addMaxEquality(ret, data.toArray(new IntVar[0]));
         return ret;
     }
@@ -98,7 +115,7 @@ public class Ops {
     }
 
     public IntVar minVIntVar(final List<IntVar> data) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addMinEquality(ret, data.toArray(new IntVar[0]));
         return ret;
     }
@@ -108,7 +125,7 @@ public class Ops {
     }
 
     public IntVar div(final IntVar left, final int right) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addDivisionEquality(ret, left, model.newConstant(right));
         return ret;
     }
@@ -118,13 +135,13 @@ public class Ops {
     }
 
     public IntVar plus(final IntVar left, final int right) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addEquality(ret, LinearExpr.sum(new IntVar[]{left, model.newConstant(right)}));
         return ret;
     }
 
     public IntVar plus(final IntVar left, final IntVar right) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addEquality(ret, LinearExpr.sum(new IntVar[]{left, right}));
         return ret;
     }
@@ -134,13 +151,13 @@ public class Ops {
     }
 
     public IntVar minus(final IntVar left, final int right) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addEquality(ret, LinearExpr.sum(new IntVar[]{left, model.newConstant(-right)}));
         return ret;
     }
 
     public IntVar minus(final IntVar left, final IntVar right) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{left, right}, new int[]{1, -1}));
         return ret;
     }
@@ -154,13 +171,13 @@ public class Ops {
     }
 
     public IntVar mult(final IntVar left, final int right) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addEquality(ret, LinearExpr.term(left, right));
         return ret;
     }
 
     public IntVar mult(final IntVar left, final IntVar right) {
-        final IntVar ret = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
         model.addProductEquality(ret, new IntVar[]{left, right});
         return ret;
     }
@@ -474,10 +491,20 @@ public class Ops {
                                    final List<List<Long>> demands, final List<List<Long>> capacities) {
         // Create the variables.
         capacities.forEach(
-                vec -> Preconditions.checkArgument(domain.size() == vec.size())
+                vec -> {
+                    Preconditions.checkArgument(domain.size() == vec.size(),
+                            "Capacities and domain vectors are of different sizes");
+                    Preconditions.checkArgument(vec.stream().anyMatch(capacity -> capacity >= 0),
+                            "Negative values for capacities are not allowed");
+                }
         );
         demands.forEach(
-                vec -> Preconditions.checkArgument(varsToAssign.size() == vec.size())
+                vec -> {
+                    Preconditions.checkArgument(varsToAssign.size() == vec.size(),
+                            "Capacities and domain vectors are of different sizes");
+                    Preconditions.checkArgument(vec.stream().anyMatch(demand -> demand >= 0),
+                            "Negative values for demands are not allowed");
+                }
         );
         if (domain.size() == 0) {
             // Providing an empty domain to a set of vars is trivially false.

@@ -943,6 +943,8 @@ public class OrToolsSolver implements ISolverBackend {
         switch (type) {
             case FLOAT:
                 return "Float";
+            case LONG:
+                return "Long";
             case INT:
                 return "Integer";
             case BOOL:
@@ -950,7 +952,7 @@ public class OrToolsSolver implements ISolverBackend {
             case STRING:
                 return "String";
             default:
-                throw new RuntimeException();
+                throw new IllegalArgumentException("Unsupport type " + type.toString());
         }
     }
 
@@ -1642,7 +1644,9 @@ public class OrToolsSolver implements ISolverBackend {
             final String processedArgument = visit(node, context.withEnterFunctionContext());
             context.leaveScope();
             final String argumentType = tupleMetadata.inferType(node);
-            final String function = argumentType.equals("IntVar") ? "sumV" : "sum";
+            final String function = argumentType.equals("IntVar") ? "sumV" :
+                                    argumentType.equals("Long") ? "sumLong" :
+                                     "sum";
             final String listOfProcessedItem =
                     extractListFromLoop(processedArgument, context.currentScope(), forLoop, argumentType);
             return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();
@@ -1664,7 +1668,8 @@ public class OrToolsSolver implements ISolverBackend {
                     extractListFromLoop(variablesItem, outerBlock, forLoop, "IntVar");
             final String listOfCoefficientsItem =
                     extractListFromLoop(coefficientsItem, outerBlock, forLoop, coefficientsType);
-            return CodeBlock.of("o.scalProd($L, $L)", listOfVariablesItem, listOfCoefficientsItem).toString();
+            return CodeBlock.of("o.scalProd$L($L, $L)", coefficientsType, listOfVariablesItem, listOfCoefficientsItem)
+                            .toString();
         }
 
         /**

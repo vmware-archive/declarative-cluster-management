@@ -169,6 +169,8 @@ class InferType extends MonoidVisitor<String, VoidType> {
                 return  "String";
             case BOOL:
                 return  "Boolean";
+            case LONG:
+                return "Long";
             case INT:
                 return  "Integer";
             case FLOAT:
@@ -176,7 +178,7 @@ class InferType extends MonoidVisitor<String, VoidType> {
             case ARRAY:
                 return  "Object[]";
             default:
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException(column.toString());
         }
     }
 
