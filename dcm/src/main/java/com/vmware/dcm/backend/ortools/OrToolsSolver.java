@@ -1646,7 +1646,7 @@ public class OrToolsSolver implements ISolverBackend {
             final String argumentType = tupleMetadata.inferType(node);
             final String function = argumentType.equals("IntVar") ? "sumV" :
                                     argumentType.equals("Long") ? "sumLong" :
-                                     "sum";
+                                     "sumInteger";
             final String listOfProcessedItem =
                     extractListFromLoop(processedArgument, context.currentScope(), forLoop, argumentType);
             return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();

@@ -22,6 +22,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Collections;
 import java.util.List;
@@ -944,7 +945,8 @@ public class ModelTest {
     @ParameterizedTest
     @MethodSource("capacityConstraintInputs")
     public void testCapacityConstraint(final String columnType, final List<Number> capacities,
-                                       final List<Number> demands, final boolean shouldPass) {
+                                       final List<Number> demands,
+                                       @Nullable final Class<? extends Exception> exception) {
         // create database
         final DSLContext conn = setup();
 
@@ -977,8 +979,8 @@ public class ModelTest {
 
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "capacity");
         model.updateData();
-        if (!shouldPass) {
-            assertThrows(SolverException.class, () -> model.solve("t2"));
+        if (exception != null) {
+            assertThrows(exception, () -> model.solve("t2"));
         } else {
             model.solve("t2");
         }
@@ -989,16 +991,16 @@ public class ModelTest {
         final String longT = "bigint";
         final long largeInt = ((long) Integer.MAX_VALUE) * 2;
         return Stream.of(
-                Arguments.of(intT, List.of(0, 0), List.of(1, 1), false),
-                Arguments.of(intT, List.of(0, 0), List.of(-1, 1), false),
-                Arguments.of(intT, List.of(-5, 0), List.of(1, -5), false),
-                Arguments.of(intT, List.of(1, 0), List.of(1, 1), false),
-                Arguments.of(intT, List.of(1, 0), List.of(1, 0), true),
-                Arguments.of(intT, List.of(1, 1), List.of(1, 1), true),
-                Arguments.of(longT, List.of(0, 0), List.of(1, 1), false),
-                Arguments.of(longT, List.of(largeInt, 0), List.of(largeInt, largeInt), false),
-                Arguments.of(longT, List.of(largeInt, 0), List.of(largeInt, 0), true),
-                Arguments.of(longT, List.of(largeInt, largeInt), List.of(largeInt, largeInt), true)
+                Arguments.of(intT, List.of(0, 0), List.of(1, 1), SolverException.class),
+                Arguments.of(intT, List.of(0, 0), List.of(-1, 1), IllegalArgumentException.class),
+                Arguments.of(intT, List.of(-5, 0), List.of(1, -5), IllegalArgumentException.class),
+                Arguments.of(intT, List.of(1, 0), List.of(1, 1), SolverException.class),
+                Arguments.of(intT, List.of(1, 0), List.of(1, 0), null),
+                Arguments.of(intT, List.of(1, 1), List.of(1, 1), null),
+                Arguments.of(longT, List.of(0, 0), List.of(1, 1), SolverException.class),
+                Arguments.of(longT, List.of(largeInt, 0), List.of(largeInt, largeInt), SolverException.class),
+                Arguments.of(longT, List.of(largeInt, 0), List.of(largeInt, 0), null),
+                Arguments.of(longT, List.of(largeInt, largeInt), List.of(largeInt, largeInt), null)
         );
     }
 
@@ -1247,6 +1249,28 @@ public class ModelTest {
         model.solve("HOSTS");
     }
 
+    @Test
+    public void testConstSums() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1 (" +
+                "c1 bigint," +
+                "c2 integer" +
+                ")"
+        );
+
+        final List<String> views = toListOfViews("CREATE VIEW constraint_view AS " +
+                "SELECT * FROM t1 check sum(c1) = 6 and sum(c2) = 6;");
+
+        // insert data
+        conn.execute("insert into t1 values (1, 1)");
+        conn.execute("insert into t1 values (2, 2)");
+        conn.execute("insert into t1 values (3, 3)");
+
+        // build model
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testConstSums");
+        model.updateData();
+        model.solve("t1");
+    }
 
     @ParameterizedTest
     @MethodSource("solvers")

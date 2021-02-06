@@ -494,7 +494,7 @@ public class Ops {
                 vec -> {
                     Preconditions.checkArgument(domain.size() == vec.size(),
                             "Capacities and domain vectors are of different sizes");
-                    Preconditions.checkArgument(vec.stream().anyMatch(capacity -> capacity >= 0),
+                    Preconditions.checkArgument(vec.stream().allMatch(capacity -> capacity >= 0),
                             "Negative values for capacities are not allowed");
                 }
         );
@@ -502,7 +502,7 @@ public class Ops {
                 vec -> {
                     Preconditions.checkArgument(varsToAssign.size() == vec.size(),
                             "Capacities and domain vectors are of different sizes");
-                    Preconditions.checkArgument(vec.stream().anyMatch(demand -> demand >= 0),
+                    Preconditions.checkArgument(vec.stream().allMatch(demand -> demand >= 0),
                             "Negative values for demands are not allowed");
                 }
         );
