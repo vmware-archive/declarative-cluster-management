@@ -962,12 +962,23 @@ public class ModelTest {
                 ")", columnType, columnType)
         );
 
-        final List<String> views = List.of("create view constraint_c1 as " +
-                        "select * from t2 " +
-                        "join t1 " +
-                        "     on t2.controllable__c1 = t1.c1 " +
-                        "check capacity_constraint(t2.controllable__c1, t1.c1, " +
-                        "                           t2.d1, t1.c2) = true");
+        // create another table for tasks which have capacity constraints on them but the table is not populated.
+        conn.execute(String.format("CREATE TABLE empty_tasks (" +
+                "controllable__c1 %s null, " +
+                "d1 %s, " +
+                "FOREIGN KEY(controllable__c1) REFERENCES t1(c1)" +
+                ")", columnType, columnType)
+        );
+
+        final List<String> views = Stream.of("t2", "empty_tasks").map(
+                table ->
+                        String.format("create view constraint_c1_for_%1$s as " +
+                                "select * from %1$s " +
+                                "join t1 " +
+                                "     on %1$s.controllable__c1 = t1.c1 " +
+                                "check capacity_constraint(%1$s.controllable__c1, t1.c1, " +
+                                "                           %1$s.d1, t1.c2) = true", table))
+                .collect(Collectors.toList());
 
         for (int i = 0; i < capacities.size(); i++) {
             conn.execute(String.format("insert into t1 values (%s, %s)", i, capacities.get(i)));
