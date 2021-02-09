@@ -9,6 +9,8 @@ DCM concepts
 
 #### Model.build(DSLContext dslContext, ISolverBackend solverBackend, List<String> constraints)
 
+OrToolsSolver backend
+
 ## Model API
 
 #### model.solve()
