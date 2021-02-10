@@ -82,6 +82,36 @@ public class ModelTest {
         assertEquals(result.get(1).get(1), 84);
     }
 
+    @Test
+    public void testUpdateDataWithResultFetcherUsingQuery() {
+        final DSLContext conn = DSL.using("jdbc:h2:mem:");
+        conn.execute("create table pod(pod_id integer, controllable__dummy integer)");
+
+        final List<String> views = toListOfViews("" +
+                "create view constraint_with_join AS " +
+                "select * from pod " +
+                "check controllable__dummy = 10;"
+        );
+
+        final Model model = Model.build(conn, views);
+        conn.execute("insert into pod values (5, null)");
+        conn.execute("insert into pod values (10, null)");
+        conn.execute("insert into pod values (3, null)");
+
+        final int minimumPodId = 7;
+        model.updateData((table) -> {
+            if (table.getName().equalsIgnoreCase("pod")) {
+                // Should only pull in the 2nd record
+                return conn.selectFrom(table).where(field("pod_id").gt(minimumPodId)).fetch();
+            }
+            return conn.selectFrom(table).fetch();
+        });
+        final Result<? extends Record> result = model.solve("POD");
+        assertEquals(result.size(), 1);
+        assertEquals(result.get(0).get(0), 10);
+        assertEquals(result.get(0).get(1), 10);
+    }
+
     @ParameterizedTest
     @MethodSource("solvers")
     public void testIndexGen(final SolverConfig solver) {
