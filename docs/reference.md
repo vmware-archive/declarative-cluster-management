@@ -24,11 +24,11 @@ The APIs below are described in [Model API Javadoc](https://javadoc.io/doc/com.v
 
 ### Instantiating models with Model.build()
 
-There are two overloads available to build Models.
-```java
-Model.build(DSLContext conn, List<String> constraints)
-Model.build(DSLContext conn, ISolverBackend solverBackend, List<String> constraints)
-```
+There are two methods to build Models.
+
+[Model.build(DSLContext conn, List<String> constraints)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#build(org.jooq.DSLContext,java.util.List))  
+[Model.build(DSLContext conn, ISolverBackend solverBackend, List<String> constraints)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#build(org.jooq.DSLContext,com.vmware.dcm.backend.ISolverBackend,java.util.List))
+
 
 * The `conn` argument is a connection to a database, created using the `JOOQ` library. For example: 
   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/QuickStartTest.java#L23-L23 -->
@@ -68,15 +68,13 @@ is used. Here's an example of this API's use in our Kubernetes scheduler:
 Once a model is instantiated using `Model.build()`, the returned model needs to be synchronized with
 the database using `model.updateData()` to gather inputs and then solved using `model.solve()`. 
 
-#### [model.updateData()](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#updateData()) 
+#### Fetch inputs 
 
-  There are two overloads available to retrieve the latest records from the database to be used as inputs
+  There are two methods to retrieve the latest records from the database to be used as inputs
 for the solver.
 
-  ```java
-  Model.updateData()
-  Model.updateData(Function<Table<?>, Result<? extends Record>> fetcher)
-  ```
+  [Model.updateData()](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#updateData())  
+  [Model.updateData(Function<Table<?>, Result<? extends Record>> fetcher)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#updateData(java.util.function.Function))
 
   The first method simply invokes `select * from <table>` for all tables and views in the constraints that need
   to be fetched from the database.
@@ -99,14 +97,13 @@ for the solver.
   final Result<? extends Record> result = model.solve("POD");
   ``` 
 
-#### [model.solve()](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve())
+#### Compute a solution
 
-There are two overloads available to solve models based on the most recent inputs fetched via `model.updateData()`.
+There are two methods to solve models based on the most recent inputs fetched via `model.updateData()`.
 
-```java
-Model.solve(String tableName)
-Model.solve(Set<String> tableNames)
-```
+[Model.solve(String tableName)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve())
+[Model.solve(Set<String> tableNames)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve(java.util.Set))
+
 
 Both methods return records corresponding to one or more tables (specified by the `tableName/tableNames` argument).
 If the call to `solve()` succeeds, tables with variable columns will have their values updated as per the 
