@@ -223,7 +223,7 @@ public class Model {
      */
     public synchronized Result<? extends Record> solve(final String tableName)
             throws ModelException {
-        return solve(Set.of(tableName)).get(tableName);
+        return solve(Set.of(tableName.toUpperCase())).get(tableName);
     }
 
     /**

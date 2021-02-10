@@ -176,16 +176,16 @@ public final class Scheduler {
     private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies,
                                  final int numThreads, final int solverMaxTimeInSeconds) {
         switch (solverToUse) {
-            case "MNZ-CHUFFED":
-                final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
-                final File dataFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_data.dzn");
-                final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
-                return Model.build(conn, solver, policies);
             case "ORTOOLS":
                 final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
                                                      .setNumThreads(numThreads)
                                                      .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
                 return Model.build(conn, orToolsSolver, policies);
+            case "MNZ-CHUFFED":
+                final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
+                final File dataFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_data.dzn");
+                final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
+                return Model.build(conn, solver, policies);
             default:
                 throw new IllegalArgumentException(solverToUse);
         }
