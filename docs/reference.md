@@ -7,8 +7,8 @@ This document lays out all of DCM's APIs to instantiate models and specify const
 
 * [Model API](#model-api)  
     * [Instantiating models with Model.build()](#instantiating-a-model)  
-    * [Solving models](#modelsolve)
-      * [model.updateData()](#modelsolve)    
+    * [Solving models](#solving-models)
+      * [model.updateData()](#modelupdatedata)    
       * [model.solve()](#modelsolve)  
 * [Writing constraints](#writing-constraints)  
    * [Hard constraints](#hard-constraints)  
