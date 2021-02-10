@@ -54,8 +54,16 @@ public class Ops {
     }
 
     public IntVar sumV(final List<IntVar> data) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
-        model.addEquality(ret, LinearExpr.sum(data.toArray(new IntVar[0])));
+        long domainMin = 0;
+        long domainMax = 0;
+        final IntVar[] arr = new IntVar[data.size()];
+        for (int i = 0; i < data.size(); i++) {
+            domainMin += data.get(i).getDomain().min();
+            domainMax += data.get(i).getDomain().max();
+            arr[i] = data.get(i);
+        }
+        final IntVar ret = model.newIntVar(domainMin, domainMax, "");
+        model.addEquality(ret, LinearExpr.sum(arr));
         return ret;
     }
 
@@ -101,8 +109,16 @@ public class Ops {
     }
 
     public IntVar maxVIntVar(final List<IntVar> data) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
-        model.addMaxEquality(ret, data.toArray(new IntVar[0]));
+        long domainMin = Long.MIN_VALUE;
+        long domainMax = Long.MIN_VALUE;
+        final IntVar[] arr = new IntVar[data.size()];
+        for (int i = 0; i < data.size(); i++) {
+            domainMin = Math.max(domainMin, data.get(i).getDomain().min());
+            domainMax = Math.max(domainMax, data.get(i).getDomain().max());
+            arr[i] = data.get(i);
+        }
+        final IntVar ret = model.newIntVar(domainMin, domainMax, "");
+        model.addMaxEquality(ret, arr);
         return ret;
     }
 
@@ -115,8 +131,16 @@ public class Ops {
     }
 
     public IntVar minVIntVar(final List<IntVar> data) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
-        model.addMinEquality(ret, data.toArray(new IntVar[0]));
+        long domainMin = Long.MAX_VALUE;
+        long domainMax = Long.MAX_VALUE;
+        final IntVar[] arr = new IntVar[data.size()];
+        for (int i = 0; i < data.size(); i++) {
+            domainMin = Math.min(domainMin, data.get(i).getDomain().min());
+            domainMax = Math.min(domainMax, data.get(i).getDomain().max());
+            arr[i] = data.get(i);
+        }
+        final IntVar ret = model.newIntVar(domainMin, domainMax, "");
+        model.addMinEquality(ret, arr);
         return ret;
     }
 
