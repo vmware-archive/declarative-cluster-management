@@ -20,7 +20,7 @@ This document lays out all of DCM's APIs to instantiate models and specify const
 
 
 ## Model API
-
+***
 The APIs below are described in [Model API Javadoc](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html).
 
 ### Instantiating models with Model.build()
@@ -69,24 +69,24 @@ is used. Here's an example of this API's use in our Kubernetes scheduler:
 Once a model is instantiated using `Model.build()`, the returned model needs to be synchronized with
 the database using `model.updateData()` to gather inputs and then solved using `model.solve()`. 
 
-#### model.updateData() 
+* #### model.updateData() 
 
-There are two overloads available to retrieve the latest records from the database to be used as inputs
+  There are two overloads available to retrieve the latest records from the database to be used as inputs
 for the solver.
 
-```java
-Model.updateData()
-Model.updateData(Function<Table<?>, Result<? extends Record>> fetcher)
-```
+  ```java
+  Model.updateData()
+  Model.updateData(Function<Table<?>, Result<? extends Record>> fetcher)
+  ```
 
-The first method simply invokes `select * from <table>` for all tables and views in the constraints that need
-to be fetched from the database.
+  The first method simply invokes `select * from <table>` for all tables and views in the constraints that need
+  to be fetched from the database.
 
-The second overload allows users to exercise tighter control on how individual tables are fetched. For example,
-a specific table might be best fetched using a cache or the user might want to dynamically subset which rows
-are fetched from specific tables.
+  The second overload allows users to exercise tighter control on how individual tables are fetched. For example,
+  a specific table might be best fetched using a cache or the user might want to dynamically subset which rows
+  are fetched from specific tables.
 
-Here is a code sample illustrating how this API could be used:
+  Here is a code sample illustrating how this API could be used:
   <!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L101-L109 -->
   ```java
   final int minimumPodId = 7;
@@ -100,18 +100,18 @@ Here is a code sample illustrating how this API could be used:
   final Result<? extends Record> result = model.solve("POD");
   ``` 
 
-#### model.solve()
+* #### model.solve()
 
-There are two overloads available to solve models based on the most recent inputs fetched via `model.updateData()`.
-
-```java
-Model.solve(String tableName)
-Model.solve(Set<String> tableNames)
-```
-
-Both methods return records corresponding to one or more tables (specified by the `tableName/tableNames` argument).
-If the call to `solve()` succeeds, tables with variable columns will have their values updated as per the 
-constraints specified during `Model.build()`. If `solve()` fails, a `SolverException` exception is thrown.
+    There are two overloads available to solve models based on the most recent inputs fetched via `model.updateData()`.
+    
+    ```java
+    Model.solve(String tableName)
+    Model.solve(Set<String> tableNames)
+    ```
+    
+    Both methods return records corresponding to one or more tables (specified by the `tableName/tableNames` argument).
+    If the call to `solve()` succeeds, tables with variable columns will have their values updated as per the 
+    constraints specified during `Model.build()`. If `solve()` fails, a `SolverException` exception is thrown.
 
 ## Writing constraints
 
