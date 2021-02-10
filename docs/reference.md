@@ -64,12 +64,11 @@ is used. Here's an example of this API's use in our Kubernetes scheduler:
 [OrToolsSolverBuilder Javadocs](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/backend/ortools/OrToolsSolver.Builder.html) 
 
 ### Solving models
-***
 
 Once a model is instantiated using `Model.build()`, the returned model needs to be synchronized with
 the database using `model.updateData()` to gather inputs and then solved using `model.solve()`. 
 
-* #### model.updateData() 
+#### [model.updateData()](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#updateData()) 
 
   There are two overloads available to retrieve the latest records from the database to be used as inputs
 for the solver.
@@ -100,18 +99,18 @@ for the solver.
   final Result<? extends Record> result = model.solve("POD");
   ``` 
 
-* #### model.solve()
+#### [model.solve()](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve())
 
-    There are two overloads available to solve models based on the most recent inputs fetched via `model.updateData()`.
-    
-    ```java
-    Model.solve(String tableName)
-    Model.solve(Set<String> tableNames)
-    ```
-    
-    Both methods return records corresponding to one or more tables (specified by the `tableName/tableNames` argument).
-    If the call to `solve()` succeeds, tables with variable columns will have their values updated as per the 
-    constraints specified during `Model.build()`. If `solve()` fails, a `SolverException` exception is thrown.
+There are two overloads available to solve models based on the most recent inputs fetched via `model.updateData()`.
+
+```java
+Model.solve(String tableName)
+Model.solve(Set<String> tableNames)
+```
+
+Both methods return records corresponding to one or more tables (specified by the `tableName/tableNames` argument).
+If the call to `solve()` succeeds, tables with variable columns will have their values updated as per the 
+constraints specified during `Model.build()`. If `solve()` fails, a `SolverException` exception is thrown.
 
 ## Writing constraints
 
