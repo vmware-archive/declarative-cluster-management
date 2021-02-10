@@ -5,25 +5,25 @@ of DCM's models, specifying schemas with variables, and constraints that should 
 
 This document lays out all of DCM's APIs to instantiate models and specify constraints using SQL. 
 
-1. [Model API](#model-api)  
-   1.1 [Instantiating models with Model.build()](#instantiating-a-model)  
-   1.2 [Solving models](#modelsolve)  
-      1.2.1 [model.updateData()](#modelsolve)  
-      1.2.2 [model.solve()](#modelsolve)
-2. [Writing constraints](#writing-constraints)  
-   2.1 [Hard constraints](#hard-constraints)  
-   2.2 [Soft constraints](#soft-constraints)  
-3. [Supported column types for inputs](#supported-column-types-for-inputs)
-4. [Boolean expressions](#boolean-expressions)
-5. [Arithmetic operators](#arithmetic-operators)
-6. [Supported aggregates](#supported-aggregates)
+* [Model API](#model-api)  
+    * [Instantiating models with Model.build()](#instantiating-a-model)  
+    * [Solving models](#modelsolve)
+      * [model.updateData()](#modelsolve)    
+      * [model.solve()](#modelsolve)  
+* [Writing constraints](#writing-constraints)  
+   * [Hard constraints](#hard-constraints)  
+   * [Soft constraints](#soft-constraints)  
+* [Supported column types for inputs](#supported-column-types-for-inputs)
+* [Boolean expressions](#boolean-expressions)
+* [Arithmetic operators](#arithmetic-operators)
+* [Supported aggregates](#supported-aggregates)
 
 
-## 1. Model API
+## Model API
 
 The APIs below are described in [Model API Javadoc](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html).
 
-### 1.1 Instantiating models with Model.build()
+### Instantiating models with Model.build()
 
 There are two overloads available to build Models.
 ```java
@@ -64,12 +64,12 @@ is used. Here's an example of this API's use in our Kubernetes scheduler:
   To see all the configuration parameters for an `OrToolsSolver` instance, see the 
 [OrToolsSolverBuilder Javadocs](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/backend/ortools/OrToolsSolver.Builder.html) 
 
-### 1.2 Solving models
+### Solving models
 
 Once a model is instantiated using `Model.build()`, the returned model needs to be synchronized with
 the database using `model.updateData()` to gather inputs and then solved using `model.solve()`. 
 
-#### 1.2.1 model.updateData() 
+#### model.updateData() 
 
 There are two overloads available to retrieve the latest records from the database to be used as inputs
 for the solver.
@@ -100,7 +100,7 @@ Here is a code sample illustrating how this API could be used:
   final Result<? extends Record> result = model.solve("POD");
   ``` 
 
-#### 1.2.2 model.solve()
+#### model.solve()
 
 There are two overloads available to solve models based on the most recent inputs fetched via `model.updateData()`.
 
