@@ -13,7 +13,6 @@ import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearExpr;
-import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
