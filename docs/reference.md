@@ -111,9 +111,27 @@ constraints specified during `Model.build()`. If `solve()` fails, a `SolverExcep
 
 ## Writing constraints
 
-Hard constraints
+### Hard constraints
 
-Soft constraints
+A hard constraint is structured as a view that specifies a relation followed by a `CHECK` clause. The `CHECK` clause
+specifies a predicate that must hold true for every record produced by the relation. For example,
+
+```sql
+create view constraint_simple as
+select * from virtual_machine
+check controllable__physical_machine = 'pm3';
+```
+
+### Soft constraints
+
+A soft constraint is structured as a view that computes an integer scalar expression whose value DCM will
+try to maximize. For example,
+
+```sql
+create view objective_load_cpu as 
+select min(cpu_spare) from spare_cpu;
+```
+
 
 ### Supported column types for inputs
 
