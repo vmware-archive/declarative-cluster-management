@@ -75,7 +75,7 @@ public class MiniZincEncodingBenchmark {
                             "select * from load_view " +
                             "where load <= capacity",
                     "create view objective_c2 as " +
-                            "select min(load) from load_view",
+                            "select min(load) from load_view maximize",
                     "create view constraint_symmetry as " +
                             "select * from t2 group by d1 having increasing(controllable__c1) = true"
             );

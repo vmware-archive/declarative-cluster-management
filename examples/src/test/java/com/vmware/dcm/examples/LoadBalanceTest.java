@@ -85,7 +85,9 @@ public class LoadBalanceTest {
                 "group by physical_machine.name, physical_machine.cpu_capacity";
 
         // Queries presented as objectives, will have their values maximized.
-        final String distributeLoadCpu = "create view objective_load_cpu as select min(cpu_spare) from spare_cpu";
+        final String distributeLoadCpu = "create view objective_load_cpu as " +
+                                         "select min(cpu_spare) from spare_cpu " +
+                                         "maximize";
 
         final LoadBalance lb =
                 new LoadBalance(List.of(capacityConstraint, spareCpu, distributeLoadCpu));

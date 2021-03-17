@@ -16,19 +16,18 @@ import com.facebook.presto.sql.tree.QuerySpecification;
 import com.facebook.presto.sql.tree.SelectItem;
 import com.facebook.presto.sql.tree.SingleColumn;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.vmware.dcm.IRContext;
-import com.vmware.dcm.Model;
-import com.vmware.dcm.ViewsWithChecks;
-import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.IRColumn;
+import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRTable;
+import com.vmware.dcm.Model;
+import com.vmware.dcm.ViewsWithAnnotations;
+import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -49,7 +48,7 @@ public class ModelCompiler {
      * @return A list of strings representing the program that was compiled
      */
     @CanIgnoreReturnValue
-    public List<String> compile(final List<ViewsWithChecks> views, final ISolverBackend backend) {
+    public List<String> compile(final List<ViewsWithAnnotations> views, final ISolverBackend backend) {
         LOG.debug("Compiling the following views\n{}", views);
         // First, we extract all the necessary views from the input code
         final ReferencedSymbols symbols = new ReferencedSymbols();
@@ -64,13 +63,13 @@ public class ModelCompiler {
         return backend.generateModelCode(irContext, nonConstraintForAlls, constraintForAlls, objFunctionForAlls);
     }
 
-    private void splitByType(final List<ViewsWithChecks> viewsWithChecks, final ReferencedSymbols symbols) {
+    private void splitByType(final List<ViewsWithAnnotations> viewsWithChecks, final ReferencedSymbols symbols) {
         viewsWithChecks.forEach(view -> {
                 final CreateView createView = view.getCreateView();
                 final String viewName = createView.getName().toString();
                 if (view.getCheckExpression().isPresent()) {
                     symbols.getConstraintViews().put(viewName, view);
-                } else if (viewName.toLowerCase(Locale.US).startsWith("objective_")) {
+                } else if (view.isObjective()) {
                     symbols.getObjectiveFunctionViews().put(viewName, view);
                 } else {
                     symbols.getNonConstraintViews().put(viewName, view);
@@ -89,7 +88,7 @@ public class ModelCompiler {
      * @param views a map of String (name) -> View pairs.
      * @return map of String (name) -> ForAllStatement pairs corresponding to the views parameter
      */
-    private Map<String, ListComprehension> parseNonConstraintViews(final Map<String, ViewsWithChecks> views) {
+    private Map<String, ListComprehension> parseNonConstraintViews(final Map<String, ViewsWithAnnotations> views) {
         return views.entrySet()
                     .stream()
                     .map(es -> Map.entry(es.getKey(), es.getValue().getCreateView().getQuery()))
@@ -136,7 +135,7 @@ public class ModelCompiler {
      * @param views a map of String (name) -> View pairs.
      * @return map of String (name) -> ForAllStatement pairs corresponding to the views parameter
      */
-    private Map<String, ListComprehension> parseViews(final Map<String, ViewsWithChecks> views) {
+    private Map<String, ListComprehension> parseViews(final Map<String, ViewsWithAnnotations> views) {
         final Map<String, ListComprehension> result = new HashMap<>();
         views.forEach((key, value) -> result.put(key, TranslateViewToIR.apply(value.getCreateView().getQuery(),
                                                                               value.getCheckExpression(),

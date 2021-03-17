@@ -806,7 +806,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW objective_v1 AS " +
-                "SELECT -count(host_id) as host_id FROM hosts where controllable__epoch_id = 1;");
+                "SELECT -count(host_id) as host_id FROM hosts where controllable__epoch_id = 1 maximize;");
 
         // insert data
         conn.execute("insert into HOSTS values ('h1', 1)");
@@ -988,7 +988,8 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW objective_t1 AS " +
-                "SELECT contains(c2, controllable__c1) from t1;");
+                "SELECT contains(c2, controllable__c1) from t1" +
+                "maximize;");
 
         // insert data
         conn.execute("insert into t1 values (1, ARRAY[100])");
@@ -1302,7 +1303,8 @@ public class ModelTest {
                 "WHERE X.failure_state = 'UNRESPONSIVE' and Y.epoch_id = (" +
                 "   SELECT MAX(epoch_id)" +
                 "   FROM epochs" +
-                ") having all_different(X.host_id) = true;");
+                ") having all_different(X.host_id) = true" +
+                "maximize;");
 
         // insert data
         conn.execute("insert into epochs values (1)");

@@ -63,10 +63,10 @@ public class Model {
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
         this.backend = backend;
-        final List<ViewsWithChecks> constraintViews = constraints.stream().map(
+        final List<ViewsWithAnnotations> constraintViews = constraints.stream().map(
                 constraint -> {
                     try {
-                        return ViewsWithChecks.fromString(constraint);
+                        return ViewsWithAnnotations.fromString(constraint.toLowerCase());
                     } catch (final ParsingException e) {
                         LOG.error("Could not parse view: {}", constraint, e);
                         throw e;
@@ -150,10 +150,10 @@ public class Model {
     private static List<Table<?>> getTablesFromContext(final DSLContext dslContext, final List<String> constraints) {
         final Set<String> accessedTableNames = new HashSet<>();
         constraints.forEach(constraint -> {
-            final ViewsWithChecks viewsWithChecks = ViewsWithChecks.fromString(constraint);
+            final ViewsWithAnnotations viewsWithAnnotations = ViewsWithAnnotations.fromString(constraint);
             final ExtractAccessedTables visitor = new ExtractAccessedTables(accessedTableNames);
-            visitor.process(viewsWithChecks.getCreateView());
-            viewsWithChecks.getCheckExpression().ifPresent(visitor::process);
+            visitor.process(viewsWithAnnotations.getCreateView());
+            viewsWithAnnotations.getCheckExpression().ifPresent(visitor::process);
         });
 
         final Meta dslMeta = dslContext.meta();
