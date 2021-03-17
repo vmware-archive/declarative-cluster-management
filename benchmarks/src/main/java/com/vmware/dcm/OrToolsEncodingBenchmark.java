@@ -88,7 +88,7 @@ public class OrToolsEncodingBenchmark {
                             "select * from load_view " +
                             "check load <= capacity",
                     "create view objective_c2 as " +
-                            "select min(load) from load_view",
+                            "select min(load) from load_view maximize",
                     "create view constraint_symmetry as " +
                             "select * from t2 check increasing(controllable__c1) = true"
             );
