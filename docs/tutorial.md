@@ -190,7 +190,7 @@ Start reading from the
 7. Note that the constraints we have seen so far are hard constraints. Let's now add a soft constraint, a load balancing
    objective:
    
-   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L66-L99 -->
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L66-L101 -->
    ```java
    /*
     * Add a load balancing objective function. This should spread out VMs across all physical machines.
@@ -214,7 +214,9 @@ Start reading from the
                "group by physical_machine.name, physical_machine.cpu_capacity";
    
        // Queries presented as objectives, will have their values maximized.
-       final String distributeLoadCpu = "create view objective_load_cpu as select min(cpu_spare) from spare_cpu";
+       final String distributeLoadCpu = "create view objective_load_cpu as " +
+                                        "select min(cpu_spare) from spare_cpu " +
+                                        "maximize";
    
        final LoadBalance lb =
                new LoadBalance(List.of(capacityConstraint, spareCpu, distributeLoadCpu));
@@ -230,8 +232,9 @@ Start reading from the
       
    In the above case, we borrow the capacity constraint from the previous example. We then create an intermediate
    view (`spare_cpu`) that computes the spare CPU capacity on each physical machine. We then state an objective function, 
-   which are specified as SQL queries that return a single scalar value --- DCM will try to find assignments that maximize 
-   the value of that query. In this case, we maximize the minimum spare CPU capacity, which has the intended load
+   which is specified as an SQL query that returns a single scalar value or a column, followed by the `maximize`
+   annotation.  DCM will try to find assignments that maximize the values returned by that query. 
+   In this case, we maximize the minimum spare CPU capacity, which has the intended load
    balancing effect. The result should therefore print something like:
   
    ```
