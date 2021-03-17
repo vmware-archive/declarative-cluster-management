@@ -610,4 +610,13 @@ public class Ops {
             model.minimize(max);
         }
     }
+
+    @SuppressWarnings("unchecked")
+    public void maximize(final Object obj) {
+        if (obj instanceof List) {
+            ((List<IntVar>) obj).forEach(model::maximize);
+        } else {
+            model.maximize((IntVar) obj);
+        }
+    }
 }

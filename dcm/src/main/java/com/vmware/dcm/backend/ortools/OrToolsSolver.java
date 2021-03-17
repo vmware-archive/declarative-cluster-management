@@ -42,15 +42,15 @@ import com.vmware.dcm.compiler.ir.CheckQualifier;
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
 import com.vmware.dcm.compiler.ir.ExistsPredicate;
 import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.FunctionCall;
 import com.vmware.dcm.compiler.ir.GroupByComprehension;
 import com.vmware.dcm.compiler.ir.GroupByQualifier;
+import com.vmware.dcm.compiler.ir.IRVisitor;
 import com.vmware.dcm.compiler.ir.IsNotNullPredicate;
 import com.vmware.dcm.compiler.ir.IsNullPredicate;
 import com.vmware.dcm.compiler.ir.JoinPredicate;
 import com.vmware.dcm.compiler.ir.ListComprehension;
-import com.vmware.dcm.compiler.ir.FunctionCall;
 import com.vmware.dcm.compiler.ir.Literal;
-import com.vmware.dcm.compiler.ir.IRVisitor;
 import com.vmware.dcm.compiler.ir.Qualifier;
 import com.vmware.dcm.compiler.ir.TableRowGenerator;
 import com.vmware.dcm.compiler.ir.UnaryOperator;
@@ -282,13 +282,8 @@ public class OrToolsSolver implements ISolverBackend {
                     translationContext.enterScope(outerBlock);
                     final String exprStr = exprToStr(rewrittenComprehension, translationContext);
                     output.addCode(outerBlock.toString());
-                    output.addStatement("final $T $L = $L", IntVar.class, name, exprStr);
+                    output.addStatement("o.maximize($L)", exprStr);
                 });
-        if (!objectiveFunctions.isEmpty()) {
-            final String objectiveFunctionSum = String.join(", ", objectiveFunctions.keySet());
-            output.addStatement("model.maximize(o.sumV($T.of($L)))", List.class, objectiveFunctionSum);
-        }
-
         addSolvePhase(output, context);
         final MethodSpec solveMethod = output.build();
 
