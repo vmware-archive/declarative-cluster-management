@@ -12,7 +12,7 @@
 @FieldsAreNonnullByDefault
 @MethodsAreNonnullByDefault
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 import com.vmware.dcm.annotations.FieldsAreNonnullByDefault;
 import com.vmware.dcm.annotations.MethodsAreNonnullByDefault;

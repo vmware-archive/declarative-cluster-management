@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 public class JoinPredicate extends BinaryOperatorPredicate {
     public JoinPredicate(final BinaryOperatorPredicate predicate) {

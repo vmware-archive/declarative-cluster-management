@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
-public class MonoidLiteral<T> extends Expr {
+public class Literal<T> extends Expr {
     private final T value;
 
-    public MonoidLiteral(final T value, final Class<T> type) {
+    public Literal(final T value, final Class<T> type) {
         this.value = value;
     }
 
@@ -19,13 +19,13 @@ public class MonoidLiteral<T> extends Expr {
 
     @Override
     public String toString() {
-        return "MonoidLiteral{" +
+        return "Literal{" +
                 "value='" + value + '\'' +
                 '}';
     }
 
     @Override
-    <T1, C> T1 acceptVisitor(final MonoidVisitor<T1, C> visitor, final C context) {
-        return visitor.visitMonoidLiteral(this, context);
+    <T1, C> T1 acceptVisitor(final IRVisitor<T1, C> visitor, final C context) {
+        return visitor.visitLiteral(this, context);
     }
 }

@@ -6,9 +6,9 @@
 
 package com.vmware.dcm.backend.minizinc;
 
-import com.vmware.dcm.compiler.monoid.VoidType;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
-import com.vmware.dcm.compiler.monoid.SimpleVisitor;
+import com.vmware.dcm.compiler.ir.VoidType;
+import com.vmware.dcm.compiler.ir.Literal;
+import com.vmware.dcm.compiler.ir.SimpleVisitor;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -17,14 +17,14 @@ public class FindStringLiterals extends SimpleVisitor {
     private final Set<String> stringLiterals = new HashSet<>();
 
     @Override
-    protected VoidType visitMonoidLiteral(final MonoidLiteral node, final VoidType context) {
+    protected VoidType visitLiteral(final Literal node, final VoidType context) {
         if (node.getValue() instanceof String) {
             final String s = node.getValue().toString();
             if (s.startsWith("'") && s.endsWith("'")) {
                 stringLiterals.add(node.getValue().toString());
             }
         }
-        return super.visitMonoidLiteral(node, context);
+        return super.visitLiteral(node, context);
     }
 
     Set<String> getStringLiterals() {

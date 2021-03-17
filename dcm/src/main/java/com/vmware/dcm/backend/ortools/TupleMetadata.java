@@ -9,8 +9,8 @@ import com.google.common.base.Preconditions;
 import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRTable;
 import com.vmware.dcm.ModelException;
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.Expr;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.Expr;
 
 import java.util.Collections;
 import java.util.HashMap;

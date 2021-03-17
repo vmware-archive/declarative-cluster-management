@@ -18,7 +18,7 @@ import com.vmware.dcm.ModelException;
 import com.vmware.dcm.SolverException;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
+import com.vmware.dcm.compiler.ir.ListComprehension;
 import freemarker.cache.ClassTemplateLoader;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
@@ -118,9 +118,9 @@ public class MinizincSolver implements ISolverBackend {
     }
 
 
-    private void findStringLiterals(final Map<String, MonoidComprehension> nonConstraintViews,
-                                    final Map<String, MonoidComprehension> constraintViews,
-                                    final Map<String, MonoidComprehension> objectiveFunctions) {
+    private void findStringLiterals(final Map<String, ListComprehension> nonConstraintViews,
+                                    final Map<String, ListComprehension> constraintViews,
+                                    final Map<String, ListComprehension> objectiveFunctions) {
         final FindStringLiterals search = new FindStringLiterals();
         nonConstraintViews.forEach((k, v) -> search.visit(v));
         constraintViews.forEach((k, v) -> search.visit(v));
@@ -132,9 +132,9 @@ public class MinizincSolver implements ISolverBackend {
 
     @Override
     public List<String> generateModelCode(final IRContext context,
-                                          final Map<String, MonoidComprehension> nonConstraintViews,
-                                          final Map<String, MonoidComprehension> constraintViews,
-                                          final Map<String, MonoidComprehension> objectiveFunctions) {
+                                          final Map<String, ListComprehension> nonConstraintViews,
+                                          final Map<String, ListComprehension> constraintViews,
+                                          final Map<String, ListComprehension> objectiveFunctions) {
         findStringLiterals(nonConstraintViews, constraintViews, objectiveFunctions);
         final Map<String, List<String>> templateVars = new HashMap<>();
         final MinizincCodeGenerator visitor = new MinizincCodeGenerator();
@@ -142,10 +142,10 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("arrayDeclarations", arrayDeclarations);
 
         final List<String> nonConstraintViewCode = nonConstraintViews.entrySet().stream().flatMap(entry -> {
-            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), false);
+            final List<ListComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), false);
             final List<String> result = new ArrayList<>();
             boolean generateArrayDeclaration = true;
-            for (final MonoidComprehension c: comprehensions) {
+            for (final ListComprehension c: comprehensions) {
                 final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
                 cg.visit(c);
                 result.addAll(cg.generateNonConstraintViewCode(entry.getKey(), generateArrayDeclaration));
@@ -156,9 +156,9 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("nonConstraintViewCode", nonConstraintViewCode);
 
         final List<String> constraintViewCode = constraintViews.entrySet().stream().flatMap(entry -> {
-            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), true);
+            final List<ListComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), true);
             final List<String> result = new ArrayList<>();
-            for (final MonoidComprehension c: comprehensions) {
+            for (final ListComprehension c: comprehensions) {
                 final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
                 cg.visit(c);
                 result.addAll(cg.generateConstraintViewCode(entry.getKey()));
@@ -168,9 +168,9 @@ public class MinizincSolver implements ISolverBackend {
         templateVars.put("constraintViewCode", constraintViewCode);
 
         final List<String> objectiveFunctionsCode = objectiveFunctions.entrySet().stream().flatMap(entry -> {
-            final List<MonoidComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), false);
+            final List<ListComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), false);
             final List<String> result = new ArrayList<>();
-            for (final MonoidComprehension c: comprehensions) {
+            for (final ListComprehension c: comprehensions) {
                 final MinizincCodeGenerator cg = new MinizincCodeGenerator(entry.getKey());
                 cg.visit(c);
                 result.addAll(cg.generateObjectiveFunctionCode(entry.getKey()));
@@ -244,13 +244,13 @@ public class MinizincSolver implements ISolverBackend {
         return true;
     }
 
-    private List<MonoidComprehension> comprehensionRewritePipeline(final MonoidComprehension comprehension,
-                                                                   final boolean isConstraint) {
+    private List<ListComprehension> comprehensionRewritePipeline(final ListComprehension comprehension,
+                                                                 final boolean isConstraint) {
         // (1) Split into multiple comprehensions, one per head
         // (2) Rewrite count functions to use sums instead
         // (3) Rewrite to use fixed arity constraints
         // (4) Rewrite IsNull/IsNotNull expressions to use 'null' strings
-        final List<MonoidComprehension> comprehensions = SplitIntoSingleHeadComprehensions.apply(comprehension); // (1)
+        final List<ListComprehension> comprehensions = SplitIntoSingleHeadComprehensions.apply(comprehension); // (1)
         return (isConstraint
                  ? Collections.singletonList(comprehensions.get(0)) // We only need one head item for constraints
                  : comprehensions)

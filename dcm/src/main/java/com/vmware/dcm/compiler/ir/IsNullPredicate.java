@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
-public class IsNotNullPredicate extends Expr {
+public class IsNullPredicate extends Expr {
     private final Expr argument;
 
-    public IsNotNullPredicate(final Expr argument) {
+    public IsNullPredicate(final Expr argument) {
         this.argument = argument;
     }
 
@@ -19,13 +19,13 @@ public class IsNotNullPredicate extends Expr {
 
     @Override
     public String toString() {
-        return "IsNotNull{" +
+        return "IsNull{" +
                 "argument=" + argument +
                 '}';
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
-        return visitor.visitIsNotNullPredicate(this, context);
+    <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
+        return visitor.visitIsNullPredicate(this, context);
     }
 }

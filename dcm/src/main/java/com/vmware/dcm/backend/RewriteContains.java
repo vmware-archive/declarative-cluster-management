@@ -6,33 +6,33 @@
 
 package com.vmware.dcm.backend;
 
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.VoidType;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
-import com.vmware.dcm.compiler.monoid.ComprehensionRewriter;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.compiler.ir.VoidType;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
+import com.vmware.dcm.compiler.ir.ComprehensionRewriter;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.ListComprehension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class RewriteContains extends ComprehensionRewriter {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteContains.class);
 
-    public static MonoidComprehension apply(final MonoidComprehension comprehension) {
+    public static ListComprehension apply(final ListComprehension comprehension) {
         LOG.trace("Invoking RewriteContains on {}", comprehension);
         final RewriteContains rewriter = new RewriteContains();
         final Expr result = rewriter.visit(comprehension);
         return comprehension instanceof GroupByComprehension ?
-                (GroupByComprehension) result : (MonoidComprehension) result;
+                (GroupByComprehension) result : (ListComprehension) result;
     }
 
     @Override
-    protected Expr visitMonoidFunction(final MonoidFunction node, final VoidType context) {
-        if (node.getFunction().equals(MonoidFunction.Function.CONTAINS)) {
+    protected Expr visitFunctionCall(final FunctionCall node, final VoidType context) {
+        if (node.getFunction().equals(FunctionCall.Function.CONTAINS)) {
             return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.CONTAINS,
                     node.getArgument().get(0), node.getArgument().get(1));
         }
-        return super.visitMonoidFunction(node, context);
+        return super.visitFunctionCall(node, context);
     }
 }

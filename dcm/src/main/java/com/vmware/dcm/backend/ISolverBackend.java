@@ -8,7 +8,7 @@ package com.vmware.dcm.backend;
 
 import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRTable;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
+import com.vmware.dcm.compiler.ir.ListComprehension;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -21,9 +21,9 @@ public interface ISolverBackend {
                                                      final Map<String, IRTable> irTables);
 
     List<String> generateModelCode(final IRContext context,
-                                   final Map<String, MonoidComprehension> nonConstraintViews,
-                                   final Map<String, MonoidComprehension> constraintViews,
-                                   final Map<String, MonoidComprehension> objectiveFunctions);
+                                   final Map<String, ListComprehension> nonConstraintViews,
+                                   final Map<String, ListComprehension> constraintViews,
+                                   final Map<String, ListComprehension> objectiveFunctions);
 
     List<String> generateDataCode(final IRContext context);
 

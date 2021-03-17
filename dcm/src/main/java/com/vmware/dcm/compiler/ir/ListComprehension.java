@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -12,29 +12,29 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-public class MonoidComprehension extends Expr {
+public class ListComprehension extends Expr {
     @Nullable private final Head head;
     private final List<Qualifier> qualifiers;
 
-    public MonoidComprehension(final Head head) {
+    public ListComprehension(final Head head) {
         this.head = head;
         this.qualifiers = new ArrayList<>();
     }
 
-    public MonoidComprehension(final Head head, final List<Qualifier> qualifiers) {
+    public ListComprehension(final Head head, final List<Qualifier> qualifiers) {
         this.head = head;
         this.qualifiers = qualifiers;
     }
 
-    public MonoidComprehension() {
+    public ListComprehension() {
         this.head = null;
         this.qualifiers = Collections.emptyList();
     }
 
-    public MonoidComprehension withQualifier(final Qualifier qualifier) {
+    public ListComprehension withQualifier(final Qualifier qualifier) {
         final List<Qualifier> newQualifiers = new ArrayList<>(qualifiers);
         newQualifiers.add(qualifier);
-        return new MonoidComprehension(Objects.requireNonNull(head), newQualifiers);
+        return new ListComprehension(Objects.requireNonNull(head), newQualifiers);
     }
 
     public Head getHead() {
@@ -51,7 +51,7 @@ public class MonoidComprehension extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
-        return visitor.visitMonoidComprehension(this, context);
+    <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
+        return visitor.visitListComprehension(this, context);
     }
 }

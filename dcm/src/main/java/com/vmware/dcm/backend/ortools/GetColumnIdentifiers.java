@@ -6,11 +6,11 @@
 
 package com.vmware.dcm.backend.ortools;
 
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.SimpleVisitor;
-import com.vmware.dcm.compiler.monoid.VoidType;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.SimpleVisitor;
+import com.vmware.dcm.compiler.ir.VoidType;
 
 import java.util.LinkedHashSet;
 
@@ -34,9 +34,9 @@ class GetColumnIdentifiers extends SimpleVisitor {
     }
 
     @Override
-    protected VoidType visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
+    protected VoidType visitListComprehension(final ListComprehension node, final VoidType context) {
         if (visitInnerComprehensions) {
-            super.visitMonoidComprehension(node, context);
+            super.visitListComprehension(node, context);
         }
         return defaultReturn();
     }

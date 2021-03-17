@@ -15,23 +15,23 @@ import com.vmware.dcm.IRForeignKey;
 import com.vmware.dcm.IRPrimaryKey;
 import com.vmware.dcm.IRTable;
 import com.vmware.dcm.compiler.UsesControllableFields;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.ExistsPredicate;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.GroupByQualifier;
-import com.vmware.dcm.compiler.monoid.Head;
-import com.vmware.dcm.compiler.monoid.JoinPredicate;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
-import com.vmware.dcm.compiler.monoid.Qualifier;
-import com.vmware.dcm.compiler.monoid.SimpleVisitor;
-import com.vmware.dcm.compiler.monoid.TableRowGenerator;
-import com.vmware.dcm.compiler.monoid.UnaryOperator;
-import com.vmware.dcm.compiler.monoid.VoidType;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.ExistsPredicate;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.GroupByQualifier;
+import com.vmware.dcm.compiler.ir.Head;
+import com.vmware.dcm.compiler.ir.JoinPredicate;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.compiler.ir.Literal;
+import com.vmware.dcm.compiler.ir.Qualifier;
+import com.vmware.dcm.compiler.ir.SimpleVisitor;
+import com.vmware.dcm.compiler.ir.TableRowGenerator;
+import com.vmware.dcm.compiler.ir.UnaryOperator;
+import com.vmware.dcm.compiler.ir.VoidType;
 import org.apache.commons.text.StringEscapeUtils;
 
 import javax.annotation.Nullable;
@@ -49,8 +49,8 @@ import java.util.stream.Collectors;
 public class MinizincCodeGenerator extends SimpleVisitor {
     private static final String GROUP_KEY = "GROUP__KEY";
     private static final EnumMap<VarType, String> VAR_TYPE_STRING = new EnumMap<>(VarType.class);
-    private static final Map<MonoidFunction.Function, String> FUNCTION_STRING_MAP =
-            new EnumMap<>(MonoidFunction.Function.class);
+    private static final Map<FunctionCall.Function, String> FUNCTION_STRING_MAP =
+            new EnumMap<>(FunctionCall.Function.class);
 
     private final List<Expr> headItems;
     private final List<BinaryOperatorPredicate> whereQualifiers;
@@ -64,7 +64,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
     private final String viewName;
 
     static {
-        for (final MonoidFunction.Function f: MonoidFunction.Function.values()) {
+        for (final FunctionCall.Function f: FunctionCall.Function.values()) {
             FUNCTION_STRING_MAP.put(f, f.toString().toLowerCase(Locale.US));
         }
     }
@@ -117,7 +117,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
     }
 
     @Override
-    protected VoidType visitMonoidLiteral(final MonoidLiteral node, final VoidType context) {
+    protected VoidType visitLiteral(final Literal node, final VoidType context) {
         literals.add(node);
         return defaultReturn();
     }
@@ -136,7 +136,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
     }
 
     @Override
-    protected VoidType visitMonoidFunction(final MonoidFunction node, final VoidType context) {
+    protected VoidType visitFunctionCall(final FunctionCall node, final VoidType context) {
         literals.add(node);
         return defaultReturn();
     }
@@ -273,7 +273,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
         final List<String> ret = new ArrayList<>();
         assert !headItems.isEmpty();
         /*
-         * Expressions with a head are monoid comprehensions. Minizinc does not support
+         * Expressions with a head are list comprehensions. Minizinc does not support
          * multiple head items in a comprehension, so we produce one comprehension per head item.
          */
         final VarType qualifiersType = usesControllableVariables(completeExpression.get(0));
@@ -305,7 +305,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
         final List<String> ret = new ArrayList<>();
         if (!headItems.isEmpty()) {
             /*
-             * Expressions with a head are monoid comprehensions. Minizinc does not support
+             * Expressions with a head are list comprehensions. Minizinc does not support
              * multiple head items in a comprehension, so we produce one comprehension per head item.
              */
             for (final Expr expr: headItems) {
@@ -415,9 +415,9 @@ public class MinizincCodeGenerator extends SimpleVisitor {
                                               whereExpression);
             // TODO: this a sign that we need to improve how functions are represented. They should not be head items.
             //  within the inner comprehensions
-            if (headItem instanceof MonoidFunction ||
+            if (headItem instanceof FunctionCall ||
                 (headItem instanceof UnaryOperator &&
-                    ((UnaryOperator) headItem).getArgument() instanceof MonoidFunction)) {
+                    ((UnaryOperator) headItem).getArgument() instanceof FunctionCall)) {
                 return evaluateHeadItem(headItem, body);
             }
             else {
@@ -508,7 +508,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
     }
 
     /**
-     * Converts a monoid comprehension head item into a string. This call can also be used to
+     * Converts a list comprehension head item into a string. This call can also be used to
      * evaluate a head item as part of a group by. To
      * do so, the caller needs to supply a String that represents the inner comprehension of a group
      * by.
@@ -538,8 +538,8 @@ public class MinizincCodeGenerator extends SimpleVisitor {
         final ArrayDeque<String> operands = new ArrayDeque<>();
         while (stack.size() != 0) {
             final Expr expr = stack.pop();
-            if (expr instanceof MonoidFunction) {
-                final MonoidFunction function = (MonoidFunction) expr;
+            if (expr instanceof FunctionCall) {
+                final FunctionCall function = (FunctionCall) expr;
                 final String functionName = FUNCTION_STRING_MAP.get(function.getFunction());
                 Preconditions.checkArgument(function.getArgument().size() == 1);
                 final Expr argument = function.getArgument().get(0);
@@ -559,9 +559,9 @@ public class MinizincCodeGenerator extends SimpleVisitor {
                             arg,
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
-                } else if (argument instanceof MonoidLiteral) {
+                } else if (argument instanceof Literal) {
                     final String op = String.format("%s([%s | %s])", functionName,
-                            ((MonoidLiteral) argument).getValue(),
+                            ((Literal) argument).getValue(),
                             groupByInnerComprehensionQualifier);
                     operands.push(op);
                 } else {
@@ -580,8 +580,8 @@ public class MinizincCodeGenerator extends SimpleVisitor {
                         MinizincString.columnNameWithIteration((ColumnIdentifier) expr) :
                         MinizincString.groupColumnNameWithIteration(viewName, (ColumnIdentifier) expr);
                 operands.push(op);
-            } else if (expr instanceof MonoidLiteral) {
-                operands.push(((MonoidLiteral) expr).getValue().toString());
+            } else if (expr instanceof Literal) {
+                operands.push(((Literal) expr).getValue().toString());
             } else if (expr instanceof BinaryOperatorPredicate) {
                 final String op1 = operands.pop();
                 final String op2 = operands.pop();
@@ -624,9 +624,9 @@ public class MinizincCodeGenerator extends SimpleVisitor {
             // The output is either a literal or a predicate expression, which we return as is.
             if (literals.size() == 1) {
                 // This might be a predicate function
-                if (literals.get(0) instanceof MonoidFunction) {
+                if (literals.get(0) instanceof FunctionCall) {
                     final MinizincCodeGenerator cg = new MinizincCodeGenerator(viewName);
-                    final MonoidFunction function = (MonoidFunction) literals.get(0);
+                    final FunctionCall function = (FunctionCall) literals.get(0);
                     Preconditions.checkArgument(function.getArgument().size() == 1);
                     cg.visit(function.getArgument().get(0));
                     return ImmutableList.of(String.format("%s(%s)", function.getFunction(),
@@ -670,7 +670,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
             }
         } else {
             /*
-             * Expressions with a head are monoid comprehensions. Minizinc does not support
+             * Expressions with a head are list comprehensions. Minizinc does not support
              * multiple head items in a comprehension, so we produce one comprehension per head item.
              */
             for (final Expr expr : headItems) {
@@ -695,7 +695,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
         final ArrayDeque<String> operands = new ArrayDeque<>();
         while (stack.size() != 0) {
             final Expr expr = stack.pop();
-            if (expr instanceof MonoidFunction) {
+            if (expr instanceof FunctionCall) {
                 final String s = evaluateOperandInHavingClausePredicate(expr);
                 operands.push(s);
             } else if (expr instanceof BinaryOperatorPredicate) {
@@ -705,8 +705,8 @@ public class MinizincCodeGenerator extends SimpleVisitor {
                 operands.push(String.format("(%s) %s (%s)", left, operatorToString(operator), right));
             } else if (expr instanceof ColumnIdentifier) {
                 operands.push(MinizincString.groupColumnNameWithIteration(viewName, (ColumnIdentifier) expr));
-            } else if (expr instanceof MonoidLiteral) {
-                operands.push(((MonoidLiteral) expr).getValue().toString());
+            } else if (expr instanceof Literal) {
+                operands.push(((Literal) expr).getValue().toString());
             } else {
                 operands.push(evaluateOperandInHavingClausePredicate(expr));
             }
@@ -722,7 +722,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
      * @return a string representation of the supplied operand.
      */
     private String evaluateOperandInHavingClausePredicate(final Expr operand) {
-        if (operand instanceof MonoidFunction) {
+        if (operand instanceof FunctionCall) {
             return generatorExpressionFromSelectWhere(operand, true);
         } else {
             final MinizincCodeGenerator visitor = new MinizincCodeGenerator(viewName);
@@ -782,7 +782,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
         private final ArrayDeque<Expr> stack = new ArrayDeque<>();
 
         @Override
-        protected VoidType visitMonoidFunction(final MonoidFunction node, final VoidType context) {
+        protected VoidType visitFunctionCall(final FunctionCall node, final VoidType context) {
             stack.push(node);
             return defaultReturn();
         }
@@ -806,13 +806,13 @@ public class MinizincCodeGenerator extends SimpleVisitor {
         }
 
         @Override
-        protected VoidType visitMonoidLiteral(final MonoidLiteral node, final VoidType context) {
+        protected VoidType visitLiteral(final Literal node, final VoidType context) {
             stack.push(node);
             return defaultReturn();
         }
 
         @Override
-        protected VoidType visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
+        protected VoidType visitListComprehension(final ListComprehension node, final VoidType context) {
             stack.push(node);
             return defaultReturn();
         }
@@ -828,7 +828,7 @@ public class MinizincCodeGenerator extends SimpleVisitor {
                     return VarType.IS_VAR;
                 }
             }
-            final MonoidComprehension inner = comprehension.getComprehension();
+            final ListComprehension inner = comprehension.getComprehension();
             for (final Qualifier qualifer: inner.getQualifiers()) {
                 final UsesControllableFields visitor = new UsesControllableFields();
                 visitor.visit(qualifer);
@@ -844,8 +844,8 @@ public class MinizincCodeGenerator extends SimpleVisitor {
                 return VarType.IS_VAR;
             }
         }
-        else if (expr instanceof MonoidComprehension) {
-            final MonoidComprehension comprehension = (MonoidComprehension) expr;
+        else if (expr instanceof ListComprehension) {
+            final ListComprehension comprehension = (ListComprehension) expr;
             for (final Qualifier qualifer: comprehension.getQualifiers()) {
                 final UsesControllableFields visitor = new UsesControllableFields();
                 visitor.visit(qualifer);
@@ -856,16 +856,16 @@ public class MinizincCodeGenerator extends SimpleVisitor {
             /* TODO: need if comprehension is var because it depends on a var view, but it's not an opt
              */
         }
-        else if (expr instanceof MonoidFunction) {
-            Preconditions.checkArgument(((MonoidFunction) expr).getArgument().size() == 1);
-            return usesControllableVariables(((MonoidFunction) expr).getArgument().get(0));
+        else if (expr instanceof FunctionCall) {
+            Preconditions.checkArgument(((FunctionCall) expr).getArgument().size() == 1);
+            return usesControllableVariables(((FunctionCall) expr).getArgument().get(0));
         }
         else if (expr instanceof BinaryOperatorPredicate) {
             final BinaryOperatorPredicate predicate = (BinaryOperatorPredicate) expr;
             return getMax(usesControllableVariables(predicate.getLeft()),
                           usesControllableVariables(predicate.getRight()));
         }
-        else if (expr instanceof MonoidLiteral) {
+        else if (expr instanceof Literal) {
             return VarType.IS_INT;
         }
         else {

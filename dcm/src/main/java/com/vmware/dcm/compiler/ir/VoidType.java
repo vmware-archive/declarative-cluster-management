@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 public final class VoidType {
     private static final VoidType ABSENT = new VoidType();

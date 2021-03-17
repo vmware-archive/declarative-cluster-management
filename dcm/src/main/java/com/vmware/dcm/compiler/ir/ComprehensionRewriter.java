@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class ComprehensionRewriter extends MonoidVisitor<Expr, VoidType> {
+public class ComprehensionRewriter extends IRVisitor<Expr, VoidType> {
 
     public Expr visit(final Expr expr) {
         return super.visit(expr, VoidType.getAbsent());
@@ -34,12 +34,12 @@ public class ComprehensionRewriter extends MonoidVisitor<Expr, VoidType> {
     }
 
     @Override
-    protected Expr visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
+    protected Expr visitListComprehension(final ListComprehension node, final VoidType context) {
         final Head newHead = (Head) this.visitHead(node.getHead(), context);
         final List<Qualifier> newQualifiers = node.getQualifiers().stream()
                                                   .map(q -> (Qualifier) this.visit(q, context))
                                                   .collect(Collectors.toList());
-        return new MonoidComprehension(newHead, newQualifiers);
+        return new ListComprehension(newHead, newQualifiers);
     }
 
     @Override
@@ -63,8 +63,8 @@ public class ComprehensionRewriter extends MonoidVisitor<Expr, VoidType> {
 
     @Override
     protected Expr visitGroupByComprehension(final GroupByComprehension node, final VoidType context) {
-        final MonoidComprehension comprehension =
-                (MonoidComprehension) this.visitMonoidComprehension(node.getComprehension(), context);
+        final ListComprehension comprehension =
+                (ListComprehension) this.visitListComprehension(node.getComprehension(), context);
         final GroupByQualifier qualifier =
                 (GroupByQualifier) this.visitGroupByQualifier(node.getGroupByQualifier(), context);
         return new GroupByComprehension(comprehension, qualifier);
@@ -79,15 +79,15 @@ public class ComprehensionRewriter extends MonoidVisitor<Expr, VoidType> {
     }
 
     @Override
-    protected Expr visitMonoidLiteral(final MonoidLiteral node, final VoidType context) {
+    protected Expr visitLiteral(final Literal node, final VoidType context) {
         return node;
     }
 
     @Override
-    protected Expr visitMonoidFunction(final MonoidFunction node, final VoidType context) {
+    protected Expr visitFunctionCall(final FunctionCall node, final VoidType context) {
         final List<Expr> arguments = node.getArgument().stream().map(this::visit)
                                          .collect(Collectors.toList());
-        final MonoidFunction function =  new MonoidFunction(node.getFunction(), arguments);
+        final FunctionCall function =  new FunctionCall(node.getFunction(), arguments);
         node.getAlias().ifPresent(function::setAlias);
         return function;
     }

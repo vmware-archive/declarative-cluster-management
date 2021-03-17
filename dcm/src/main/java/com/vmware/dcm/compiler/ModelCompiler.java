@@ -22,7 +22,7 @@ import com.vmware.dcm.ViewsWithChecks;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRTable;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
+import com.vmware.dcm.compiler.ir.ListComprehension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,10 +54,10 @@ public class ModelCompiler {
         // First, we extract all the necessary views from the input code
         final ReferencedSymbols symbols = new ReferencedSymbols();
         splitByType(views, symbols);
-        final Map<String, MonoidComprehension> nonConstraintForAlls =
+        final Map<String, ListComprehension> nonConstraintForAlls =
                 parseNonConstraintViews(symbols.getNonConstraintViews());
-        final Map<String, MonoidComprehension> constraintForAlls = parseViews(symbols.getConstraintViews());
-        final Map<String, MonoidComprehension> objFunctionForAlls = parseViews(symbols.getObjectiveFunctionViews());
+        final Map<String, ListComprehension> constraintForAlls = parseViews(symbols.getConstraintViews());
+        final Map<String, ListComprehension> objFunctionForAlls = parseViews(symbols.getObjectiveFunctionViews());
         //
         // Code generation begins here.
         //
@@ -89,7 +89,7 @@ public class ModelCompiler {
      * @param views a map of String (name) -> View pairs.
      * @return map of String (name) -> ForAllStatement pairs corresponding to the views parameter
      */
-    private Map<String, MonoidComprehension> parseNonConstraintViews(final Map<String, ViewsWithChecks> views) {
+    private Map<String, ListComprehension> parseNonConstraintViews(final Map<String, ViewsWithChecks> views) {
         return views.entrySet()
                     .stream()
                     .map(es -> Map.entry(es.getKey(), es.getValue().getCreateView().getQuery()))
@@ -136,8 +136,8 @@ public class ModelCompiler {
      * @param views a map of String (name) -> View pairs.
      * @return map of String (name) -> ForAllStatement pairs corresponding to the views parameter
      */
-    private Map<String, MonoidComprehension> parseViews(final Map<String, ViewsWithChecks> views) {
-        final Map<String, MonoidComprehension> result = new HashMap<>();
+    private Map<String, ListComprehension> parseViews(final Map<String, ViewsWithChecks> views) {
+        final Map<String, ListComprehension> result = new HashMap<>();
         views.forEach((key, value) -> result.put(key, TranslateViewToIR.apply(value.getCreateView().getQuery(),
                                                                               value.getCheckExpression(),
                                                                               irContext)));

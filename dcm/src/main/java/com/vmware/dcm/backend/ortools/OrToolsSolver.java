@@ -36,24 +36,24 @@ import com.vmware.dcm.backend.IGeneratedBackend;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
 import com.vmware.dcm.backend.RewriteContains;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
-import com.vmware.dcm.compiler.monoid.CheckQualifier;
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.ExistsPredicate;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.GroupByQualifier;
-import com.vmware.dcm.compiler.monoid.IsNotNullPredicate;
-import com.vmware.dcm.compiler.monoid.IsNullPredicate;
-import com.vmware.dcm.compiler.monoid.JoinPredicate;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
-import com.vmware.dcm.compiler.monoid.MonoidVisitor;
-import com.vmware.dcm.compiler.monoid.Qualifier;
-import com.vmware.dcm.compiler.monoid.TableRowGenerator;
-import com.vmware.dcm.compiler.monoid.UnaryOperator;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
+import com.vmware.dcm.compiler.ir.CheckQualifier;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.ExistsPredicate;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.GroupByQualifier;
+import com.vmware.dcm.compiler.ir.IsNotNullPredicate;
+import com.vmware.dcm.compiler.ir.IsNullPredicate;
+import com.vmware.dcm.compiler.ir.JoinPredicate;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.compiler.ir.Literal;
+import com.vmware.dcm.compiler.ir.IRVisitor;
+import com.vmware.dcm.compiler.ir.Qualifier;
+import com.vmware.dcm.compiler.ir.TableRowGenerator;
+import com.vmware.dcm.compiler.ir.UnaryOperator;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -229,9 +229,9 @@ public class OrToolsSolver implements ISolverBackend {
      */
     @Override
     public List<String> generateModelCode(final IRContext context,
-                                          final Map<String, MonoidComprehension> nonConstraintViews,
-                                          final Map<String, MonoidComprehension> constraintViews,
-                                          final Map<String, MonoidComprehension> objectiveFunctions) {
+                                          final Map<String, ListComprehension> nonConstraintViews,
+                                          final Map<String, ListComprehension> constraintViews,
+                                          final Map<String, ListComprehension> objectiveFunctions) {
         if (generatedBackend != null) {
             return Collections.emptyList();
         }
@@ -248,7 +248,7 @@ public class OrToolsSolver implements ISolverBackend {
         final TranslationContext translationContext = new TranslationContext(false);
         nonConstraintViews
                 .forEach((name, comprehension) -> {
-                    final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
+                    final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     translationContext.enterScope(outerBlock);
                     final OutputIR.Block block = viewBlock(name, rewrittenComprehension, false, translationContext);
@@ -257,9 +257,9 @@ public class OrToolsSolver implements ISolverBackend {
                 });
         constraintViews
                 .forEach((name, comprehension) -> {
-                    final List<MonoidFunction> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
+                    final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
                     if (capacityConstraints.isEmpty()) {
-                        final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
+                        final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
                         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                         translationContext.enterScope(outerBlock);
                         final OutputIR.Block block = viewBlock(name, rewrittenComprehension, true, translationContext);
@@ -277,7 +277,7 @@ public class OrToolsSolver implements ISolverBackend {
                 });
         objectiveFunctions
                 .forEach((name, comprehension) -> {
-                    final MonoidComprehension rewrittenComprehension = rewritePipeline(comprehension);
+                    final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     translationContext.enterScope(outerBlock);
                     final String exprStr = exprToStr(rewrittenComprehension, translationContext);
@@ -315,11 +315,11 @@ public class OrToolsSolver implements ISolverBackend {
      * @param context the translation context for the comprehension
      * @return the block created for the comprehension
      */
-    private OutputIR.Block viewBlock(final String viewName, final MonoidComprehension comprehension,
+    private OutputIR.Block viewBlock(final String viewName, final ListComprehension comprehension,
                                      final boolean isConstraint, final TranslationContext context) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
-            final MonoidComprehension inner = groupByComprehension.getComprehension();
+            final ListComprehension inner = groupByComprehension.getComprehension();
             final GroupByQualifier groupByQualifier = groupByComprehension.getGroupByQualifier();
             final OutputIR.Block block = outputIR.newBlock(viewName);
 
@@ -431,7 +431,7 @@ public class OrToolsSolver implements ISolverBackend {
      * is represented as a list of tuples.
      */
     private OutputIR.Block innerComprehensionBlock(final String viewName,
-                                                   final MonoidComprehension comprehension,
+                                                   final ListComprehension comprehension,
                                                    @Nullable final GroupByQualifier groupByQualifier,
                                                    final boolean isConstraint, final TranslationContext context) {
         final OutputIR.Block viewBlock = outputIR.newBlock(viewName);
@@ -511,7 +511,7 @@ public class OrToolsSolver implements ISolverBackend {
      * @param isConstraint whether the comprehension represents a constraint or not
      * @return a list of ColumnIdentifiers corresponding to columns within the comprehension
      */
-    private List<ColumnIdentifier> getColumnsAccessed(final MonoidComprehension comprehension,
+    private List<ColumnIdentifier> getColumnsAccessed(final ListComprehension comprehension,
                                                       final boolean isConstraint) {
         if (isConstraint) {
             final List<ColumnIdentifier> columnsAccessed = getColumnsAccessed(comprehension.getQualifiers());
@@ -796,8 +796,8 @@ public class OrToolsSolver implements ISolverBackend {
         String exprStr = exprToStr(expr, true, groupContext, context);
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
-        if (expr instanceof MonoidLiteral && ((MonoidLiteral) expr).getValue() instanceof Boolean) {
-            exprStr = (Boolean) ((MonoidLiteral) expr).getValue() ? "1" : "0";
+        if (expr instanceof Literal && ((Literal) expr).getValue() instanceof Boolean) {
+            exprStr = (Boolean) ((Literal) expr).getValue() ? "1" : "0";
         }
         return tupleMetadata.inferType(expr).equals("IntVar") ? exprStr : String.format("o.toConst(%s)", exprStr);
     }
@@ -1137,7 +1137,7 @@ public class OrToolsSolver implements ISolverBackend {
         return visitor.visit(expr, context);
     }
 
-    private MonoidComprehension rewritePipeline(final MonoidComprehension comprehension) {
+    private ListComprehension rewritePipeline(final ListComprehension comprehension) {
         return Stream.of(comprehension)
                 .map(RewriteArity::apply)
                 .map(RewriteContains::apply)
@@ -1153,7 +1153,7 @@ public class OrToolsSolver implements ISolverBackend {
         return tupleMetadata.inferType(expr);
     }
 
-    private void populateQualifiersByVarType(final MonoidComprehension comprehension, final QualifiersByType var,
+    private void populateQualifiersByVarType(final ListComprehension comprehension, final QualifiersByType var,
                                              final QualifiersByType nonVar, final boolean skipAggregates) {
         comprehension.getQualifiers().forEach(
             q -> {
@@ -1168,12 +1168,12 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      *
      */
-    OutputIR.Block createCapacityConstraint(final String viewName, final MonoidComprehension comprehension,
+    OutputIR.Block createCapacityConstraint(final String viewName, final ListComprehension comprehension,
                                             final TranslationContext context,
-                                            final List<MonoidFunction> capacityConstraint) {
+                                            final List<FunctionCall> capacityConstraint) {
         Preconditions.checkArgument(comprehension instanceof GroupByComprehension);
         final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
-        final MonoidComprehension innerComprehension = groupByComprehension.getComprehension();
+        final ListComprehension innerComprehension = groupByComprehension.getComprehension();
         final OutputIR.Block block = outputIR.newBlock(viewName);
         context.enterScope(block);
 
@@ -1197,10 +1197,10 @@ public class OrToolsSolver implements ISolverBackend {
         final List<String> capacities = new ArrayList<>();
 
         capacityConstraint.forEach(
-            monoidFunction -> {
-                Preconditions.checkArgument(monoidFunction.getFunction()
-                                                          .equals(MonoidFunction.Function.CAPACITY_CONSTRAINT));
-                final List<Expr> arguments = monoidFunction.getArgument();
+            functionCall -> {
+                Preconditions.checkArgument(functionCall.getFunction()
+                                                          .equals(FunctionCall.Function.CAPACITY_CONSTRAINT));
+                final List<Expr> arguments = functionCall.getArgument();
                 Preconditions.checkArgument(arguments.size() == 4);
                 for (int i = 0; i < 4; i++) {
                     final Expr arg = arguments.get(i);
@@ -1251,7 +1251,7 @@ public class OrToolsSolver implements ISolverBackend {
      * The main logic to parse a comprehension and translate it into a set of intermediate variables and expressions.
      */
     @SuppressFBWarnings("NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE") // false positive
-    private class ExprToStrVisitor extends MonoidVisitor<String, TranslationContext> {
+    private class ExprToStrVisitor extends IRVisitor<String, TranslationContext> {
         private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
         @Nullable private final SubQueryContext currentSubQueryContext;
@@ -1265,7 +1265,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         @Override
-        protected String visitMonoidFunction(final MonoidFunction node, final TranslationContext context) {
+        protected String visitFunctionCall(final FunctionCall node, final TranslationContext context) {
             final String vectorName = currentSubQueryContext == null ? currentGroupContext.getGroupViewName()
                                                                      : currentSubQueryContext.getSubQueryName();
             // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
@@ -1274,7 +1274,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             // We have a special case for sums, because of an optimization where a sum of products can be better
             // represented as a scalar product in or-tools
-            if (node.getFunction().equals(MonoidFunction.Function.SUM)) {
+            if (node.getFunction().equals(FunctionCall.Function.SUM)) {
                 return attemptSumAsScalarProductOptimization(node.getArgument().get(0), context.currentScope(),
                                                          forLoop, context);
             }
@@ -1294,7 +1294,7 @@ public class OrToolsSolver implements ISolverBackend {
                     throw new IllegalStateException("Unreachable");
                 case COUNT:
                     // In these cases, it is safe to replace count(argument) with sum(1)
-                    if ((node.getArgument().get(0) instanceof MonoidLiteral ||
+                    if ((node.getArgument().get(0) instanceof Literal ||
                          node.getArgument().get(0) instanceof ColumnIdentifier)) {
                         // TODO: another sign that groupContext/subQueryContext should be handled by ExprContext
                         //  and scopes
@@ -1495,7 +1495,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         @Override
-        protected String visitMonoidLiteral(final MonoidLiteral node, final TranslationContext context) {
+        protected String visitLiteral(final Literal node, final TranslationContext context) {
             if (node.getValue() instanceof String) {
                 return node.getValue().toString().replace("'", "\"");
             } else {
@@ -1504,7 +1504,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         @Override
-        protected String visitMonoidComprehension(final MonoidComprehension node, final TranslationContext context) {
+        protected String visitListComprehension(final ListComprehension node, final TranslationContext context) {
             // We are in a subquery.
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
@@ -1515,7 +1515,7 @@ public class OrToolsSolver implements ISolverBackend {
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getHead().getSelectExprs().get(0);
 
-            final ContainsMonoidFunction visitor = new ContainsMonoidFunction();
+            final ContainsFunctionCall visitor = new ContainsFunctionCall();
             visitor.visit(headSelectItem);
             final boolean headSelectItemContainsMonoidFunction = visitor.getFound();
 
@@ -1556,7 +1556,7 @@ public class OrToolsSolver implements ISolverBackend {
             attemptConstantSubqueryOptimization(node, subQueryBlock, context);
 
             // if scalar subquery
-            if (headSelectItem instanceof MonoidFunction) {
+            if (headSelectItem instanceof FunctionCall) {
                 newCtx.enterScope(subQueryBlock);
                 final String ret = apply(innerVisitor.visit(headSelectItem, newCtx), context);
                 newCtx.leaveScope();
@@ -1674,7 +1674,7 @@ public class OrToolsSolver implements ISolverBackend {
         /**
          * Constant sub-queries can be floated to the root block so that we evaluate them only once
          */
-        private void attemptConstantSubqueryOptimization(final MonoidComprehension node,
+        private void attemptConstantSubqueryOptimization(final ListComprehension node,
                                                          final OutputIR.Block subQueryBlock,
                                                          final TranslationContext context) {
             if (IsConstantSubquery.apply(node)) {

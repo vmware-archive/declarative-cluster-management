@@ -4,13 +4,13 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
-public final class GroupByComprehension extends MonoidComprehension {
-    private final MonoidComprehension comprehension;
+public final class GroupByComprehension extends ListComprehension {
+    private final ListComprehension comprehension;
     private final GroupByQualifier groupByQualifier;
 
-    public GroupByComprehension(final MonoidComprehension comprehension, final GroupByQualifier qualifier) {
+    public GroupByComprehension(final ListComprehension comprehension, final GroupByQualifier qualifier) {
         this.groupByQualifier = qualifier;
         this.comprehension = comprehension.withQualifier(qualifier);
     }
@@ -21,7 +21,7 @@ public final class GroupByComprehension extends MonoidComprehension {
                 comprehension, groupByQualifier);
     }
 
-    public MonoidComprehension getComprehension() {
+    public ListComprehension getComprehension() {
         return comprehension;
     }
 
@@ -30,7 +30,7 @@ public final class GroupByComprehension extends MonoidComprehension {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
+    <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
         return visitor.visitGroupByComprehension(this, context);
     }
 }

@@ -5,10 +5,10 @@
 
 package com.vmware.dcm.backend.ortools;
 
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.TableRowGenerator;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.TableRowGenerator;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -19,10 +19,10 @@ import java.util.stream.Collectors;
  */
 public class IsConstantSubquery {
 
-    static boolean apply(final MonoidComprehension expr) {
+    static boolean apply(final ListComprehension expr) {
         final GetColumnIdentifiers visitor = new GetColumnIdentifiers(true);
         if (expr instanceof GroupByComprehension) {
-            final MonoidComprehension comprehension = ((GroupByComprehension) expr).getComprehension();
+            final ListComprehension comprehension = ((GroupByComprehension) expr).getComprehension();
             comprehension.getHead().getSelectExprs().forEach(visitor::visit);
             comprehension.getQualifiers().forEach(visitor::visit);
         } else {

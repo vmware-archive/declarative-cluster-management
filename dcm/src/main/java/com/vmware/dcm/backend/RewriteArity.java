@@ -8,18 +8,18 @@ package com.vmware.dcm.backend;
 
 
 import com.google.common.base.Preconditions;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
-import com.vmware.dcm.compiler.monoid.ComprehensionRewriter;
-import com.vmware.dcm.compiler.monoid.ExistsPredicate;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.Head;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
-import com.vmware.dcm.compiler.monoid.Qualifier;
-import com.vmware.dcm.compiler.monoid.VoidType;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
+import com.vmware.dcm.compiler.ir.ComprehensionRewriter;
+import com.vmware.dcm.compiler.ir.ExistsPredicate;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.Head;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.compiler.ir.Literal;
+import com.vmware.dcm.compiler.ir.Qualifier;
+import com.vmware.dcm.compiler.ir.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,26 +36,26 @@ import java.util.stream.Collectors;
 public class RewriteArity extends ComprehensionRewriter {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteArity.class);
 
-    public static MonoidComprehension apply(final MonoidComprehension comprehension) {
+    public static ListComprehension apply(final ListComprehension comprehension) {
         final RewriteArity rewriter = new RewriteArity();
         final Expr result = rewriter.visit(comprehension);
         return comprehension instanceof GroupByComprehension ?
-                (GroupByComprehension) result : (MonoidComprehension) result;
+                (GroupByComprehension) result : (ListComprehension) result;
     }
 
     @Override
-    protected Expr visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
+    protected Expr visitListComprehension(final ListComprehension node, final VoidType context) {
         // First, rewrite qualifiers. Then, rewrite head
         final List<Qualifier> qualifiers = node.getQualifiers()
                 .stream().map(q -> (Qualifier) visit(q)).collect(Collectors.toList());
-        final MonoidComprehension maybeRewrittenComprehension = new MonoidComprehension(node.getHead(), qualifiers);
+        final ListComprehension maybeRewrittenComprehension = new ListComprehension(node.getHead(), qualifiers);
         return rewriteComprehension(maybeRewrittenComprehension);
     }
 
     @Override
     protected Expr visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
-        Preconditions.checkArgument(node.getArgument() instanceof MonoidComprehension);
-        final MonoidComprehension argument = rewriteExistsArgument((MonoidComprehension) node.getArgument());
+        Preconditions.checkArgument(node.getArgument() instanceof ListComprehension);
+        final ListComprehension argument = rewriteExistsArgument((ListComprehension) node.getArgument());
         return new ExistsPredicate(argument);
     }
 
@@ -64,7 +64,7 @@ public class RewriteArity extends ComprehensionRewriter {
      * var qualifier, then check if we can rewrite the comprehension. Rewrites only happen for
      * sum/count expressions.
      */
-    private MonoidComprehension rewriteComprehension(final MonoidComprehension input) {
+    private ListComprehension rewriteComprehension(final ListComprehension input) {
         LOG.debug("Attempting to rewrite: {}", input);
 
         // Extract var and non-var qualifiers
@@ -93,7 +93,7 @@ public class RewriteArity extends ComprehensionRewriter {
      * First, extract the var and non-var qualifiers in the comprehension. If we only have a single
      * var qualifier, then ignore the head items and replace it with the var qualifier
      */
-    private MonoidComprehension rewriteExistsArgument(final MonoidComprehension input) {
+    private ListComprehension rewriteExistsArgument(final ListComprehension input) {
         LOG.debug("Attempting to rewrite: {}", input);
 
         final List<Qualifier> qualifiers = input.getQualifiers()
@@ -118,17 +118,17 @@ public class RewriteArity extends ComprehensionRewriter {
             return input;
         }
         final Head newHead = new Head(Collections.singletonList(varQualifiers.get(0)));
-        return new MonoidComprehension(newHead, nonVarQualifiers);
+        return new ListComprehension(newHead, nonVarQualifiers);
     }
 
-    private static MonoidComprehension maybeRewriteFunctions(final MonoidComprehension input,
-                                                             final List<Qualifier> varQualifiers,
-                                                             final List<Qualifier> nonVarQualifiers) {
+    private static ListComprehension maybeRewriteFunctions(final ListComprehension input,
+                                                           final List<Qualifier> varQualifiers,
+                                                           final List<Qualifier> nonVarQualifiers) {
         final FunctionRewriter functionRewriter = new FunctionRewriter(varQualifiers.get(0));
-        final MonoidComprehension comprehensionWithoutVarQualifiers =
-                new MonoidComprehension(input.getHead(), nonVarQualifiers);
-        final MonoidComprehension result =
-                (MonoidComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers);
+        final ListComprehension comprehensionWithoutVarQualifiers =
+                new ListComprehension(input.getHead(), nonVarQualifiers);
+        final ListComprehension result =
+                (ListComprehension) functionRewriter.visit(comprehensionWithoutVarQualifiers);
         if (functionRewriter.didRewrite) {
             LOG.info("Rewrote: {} into {}", input, result);
             return result;
@@ -152,7 +152,7 @@ public class RewriteArity extends ComprehensionRewriter {
         }
 
         @Override
-        protected Expr visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
+        protected Expr visitListComprehension(final ListComprehension node, final VoidType context) {
             if (!isDepthPastOne) {
                 isDepthPastOne = true;
                 final List<Qualifier> qualifiers = node.getQualifiers()
@@ -161,25 +161,25 @@ public class RewriteArity extends ComprehensionRewriter {
                         .collect(Collectors.toList());
 
                 final Head newHead = (Head) super.visit(node.getHead(), context);
-                return new MonoidComprehension(newHead, qualifiers);
+                return new ListComprehension(newHead, qualifiers);
             }
             return node;
         }
 
         @Override
-        protected Expr visitMonoidFunction(final MonoidFunction node, final VoidType context) {
-            if (node.getFunction().equals(MonoidFunction.Function.SUM) ||
-                    node.getFunction().equals(MonoidFunction.Function.COUNT)) {
-                final Expr oldSumArg = node.getFunction().equals(MonoidFunction.Function.COUNT)
-                        ? new MonoidLiteral<>(1, Integer.class) : node.getArgument().get(0);
+        protected Expr visitFunctionCall(final FunctionCall node, final VoidType context) {
+            if (node.getFunction().equals(FunctionCall.Function.SUM) ||
+                    node.getFunction().equals(FunctionCall.Function.COUNT)) {
+                final Expr oldSumArg = node.getFunction().equals(FunctionCall.Function.COUNT)
+                        ? new Literal<>(1, Integer.class) : node.getArgument().get(0);
                 final BinaryOperatorPredicateWithAggregate newArgument
                         = new BinaryOperatorPredicateWithAggregate(BinaryOperatorPredicate.Operator.MULTIPLY,
                                                                    oldSumArg, qualifier);
                 didRewrite = true;
                 if (node.getAlias().isPresent()) {
-                    return new MonoidFunction(node.getFunction(), newArgument, node.getAlias().get());
+                    return new FunctionCall(node.getFunction(), newArgument, node.getAlias().get());
                 } else {
-                    return new MonoidFunction(node.getFunction(), newArgument);
+                    return new FunctionCall(node.getFunction(), newArgument);
                 }
             }
             return node;
