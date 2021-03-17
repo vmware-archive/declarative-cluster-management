@@ -153,10 +153,21 @@ public class KubernetesStateSyncTest {
 
         // Create pod event and wait for scheduler to create a binding
         scheduler.handlePodEvent(new PodEvent(PodEvent.Action.ADDED, pod));
-        Thread.sleep(1000);
 
-        // Test whether the scheduler created a binding. This call returns null if the binding does not exist.
-        final Binding binding = client.bindings().inNamespace("default").withName(pod.getMetadata().getName()).get();
-        assertNotNull(binding);
+        int attempts = 5;
+        boolean found = false;
+        while (attempts > 0) {
+            Thread.sleep(1000);
+
+            // Test whether the scheduler created a binding. This call returns null if the binding does not exist.
+            final Binding binding = client.bindings().inNamespace("default")
+                                                     .withName(pod.getMetadata().getName()).get();
+            if (binding != null) {
+                found = true;
+                break;
+            }
+            attempts--;
+        }
+        assertTrue(found);
     }
 }
