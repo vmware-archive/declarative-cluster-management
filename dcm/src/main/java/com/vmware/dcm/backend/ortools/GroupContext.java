@@ -5,7 +5,7 @@
 
 package com.vmware.dcm.backend.ortools;
 
-import com.vmware.dcm.compiler.monoid.GroupByQualifier;
+import com.vmware.dcm.compiler.ir.GroupByQualifier;
 
 // TODO: consolidate into TranslationContext
 class GroupContext {

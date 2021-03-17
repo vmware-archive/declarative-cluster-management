@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 public class UnaryOperator extends Expr {
     private final Operator operator;
@@ -32,7 +32,7 @@ public class UnaryOperator extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
+    <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
         return visitor.visitUnaryOperator(this, context);
     }
 

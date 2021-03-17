@@ -6,9 +6,9 @@
 
 package com.vmware.dcm.backend.minizinc;
 
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.Head;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.Head;
+import com.vmware.dcm.compiler.ir.ListComprehension;
 
 import java.util.Collections;
 import java.util.List;
@@ -19,16 +19,16 @@ import java.util.stream.Collectors;
  */
 class SplitIntoSingleHeadComprehensions {
 
-    static List<MonoidComprehension> apply(final MonoidComprehension input) {
+    static List<ListComprehension> apply(final ListComprehension input) {
         if (input instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) input;
-            final MonoidComprehension innerComprehension = groupByComprehension.getComprehension();
+            final ListComprehension innerComprehension = groupByComprehension.getComprehension();
             return innerComprehension.getHead()
                     .getSelectExprs()
                     .stream()
                     .map(e -> {
-                        final MonoidComprehension mc =
-                                new MonoidComprehension(new Head(Collections.singletonList(e)),
+                        final ListComprehension mc =
+                                new ListComprehension(new Head(Collections.singletonList(e)),
                                                         innerComprehension.getQualifiers());
                         return new GroupByComprehension(mc, groupByComprehension.getGroupByQualifier());
                     })
@@ -38,7 +38,7 @@ class SplitIntoSingleHeadComprehensions {
             return input.getHead()
                     .getSelectExprs()
                     .stream()
-                    .map(e -> new MonoidComprehension(new Head(Collections.singletonList(e)),
+                    .map(e -> new ListComprehension(new Head(Collections.singletonList(e)),
                             input.getQualifiers()))
                     .collect(Collectors.toList());
         }

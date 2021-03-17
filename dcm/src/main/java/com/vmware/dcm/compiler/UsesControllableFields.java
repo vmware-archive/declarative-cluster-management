@@ -6,9 +6,9 @@
 
 package com.vmware.dcm.compiler;
 
-import com.vmware.dcm.compiler.monoid.VoidType;
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.SimpleVisitor;
+import com.vmware.dcm.compiler.ir.VoidType;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.SimpleVisitor;
 
 /**
  * If a query does not have any variables in it (say, in a predicate or a join key), then they return arrays

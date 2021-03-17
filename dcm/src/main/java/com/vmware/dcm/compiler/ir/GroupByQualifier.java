@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,7 +24,7 @@ public final class GroupByQualifier extends Qualifier {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
+    <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
         return visitor.visitGroupByQualifier(this, context);
     }
 

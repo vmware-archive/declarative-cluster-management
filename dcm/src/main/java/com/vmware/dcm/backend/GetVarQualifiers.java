@@ -8,21 +8,21 @@ package com.vmware.dcm.backend;
 
 
 import com.vmware.dcm.compiler.UsesControllableFields;
-import com.vmware.dcm.compiler.monoid.GroupByQualifier;
-import com.vmware.dcm.compiler.monoid.IsNotNullPredicate;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.MonoidVisitor;
-import com.vmware.dcm.compiler.monoid.Qualifier;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
-import com.vmware.dcm.compiler.monoid.CheckQualifier;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.IsNullPredicate;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
-import com.vmware.dcm.compiler.monoid.TableRowGenerator;
-import com.vmware.dcm.compiler.monoid.UnaryOperator;
+import com.vmware.dcm.compiler.ir.GroupByQualifier;
+import com.vmware.dcm.compiler.ir.IsNotNullPredicate;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.compiler.ir.IRVisitor;
+import com.vmware.dcm.compiler.ir.Qualifier;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
+import com.vmware.dcm.compiler.ir.CheckQualifier;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.IsNullPredicate;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.Literal;
+import com.vmware.dcm.compiler.ir.TableRowGenerator;
+import com.vmware.dcm.compiler.ir.UnaryOperator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +30,7 @@ import java.util.List;
 /**
  * Separates qualifiers in an expression into vars and non-vars.
  */
-public class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersList, GetVarQualifiers.QualifiersList> {
+public class GetVarQualifiers extends IRVisitor<GetVarQualifiers.QualifiersList, GetVarQualifiers.QualifiersList> {
     private final boolean skipAggregates;
 
     GetVarQualifiers(final boolean skipAggregates) {
@@ -62,7 +62,7 @@ public class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersL
     }
 
     @Override
-    protected QualifiersList visitMonoidComprehension(final MonoidComprehension node, final QualifiersList context) {
+    protected QualifiersList visitListComprehension(final ListComprehension node, final QualifiersList context) {
         return context;
     }
 
@@ -86,7 +86,7 @@ public class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersL
         if (node.getOperator().equals(UnaryOperator.Operator.NOT)) {
             final BinaryOperatorPredicate rewritten =
                     new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node.getArgument(),
-                            new MonoidLiteral<>(false, Boolean.class));
+                            new Literal<>(false, Boolean.class));
             if (usesControllableField(node.getArgument())) {
                 return context.withVarQualifier(rewritten);
             } else {
@@ -97,7 +97,7 @@ public class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersL
     }
 
     @Override
-    protected QualifiersList visitMonoidFunction(final MonoidFunction node, final QualifiersList context) {
+    protected QualifiersList visitFunctionCall(final FunctionCall node, final QualifiersList context) {
         return context;
     }
 
@@ -144,7 +144,7 @@ public class GetVarQualifiers extends MonoidVisitor<GetVarQualifiers.QualifiersL
 
     private boolean involvesAggregateFunctions(final BinaryOperatorPredicate node) {
         if (skipAggregates) {
-            return (!(node.getLeft() instanceof MonoidFunction) && !(node.getRight() instanceof MonoidFunction));
+            return (!(node.getLeft() instanceof FunctionCall) && !(node.getRight() instanceof FunctionCall));
         }
         else {
             return true;

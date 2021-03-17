@@ -14,14 +14,12 @@ import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
 import com.facebook.presto.sql.tree.DereferenceExpression;
 import com.facebook.presto.sql.tree.ExistsPredicate;
 import com.facebook.presto.sql.tree.Expression;
-import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.GroupBy;
 import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.IsNotNullPredicate;
 import com.facebook.presto.sql.tree.IsNullPredicate;
-import com.facebook.presto.sql.tree.Literal;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
 import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.NotExpression;
@@ -32,24 +30,24 @@ import com.facebook.presto.sql.tree.SingleColumn;
 import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.SubqueryExpression;
 import com.google.common.base.Splitter;
-import com.vmware.dcm.IRContext;
-import com.vmware.dcm.compiler.monoid.GroupByQualifier;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.Qualifier;
 import com.vmware.dcm.IRColumn;
+import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRTable;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicateWithAggregate;
-import com.vmware.dcm.compiler.monoid.CheckQualifier;
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.Head;
-import com.vmware.dcm.compiler.monoid.JoinPredicate;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
-import com.vmware.dcm.compiler.monoid.TableRowGenerator;
-import com.vmware.dcm.compiler.monoid.UnaryOperator;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
+import com.vmware.dcm.compiler.ir.CheckQualifier;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.GroupByQualifier;
+import com.vmware.dcm.compiler.ir.Head;
+import com.vmware.dcm.compiler.ir.JoinPredicate;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.Literal;
+import com.vmware.dcm.compiler.ir.Qualifier;
+import com.vmware.dcm.compiler.ir.TableRowGenerator;
+import com.vmware.dcm.compiler.ir.UnaryOperator;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -152,8 +150,8 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
     @Override
     protected Optional<Expr> visitExists(final ExistsPredicate node, final Void context) {
         final Expr innerExpr = translateExpression(node.getSubquery());
-        final com.vmware.dcm.compiler.monoid.ExistsPredicate operatorPredicate =
-                new com.vmware.dcm.compiler.monoid.ExistsPredicate(innerExpr);
+        final com.vmware.dcm.compiler.ir.ExistsPredicate operatorPredicate =
+                new com.vmware.dcm.compiler.ir.ExistsPredicate(innerExpr);
         return Optional.of(operatorPredicate);
     }
 
@@ -167,7 +165,8 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
     }
 
     @Override
-    protected Optional<Expr> visitFunctionCall(final FunctionCall node, final Void context) {
+    protected Optional<Expr> visitFunctionCall(final com.facebook.presto.sql.tree.FunctionCall node,
+                                               final Void context) {
         if (node.getArguments().size() == 1
                 || (node.getArguments().isEmpty() && "count".equalsIgnoreCase(node.getName().getSuffix()))
                 || (node.getArguments().size() == 4 && node.getName().getSuffix().equals("capacity_constraint"))
@@ -175,12 +174,12 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
             // Only having clauses will have function calls in the expression.
             final Expr function;
             final String functionNameStr = node.getName().toString().toUpperCase(Locale.US);
-            final MonoidFunction.Function functionType = MonoidFunction.Function.valueOf(functionNameStr);
+            final FunctionCall.Function functionType = FunctionCall.Function.valueOf(functionNameStr);
             if (node.getArguments().size() >= 1) {
                 final List<Expr> arguments = node.getArguments().stream()
                         .map(e -> translateExpression(e, irContext, tablesReferencedInView, isAggregate))
                         .collect(Collectors.toList());
-                function = new MonoidFunction(functionType, arguments);
+                function = new FunctionCall(functionType, arguments);
             } else if (node.getArguments().isEmpty() &&
                     "count".equalsIgnoreCase(node.getName().getSuffix())) {
                 // The presto parser does not consider count(*) as a function with a single
@@ -193,7 +192,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
                 final IRTable table = tablesReferencedInView.iterator().next();
                 final IRColumn field = table.getIRColumns().entrySet().iterator().next().getValue();
                 final ColumnIdentifier column = new ColumnIdentifier(table.getName(), field, false);
-                function = new MonoidFunction(functionType, column);
+                function = new FunctionCall(functionType, column);
             } else {
                 throw new RuntimeException("I don't know what to do with this function call type: " + node);
             }
@@ -221,23 +220,23 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
     }
 
     @Override
-    protected Optional<Expr> visitLiteral(final Literal node, final Void context) {
+    protected Optional<Expr> visitLiteral(final com.facebook.presto.sql.tree.Literal node, final Void context) {
         return super.visitLiteral(node, context);
     }
 
     @Override
     protected Optional<Expr> visitStringLiteral(final StringLiteral node, final Void context) {
-        return Optional.of(new MonoidLiteral<>("'" + node.getValue() + "'", String.class));
+        return Optional.of(new Literal<>("'" + node.getValue() + "'", String.class));
     }
 
     @Override
     protected Optional<Expr> visitLongLiteral(final LongLiteral node, final Void context) {
-        return Optional.of(new MonoidLiteral<>(Long.valueOf(node.toString()), Long.class));
+        return Optional.of(new Literal<>(Long.valueOf(node.toString()), Long.class));
     }
 
     @Override
     protected Optional<Expr> visitBooleanLiteral(final BooleanLiteral node, final Void context) {
-        return Optional.of(new MonoidLiteral<>(Boolean.valueOf(node.toString()), Boolean.class));
+        return Optional.of(new Literal<>(Boolean.valueOf(node.toString()), Boolean.class));
     }
 
     @Override
@@ -260,16 +259,16 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
     @Override
     protected Optional<Expr> visitIsNullPredicate(final IsNullPredicate node, final Void context) {
         final Expr innerExpr = translateExpression(node.getValue());
-        final com.vmware.dcm.compiler.monoid.IsNullPredicate isNullPredicate =
-                new com.vmware.dcm.compiler.monoid.IsNullPredicate(innerExpr);
+        final com.vmware.dcm.compiler.ir.IsNullPredicate isNullPredicate =
+                new com.vmware.dcm.compiler.ir.IsNullPredicate(innerExpr);
         return Optional.of(isNullPredicate);
     }
 
     @Override
     protected Optional<Expr> visitIsNotNullPredicate(final IsNotNullPredicate node, final Void context) {
         final Expr innerExpr = translateExpression(node.getValue());
-        final com.vmware.dcm.compiler.monoid.IsNotNullPredicate isNotNullPredicate =
-                new com.vmware.dcm.compiler.monoid.IsNotNullPredicate(innerExpr);
+        final com.vmware.dcm.compiler.ir.IsNotNullPredicate isNotNullPredicate =
+                new com.vmware.dcm.compiler.ir.IsNotNullPredicate(innerExpr);
         return Optional.of(isNotNullPredicate);
     }
 
@@ -281,7 +280,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
      * @param irContext an IRContext instance
      * @return A list comprehension corresponding to the view parameter
      */
-    static MonoidComprehension apply(final Query view, final Optional<Expression> check, final IRContext irContext) {
+    static ListComprehension apply(final Query view, final Optional<Expression> check, final IRContext irContext) {
         final FromExtractor fromParser = new FromExtractor(irContext);
         fromParser.process(view.getQueryBody());
 
@@ -318,15 +317,15 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
             final List<GroupingElement> groupingElement = groupBy.get().getGroupingElements();
             final List<Expr> columnIdentifiers = columnListFromGroupBy(groupingElement, irContext, tables);
             final GroupByQualifier groupByQualifier = new GroupByQualifier(columnIdentifiers);
-            final MonoidComprehension comprehension = new MonoidComprehension(head, qualifiers);
+            final ListComprehension comprehension = new ListComprehension(head, qualifiers);
             return new GroupByComprehension(comprehension, groupByQualifier);
         } else if (usesAggregateFunctions.isFound() || having.isPresent()) { // group by 1
             final GroupByQualifier groupByQualifier = new GroupByQualifier(
-                    List.of(new MonoidLiteral<>(1, Integer.class)));
-            final MonoidComprehension comprehension = new MonoidComprehension(head, qualifiers);
+                    List.of(new Literal<>(1, Integer.class)));
+            final ListComprehension comprehension = new ListComprehension(head, qualifiers);
             return new GroupByComprehension(comprehension, groupByQualifier);
         }
-        return new MonoidComprehension(head, qualifiers);
+        return new ListComprehension(head, qualifiers);
     }
 
     /**

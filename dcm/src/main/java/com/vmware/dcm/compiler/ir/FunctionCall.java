@@ -4,25 +4,25 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 import java.util.List;
 
-public class MonoidFunction extends Expr {
+public class FunctionCall extends Expr {
     private final Function function;
     private final List<Expr> argument;
 
-    public MonoidFunction(final Function function, final Expr argument) {
+    public FunctionCall(final Function function, final Expr argument) {
         this.function = function;
         this.argument = List.of(argument);
     }
 
-    public MonoidFunction(final Function function, final List<Expr> argument) {
+    public FunctionCall(final Function function, final List<Expr> argument) {
         this.function = function;
         this.argument = argument;
     }
 
-    public MonoidFunction(final Function function, final Expr argument, final String alias) {
+    public FunctionCall(final Function function, final Expr argument, final String alias) {
         this.function = function;
         this.argument = List.of(argument);
         setAlias(alias);
@@ -38,15 +38,15 @@ public class MonoidFunction extends Expr {
 
     @Override
     public String toString() {
-        return "MonoidFunction{" +
+        return "FunctionCall{" +
                 "functionName='" + function + '\'' +
                 ", argument=" + argument +
                 '}';
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
-        return visitor.visitMonoidFunction(this, context);
+    <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
+        return visitor.visitFunctionCall(this, context);
     }
 
     public enum Function {

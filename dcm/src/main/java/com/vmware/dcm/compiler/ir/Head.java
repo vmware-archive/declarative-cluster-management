@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 import java.util.List;
 
@@ -23,7 +23,7 @@ public final class Head extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
+    <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
         return visitor.visitHead(this, context);
     }
 

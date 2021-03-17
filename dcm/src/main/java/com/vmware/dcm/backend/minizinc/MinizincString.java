@@ -8,9 +8,9 @@ package com.vmware.dcm.backend.minizinc;
 
 import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.IRTable;
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.Literal;
 
 import java.util.Locale;
 
@@ -68,8 +68,8 @@ class MinizincString {
     static String literal(final Expr literal) {
         if (literal instanceof ColumnIdentifier) {
             return MinizincString.columnNameWithIteration((ColumnIdentifier) literal);
-        } else if (literal instanceof MonoidLiteral) {
-            return ((MonoidLiteral) literal).getValue().toString();
+        } else if (literal instanceof Literal) {
+            return ((Literal) literal).getValue().toString();
         }
         throw new RuntimeException("Unknown literal type " + literal);
     }

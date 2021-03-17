@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
-public class MonoidVisitor<T, C> {
+public class IRVisitor<T, C> {
 
     public T visit(final Expr expr, final C context) {
         return expr.acceptVisitor(this, context);
@@ -25,7 +25,7 @@ public class MonoidVisitor<T, C> {
         return defaultReturn();
     }
 
-    protected T visitMonoidComprehension(final MonoidComprehension node, final C context) {
+    protected T visitListComprehension(final ListComprehension node, final C context) {
         node.getHead().acceptVisitor(this, context);
         for (final Qualifier qualifier: node.getQualifiers()) {
             qualifier.acceptVisitor(this, context);
@@ -49,11 +49,11 @@ public class MonoidVisitor<T, C> {
         return defaultReturn();
     }
 
-    protected T visitMonoidLiteral(final MonoidLiteral node, final C context) {
+    protected T visitLiteral(final Literal node, final C context) {
         return defaultReturn();
     }
 
-    protected T visitMonoidFunction(final MonoidFunction node, final C context) {
+    protected T visitFunctionCall(final FunctionCall node, final C context) {
         for (final Expr expr: node.getArgument()) {
             expr.acceptVisitor(this, context);
         }

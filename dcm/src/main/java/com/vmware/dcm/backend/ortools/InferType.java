@@ -8,27 +8,27 @@ package com.vmware.dcm.backend.ortools;
 
 import com.google.common.base.CaseFormat;
 import com.google.common.base.Preconditions;
-import com.vmware.dcm.compiler.monoid.IsNotNullPredicate;
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.MonoidVisitor;
-import com.vmware.dcm.compiler.monoid.VoidType;
+import com.vmware.dcm.compiler.ir.IsNotNullPredicate;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.compiler.ir.IRVisitor;
+import com.vmware.dcm.compiler.ir.VoidType;
 import com.vmware.dcm.IRColumn;
-import com.vmware.dcm.compiler.monoid.BinaryOperatorPredicate;
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.ExistsPredicate;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.GroupByComprehension;
-import com.vmware.dcm.compiler.monoid.Head;
-import com.vmware.dcm.compiler.monoid.IsNullPredicate;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
-import com.vmware.dcm.compiler.monoid.UnaryOperator;
+import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.ExistsPredicate;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.GroupByComprehension;
+import com.vmware.dcm.compiler.ir.Head;
+import com.vmware.dcm.compiler.ir.IsNullPredicate;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.Literal;
+import com.vmware.dcm.compiler.ir.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
-class InferType extends MonoidVisitor<String, VoidType> {
+class InferType extends IRVisitor<String, VoidType> {
     private static final Logger LOG = LoggerFactory.getLogger(InferType.class);
     private final Map<String, String> viewTupleTypeParameters;
 
@@ -82,7 +82,7 @@ class InferType extends MonoidVisitor<String, VoidType> {
     }
 
     @Override
-    protected String visitMonoidComprehension(final MonoidComprehension node, final VoidType context) {
+    protected String visitListComprehension(final ListComprehension node, final VoidType context) {
         final Head head = node.getHead();
         if (head.getSelectExprs().size() == 1) {
             final String type = visit(head.getSelectExprs().get(0), context);
@@ -98,8 +98,8 @@ class InferType extends MonoidVisitor<String, VoidType> {
     }
 
     @Override
-    protected String visitMonoidFunction(final MonoidFunction node, final VoidType context) {
-        if (node.getFunction().equals(MonoidFunction.Function.CAPACITY_CONSTRAINT)) {
+    protected String visitFunctionCall(final FunctionCall node, final VoidType context) {
+        if (node.getFunction().equals(FunctionCall.Function.CAPACITY_CONSTRAINT)) {
             return "IntVar";
         }
         Preconditions.checkArgument(node.getArgument().size() == 1);
@@ -137,7 +137,7 @@ class InferType extends MonoidVisitor<String, VoidType> {
     }
 
     @Override
-    protected String visitMonoidLiteral(final MonoidLiteral node, final VoidType context) {
+    protected String visitLiteral(final Literal node, final VoidType context) {
         if (node.getValue() instanceof String) {
             return "String";
         } else if (node.getValue() instanceof Integer) {
@@ -147,7 +147,7 @@ class InferType extends MonoidVisitor<String, VoidType> {
         } else if (node.getValue() instanceof Long) {
             return "Integer";
         }
-        return super.visitMonoidLiteral(node, context);
+        return super.visitLiteral(node, context);
     }
 
     private  String typeStringFromColumn(final ColumnIdentifier node) {

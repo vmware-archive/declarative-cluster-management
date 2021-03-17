@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
-public class SimpleVisitor extends MonoidVisitor<VoidType, VoidType> {
+public class SimpleVisitor extends IRVisitor<VoidType, VoidType> {
 
     @Override
     public VoidType visit(final Expr expr, final VoidType context) {

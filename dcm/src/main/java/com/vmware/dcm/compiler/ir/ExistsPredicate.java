@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm.compiler.monoid;
+package com.vmware.dcm.compiler.ir;
 
 public class ExistsPredicate extends Expr {
     private final Expr argument;
@@ -25,7 +25,7 @@ public class ExistsPredicate extends Expr {
     }
 
     @Override
-    <T, C> T acceptVisitor(final MonoidVisitor<T, C> visitor, final C context) {
+    <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
         return visitor.visitExistsPredicate(this, context);
     }
 }

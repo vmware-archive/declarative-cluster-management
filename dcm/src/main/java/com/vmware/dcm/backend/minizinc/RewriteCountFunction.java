@@ -6,13 +6,13 @@
 
 package com.vmware.dcm.backend.minizinc;
 
-import com.vmware.dcm.compiler.monoid.MonoidFunction;
-import com.vmware.dcm.compiler.monoid.VoidType;
-import com.vmware.dcm.compiler.monoid.ColumnIdentifier;
-import com.vmware.dcm.compiler.monoid.ComprehensionRewriter;
-import com.vmware.dcm.compiler.monoid.Expr;
-import com.vmware.dcm.compiler.monoid.MonoidComprehension;
-import com.vmware.dcm.compiler.monoid.MonoidLiteral;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.compiler.ir.VoidType;
+import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.ComprehensionRewriter;
+import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.compiler.ir.Literal;
 
 /**
  * Minizinc has no "count()" function. We rewrite all instances of
@@ -21,21 +21,21 @@ import com.vmware.dcm.compiler.monoid.MonoidLiteral;
 class RewriteCountFunction extends ComprehensionRewriter {
 
     @Override
-    protected Expr visitMonoidFunction(final MonoidFunction function, final VoidType context) {
-        if (function.getFunction().equals(MonoidFunction.Function.COUNT)) {
+    protected Expr visitFunctionCall(final FunctionCall function, final VoidType context) {
+        if (function.getFunction().equals(FunctionCall.Function.COUNT)) {
             if (!(function.getArgument().get(0) instanceof ColumnIdentifier)) {
                 throw new IllegalStateException("RewriteCountFunction is only safe to use on column identifiers");
             }
-            final MonoidFunction newFunction = new MonoidFunction(MonoidFunction.Function.SUM,
-                                                                  new MonoidLiteral<>(1L, Long.class));
+            final FunctionCall newFunction = new FunctionCall(FunctionCall.Function.SUM,
+                                                                  new Literal<>(1L, Long.class));
             function.getAlias().ifPresent(newFunction::setAlias);
             return newFunction;
         }
-        return super.visitMonoidFunction(function, context);
+        return super.visitFunctionCall(function, context);
     }
 
-    static MonoidComprehension apply(final MonoidComprehension comprehension) {
+    static ListComprehension apply(final ListComprehension comprehension) {
         final RewriteCountFunction rewriter = new RewriteCountFunction();
-        return (MonoidComprehension) rewriter.visit(comprehension);
+        return (ListComprehension) rewriter.visit(comprehension);
     }
 }
