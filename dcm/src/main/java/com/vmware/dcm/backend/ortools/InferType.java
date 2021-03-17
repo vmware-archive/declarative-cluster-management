@@ -8,21 +8,21 @@ package com.vmware.dcm.backend.ortools;
 
 import com.google.common.base.CaseFormat;
 import com.google.common.base.Preconditions;
-import com.vmware.dcm.compiler.ir.IsNotNullPredicate;
-import com.vmware.dcm.compiler.ir.FunctionCall;
-import com.vmware.dcm.compiler.ir.IRVisitor;
-import com.vmware.dcm.compiler.ir.VoidType;
 import com.vmware.dcm.IRColumn;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
 import com.vmware.dcm.compiler.ir.ExistsPredicate;
 import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.FunctionCall;
 import com.vmware.dcm.compiler.ir.GroupByComprehension;
 import com.vmware.dcm.compiler.ir.Head;
+import com.vmware.dcm.compiler.ir.IRVisitor;
+import com.vmware.dcm.compiler.ir.IsNotNullPredicate;
 import com.vmware.dcm.compiler.ir.IsNullPredicate;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import com.vmware.dcm.compiler.ir.Literal;
 import com.vmware.dcm.compiler.ir.UnaryOperator;
+import com.vmware.dcm.compiler.ir.VoidType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

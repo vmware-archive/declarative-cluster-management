@@ -972,6 +972,35 @@ public class ModelTest {
         model.solve("POD_INFO");
     }
 
+    @Test
+    public void testSoftMembershipArray() {
+        // model and data files will use this as its name
+        final String modelName = "testSoftMembershipArray";
+
+        // create database
+        final DSLContext conn = setup();
+
+        conn.execute("CREATE TABLE t1 (" +
+                "controllable__c1 integer NOT NULL, " +
+                "c2 array NOT NULL" +
+                ")"
+        );
+
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW objective_t1 AS " +
+                "SELECT contains(c2, controllable__c1) from t1;");
+
+        // insert data
+        conn.execute("insert into t1 values (1, ARRAY[100])");
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
+        model.updateData();
+
+        final List<Integer> fetch = model.solve("T1").getValues("CONTROLLABLE__C1", Integer.class);
+        assertEquals(1, fetch.size());
+        assertEquals(100, fetch.get(0).intValue());
+    }
+
     @ParameterizedTest
     @MethodSource("capacityConstraintInputs")
     public void testCapacityConstraint(final String columnType, final List<Number> capacities,

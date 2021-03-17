@@ -10,9 +10,6 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
-import com.vmware.dcm.backend.ortools.Ops;
-import com.vmware.dcm.backend.ortools.OrToolsSolver;
-import com.vmware.dcm.backend.ortools.StringEncoding;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -734,5 +731,31 @@ public class OpsTests {
         assertEquals(CpSolverStatus.OPTIMAL, solve);
         final Set<Long> collect = vars.stream().map(solver::value).collect(Collectors.toSet());
         assertFalse(collect.contains(solver.value(var)));
+    }
+
+    @Test
+    public void inObjectArrHardConstraint() {
+        final Object[] vars = {100};
+        final IntVar var = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar in = ops.inObjectArr(var, vars);
+        model.addEquality(in, 1);
+
+        final CpSolver solver = new CpSolver();
+        final CpSolverStatus solve = solver.solve(model);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
+        assertEquals(100, solver.value(var));
+    }
+
+    @Test
+    public void inObjectArrSoft() {
+        final Object[] vars = {100};
+        final IntVar var = model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, "");
+        final IntVar in = ops.inObjectArr(var, vars);
+        model.maximize(in);
+
+        final CpSolver solver = new CpSolver();
+        final CpSolverStatus solve = solver.solve(model);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
+        assertEquals(100, solver.value(var));
     }
 }
