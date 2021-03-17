@@ -101,7 +101,6 @@ import java.util.stream.Stream;
  * which can be invoked to run the solver.
  */
 public class OrToolsSolver implements ISolverBackend {
-    public static final String OR_TOOLS_LIB_ENV = "OR_TOOLS_LIB";
     private static final int NUM_THREADS_DEFAULT = 4;
     private static final int MAX_TIME_IN_SECONDS = 1;
     private static final String GENERATED_BACKEND_CLASS_FILE_PATH = "/tmp";
