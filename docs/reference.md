@@ -124,14 +124,25 @@ check controllable__physical_machine = 'pm3';
 
 ### Soft constraints
 
-A soft constraint is structured as a view that computes an integer scalar expression whose value DCM will
-try to maximize. For example,
+A soft constraint is structured as a view that computes a single column of integers, 
+whose value DCM will try to maximize, followed by the `maximize` annotation. For example,
 
 ```sql
 create view objective_load_cpu as 
-select min(cpu_spare) from spare_cpu;
+select min(cpu_spare) from spare_cpu
+maximize;
 ```
 
+or
+
+```sql
+create view objective_load_cpu as 
+select cpu_spare from spare_cpu
+maximize;
+```
+
+DCM will try to maximize the sum of all objective functions. An objective function view that computes a 
+column expression (like the second example above) is treated as one objective function per cell in the column.
 
 ### Supported column types for inputs
 
