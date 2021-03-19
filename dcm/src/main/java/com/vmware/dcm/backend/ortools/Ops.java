@@ -22,8 +22,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class Ops {
-    private static final long DOMAIN_MIN = Integer.MIN_VALUE;
-    private static final long DOMAIN_MAX = Integer.MAX_VALUE;
     private final CpModel model;
     private final StringEncoding encoder;
     private final IntVar trueVar;
@@ -69,16 +67,44 @@ public class Ops {
 
     // TODO: add test case to OpsTests
     public IntVar scalProdLong(final List<IntVar> variables, final List<Long> coefficients) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
-        model.addEquality(ret, LinearExpr.scalProd(variables.toArray(new IntVar[0]),
-                coefficients.stream().mapToLong(Long::longValue).toArray()));
+        final int n = variables.size();
+        Preconditions.checkArgument(n == coefficients.size());
+        long minSum = 0;
+        long maxSum = 0;
+        final IntVar[] vars = new IntVar[n];
+        final long[] coeffs = new long[n];
+        for (int i = 0; i < n; i++) {
+            final IntVar var = variables.get(i);
+            final Domain domain = var.getDomain();
+            final long coeff = coefficients.get(i);
+            minSum += domain.min() * coeff;
+            maxSum += domain.max() * coeff;
+            vars[i] = var;
+            coeffs[i] = coeff;
+        }
+        final IntVar ret = model.newIntVar(Math.min(minSum, maxSum), Math.max(minSum, maxSum), "");
+        model.addEquality(ret, LinearExpr.scalProd(vars, coeffs));
         return ret;
     }
 
     public IntVar scalProdInteger(final List<IntVar> variables, final List<Integer> coefficients) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
-        model.addEquality(ret, LinearExpr.scalProd(variables.toArray(new IntVar[0]),
-                                                   coefficients.stream().mapToInt(Integer::intValue).toArray()));
+        final int n = variables.size();
+        Preconditions.checkArgument(n == coefficients.size());
+        long minSum = 0;
+        long maxSum = 0;
+        final IntVar[] vars = new IntVar[n];
+        final long[] coeffs = new long[n];
+        for (int i = 0; i < n; i++) {
+            final IntVar var = variables.get(i);
+            final Domain domain = var.getDomain();
+            final long coeff = coefficients.get(i);
+            minSum += domain.min() * coeff;
+            maxSum += domain.max() * coeff;
+            vars[i] = var;
+            coeffs[i] = coeff;
+        }
+        final IntVar ret = model.newIntVar(Math.min(minSum, maxSum), Math.max(minSum, maxSum), "");
+        model.addEquality(ret, LinearExpr.scalProd(vars, coeffs));
         return ret;
     }
 
@@ -149,7 +175,12 @@ public class Ops {
     }
 
     public IntVar div(final IntVar left, final int right) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
+        final Domain domain = left.getDomain();
+        final long minDivResult = domain.min() / right;
+        final long maxDivResult = domain.max() / right;
+        final long lb = Math.min(minDivResult, maxDivResult);
+        final long ub = Math.max(minDivResult, maxDivResult);
+        final IntVar ret = model.newIntVar(lb, ub, "");
         model.addDivisionEquality(ret, left, model.newConstant(right));
         return ret;
     }
@@ -159,13 +190,17 @@ public class Ops {
     }
 
     public IntVar plus(final IntVar left, final int right) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
+        final Domain domain = left.getDomain();
+        final IntVar ret = model.newIntVar(domain.min() + right, domain.max() + right, "");
         model.addEquality(ret, LinearExpr.sum(new IntVar[]{left, model.newConstant(right)}));
         return ret;
     }
 
     public IntVar plus(final IntVar left, final IntVar right) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
+        final Domain lDomain = left.getDomain();
+        final Domain rDomain = right.getDomain();
+        final IntVar ret = model.newIntVar(lDomain.min()  + rDomain.min(),
+                                        lDomain.max()  + rDomain.max(), "");
         model.addEquality(ret, LinearExpr.sum(new IntVar[]{left, right}));
         return ret;
     }
@@ -175,13 +210,26 @@ public class Ops {
     }
 
     public IntVar minus(final IntVar left, final int right) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
+        final Domain domain = left.getDomain();
+        final long leftLbResult = domain.min() - right;
+        final long leftUbResult = domain.max() - right;
+        final long lb = Math.min(leftLbResult, leftUbResult);
+        final long ub = Math.max(leftLbResult, leftUbResult);
+        final IntVar ret = model.newIntVar(lb, ub, "");
         model.addEquality(ret, LinearExpr.sum(new IntVar[]{left, model.newConstant(-right)}));
         return ret;
     }
 
     public IntVar minus(final IntVar left, final IntVar right) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
+        final Domain lDomain = left.getDomain();
+        final Domain rDomain = right.getDomain();
+        final long lDomainMin = lDomain.min();
+        final long lDomainMax = lDomain.max();
+        final long rDomainMin = rDomain.min();
+        final long rDomainMax = rDomain.max();
+        final long lb = Math.min(lDomainMin - rDomainMin, lDomainMin - rDomainMax);
+        final long ub = Math.max(lDomainMax - rDomainMin, lDomainMax - rDomainMax);
+        final IntVar ret = model.newIntVar(lb, ub, "");
         model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{left, right}, new int[]{1, -1}));
         return ret;
     }
@@ -195,13 +243,26 @@ public class Ops {
     }
 
     public IntVar mult(final IntVar left, final int right) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
+        final Domain domain = left.getDomain();
+        final long lDomainMinResult = domain.min() * right;
+        final long lDomainMaxResult = domain.max() * right;
+        final long lb = Math.min(lDomainMinResult, lDomainMaxResult);
+        final long ub = Math.max(lDomainMinResult, lDomainMaxResult);
+        final IntVar ret = model.newIntVar(lb, ub, "");
         model.addEquality(ret, LinearExpr.term(left, right));
         return ret;
     }
 
     public IntVar mult(final IntVar left, final IntVar right) {
-        final IntVar ret = model.newIntVar(DOMAIN_MIN, DOMAIN_MAX, "");
+        final Domain lDomain = left.getDomain();
+        final Domain rDomain = right.getDomain();
+        final long lDomainMin = lDomain.min();
+        final long lDomainMax = lDomain.max();
+        final long rDomainMin = rDomain.min();
+        final long rDomainMax = rDomain.max();
+        final long lb = Math.min(lDomainMin * rDomainMin, lDomainMax * rDomainMax);
+        final long ub = Math.max(lDomainMin * rDomainMin, lDomainMax * rDomainMax);
+        final IntVar ret = model.newIntVar(lb, ub, "");
         model.addProductEquality(ret, new IntVar[]{left, right});
         return ret;
     }
