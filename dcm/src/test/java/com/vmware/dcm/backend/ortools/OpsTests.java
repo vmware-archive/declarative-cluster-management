@@ -54,6 +54,30 @@ public class OpsTests {
     }
 
     @Test
+    public void testScalProdInt() {
+        final List<IntVar> entries = List.of(model.newIntVar(0, 1, ""), model.newIntVar(1, 2, ""));
+        final List<Integer> coeff = List.of(5, 6);
+        final IntVar scalProd = ops.scalProdInteger(entries, coeff);
+        model.maximize(scalProd);
+        final CpSolver solver = new CpSolver();
+        final CpSolverStatus solve = solver.solve(model);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
+        assertEquals(17, solver.value(scalProd));
+    }
+
+    @Test
+    public void testScalProdLong() {
+        final List<IntVar> entries = List.of(model.newIntVar(0, 1, ""), model.newIntVar(1, 2, ""));
+        final List<Long> coeff = List.of(5L, 6L);
+        final IntVar scalProd = ops.scalProdLong(entries, coeff);
+        model.maximize(scalProd);
+        final CpSolver solver = new CpSolver();
+        final CpSolverStatus solve = solver.solve(model);
+        assertEquals(CpSolverStatus.OPTIMAL, solve);
+        assertEquals(17L, solver.value(scalProd));
+    }
+
+    @Test
     public void testSumVEquals() {
         final List<IntVar> entries = List.of(model.newIntVar(0, 1, ""),
                                              model.newIntVar(1, 2, ""),
