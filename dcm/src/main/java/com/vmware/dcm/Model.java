@@ -160,7 +160,7 @@ public class Model {
         final List<Table<?>> tables = new ArrayList<>();
         for (final Table<?> t : dslMeta.getTables()) {
             // Only access the tables that are referenced by the constraints.
-            if (accessedTableNames.contains(t.getName())) {
+            if (accessedTableNames.contains(t.getName().toUpperCase())) {
                 tables.add(t);
 
                 // Also add tables referenced by foreign keys.
@@ -199,6 +199,7 @@ public class Model {
      */
     public synchronized Map<String, Result<? extends Record>> solve(final Set<String> tables)
             throws ModelException {
+        final Set<String> tablesInUpperCase = tables.stream().map(String::toUpperCase).collect(Collectors.toSet());
         // run the solver and get a result set per table
         LOG.info("Running the solver");
         final long start = System.nanoTime();
@@ -206,8 +207,9 @@ public class Model {
         LOG.info("Solver has run successfully in {}ns. Processing records.", System.nanoTime() - start);
         final Map<String, Result<? extends Record>> recordsToReturn = new HashMap<>();
         for (final Map.Entry<IRTable, Result<? extends Record>> entry: recordsPerTable.entrySet()) {
-            if (tables.contains(entry.getKey().getName())) {
-                recordsToReturn.put(entry.getKey().getName(), entry.getValue());
+            final String entryName = entry.getKey().getName().toUpperCase();
+            if (tablesInUpperCase.contains(entryName)) {
+                recordsToReturn.put(entryName, entry.getValue());
             }
         }
         return recordsToReturn;
@@ -223,7 +225,7 @@ public class Model {
      */
     public synchronized Result<? extends Record> solve(final String tableName)
             throws ModelException {
-        return solve(Set.of(tableName.toUpperCase())).get(tableName);
+        return solve(Set.of(tableName)).get(tableName);
     }
 
     /**
