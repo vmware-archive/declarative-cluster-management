@@ -65,7 +65,6 @@ public class Ops {
         return ret;
     }
 
-    // TODO: add test case to OpsTests
     public IntVar scalProdLong(final List<IntVar> variables, final List<Long> coefficients) {
         final int n = variables.size();
         Preconditions.checkArgument(n == coefficients.size());
