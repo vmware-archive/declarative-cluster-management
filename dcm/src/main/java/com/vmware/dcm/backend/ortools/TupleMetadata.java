@@ -29,17 +29,22 @@ import java.util.stream.Collectors;
  */
 public class TupleMetadata {
     private final Map<String, Map<String, String>> tableToFieldToType = new HashMap<>();
+    private final Map<String, Map<String, Integer>> tableToFieldIndex = new HashMap<>();
     private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
 
     String computeTableTupleType(final IRTable table) {
         Preconditions.checkArgument(!tableToFieldToType.containsKey(table.getAliasedName()));
+        Preconditions.checkArgument(!tableToFieldIndex.containsKey(table.getAliasedName()));
+        final AtomicInteger fieldIndex = new AtomicInteger(0);
         return table.getIRColumns().entrySet().stream()
                 .map(e -> {
                         final String retVal = InferType.typeStringFromColumn(e.getValue());
                         tableToFieldToType.computeIfAbsent(table.getAliasedName(), (k) -> new HashMap<>())
                                           .putIfAbsent(e.getKey(), retVal);
+                        tableToFieldIndex.computeIfAbsent(table.getAliasedName(),  (k) -> new HashMap<>())
+                                          .putIfAbsent(e.getKey(), fieldIndex.getAndIncrement());
                         return retVal;
                     }
                 ).collect(Collectors.joining(", "));
@@ -91,6 +96,10 @@ public class TupleMetadata {
 
     String getTypeForField(final String tableName, final String columnName) {
         return Objects.requireNonNull(tableToFieldToType.get(tableName).get(columnName));
+    }
+
+    int getFieldIndexForTable(final String tableName, final String columnName) {
+        return Objects.requireNonNull(tableToFieldIndex.get(tableName).get(columnName));
     }
 
     boolean canBeAccessedWithViewIndices(final String tableName) {

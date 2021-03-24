@@ -829,16 +829,21 @@ public class OrToolsSolver implements ISolverBackend {
                         .map(IRPrimaryKey::getPrimaryKeyFields)
                         .filter(e -> !e.isEmpty())
                         .filter(e -> e.size() == 1)
-                        .ifPresent(pkCol -> output.addStatement("final var $1LIndex = $2T.range(0, $3L.size())\n" +
+                        .ifPresent(pkCol -> {
+                            final int fieldIndex = tupleMetadata.getFieldIndexForTable(table.getName(),
+                                                                                       pkCol.get(0).getName());
+                            output.addStatement("final var $1LIndex = $2T.range(0, $3L.size())\n" +
                                         ".boxed()\n" +
-                                        ".collect($4T.toMap(i -> $3L.get(i).get($5S, $6L.class), i -> i));",
+                                        ".collect($4T.toMap(i -> $3L.get(i).get($5L /* $6L */, $7L.class), i -> i));",
                                 tableNameStr(table.getName()),
                                 IntStream.class,
                                 tableNameStr(table.getName()),
                                 Collectors.class,
+                                fieldIndex,
                                 pkCol.get(0).getName(),
-                                tupleMetadata.getTypeForField(table, pkCol.get(0))
-                        ));
+                                tupleMetadata.getTypeForField(table, pkCol.get(0)));
+                            }
+                    );
             }
 
             // ...4) for controllable fields, create a corresponding array of IntVars.
@@ -1000,6 +1005,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final String tempViewName = getTempViewName();
                 output.addStatement("final Result<? extends Record> $L = " +
                         "context.getTable($S).getCurrentData()", tempViewName, tableName);
+
                 table.getIRColumns().forEach(
                     (name, field) -> {
                         // Else, we update the records corresponding to the table.
@@ -1013,7 +1019,8 @@ public class OrToolsSolver implements ISolverBackend {
                                 output.addStatement("obj[0] = solver.value($L[i])",
                                         fieldNameStr(tableName, field.getName()));
                             }
-                            output.addStatement("$L.get(i).from(obj, $S)", tempViewName, field.getName());
+                            final int fieldIndex = tupleMetadata.getFieldIndexForTable(tableName, field.getName());
+                            output.addStatement("$L.get(i).from(obj, $L)", tempViewName, fieldIndex);
                             output.endControlFlow();
                         }
                     }
@@ -1044,8 +1051,9 @@ public class OrToolsSolver implements ISolverBackend {
                 return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr, fieldIndex);
             } else {
                 final String type = tupleMetadata.getTypeForField(tableName, fieldName);
-                return String.format("%s.get(%s).get(\"%s\", %s.class)",
-                        tableNameStr(tableName), iterStr, fieldName, type);
+                final int fieldIndex = tupleMetadata.getFieldIndexForTable(tableName, fieldName);
+                return String.format("%s.get(%s).get(%s /* %s */, %s.class)",
+                        tableNameStr(tableName), iterStr, fieldIndex, fieldName, type);
             }
         }
     }
