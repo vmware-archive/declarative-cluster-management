@@ -50,14 +50,14 @@ To use DCM from a Maven-based project, use the following dependency:
 <dependency>
     <groupId>com.vmware.dcm</groupId>
     <artifactId>dcm</artifactId>
-    <version>0.7.1</version>
+    <version>0.8.0</version>
 </dependency>
 ```
 
 To use within a Gradle-based project:
 
 ```
-implementation 'com.vmware.dcm:dcm:0.7.1'
+implementation 'com.vmware.dcm:dcm:0.8.0'
 ```
 
 For now, one of DCM's dependencies is only available on Jcenter (we expect this to change soon). 
