@@ -88,7 +88,7 @@ public final class Scheduler {
         this.dbConnectionPool = dbConnectionPool;
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         this.model = createDcmModel(dbConnectionPool.getConnectionToDb(), solverToUse, policies, numThreads,
-                                    solverMaxTimeInSeconds);
+                                    solverMaxTimeInSeconds, debugMode);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
@@ -174,11 +174,12 @@ public final class Scheduler {
      * Instantiates a DCM model based on the configured policies.
      */
     private Model createDcmModel(final DSLContext conn, final String solverToUse, final List<String> policies,
-                                 final int numThreads, final int solverMaxTimeInSeconds) {
+                                 final int numThreads, final int solverMaxTimeInSeconds, final boolean debugMode) {
         switch (solverToUse) {
             case "ORTOOLS":
                 final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
                                                      .setNumThreads(numThreads)
+                                                     .setPrintDiagnostics(debugMode)
                                                      .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
                 return Model.build(conn, orToolsSolver, policies);
             case "MNZ-CHUFFED":

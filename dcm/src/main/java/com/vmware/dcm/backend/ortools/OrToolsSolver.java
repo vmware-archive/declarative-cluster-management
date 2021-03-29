@@ -1085,7 +1085,7 @@ public class OrToolsSolver implements ISolverBackend {
             final Path path = Path.of("/tmp/compilerOutput");
             final BufferedWriter fileWriter = Files.newBufferedWriter(path);
             final Boolean call = compiler.getTask(fileWriter, fileManager, null,
-                    ImmutableList.of("-verbose", "-d", "/tmp/"), null, compilationUnit)
+                    ImmutableList.of("-verbose", "-g", "-d", "/tmp/"), null, compilationUnit)
                     .call();
             if (!call) {
                 final List<String> strings = Files.readAllLines(path);
