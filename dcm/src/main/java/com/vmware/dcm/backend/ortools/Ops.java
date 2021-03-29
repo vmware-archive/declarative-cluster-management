@@ -545,11 +545,18 @@ public class Ops {
     public IntVar or(final IntVar left, final IntVar right) {
         final Domain leftDomain = left.getDomain();
         final Domain rightDomain = right.getDomain();
-        if (leftDomain.size() == 1 && leftDomain.min() == 1) {
+        final long leftDomainSize = leftDomain.size();
+        final long rightDomainSize = rightDomain.size();
+        final long leftDomainMin = leftDomain.min();
+        final long rightDomainMin = rightDomain.min();
+        if (leftDomainSize == 1 && leftDomainMin == 1) {
             return trueVar;
         }
-        if (rightDomain.size() == 1 && rightDomain.min() == 1) {
+        if (rightDomainSize == 1 && rightDomainMin == 1) {
             return trueVar;
+        }
+        if (rightDomainSize == 1 && leftDomainSize == 1) {
+            return falseVar;
         }
         final IntVar bool = model.newBoolVar("");
         model.addBoolOr(new Literal[]{left, right}).onlyEnforceIf(bool);
@@ -569,11 +576,18 @@ public class Ops {
     public IntVar and(final IntVar left, final IntVar right) {
         final Domain leftDomain = left.getDomain();
         final Domain rightDomain = right.getDomain();
-        if (leftDomain.size() == 1 && leftDomain.min() == 0) {
+        final long leftDomainSize = leftDomain.size();
+        final long rightDomainSize = rightDomain.size();
+        final long leftDomainMin = leftDomain.min();
+        final long rightDomainMin = rightDomain.min();
+        if (leftDomainSize == 1 && leftDomainMin == 0) {
             return falseVar;
         }
-        if (rightDomain.size() == 1 && rightDomain.min() == 0) {
+        if (rightDomainSize == 1 && rightDomainMin == 0) {
             return falseVar;
+        }
+        if (rightDomainSize == 1 && leftDomainSize == 1) {
+            return trueVar;
         }
         final IntVar bool = model.newBoolVar("");
         model.addBoolAnd(new Literal[]{left, right}).onlyEnforceIf(bool);
