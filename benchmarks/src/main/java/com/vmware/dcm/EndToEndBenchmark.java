@@ -38,11 +38,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 @Warmup(iterations = 1, time = 1, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 10, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(1)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
@@ -60,7 +62,7 @@ public class EndToEndBenchmark {
         @Nullable PodResourceEventHandler handler = null;
         @Nullable EmulatedPodToNodeBinder binder = null;
 
-        @Setup(Level.Iteration)
+        @Setup(Level.Trial)
         public void setUp() {
             final DBConnectionPool dbConnectionPool = new DBConnectionPool();
             binder = new EmulatedPodToNodeBinder(dbConnectionPool);
@@ -77,22 +79,26 @@ public class EndToEndBenchmark {
                 final String nodeName = "n" + i;
                 final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
                 node.getStatus().getCapacity().put("cpu", new Quantity("8"));
-                node.getStatus().getCapacity().put("memory", new Quantity("6000"));
+                node.getStatus().getCapacity().put("memory", new Quantity("100"));
                 node.getStatus().getCapacity().put("pods", new Quantity("110"));
                 nodeResourceEventHandler.onAddSync(node);
 
-                // Add one system pod per node
-                final String podName = "system-pod-" + nodeName;
-                final String status = "Running";
-                final Pod pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
-                final Map<String, Quantity> resourceRequests = new HashMap<>();
-                resourceRequests.put("cpu", new Quantity("100m"));
-                resourceRequests.put("memory", new Quantity("1"));
-                resourceRequests.put("pods", new Quantity("1"));
-                pod.getMetadata().setNamespace("kube-system");
-                pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
-                pod.getSpec().setNodeName(nodeName);
-                handler.onAddSync(pod);
+                // Add several existing pods per node
+                for (int j = 0; j < 5; j++) {
+                    final int cpuTlRand = ThreadLocalRandom.current().nextInt(100);
+                    final int memTlRand = ThreadLocalRandom.current().nextInt(20);
+                    final String podName = "system-pod-" + nodeName;
+                    final String status = "Running";
+                    final Pod pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+                    final Map<String, Quantity> resourceRequests = new HashMap<>();
+                    resourceRequests.put("cpu", new Quantity((100 + cpuTlRand) + "m"));
+                    resourceRequests.put("memory", new Quantity(memTlRand + ""));
+                    resourceRequests.put("pods", new Quantity("1"));
+                    pod.getMetadata().setNamespace("kube-system");
+                    pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+                    pod.getSpec().setNodeName(nodeName);
+                    handler.onAddSync(pod);
+                }
             }
         }
 
@@ -116,6 +122,7 @@ public class EndToEndBenchmark {
             spec.setTaints(Collections.emptyList());
             node.setSpec(spec);
             final ObjectMeta meta = new ObjectMeta();
+            meta.setUid(UUID.randomUUID().toString());
             meta.setName(nodeName);
             meta.setLabels(labels);
             node.setMetadata(meta);
@@ -126,6 +133,7 @@ public class EndToEndBenchmark {
                            final Map<String, String> labels) {
             final Pod pod = new Pod();
             final ObjectMeta meta = new ObjectMeta();
+            meta.setUid(UUID.randomUUID().toString());
             meta.setName(podName);
             meta.setLabels(labels);
             meta.setCreationTimestamp("1");
@@ -163,7 +171,8 @@ public class EndToEndBenchmark {
         for (int i = 0; i < 10; i++) {
             final Pod podToAdd = state.newPod("pod-" + i,
                     "Pending", Collections.emptyMap(), Collections.emptyMap());
-            final ListenableFuture<Boolean> booleanListenableFuture = state.binder.waitForPodBinding("pod-" + i);
+            final ListenableFuture<Boolean> booleanListenableFuture = state.binder.waitForPodBinding(
+                    podToAdd.getMetadata().getUid());
             state.handler.onAdd(podToAdd);
             booleanListenableFuture.get();
         }
