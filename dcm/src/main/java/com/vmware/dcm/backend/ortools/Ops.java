@@ -118,6 +118,12 @@ public class Ops {
     }
 
     public IntVar exists(final List<IntVar> data) {
+        if (data.size() == 0) {
+            return falseVar;
+        }
+        if (data.size() == 1) {
+            return eq(data.get(0), true);
+        }
         final IntVar bool = model.newBoolVar("");
         final Literal[] literals = data.toArray(new Literal[0]);
         model.addBoolOr(literals).onlyEnforceIf(bool);
@@ -466,6 +472,12 @@ public class Ops {
     }
 
     public IntVar inString(final IntVar left, final List<String> right) {
+        if (right.size() == 0) {
+            return falseVar;
+        }
+        if (right.size() == 1) {
+            return eq(left, right.get(0));
+        }
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
@@ -474,6 +486,12 @@ public class Ops {
     }
 
     public IntVar inLong(final IntVar left, final List<Long> right) {
+        if (right.size() == 0) {
+            return falseVar;
+        }
+        if (right.size() == 1) {
+            return eq(left, right.get(0));
+        }
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
@@ -482,6 +500,12 @@ public class Ops {
     }
 
     public IntVar inInteger(final IntVar left, final List<Integer> right) {
+        if (right.size() == 0) {
+            return falseVar;
+        }
+        if (right.size() == 1) {
+            return eq(left, right.get(0));
+        }
         final IntVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
@@ -490,6 +514,12 @@ public class Ops {
     }
 
     public IntVar inIntVar(final IntVar left, final List<IntVar> right) {
+        if (right.size() == 0) {
+            return falseVar;
+        }
+        if (right.size() == 1) {
+            return eq(left, right.get(0));
+        }
         final IntVar bool = model.newBoolVar("");
         final Literal[] literals = new Literal[right.size()];
         for (int i = 0; i < right.size(); i++) {
@@ -513,6 +543,14 @@ public class Ops {
     }
 
     public IntVar or(final IntVar left, final IntVar right) {
+        final Domain leftDomain = left.getDomain();
+        final Domain rightDomain = right.getDomain();
+        if (leftDomain.size() == 1 && leftDomain.min() == 1) {
+            return trueVar;
+        }
+        if (rightDomain.size() == 1 && rightDomain.min() == 1) {
+            return trueVar;
+        }
         final IntVar bool = model.newBoolVar("");
         model.addBoolOr(new Literal[]{left, right}).onlyEnforceIf(bool);
         model.addBoolAnd(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
@@ -529,6 +567,14 @@ public class Ops {
     }
 
     public IntVar and(final IntVar left, final IntVar right) {
+        final Domain leftDomain = left.getDomain();
+        final Domain rightDomain = right.getDomain();
+        if (leftDomain.size() == 1 && leftDomain.min() == 0) {
+            return falseVar;
+        }
+        if (rightDomain.size() == 1 && rightDomain.min() == 0) {
+            return falseVar;
+        }
         final IntVar bool = model.newBoolVar("");
         model.addBoolAnd(new Literal[]{left, right}).onlyEnforceIf(bool);
         model.addBoolOr(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
@@ -599,10 +645,10 @@ public class Ops {
             final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((String) o)).toArray();
             capacityConstraint(varsToAssign, domainArr, demands, capacities);
         } else if (domain.get(0) instanceof Integer) {
-            final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((Integer) o)).toArray();
+            final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((int) o)).toArray();
             capacityConstraint(varsToAssign, domainArr, demands, capacities);
         } else if (domain.get(0) instanceof Long) {
-            final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((Long) o)).toArray();
+            final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((long) o)).toArray();
             capacityConstraint(varsToAssign, domainArr, demands, capacities);
         } else {
             // Keep this a runtime exception because this can only happen if the compiler
