@@ -15,11 +15,9 @@ import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
 import com.vmware.dcm.SolverException;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class Ops {
     private final CpModel model;
@@ -697,19 +695,18 @@ public class Ops {
                                    final List<List<Long>> demands, final List<List<Long>> capacities) {
         Preconditions.checkArgument(demands.size() == capacities.size());
 
-        final IntVar[] taskToNodeAssignment = varsToAssign.toArray(IntVar[]::new);
-        final int numTasks = taskToNodeAssignment.length;
+        final int numTasks = varsToAssign.size();
+        final int numResources = demands.size();
         final IntervalVar[] tasksIntervals = new IntervalVar[numTasks + capacities.get(0).size()];
 
         final Domain domainT = Domain.fromValues(domainArr);
         final Domain intervalRange = Domain.fromFlatIntervals(new long[] {domainT.min() + 1, domainT.max() + 1});
+        final IntVar unitIntervalSize = model.newConstant(1);
         for (int i = 0; i < numTasks; i++) {
-            model.addLinearExpressionInDomain(taskToNodeAssignment[i], domainT);
             final IntVar intervalEnd = model.newIntVarFromDomain(intervalRange, "");
 
             // interval with start as taskToNodeAssignment and size of 1
-            tasksIntervals[i] = model.newIntervalVar(taskToNodeAssignment[i],
-                    model.newConstant(1), intervalEnd, "");
+            tasksIntervals[i] = model.newIntervalVar(varsToAssign.get(i), unitIntervalSize, intervalEnd, "");
         }
 
         // Create dummy intervals
@@ -719,36 +716,51 @@ public class Ops {
         }
 
         // Convert to list of arrays
-        final List<long[]> nodeCapacities =
-                capacities.stream().map(vec -> vec.stream().mapToLong(Long::longValue).toArray())
-                        .collect(Collectors.toList());
-        final List<Long> maxCapacities = nodeCapacities.stream().map(la -> Arrays.stream(la).max().getAsLong())
-                .collect(Collectors.toList());
-        final int numResources = demands.size();
+        final long[][] nodeCapacities = new long[numResources][];
+        final long[] maxCapacities = new long[numResources];
+
+        for (int i = 0; i < capacities.size(); i++) {
+            final List<Long> vec = capacities.get(i);
+            final long[] capacityArr = new long[vec.size()];
+            long maxCapacityValue = Long.MIN_VALUE;
+            for (int j = 0; j < capacityArr.length; j++) {
+                capacityArr[j] = vec.get(j);
+                maxCapacityValue = Math.max(maxCapacityValue, capacityArr[j]);
+            }
+            nodeCapacities[i] = capacityArr;
+            maxCapacities[i] = maxCapacityValue;
+        }
 
         // For each resource, create dummy demands to accommodate heterogeneous capacities
-        final List<long[]> updatedDemands = new ArrayList<>(demands.size());
+        final long[][] updatedDemands = new long[numResources][];
         for (int i = 0; i < numResources; i++) {
-            final List<Long> demand = new ArrayList<>(demands.get(i));
-            final long maxCapacity = maxCapacities.get(i);
-            for (final long value : nodeCapacities.get(i)) {
-                demand.add(maxCapacity - value);
+            final long[] demand = new long[numTasks + capacities.get(0).size()];
+
+            // copy over task demands
+            int iter = 0;
+            for (final long taskDemand: demands.get(i)) {
+                demand[iter] = taskDemand;
+                iter++;
             }
-            updatedDemands.add(demand.stream().mapToLong(Long::longValue).toArray());
+
+            // copy over dummy demands
+            final long maxCapacity = maxCapacities[i];
+            for (final long nodeHeterogeneityAdjustment: nodeCapacities[i]) {
+                demand[iter] = maxCapacity - nodeHeterogeneityAdjustment;
+                iter++;
+            }
+            updatedDemands[i] = demand;
         }
-        updatedDemands.forEach(
-                vec -> Preconditions.checkArgument(vec.length == (numTasks + capacities.get(0).size()))
-        );
 
         // 2. Capacity constraints
         for (int i = 0; i < numResources; i++) {
-            model.addCumulative(tasksIntervals, updatedDemands.get(i), maxCapacities.get(i));
+            model.addCumulative(tasksIntervals, updatedDemands[i], maxCapacities[i]);
         }
 
         // Cumulative score
         for (int i = 0; i < numResources; i++) {
-            final IntVar max = model.newIntVar(0, maxCapacities.get(i), "");
-            model.addCumulative(tasksIntervals, updatedDemands.get(i), max);
+            final IntVar max = model.newIntVar(0, maxCapacities[i], "");
+            model.addCumulative(tasksIntervals, updatedDemands[i], max);
             model.minimize(max);
         }
     }
