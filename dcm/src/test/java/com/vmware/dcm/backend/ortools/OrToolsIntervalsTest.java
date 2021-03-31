@@ -13,6 +13,7 @@ import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearExpr;
+import com.google.ortools.util.Domain;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -121,7 +122,7 @@ public class OrToolsIntervalsTest {
 
         // Create the variables.
         final int numTasks = 50;
-        final int numNodes = 100;
+        final int numNodes = 1000;
         final IntVar[] taskToNodeAssignment = new IntVar[numTasks];
         final int[] taskDemands1 = new int[numTasks];
         final int[] taskDemands2 = new int[numTasks];
@@ -187,5 +188,197 @@ public class OrToolsIntervalsTest {
             System.out.println(solver.value(max1));
         }
         System.out.println("Done: " + (System.currentTimeMillis() - now));
+    }
+
+
+    @Test
+    public void testWithIntervalsMany() {
+        // Create the model.
+        final CpModel model = new CpModel();
+
+        // Create the variables.
+        final int numTasks = 50;
+        final int numNodes = 100;
+        final IntVar[] taskToNodeAssignment = new IntVar[numTasks];
+        final long[] nodeDomain = new long[numNodes];
+
+        for (int i = 0; i < numNodes; i++) {
+            nodeDomain[i] = i;
+        }
+        final IntVar[] nodeIntervalEnd = new IntVar[numTasks];
+        final IntervalVar[] tasksIntervals = new IntervalVar[numTasks];
+
+        final long[] taskDemands1 = new long[numTasks];
+        final long[] nodeCapacities1 = new long[numNodes];
+
+        for (int i = 0; i < numTasks; i++) {
+            taskToNodeAssignment[i] = model.newIntVar(0, numNodes - 1, "");
+            nodeIntervalEnd[i] = model.newIntVar(1, numNodes, "");
+
+            // interval with start as taskToNodeAssignment and size of 1
+            tasksIntervals[i] = model.newIntervalVar(taskToNodeAssignment[i],
+                    model.newConstant(1), nodeIntervalEnd[i], "");
+        }
+
+        for (int i = 0; i < numNodes; i++) {
+            nodeCapacities1[i] = ThreadLocalRandom.current().nextInt(400, 600) > 500 ? 100 : 200;
+        }
+
+        for (int i = 0; i < numTasks; i++) {
+            if (i == 0) {
+                taskDemands1[i] = 60;
+            } else {
+                taskDemands1[i] = ThreadLocalRandom.current().nextLong(10, 50);
+            }
+        }
+
+
+        // 1. Symmetry breaking
+        for (int i = 0; i < numTasks - 1; i++) {
+            model.addLessOrEqual(taskToNodeAssignment[i], taskToNodeAssignment[i + 1]);
+        }
+
+        // 2. Do a join
+        final IntVar[] joinIndices = new IntVar[numTasks];
+        final IntVar[] joinCapacityColumnValue = new IntVar[numTasks];
+        final IntVar[] scaledDemand = new IntVar[numTasks];
+        // join key
+        for (int i = 0; i < numTasks; i++) {
+            joinIndices[i] = model.newIntVar(0, numNodes - 1, "");
+            joinCapacityColumnValue[i] = model.newIntVarFromDomain(
+                    Domain.fromValues(nodeCapacities1), "");
+
+            // link join index -> joined capacity
+            model.addElement(joinIndices[i], nodeCapacities1, joinCapacityColumnValue[i]);
+
+            // link join index -> domain column
+            model.addElement(joinIndices[i], nodeDomain, taskToNodeAssignment[i]);
+
+            // scaled demand
+            final IntVar prod = model.newConstant(taskDemands1[i] * 1000);
+            scaledDemand[i] = model.newIntVar(0, 10000000, "");
+            model.addDivisionEquality(scaledDemand[i], prod, joinCapacityColumnValue[i]);
+        }
+
+        model.addCumulative(tasksIntervals, scaledDemand, 1000);
+
+        // Create a solver and solve the model.
+        final CpSolver solver = new CpSolver();
+        solver.getParameters().setNumSearchWorkers(4);
+        solver.getParameters().setLogSearchProgress(true);
+        solver.getParameters().setCpModelProbingLevel(0);
+
+        final CpSolverStatus status = solver.solve(model);
+        if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
+            System.out.println(Arrays.toString(nodeCapacities1));
+            for (int i = 0; i < numTasks; i++) {
+                System.out.printf(
+                        "%s %s %s %s %s%n",
+                            solver.value(taskToNodeAssignment[i]),
+                            taskDemands1[i],
+                            solver.value(joinCapacityColumnValue[i]),
+                            solver.value(scaledDemand[i]),
+                            solver.value(joinIndices[i])
+                        );
+            }
+        }
+    }
+
+
+    @Test
+    public void testWithAllowedAssignments() throws CpModel.WrongLength {
+        // Create the model.
+        final CpModel model = new CpModel();
+
+        // Create the variables.
+        final int numTasks = 50;
+        final int numNodes = 100;
+        final IntVar[] taskToNodeAssignment = new IntVar[numTasks];
+        final long[] nodeDomain = new long[numNodes];
+
+        for (int i = 0; i < numNodes; i++) {
+            nodeDomain[i] = i;
+        }
+        final IntVar[] nodeIntervalEnd = new IntVar[numTasks];
+        final IntervalVar[] tasksIntervals = new IntervalVar[numTasks];
+
+        final long[] taskDemands1 = new long[numTasks];
+
+        final long[] nodeCapacities1 = new long[numNodes];
+
+        for (int i = 0; i < numTasks; i++) {
+            taskToNodeAssignment[i] = model.newIntVar(0, numNodes - 1, "");
+            nodeIntervalEnd[i] = model.newIntVar(1, numNodes, "");
+
+            // interval with start as taskToNodeAssignment and size of 1
+            tasksIntervals[i] = model.newIntervalVar(taskToNodeAssignment[i],
+                    model.newConstant(1), nodeIntervalEnd[i], "");
+        }
+
+        for (int i = 0; i < numNodes; i++) {
+            nodeCapacities1[i] = ThreadLocalRandom.current().nextInt(400, 600) > 500 ? 100 : 200;
+        }
+
+        for (int i = 0; i < numTasks; i++) {
+            if (i == 0) {
+                taskDemands1[i] = 60;
+            } else {
+                taskDemands1[i] = ThreadLocalRandom.current().nextLong(10, 50);
+            }
+        }
+
+
+        // 1. Symmetry breaking
+        for (int i = 0; i < numTasks - 1; i++) {
+            model.addLessOrEqual(taskToNodeAssignment[i], taskToNodeAssignment[i + 1]);
+        }
+
+        // 2. Do a join
+        final IntVar[] joinCapacityColumnValue = new IntVar[numTasks];
+        final IntVar[] scaledDemand = new IntVar[numTasks];
+        // join key
+        final long[][] allowedAssignments = new long[numNodes][];
+        for (int i = 0; i < numNodes; i++) {
+            allowedAssignments[i] = new long[2];
+            allowedAssignments[i][0] = nodeDomain[i];
+            allowedAssignments[i][1] = nodeCapacities1[i];
+        }
+        for (int i = 0; i < numTasks; i++) {
+            joinCapacityColumnValue[i] = model.newIntVarFromDomain(
+                    Domain.fromValues(nodeCapacities1), "");
+
+            // link join index -> joined capacity
+            model.addAllowedAssignments(
+                    new IntVar[]{taskToNodeAssignment[i], joinCapacityColumnValue[i]},
+                    allowedAssignments
+            );
+
+            // scaled demand
+            final IntVar prod = model.newConstant(taskDemands1[i] * 1000);
+            scaledDemand[i] = model.newIntVar(0, 1000, "");
+            model.addDivisionEquality(scaledDemand[i], prod, joinCapacityColumnValue[i]);
+        }
+
+        model.addCumulative(tasksIntervals, scaledDemand, 1000);
+
+        // Create a solver and solve the model.
+        final CpSolver solver = new CpSolver();
+        solver.getParameters().setNumSearchWorkers(4);
+        solver.getParameters().setLogSearchProgress(true);
+        solver.getParameters().setCpModelProbingLevel(0);
+
+        final CpSolverStatus status = solver.solve(model);
+        if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
+            System.out.println(Arrays.toString(nodeCapacities1));
+            for (int i = 0; i < numTasks; i++) {
+                System.out.printf(
+                        "%s %s %s %s %n",
+                        solver.value(taskToNodeAssignment[i]),
+                        taskDemands1[i],
+                        solver.value(joinCapacityColumnValue[i]),
+                        solver.value(scaledDemand[i])
+                );
+            }
+        }
     }
 }
