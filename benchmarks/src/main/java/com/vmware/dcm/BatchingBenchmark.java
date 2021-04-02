@@ -6,6 +6,8 @@
 
 package com.vmware.dcm;
 
+import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.NodeAffinity;
@@ -14,8 +16,6 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
-import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.UpdateConditionStep;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -34,6 +34,7 @@ import org.openjdk.jmh.annotations.Warmup;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -52,63 +53,62 @@ public class BatchingBenchmark {
     @Param({"true", "false"})
     static boolean useParallelStream;
 
-    @State(Scope.Benchmark)
-    public static class BenchmarkState {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
+    final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+    final PodEventsToDatabase podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
 
-        @Setup(Level.Trial)
-        public void setUp() {
-            for (int i = 0; i < 10000; i++) {
-                final Pod pod = newPod("pod-" + i, "Pending", Collections.emptyMap(),
-                                        Collections.emptyMap());
-                final PodEvent event = new PodEvent(PodEvent.Action.ADDED, pod);
-                podEventsToDatabase.handle(event);
-            }
-        }
-
-
-        private Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
-                           final Map<String, String> labels) {
-            final Pod pod = new Pod();
-            final ObjectMeta meta = new ObjectMeta();
-            meta.setName(podName);
-            meta.setLabels(labels);
-            meta.setCreationTimestamp("1");
-            meta.setNamespace("default");
-            final PodSpec spec = new PodSpec();
-            spec.setSchedulerName(Scheduler.SCHEDULER_NAME);
-            spec.setPriority(0);
-            spec.setNodeSelector(selectorLabels);
-
-            final Container container = new Container();
-            container.setName("pause");
-
-            final ResourceRequirements resourceRequirements = new ResourceRequirements();
-            resourceRequirements.setRequests(Collections.emptyMap());
-            container.setResources(resourceRequirements);
-            spec.getContainers().add(container);
-
-            final Affinity affinity = new Affinity();
-            final NodeAffinity nodeAffinity = new NodeAffinity();
-            affinity.setNodeAffinity(nodeAffinity);
-            spec.setAffinity(affinity);
-            final PodStatus status = new PodStatus();
-            status.setPhase(phase);
-            pod.setMetadata(meta);
-            pod.setSpec(spec);
-            pod.setStatus(status);
-            return pod;
+    @Setup(Level.Trial)
+    public void setUp() {
+        for (int i = 0; i < 10000; i++) {
+            final Pod pod = newPod("pod-" + i, "Pending", Collections.emptyMap(),
+                                    Collections.emptyMap());
+            final PodEvent event = new PodEvent(PodEvent.Action.ADDED, pod);
+            podEventsToDatabase.handle(event);
         }
     }
 
+
+    private Pod newPod(final String podName, final String phase, final Map<String, String> selectorLabels,
+                       final Map<String, String> labels) {
+        final Pod pod = new Pod();
+        final ObjectMeta meta = new ObjectMeta();
+        meta.setUid(UUID.randomUUID().toString());
+        meta.setName(podName);
+        meta.setLabels(labels);
+        meta.setCreationTimestamp("1");
+        meta.setNamespace("default");
+        meta.setResourceVersion("123");
+        final PodSpec spec = new PodSpec();
+        spec.setSchedulerName(Scheduler.SCHEDULER_NAME);
+        spec.setPriority(0);
+        spec.setNodeSelector(selectorLabels);
+
+        final Container container = new Container();
+        container.setName("pause");
+
+        final ResourceRequirements resourceRequirements = new ResourceRequirements();
+        resourceRequirements.setRequests(Collections.emptyMap());
+        container.setResources(resourceRequirements);
+        spec.getContainers().add(container);
+
+        final Affinity affinity = new Affinity();
+        final NodeAffinity nodeAffinity = new NodeAffinity();
+        affinity.setNodeAffinity(nodeAffinity);
+        spec.setAffinity(affinity);
+        final PodStatus status = new PodStatus();
+        status.setPhase(phase);
+        pod.setMetadata(meta);
+        pod.setSpec(spec);
+        pod.setStatus(status);
+        return pod;
+    }
+
     @Benchmark
-    public void testBatchUpdate(final BenchmarkState state) {
+    public void testBatchUpdate() {
         final IntStream stream = useParallelStream ? IntStream.range(0, numPods).parallel()
                                                    : IntStream.range(0, numPods);
         final List<PodInfoRecord> records = stream
             .mapToObj(i -> {
-                    try (final DSLContext conn = state.dbConnectionPool.getConnectionToDb()) {
+                    try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
                         final PodInfoRecord podInfoRecord = conn.selectFrom(Tables.POD_INFO)
                                 .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i))
                                 .fetchOne();
@@ -117,7 +117,7 @@ public class BatchingBenchmark {
                     }
                 }
             ).collect(Collectors.toList());
-        try (final DSLContext conn = state.dbConnectionPool.getConnectionToDb()) {
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final int[] execute = conn.batchUpdate(records).execute();
             for (int i = 0; i < numPods; i++) {
                 if (execute[i] == 0) {
@@ -128,19 +128,19 @@ public class BatchingBenchmark {
     }
 
     @Benchmark
-    public void testBatch(final BenchmarkState state) {
+    public void testBatch() {
         final IntStream stream = useParallelStream ? IntStream.range(0, numPods).parallel()
                 : IntStream.range(0, numPods);
         final List<UpdateConditionStep<PodInfoRecord>> records = stream
             .mapToObj(i -> {
-                try (final DSLContext conn = state.dbConnectionPool.getConnectionToDb()) {
+                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
                         return conn.update(Tables.POD_INFO)
                                 .set(Tables.POD_INFO.NODE_NAME, "node-1")
                                 .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i));
                     }
                 }
             ).collect(Collectors.toList());
-        try (final DSLContext conn = state.dbConnectionPool.getConnectionToDb()) {
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final int[] execute = conn.batch(records).execute();
             for (int i = 0; i < numPods; i++) {
                 if (execute[i] == 0) {
@@ -151,13 +151,13 @@ public class BatchingBenchmark {
     }
 
     @Benchmark
-    public void testMultipleUpdates(final BenchmarkState state) {
+    public void testMultipleUpdates() {
         final IntStream stream = useParallelStream ? IntStream.range(0, numPods).parallel()
                                                    : IntStream.range(0, numPods);
         final int[] execute = stream
                 .map(
                     i -> {
-                        try (final DSLContext conn = state.dbConnectionPool.getConnectionToDb()) {
+                        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
                             return conn.update(Tables.POD_INFO)
                                     .set(Tables.POD_INFO.NODE_NAME, "node-1")
                                     .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i))
