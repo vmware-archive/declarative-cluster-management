@@ -834,7 +834,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                                                        pkCol.get(0).getName());
                             output.addStatement("final var $1LIndex = $2T.range(0, $3L.size())\n" +
                                         ".boxed()\n" +
-                                        ".collect($4T.toMap(i -> $3L.get(i).get($5L /* $6L */, $7L.class), i -> i));",
+                                        ".collect($4T.toMap(i -> ($7L) $3L.get(i).get($5L /* $6L */), i -> i));",
                                 tableNameStr(table.getName()),
                                 IntStream.class,
                                 tableNameStr(table.getName()),
@@ -1052,8 +1052,8 @@ public class OrToolsSolver implements ISolverBackend {
             } else {
                 final String type = tupleMetadata.getTypeForField(tableName, fieldName);
                 final int fieldIndex = tupleMetadata.getFieldIndexForTable(tableName, fieldName);
-                return String.format("%s.get(%s).get(%s /* %s */, %s.class)",
-                        tableNameStr(tableName), iterStr, fieldIndex, fieldName, type);
+                return String.format("(%s) %s.get(%s).get(%s /* %s */)",
+                        type, tableNameStr(tableName), iterStr, fieldIndex, fieldName);
             }
         }
     }
