@@ -40,12 +40,12 @@ public class TupleMetadata {
         final AtomicInteger fieldIndex = new AtomicInteger(0);
         return table.getIRColumns().entrySet().stream()
                 .map(e -> {
-                        final String retVal = InferType.typeStringFromColumn(e.getValue());
+                        final JavaType retVal = InferType.typeFromColumn(e.getValue());
                         tableToFieldToType.computeIfAbsent(table.getAliasedName(), (k) -> new HashMap<>())
-                                          .putIfAbsent(e.getKey(), retVal);
+                                          .putIfAbsent(e.getKey(), retVal.typeString());
                         tableToFieldIndex.computeIfAbsent(table.getAliasedName(),  (k) -> new HashMap<>())
                                           .putIfAbsent(e.getKey(), fieldIndex.getAndIncrement());
-                        return retVal;
+                        return retVal.typeString();
                     }
                 ).collect(Collectors.joining(", "));
     }
@@ -121,10 +121,11 @@ public class TupleMetadata {
 
     <T extends Expr> String generateTupleGenericParameters(final List<T> exprs) {
         return exprs.stream().map(this::inferType)
+                .map(JavaType::typeString)
                 .collect(Collectors.joining(", "));
     }
 
-    String inferType(final Expr expr) {
+    JavaType inferType(final Expr expr) {
         return InferType.forExpr(expr, viewTupleTypeParameters);
     }
 }

@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
-class InferType extends IRVisitor<String, VoidType> {
+class InferType extends IRVisitor<JavaType, VoidType> {
     private static final Logger LOG = LoggerFactory.getLogger(InferType.class);
     private final Map<String, String> viewTupleTypeParameters;
 
@@ -36,16 +36,16 @@ class InferType extends IRVisitor<String, VoidType> {
         this.viewTupleTypeParameters = viewTupleTypeParameters;
     }
 
-    public String visit(final Expr expr) {
+    public JavaType visit(final Expr expr) {
         return super.visit(expr, VoidType.getAbsent());
     }
 
     @Override
-    protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final VoidType context) {
-        final String leftType = visit(node.getLeft());
-        final String rightType = visit(node.getRight());
-        if (leftType.equals("IntVar") || rightType.equals("IntVar")) {
-            return "IntVar";
+    protected JavaType visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final VoidType context) {
+        final JavaType leftType = visit(node.getLeft());
+        final JavaType rightType = visit(node.getRight());
+        if (leftType == JavaType.IntVar || rightType == JavaType.IntVar) {
+            return JavaType.IntVar;
         }
         switch (node.getOperator()) {
             case EQUAL:
@@ -58,23 +58,23 @@ class InferType extends IRVisitor<String, VoidType> {
             case OR:
             case AND:
             case CONTAINS:
-                return "Boolean";
+                return JavaType.Boolean;
             case ADD:
             case SUBTRACT:
             case MULTIPLY:
             case DIVIDE:
             case MODULUS:
-                return "Integer";
+                return JavaType.Integer;
             default:
                 throw new UnsupportedOperationException();
         }
     }
 
     @Override
-    protected String visitGroupByComprehension(final GroupByComprehension node, final VoidType context) {
+    protected JavaType visitGroupByComprehension(final GroupByComprehension node, final VoidType context) {
         final Head head = node.getComprehension().getHead();
         if (head.getSelectExprs().size() == 1) {
-            final String type = visit(head.getSelectExprs().get(0), context);
+            final JavaType type = visit(head.getSelectExprs().get(0), context);
             LOG.warn("Returning type of sub-query {} as {}", node, type);
             return type;
         }
@@ -82,10 +82,10 @@ class InferType extends IRVisitor<String, VoidType> {
     }
 
     @Override
-    protected String visitListComprehension(final ListComprehension node, final VoidType context) {
+    protected JavaType visitListComprehension(final ListComprehension node, final VoidType context) {
         final Head head = node.getHead();
         if (head.getSelectExprs().size() == 1) {
-            final String type = visit(head.getSelectExprs().get(0), context);
+            final JavaType type = visit(head.getSelectExprs().get(0), context);
             LOG.warn("Returning type of sub-query {} as {}", node, type);
             return type;
         }
@@ -93,100 +93,99 @@ class InferType extends IRVisitor<String, VoidType> {
     }
 
     @Override
-    protected String visitColumnIdentifier(final ColumnIdentifier node, final VoidType context) {
-        return typeStringFromColumn(node);
+    protected JavaType visitColumnIdentifier(final ColumnIdentifier node, final VoidType context) {
+        return typeFromColumn(node);
     }
 
     @Override
-    protected String visitFunctionCall(final FunctionCall node, final VoidType context) {
+    protected JavaType visitFunctionCall(final FunctionCall node, final VoidType context) {
         if (node.getFunction().equals(FunctionCall.Function.CAPACITY_CONSTRAINT)) {
-            return "IntVar";
+            return JavaType.IntVar;
         }
         Preconditions.checkArgument(node.getArgument().size() == 1);
         return visit(node.getArgument().get(0), context);
     }
 
     @Override
-    protected String visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
+    protected JavaType visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
         // TODO: This is incomplete. It can be boolean if node.getArgument() is const.
-        return "IntVar";
+        return JavaType.IntVar;
     }
 
     @Override
-    protected String visitIsNullPredicate(final IsNullPredicate node, final VoidType context) {
-        return visit(node.getArgument(), context).equals("IntVar") ? "IntVar" : "Boolean";
+    protected JavaType visitIsNullPredicate(final IsNullPredicate node, final VoidType context) {
+        return visit(node.getArgument(), context) == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
     }
 
     @Override
-    protected String visitIsNotNullPredicate(final IsNotNullPredicate node, final VoidType context) {
-        return visit(node.getArgument(), context).equals("IntVar") ? "IntVar" : "Boolean";
+    protected JavaType visitIsNotNullPredicate(final IsNotNullPredicate node, final VoidType context) {
+        return visit(node.getArgument(), context) == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
     }
 
     @Override
-    protected String visitUnaryOperator(final UnaryOperator node, final VoidType context) {
-        final String type = visit(node.getArgument(), context);
+    protected JavaType visitUnaryOperator(final UnaryOperator node, final VoidType context) {
+        final JavaType type = visit(node.getArgument(), context);
         switch (node.getOperator()) {
             case NOT:
-                return type.equals("IntVar") ? "IntVar" : "Boolean";
+                return type == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
             case MINUS:
             case PLUS:
-                return type.equals("IntVar") ? "IntVar" : "Integer";
+                return type == JavaType.IntVar ? JavaType.IntVar : JavaType.Integer;
             default:
                 throw new IllegalArgumentException(node.toString());
         }
     }
 
     @Override
-    protected String visitLiteral(final Literal node, final VoidType context) {
+    protected JavaType visitLiteral(final Literal node, final VoidType context) {
         if (node.getValue() instanceof String) {
-            return "String";
+            return JavaType.String;
         } else if (node.getValue() instanceof Integer) {
-            return "Integer";
+            return JavaType.Integer;
         } else if (node.getValue() instanceof Boolean) {
-            return "Boolean";
+            return JavaType.Boolean;
         } else if (node.getValue() instanceof Long) {
-            return "Integer";
+            return JavaType.Integer;
         }
         return super.visitLiteral(node, context);
     }
 
-    private  String typeStringFromColumn(final ColumnIdentifier node) {
+    private JavaType typeFromColumn(final ColumnIdentifier node) {
         if (node.getField().isControllable()) {
-            return "IntVar";
+            return JavaType.IntVar;
         }
         final String convertedName = CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, node.getTableName());
         if (viewTupleTypeParameters.containsKey(convertedName) &&
                 viewTupleTypeParameters.get(convertedName).contains("IntVar")) {
             LOG.warn("Inferring type for column {} as IntVar", node);
-            return "IntVar";
+            return JavaType.IntVar;
         }
-        return typeStringFromColumn(node.getField());
+        return typeFromColumn(node.getField());
     }
 
-    static String typeStringFromColumn(final IRColumn column) {
+    static JavaType typeFromColumn(final IRColumn column) {
         switch (column.getType()) {
             case STRING:
-                return  "String";
+                return  JavaType.String;
             case BOOL:
-                return  "Boolean";
+                return  JavaType.Boolean;
             case LONG:
-                return "Long";
+                return JavaType.Long;
             case INT:
-                return  "Integer";
+                return  JavaType.Integer;
             case FLOAT:
-                return  "Float";
+                return  JavaType.Float;
             case ARRAY:
-                return  "Object[]";
+                return  JavaType.ObjectArray;
             default:
                 throw new IllegalArgumentException(column.toString());
         }
     }
 
     // TODO: passing viewTupleTypeParameters makes this class tightly coupled with TupleMetadata.
-    static String forExpr(final Expr expr, final Map<String, String> viewTupleTypeParameters) {
+    static JavaType forExpr(final Expr expr, final Map<String, String> viewTupleTypeParameters) {
         final InferType visitor = new InferType(viewTupleTypeParameters);
-        final String result = visitor.visit(expr);
-        assert !result.isEmpty();
-        return result;
+        return visitor.visit(expr);
     }
+
 }
