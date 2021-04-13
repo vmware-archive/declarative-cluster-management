@@ -28,10 +28,10 @@ import java.util.stream.Collectors;
  * For tuples created by views we create, it also tracks the indices of fields within the tuple.
  */
 public class TupleMetadata {
-    private final Map<String, Map<String, String>> tableToFieldToType = new HashMap<>();
+    private final Map<String, Map<String, JavaType>> tableToFieldToType = new HashMap<>();
     private final Map<String, Map<String, Integer>> tableToFieldIndex = new HashMap<>();
-    private final Map<String, String> viewTupleTypeParameters = new HashMap<>();
-    private final Map<String, String> viewGroupByTupleTypeParameters = new HashMap<>();
+    private final Map<String, JavaTypeList> viewTupleTypeParameters = new HashMap<>();
+    private final Map<String, JavaTypeList> viewGroupByTupleTypeParameters = new HashMap<>();
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
 
     String computeTableTupleType(final IRTable table) {
@@ -40,22 +40,22 @@ public class TupleMetadata {
         final AtomicInteger fieldIndex = new AtomicInteger(0);
         return table.getIRColumns().entrySet().stream()
                 .map(e -> {
-                        final String retVal = InferType.typeStringFromColumn(e.getValue());
+                        final JavaType retVal = InferType.typeFromColumn(e.getValue());
                         tableToFieldToType.computeIfAbsent(table.getAliasedName(), (k) -> new HashMap<>())
                                           .putIfAbsent(e.getKey(), retVal);
                         tableToFieldIndex.computeIfAbsent(table.getAliasedName(),  (k) -> new HashMap<>())
                                           .putIfAbsent(e.getKey(), fieldIndex.getAndIncrement());
-                        return retVal;
+                        return retVal.typeString();
                     }
                 ).collect(Collectors.joining(", "));
     }
 
-    <T extends Expr> String computeGroupByTupleType(final String viewName, final List<T> exprs) {
+    <T extends Expr> JavaTypeList computeGroupByTupleType(final String viewName, final List<T> exprs) {
         Preconditions.checkArgument(!viewGroupByTupleTypeParameters.containsKey(viewName));
         return viewGroupByTupleTypeParameters.compute(viewName, (k, v) -> generateTupleGenericParameters(exprs));
     }
 
-    <T extends Expr> String computeViewTupleType(final String viewName, final List<T> exprs) {
+    <T extends Expr> JavaTypeList computeViewTupleType(final String viewName, final List<T> exprs) {
         Preconditions.checkArgument(!viewTupleTypeParameters.containsKey(viewName));
         return viewTupleTypeParameters.compute(viewName, (k, v) -> generateTupleGenericParameters(exprs));
     }
@@ -82,19 +82,19 @@ public class TupleMetadata {
         );
     }
 
-    String getGroupByTupleType(final String viewName) {
+    JavaTypeList getGroupByTupleType(final String viewName) {
         return viewGroupByTupleTypeParameters.get(viewName);
     }
 
-    String getViewTupleType(final String viewName) {
+    JavaTypeList getViewTupleType(final String viewName) {
         return viewTupleTypeParameters.get(viewName);
     }
 
-    String getTypeForField(final IRTable table, final IRColumn column) {
+    JavaType getTypeForField(final IRTable table, final IRColumn column) {
         return Objects.requireNonNull(tableToFieldToType.get(table.getName()).get(column.getName()));
     }
 
-    String getTypeForField(final String tableName, final String columnName) {
+    JavaType getTypeForField(final String tableName, final String columnName) {
         return Objects.requireNonNull(tableToFieldToType.get(tableName).get(columnName));
     }
 
@@ -119,12 +119,11 @@ public class TupleMetadata {
         return Objects.requireNonNull(viewToFieldIndex.get(tableName).get(columnName));
     }
 
-    <T extends Expr> String generateTupleGenericParameters(final List<T> exprs) {
-        return exprs.stream().map(this::inferType)
-                .collect(Collectors.joining(", "));
+    <T extends Expr> JavaTypeList generateTupleGenericParameters(final List<T> exprs) {
+        return new JavaTypeList(exprs.stream().map(this::inferType).collect(Collectors.toList()));
     }
 
-    String inferType(final Expr expr) {
+    JavaType inferType(final Expr expr) {
         return InferType.forExpr(expr, viewTupleTypeParameters);
     }
 }
