@@ -1,7 +1,8 @@
 /*
- * Copyright © 2018-2021 VMware, Inc. All Rights Reserved.
+ * Copyright 2018-2021 VMware, Inc. All Rights Reserved.
  * SPDX-License-Identifier: BSD-2
  */
+
 package com.vmware.dcm.backend.ortools;
 
 enum JavaType {

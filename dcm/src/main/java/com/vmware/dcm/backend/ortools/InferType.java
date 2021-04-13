@@ -30,9 +30,9 @@ import java.util.Map;
 
 class InferType extends IRVisitor<JavaType, VoidType> {
     private static final Logger LOG = LoggerFactory.getLogger(InferType.class);
-    private final Map<String, String> viewTupleTypeParameters;
+    private final Map<String, JavaTypeList> viewTupleTypeParameters;
 
-    InferType(final Map<String, String> viewTupleTypeParameters) {
+    InferType(final Map<String, JavaTypeList> viewTupleTypeParameters) {
         this.viewTupleTypeParameters = viewTupleTypeParameters;
     }
 
@@ -109,7 +109,7 @@ class InferType extends IRVisitor<JavaType, VoidType> {
     @Override
     protected JavaType visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
         // TODO: This is incomplete. It can be boolean if node.getArgument() is const.
-        return JavaType.IntVar;
+        return visit(node.getArgument(), context) == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
     }
 
     @Override
@@ -130,7 +130,7 @@ class InferType extends IRVisitor<JavaType, VoidType> {
                 return type == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
             case MINUS:
             case PLUS:
-                return type == JavaType.IntVar ? JavaType.IntVar : JavaType.Integer;
+                return type;
             default:
                 throw new IllegalArgumentException(node.toString());
         }
@@ -145,7 +145,7 @@ class InferType extends IRVisitor<JavaType, VoidType> {
         } else if (node.getValue() instanceof Boolean) {
             return JavaType.Boolean;
         } else if (node.getValue() instanceof Long) {
-            return JavaType.Integer;
+            return JavaType.Long;
         }
         return super.visitLiteral(node, context);
     }
@@ -156,7 +156,7 @@ class InferType extends IRVisitor<JavaType, VoidType> {
         }
         final String convertedName = CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, node.getTableName());
         if (viewTupleTypeParameters.containsKey(convertedName) &&
-                viewTupleTypeParameters.get(convertedName).contains("IntVar")) {
+                viewTupleTypeParameters.get(convertedName).contains(JavaType.IntVar)) {
             LOG.warn("Inferring type for column {} as IntVar", node);
             return JavaType.IntVar;
         }
@@ -183,9 +183,12 @@ class InferType extends IRVisitor<JavaType, VoidType> {
     }
 
     // TODO: passing viewTupleTypeParameters makes this class tightly coupled with TupleMetadata.
-    static JavaType forExpr(final Expr expr, final Map<String, String> viewTupleTypeParameters) {
+    static JavaType forExpr(final Expr expr, final Map<String, JavaTypeList> viewTupleTypeParameters) {
         final InferType visitor = new InferType(viewTupleTypeParameters);
         return visitor.visit(expr);
     }
 
+    static String toTypeString(final JavaType type) {
+        return type.typeString();
+    }
 }

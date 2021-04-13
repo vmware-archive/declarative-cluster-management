@@ -332,8 +332,8 @@ public class OrToolsSolver implements ISolverBackend {
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
             // in two steps...
             final int groupByQualifiersSize = groupByQualifier.getGroupByExprs().size();
-            final String groupByTupleTypeParameters = tupleMetadata.getGroupByTupleType(intermediateView);
-            final String headItemsTupleTypeParamters = tupleMetadata.getViewTupleType(intermediateView);
+            final JavaTypeList groupByTupleTypeParameters = tupleMetadata.getGroupByTupleType(intermediateView);
+            final JavaTypeList headItemsTupleTypeParamters = tupleMetadata.getViewTupleType(intermediateView);
             final int innerTupleSize = tupleMetadata.getTupleSize(intermediateView);
 
             // (1) Create the result set
@@ -348,12 +348,12 @@ public class OrToolsSolver implements ISolverBackend {
             if (!isConstraint) {
                 final int selectExprSize = inner.getHead().getSelectExprs().size();
                 final TypeSpec typeSpec = tupleGen.getTupleType(selectExprSize);
-                final String viewTupleGenericParameters =
-                        tupleMetadata.computeViewTupleType(tableNameStr(viewName),
-                                                                   inner.getHead().getSelectExprs());
+                final JavaTypeList viewTupleGenericParameters =
+                        tupleMetadata.computeViewTupleType(tableNameStr(viewName), inner.getHead().getSelectExprs());
                 block.addBody(
                     statement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
-                                                     viewTupleGenericParameters, tableNameStr(viewName),
+                                                     viewTupleGenericParameters,
+                                                     tableNameStr(viewName),
                                                      ArrayList.class, intermediateView)
                 );
             }
@@ -361,8 +361,11 @@ public class OrToolsSolver implements ISolverBackend {
             // (2) Loop over the result set collected from the inner comprehension
             final OutputIR.ForBlock forBlock = outputIR.newForBlock(viewName,
                     CodeBlock.of("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
-                                            Map.Entry.class, groupByQualifiersSize, groupByTupleTypeParameters,
-                                            innerTupleSize, headItemsTupleTypeParamters, intermediateView)
+                                            Map.Entry.class, groupByQualifiersSize,
+                                            groupByTupleTypeParameters,
+                                            innerTupleSize,
+                                            headItemsTupleTypeParamters,
+                                            intermediateView)
             );
 
             forBlock.addHeader(
@@ -394,8 +397,8 @@ public class OrToolsSolver implements ISolverBackend {
             // If this is not a constraint, we simply add a to a result set
             if (!isConstraint) {
                 final TypeSpec typeSpec = tupleGen.getTupleType(inner.getHead().getSelectExprs().size());
-                final String viewTupleGenericParameters =
-                        generateTupleGenericParametersString(inner.getHead().getSelectExprs());
+                final JavaTypeList viewTupleGenericParameters =
+                        tupleMetadata.generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
                                                  .map(e -> exprToStr(e, true, groupContext, context))
                                                  .collect(Collectors.joining(", "));
@@ -443,10 +446,8 @@ public class OrToolsSolver implements ISolverBackend {
         context.enterScope(viewBlock);
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
-        final String headItemsListTupleGenericParameters =
+        final JavaTypeList headItemsListTupleGenericParameters =
                 tupleMetadata.computeViewTupleType(viewName, headItemsList);
-        Preconditions.checkArgument(!headItemsListTupleGenericParameters.isEmpty(),
-                "Generic parameters list for " + comprehension + " was empty");
 
         final int tupleSize = headItemsList.size();
         final String resultSetNameStr = nonConstraintViewName(viewName);
@@ -545,7 +546,7 @@ public class OrToolsSolver implements ISolverBackend {
      * by a view.
      */
     private OutputIR.Block mapOrListForResultSetBlock(final String viewName, final int tupleSize,
-                                                      final String headItemsListTupleGenericParameters,
+                                                      final JavaTypeList headItemsListTupleGenericParameters,
                                                       final String viewRecords,
                                                       @Nullable final GroupByQualifier groupByQualifier,
                                                       final boolean isConstraint) {
@@ -554,12 +555,14 @@ public class OrToolsSolver implements ISolverBackend {
         if (groupByQualifier != null) {
             // Create group by tuple
             final int numberOfGroupColumns = groupByQualifier.getGroupByExprs().size();
-            final String groupByTupleGenericParameters =
+            final JavaTypeList groupByTupleGenericParameters =
                     tupleMetadata.computeGroupByTupleType(viewName, groupByQualifier.getGroupByExprs());
             final TypeSpec groupTupleSpec = tupleGen.getTupleType(numberOfGroupColumns);
             block.addHeader(statement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
-                                        groupTupleSpec, groupByTupleGenericParameters,
-                                        List.class, tupleSpec, headItemsListTupleGenericParameters,
+                                        groupTupleSpec,
+                                        groupByTupleGenericParameters,
+                                        List.class, tupleSpec,
+                                        headItemsListTupleGenericParameters,
                                         viewRecords, HashMap.class));
         } else {
             if (!isConstraint) {
@@ -696,10 +699,11 @@ public class OrToolsSolver implements ISolverBackend {
      * TODO: this overlaps with newly added logic to extract vectors from tuples. They currently perform redundant
      *  work that results in additional lists and passes over the data being created.
      */
-    private OutputIR.Block resultSetAddBlock(final String viewName, final int tupleSize,
-                                            final String headItemsStr, final String headItemsListTupleGenericParameters,
-                                            final String viewRecords, @Nullable final GroupByQualifier groupByQualifier,
-                                            final TranslationContext context) {
+    private OutputIR.Block resultSetAddBlock(final String viewName, final int tupleSize, final String headItemsStr,
+                                             final JavaTypeList headItemsListTupleGenericParameters,
+                                             final String viewRecords,
+                                             @Nullable final GroupByQualifier groupByQualifier,
+                                             final TranslationContext context) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
         // Create a tuple for the result set
         block.addBody(statement("final Tuple$1L<$2L> $3L = new Tuple$1L<>(\n    $4L\n    )",
@@ -1035,10 +1039,10 @@ public class OrToolsSolver implements ISolverBackend {
                 final int fieldIndex = tupleMetadata.getViewIndexForField(tableName, fieldName);
                 return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr, fieldIndex);
             } else {
-                final String type = tupleMetadata.getTypeForField(tableName, fieldName);
+                final JavaType type = tupleMetadata.getTypeForField(tableName, fieldName);
                 final int fieldIndex = tupleMetadata.getFieldIndexForTable(tableName, fieldName);
                 return String.format("(%s) %s.get(%s).get(%s /* %s */)",
-                        type, tableNameStr(tableName), iterStr, fieldIndex, fieldName);
+                        type.typeString(), tableNameStr(tableName), iterStr, fieldIndex, fieldName);
             }
         }
     }
@@ -1130,16 +1134,6 @@ public class OrToolsSolver implements ISolverBackend {
                 .map(RewriteArity::apply)
                 .map(RewriteContains::apply)
                 .findFirst().orElseThrow();
-    }
-
-    private <T extends Expr> String generateTupleGenericParametersString(final List<T> exprs) {
-        return exprs.stream().map(this::generateTupleGenericParameters)
-                             .map(JavaType::typeString)
-                             .collect(Collectors.joining(", "));
-    }
-
-    private JavaType generateTupleGenericParameters(final Expr expr) {
-        return tupleMetadata.inferType(expr);
     }
 
     private void populateQualifiersByVarType(final ListComprehension comprehension, final QualifiersByType var,
