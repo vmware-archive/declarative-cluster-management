@@ -15,9 +15,9 @@ dependencies {
     implementation "commons-io:commons-io:${commonsIoVersion}"
     implementation "com.facebook.presto:presto-parser:${prestoParserVersion}"
     implementation "com.squareup:javapoet:${javapoetVersion}"
-    // implementation "com.google:ortools:${orToolsVersion}"
-    // Temporarily use community contributed or-tools package
-    implementation "com.skaggsm.ortools:ortools-natives-all:${orToolsVersion}"
+    implementation "com.google.ortools:ortools-java:${orToolsVersion}"
+    implementation "com.google.ortools:ortools-darwin:${orToolsVersion}"
+    implementation "com.google.ortools:ortools-linux-x86-64:${orToolsVersion}"
     implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
     testImplementation "com.h2database:h2:${h2Version}"
 }
