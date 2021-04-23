@@ -519,7 +519,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Create group by tuple
             final int numberOfGroupColumns = groupByQualifier.getGroupByExprs().size();
             final JavaTypeList groupByTupleGenericParameters =
-                    tupleMetadata.computeGroupByTupleType(viewName, groupByQualifier.getGroupByExprs());
+                    tupleMetadata.computeTupleGenericParameters(groupByQualifier.getGroupByExprs());
             final TypeSpec groupTupleSpec = tupleGen.getTupleType(numberOfGroupColumns);
             block.addHeader(statement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
                                         groupTupleSpec,

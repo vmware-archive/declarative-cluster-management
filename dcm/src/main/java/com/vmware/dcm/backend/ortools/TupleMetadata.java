@@ -31,7 +31,6 @@ public class TupleMetadata {
     private final Map<String, Map<String, Integer>> tableToFieldIndex = new HashMap<>();
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
     private final Map<String, JavaTypeList> viewTupleTypeParameters = new HashMap<>();
-    private final Map<String, JavaTypeList> viewGroupByTupleTypeParameters = new HashMap<>();
 
     String computeTableTupleType(final IRTable table) {
         Preconditions.checkArgument(!tableToFieldToType.containsKey(table.getAliasedName()));
@@ -49,14 +48,9 @@ public class TupleMetadata {
                 ).collect(Collectors.joining(", "));
     }
 
-    <T extends Expr> JavaTypeList computeGroupByTupleType(final String viewName, final List<T> exprs) {
-        Preconditions.checkArgument(!viewGroupByTupleTypeParameters.containsKey(viewName));
-        return viewGroupByTupleTypeParameters.compute(viewName, (k, v) -> generateTupleGenericParameters(exprs));
-    }
-
     <T extends Expr> JavaTypeList computeViewTupleType(final String viewName, final List<T> exprs) {
         Preconditions.checkArgument(!viewTupleTypeParameters.containsKey(viewName));
-        return viewTupleTypeParameters.compute(viewName, (k, v) -> generateTupleGenericParameters(exprs));
+        return viewTupleTypeParameters.compute(viewName, (k, v) -> computeTupleGenericParameters(exprs));
     }
 
     /**
@@ -101,7 +95,7 @@ public class TupleMetadata {
         return viewToFieldIndex.containsKey(tableName);
     }
 
-    <T extends Expr> JavaTypeList generateTupleGenericParameters(final List<T> exprs) {
+    <T extends Expr> JavaTypeList computeTupleGenericParameters(final List<T> exprs) {
         return new JavaTypeList(exprs.stream().map(this::inferType).collect(Collectors.toList()));
     }
 
