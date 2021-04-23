@@ -383,16 +383,13 @@ public class OrToolsSolver implements ISolverBackend {
                                       headItemsTupleTypeParamters), "data.size()");
             forBlock.addBody(dataForBlock);
 
-            // (3) Filter if necessary
-            final QualifiersByType varQualifiers = new QualifiersByType();
-            final QualifiersByType nonVarQualifiers = new QualifiersByType();
-            populateQualifiersByVarType(inner, varQualifiers, nonVarQualifiers, false);
-
             final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView, viewName);
             context.enterScope(forBlock);
+
+            // (3) Filter if necessary
+            final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(inner, false);
             final Optional<OutputIR.IfBlock> nonVarAggregateFiltersBlock = nonVarAggregateFiltersBlock(viewName,
-                                                                                        nonVarQualifiers, groupContext,
-                                                                                        context);
+                    qualifiersByVarType.nonVar, groupContext, context);
             nonVarAggregateFiltersBlock.ifPresent(forBlock::addBody);
 
             // If this is not a constraint, we simply add a to a result set
@@ -408,12 +405,12 @@ public class OrToolsSolver implements ISolverBackend {
                                             context.getTupleVarName(), tupleResult));
 
                 // Record field name indices for view
-                tupleMetadata.computeViewIndices(viewName, inner.getHead().getSelectExprs());
+                tupleMetadata.recordFieldIndices(viewName, inner.getHead().getSelectExprs());
                 forBlock.addBody(statement("$L.add($L)", tableNameStr(viewName), context.getTupleVarName()));
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
-                final List<CodeBlock> constraintBlocks = aggregateConstraintBlock(varQualifiers, nonVarQualifiers,
+                final List<CodeBlock> constraintBlocks = aggregateConstraintBlock(qualifiersByVarType,
                         new GroupContext(groupByQualifier, intermediateView, viewName), context);
                 constraintBlocks.forEach(forBlock::addBody);
             }
@@ -442,41 +439,25 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Extract the set of columns being selected in this view
         final List<ColumnIdentifier> headItemsList = getColumnsAccessed(comprehension, isConstraint);
+        tupleMetadata.recordFieldIndices(viewName, headItemsList);
 
-        // Compute a string that represents the set of field accesses for the above columns
         context.enterScope(viewBlock);
-
-        // Compute a string that represents the Java types corresponding to the headItemsStr
-        final JavaTypeList headItemsListTupleGenericParameters =
-                tupleMetadata.computeViewTupleType(viewName, headItemsList);
-
-        final int tupleSize = headItemsList.size();
-        final String resultSetNameStr = nonConstraintViewName(viewName);
 
         // For non-constraints, create a Map<> or a List<> to collect the result-set (depending on
         // whether the query is a group by or not)
-        final OutputIR.Block resultSetDeclBlock = mapOrListForResultSetBlock(viewName, tupleSize,
-                                                                     headItemsListTupleGenericParameters,
-                                                                     resultSetNameStr, groupByQualifier, isConstraint);
+        final OutputIR.Block resultSetDeclBlock = mapOrListForResultSetBlock(viewName, headItemsList,
+                                                                             groupByQualifier, isConstraint);
 
         // Separate out qualifiers into variable and non-variable types.
-        final QualifiersByType varQualifiers = new QualifiersByType();
-        final QualifiersByType nonVarQualifiers = new QualifiersByType();
-        populateQualifiersByVarType(comprehension, varQualifiers, nonVarQualifiers, true);
+        final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(comprehension, true);
 
-        // Start control flows to create nested for loops
-        final OutputIR.ForBlock iterationBlock = tableIterationBlock(viewName, nonVarQualifiers);
+        // Start control flows to iterate over tables/views
+        final OutputIR.ForBlock iterationBlock = tableIterationBlock(viewName, qualifiersByVarType.nonVar);
         context.enterScope(iterationBlock);
 
         // Filter out nested for loops using an if(predicate) statement
-        final Optional<OutputIR.IfBlock> nonVarFiltersBlock = nonVarFiltersBlock(viewName, nonVarQualifiers, context);
-
-        // Identify head items to be accessed within loop
-        tupleMetadata.computeViewIndices(viewName, headItemsList);
-        final String headItemsStr = headItemsList.stream()
-                .map(expr -> exprToStr(expr, context) + " /* " + expr.getField().getName() + " */")
-                .collect(Collectors.joining(",\n    "));
-
+        final Optional<OutputIR.IfBlock> nonVarFiltersBlock = nonVarFiltersBlock(viewName, qualifiersByVarType.nonVar,
+                                                                                 context);
         viewBlock.addBody(resultSetDeclBlock);
         viewBlock.addBody(iterationBlock);
         nonVarFiltersBlock.ifPresent(iterationBlock::addBody);
@@ -487,12 +468,11 @@ public class OrToolsSolver implements ISolverBackend {
             // If filter predicate is true, then retrieve expressions to collect into result set. Note, this does not
             // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
 
-            final OutputIR.Block resultSetAddBlock = resultSetAddBlock(viewName, tupleSize, headItemsStr,
-                                                               headItemsListTupleGenericParameters,
-                                                               resultSetNameStr, groupByQualifier, context);
+            final OutputIR.Block resultSetAddBlock = resultSetAddBlock(viewName, headItemsList,
+                                                                       groupByQualifier, context);
             iterationBlock.addBody(resultSetAddBlock);
         } else {
-            final List<CodeBlock> addRowConstraintBlock = rowConstraintBlock(varQualifiers, nonVarQualifiers, context);
+            final List<CodeBlock> addRowConstraintBlock = rowConstraintBlock(qualifiersByVarType, context);
             addRowConstraintBlock.forEach(iterationBlock::addBody);
         }
         context.leaveScope(); // iteration block
@@ -544,13 +524,18 @@ public class OrToolsSolver implements ISolverBackend {
      * If required, returns a block of code representing maps or lists created to host the result-sets returned
      * by a view.
      */
-    private OutputIR.Block mapOrListForResultSetBlock(final String viewName, final int tupleSize,
-                                                      final JavaTypeList headItemsListTupleGenericParameters,
-                                                      final String viewRecords,
+    private OutputIR.Block mapOrListForResultSetBlock(final String viewName, final List<ColumnIdentifier> headItemsList,
                                                       @Nullable final GroupByQualifier groupByQualifier,
                                                       final boolean isConstraint) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "CreateResultSet");
-        final TypeSpec tupleSpec = tupleGen.getTupleType(tupleSize);
+
+        // Compute a string that represents the Java types corresponding to the headItemsStr
+        final JavaTypeList headItemsListTupleGenericParameters =
+                tupleMetadata.computeViewTupleType(viewName, headItemsList);
+
+        final TypeSpec tupleSpec = tupleGen.getTupleType(headItemsList.size());
+        final String resultSetNameStr = nonConstraintViewName(viewName);
+
         if (groupByQualifier != null) {
             // Create group by tuple
             final int numberOfGroupColumns = groupByQualifier.getGroupByExprs().size();
@@ -562,12 +547,12 @@ public class OrToolsSolver implements ISolverBackend {
                                         groupByTupleGenericParameters,
                                         List.class, tupleSpec,
                                         headItemsListTupleGenericParameters,
-                                        viewRecords, HashMap.class));
+                                        resultSetNameStr, HashMap.class));
         } else {
             if (!isConstraint) {
                 block.addHeader(statement("final $T<$N<$L>> $L = new $T<>()",
                                           List.class, tupleSpec, headItemsListTupleGenericParameters,
-                                          viewRecords, ArrayList.class));
+                                          resultSetNameStr, ArrayList.class));
             }
         }
         return block;
@@ -699,16 +684,17 @@ public class OrToolsSolver implements ISolverBackend {
      * TODO: this overlaps with newly added logic to extract vectors from tuples. They currently perform redundant
      *  work that results in additional lists and passes over the data being created.
      */
-    private OutputIR.Block resultSetAddBlock(final String viewName, final int tupleSize, final String headItemsStr,
-                                             final JavaTypeList headItemsListTupleGenericParameters,
-                                             final String viewRecords,
+    private OutputIR.Block resultSetAddBlock(final String viewName, final List<ColumnIdentifier> headItems,
                                              @Nullable final GroupByQualifier groupByQualifier,
                                              final TranslationContext context) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
+        final String headItemsStr = headItems.stream()
+                .map(expr -> exprToStr(expr, context) + " /* " + expr.getField().getName() + " */")
+                .collect(Collectors.joining(",\n    "));
         // Create a tuple for the result set
-        block.addBody(statement("final Tuple$1L<$2L> $3L = new Tuple$1L<>(\n    $4L\n    )",
-                                 tupleSize, headItemsListTupleGenericParameters,
-                                 context.getTupleVarName(), headItemsStr));
+        block.addBody(statement("final var $2L = new Tuple$1L<>(\n    $3L\n    )",
+                                headItems.size(), context.getTupleVarName(), headItemsStr));
+        final String resultSetNameStr = nonConstraintViewName(viewName);
 
         // Update result set
         if (groupByQualifier != null) {
@@ -723,9 +709,9 @@ public class OrToolsSolver implements ISolverBackend {
                            numberOfGroupByColumns, Objects.requireNonNull(tupleMetadata.getGroupByTupleType(viewName)),
                            groupString));
             block.addBody(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add($L)",
-                                     viewRecords, ArrayList.class, context.getTupleVarName()));
+                                     resultSetNameStr, ArrayList.class, context.getTupleVarName()));
         } else {
-            block.addBody(statement("$L.add($L)", viewRecords, context.getTupleVarName()));
+            block.addBody(statement("$L.add($L)", resultSetNameStr, context.getTupleVarName()));
         }
         return block;
     }
@@ -733,9 +719,10 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Returns a list of code blocks representing constraints posted against rows within a view
      */
-    private List<CodeBlock> rowConstraintBlock(final QualifiersByType varQualifiers,
-                                               final QualifiersByType nonVarQualifiers,
+    private List<CodeBlock> rowConstraintBlock(final QualifiersByVarType qualifiersByVarType,
                                                final TranslationContext context) {
+        final QualifiersByType varQualifiers = qualifiersByVarType.var;
+        final QualifiersByType nonVarQualifiers = qualifiersByVarType.nonVar;
         final String joinPredicateStr;
         if (varQualifiers.joinPredicates.size() > 0) {
             final BinaryOperatorPredicate combinedJoinPredicate = varQualifiers.joinPredicates
@@ -758,14 +745,13 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Returns a list of code blocks representing aggregate constraints posted against rows within a view
      */
-    private List<CodeBlock> aggregateConstraintBlock(final QualifiersByType varQualifiers,
-                                                     final QualifiersByType nonVarQualifiers,
+    private List<CodeBlock> aggregateConstraintBlock(final QualifiersByVarType qualifiersByVarType,
                                                      final GroupContext groupContext,
                                                      final TranslationContext context) {
         final List<CodeBlock> results = new ArrayList<>();
-        varQualifiers.checkQualifiers.forEach(e ->
+        qualifiersByVarType.var.checkQualifiers.forEach(e ->
                 results.add(topLevelConstraintBlock(e.getExpr(), "", groupContext, context)));
-        nonVarQualifiers.checkQualifiers.forEach(e ->
+        qualifiersByVarType.nonVar.checkQualifiers.forEach(e ->
                 results.add(topLevelConstraintBlock(e.getExpr(), "", groupContext, context)));
         return results;
     }
@@ -835,7 +821,7 @@ public class OrToolsSolver implements ISolverBackend {
                         .filter(e -> !e.isEmpty())
                         .filter(e -> e.size() == 1)
                         .ifPresent(pkCol -> {
-                            final int fieldIndex = tupleMetadata.getFieldIndexForTable(table.getName(),
+                            final int fieldIndex = tupleMetadata.getFieldIndexInTable(table.getName(),
                                                                                        pkCol.get(0).getName());
                             output.addStatement("final var $1LIndex = $2T.range(0, $3L.size())\n" +
                                         ".boxed()\n" +
@@ -1008,7 +994,7 @@ public class OrToolsSolver implements ISolverBackend {
                                 output.addStatement("obj[0] = solver.value($L[i])",
                                         fieldNameStr(tableName, field.getName()));
                             }
-                            final int fieldIndex = tupleMetadata.getFieldIndexForTable(tableName, field.getName());
+                            final int fieldIndex = tupleMetadata.getFieldIndexInTable(tableName, field.getName());
                             output.addStatement("$L.get(i).from(obj, $L)", tempViewName, fieldIndex);
                             output.endControlFlow();
                         }
@@ -1036,11 +1022,11 @@ public class OrToolsSolver implements ISolverBackend {
             return String.format("%s[%s]", fieldNameStr(tableName, fieldName), iterStr);
         } else {
             if (tupleMetadata.canBeAccessedWithViewIndices(tableName)) {
-                final int fieldIndex = tupleMetadata.getViewIndexForField(tableName, fieldName);
+                final int fieldIndex = tupleMetadata.getFieldIndexInView(tableName, fieldName);
                 return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr, fieldIndex);
             } else {
                 final JavaType type = tupleMetadata.getTypeForField(tableName, fieldName);
-                final int fieldIndex = tupleMetadata.getFieldIndexForTable(tableName, fieldName);
+                final int fieldIndex = tupleMetadata.getFieldIndexInTable(tableName, fieldName);
                 return String.format("(%s) %s.get(%s).get(%s /* %s */)",
                         type.typeString(), tableNameStr(tableName), iterStr, fieldIndex, fieldName);
             }
@@ -1136,16 +1122,29 @@ public class OrToolsSolver implements ISolverBackend {
                 .findFirst().orElseThrow();
     }
 
-    private void populateQualifiersByVarType(final ListComprehension comprehension, final QualifiersByType var,
-                                             final QualifiersByType nonVar, final boolean skipAggregates) {
+    private QualifiersByVarType extractQualifiersByVarType(final ListComprehension comprehension,
+                                                           final boolean skipAggregates) {
+        final QualifiersByType varQualifiers = new QualifiersByType();
+        final QualifiersByType nonVarQualifiers = new QualifiersByType();
         comprehension.getQualifiers().forEach(
             q -> {
                 final GetVarQualifiers.QualifiersList qualifiersList = GetVarQualifiers.apply(q, skipAggregates);
-                qualifiersList.getNonVarQualifiers().forEach(nonVar::addQualifierByType);
-                qualifiersList.getVarQualifiers().forEach(var::addQualifierByType);
+                qualifiersList.getNonVarQualifiers().forEach(nonVarQualifiers::addQualifierByType);
+                qualifiersList.getVarQualifiers().forEach(varQualifiers::addQualifierByType);
             }
         );
-        Preconditions.checkArgument(var.tableRowGenerators.isEmpty());
+        Preconditions.checkArgument(varQualifiers.tableRowGenerators.isEmpty());
+        return new QualifiersByVarType(varQualifiers, nonVarQualifiers);
+    }
+
+    private static class QualifiersByVarType {
+        private final QualifiersByType var;
+        private final QualifiersByType nonVar;
+
+        public QualifiersByVarType(final QualifiersByType varQualifiers, final QualifiersByType nonVarQualifiers) {
+            this.nonVar = nonVarQualifiers;
+            this.var = varQualifiers;
+        }
     }
 
     /**
@@ -1456,7 +1455,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
             if (context.isFunctionContext() && currentSubQueryContext != null) {
                 final String tempTableName = currentSubQueryContext.getSubQueryName().toUpperCase(Locale.US);
-                final int fieldIndex = tupleMetadata.getViewIndexForField(tempTableName, node.getField().getName());
+                final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
                 return apply(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), context);
             }
 
@@ -1464,7 +1463,7 @@ public class OrToolsSolver implements ISolverBackend {
             // indirection from columns to tuple indices
             if (context.isFunctionContext() && currentGroupContext != null) {
                 final String tempTableName = currentGroupContext.getTempTableName().toUpperCase(Locale.US);
-                final int fieldIndex = tupleMetadata.getViewIndexForField(tempTableName, node.getField().getName());
+                final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
                 return apply(String.format("dataTuple.value%s()", fieldIndex), context);
             }
 

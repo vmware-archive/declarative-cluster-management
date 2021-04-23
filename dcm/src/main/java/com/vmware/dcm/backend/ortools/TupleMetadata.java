@@ -30,9 +30,9 @@ import java.util.stream.Collectors;
 public class TupleMetadata {
     private final Map<String, Map<String, JavaType>> tableToFieldToType = new HashMap<>();
     private final Map<String, Map<String, Integer>> tableToFieldIndex = new HashMap<>();
+    private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
     private final Map<String, JavaTypeList> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, JavaTypeList> viewGroupByTupleTypeParameters = new HashMap<>();
-    private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
 
     String computeTableTupleType(final IRTable table) {
         Preconditions.checkArgument(!tableToFieldToType.containsKey(table.getAliasedName()));
@@ -66,7 +66,7 @@ public class TupleMetadata {
      * @param viewName the view within which this expression is being visited
      * @param exprs The expressions to create a field for
      */
-    <T extends Expr> void computeViewIndices(final String viewName, final List<T> exprs) {
+    <T extends Expr> void recordFieldIndices(final String viewName, final List<T> exprs) {
         final AtomicInteger counter = new AtomicInteger(0);
         exprs.forEach(argument -> {
                 final String fieldName = argument.getAlias().orElseGet(() -> {
@@ -98,8 +98,12 @@ public class TupleMetadata {
         return Objects.requireNonNull(tableToFieldToType.get(tableName).get(columnName));
     }
 
-    int getFieldIndexForTable(final String tableName, final String columnName) {
+    int getFieldIndexInTable(final String tableName, final String columnName) {
         return Objects.requireNonNull(tableToFieldIndex.get(tableName).get(columnName));
+    }
+
+    int getFieldIndexInView(final String tableName, final String columnName) {
+        return Objects.requireNonNull(viewToFieldIndex.get(tableName).get(columnName));
     }
 
     boolean canBeAccessedWithViewIndices(final String tableName) {
@@ -113,10 +117,6 @@ public class TupleMetadata {
      */
     int getTupleSize(final String tableName) {
         return Collections.max(viewToFieldIndex.get(tableName.toUpperCase(Locale.US)).values()) + 1;
-    }
-
-    int getViewIndexForField(final String tableName, final String columnName) {
-        return Objects.requireNonNull(viewToFieldIndex.get(tableName).get(columnName));
     }
 
     <T extends Expr> JavaTypeList generateTupleGenericParameters(final List<T> exprs) {
