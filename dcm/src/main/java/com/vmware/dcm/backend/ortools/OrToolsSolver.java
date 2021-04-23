@@ -88,6 +88,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -389,10 +390,10 @@ public class OrToolsSolver implements ISolverBackend {
 
             final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView, viewName);
             context.enterScope(forBlock);
-            final OutputIR.Block nonVarAggregateFiltersBlock = nonVarAggregateFiltersBlock(viewName,
+            final Optional<OutputIR.IfBlock> nonVarAggregateFiltersBlock = nonVarAggregateFiltersBlock(viewName,
                                                                                         nonVarQualifiers, groupContext,
                                                                                         context);
-            forBlock.addBody(nonVarAggregateFiltersBlock);
+            nonVarAggregateFiltersBlock.ifPresent(forBlock::addBody);
 
             // If this is not a constraint, we simply add a to a result set
             if (!isConstraint) {
@@ -416,7 +417,7 @@ public class OrToolsSolver implements ISolverBackend {
                         new GroupContext(groupByQualifier, intermediateView, viewName), context);
                 constraintBlocks.forEach(forBlock::addBody);
             }
-            context.leaveScope();
+            context.leaveScope(); // forBlock
             block.addBody(forBlock);
             block.addBody(printTime("Group-by final view"));
             return block;
@@ -464,11 +465,11 @@ public class OrToolsSolver implements ISolverBackend {
         populateQualifiersByVarType(comprehension, varQualifiers, nonVarQualifiers, true);
 
         // Start control flows to create nested for loops
-        final OutputIR.Block iterationBlock = tableIterationBlock(viewName, nonVarQualifiers);
+        final OutputIR.ForBlock iterationBlock = tableIterationBlock(viewName, nonVarQualifiers);
         context.enterScope(iterationBlock);
 
         // Filter out nested for loops using an if(predicate) statement
-        final OutputIR.Block nonVarFiltersBlock = nonVarFiltersBlock(viewName, nonVarQualifiers, context);
+        final Optional<OutputIR.IfBlock> nonVarFiltersBlock = nonVarFiltersBlock(viewName, nonVarQualifiers, context);
 
         // Identify head items to be accessed within loop
         tupleMetadata.computeViewIndices(viewName, headItemsList);
@@ -478,7 +479,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         viewBlock.addBody(resultSetDeclBlock);
         viewBlock.addBody(iterationBlock);
-        iterationBlock.addBody(nonVarFiltersBlock);
+        nonVarFiltersBlock.ifPresent(iterationBlock::addBody);
         if (!isConstraint // for simple constraints, we post constraints in this inner loop itself
            || (groupByQualifier != null) // for aggregate constraints, we populate a
                                          // result set and post constraints elsewhere
@@ -519,10 +520,8 @@ public class OrToolsSolver implements ISolverBackend {
             }
             return columnsAccessed;
         } else {
-            final List<ColumnIdentifier> columnsFromQualifiers  =
-                    getColumnsAccessed(comprehension.getQualifiers());
-            final List<ColumnIdentifier> columnsFromHead =
-                    getColumnsAccessed(comprehension.getHead().getSelectExprs());
+            final List<ColumnIdentifier> columnsFromQualifiers = getColumnsAccessed(comprehension.getQualifiers());
+            final List<ColumnIdentifier> columnsFromHead = getColumnsAccessed(comprehension.getHead().getSelectExprs());
             return Lists.newArrayList(Iterables.concat(columnsFromHead, columnsFromQualifiers));
         }
     }
@@ -589,7 +588,7 @@ public class OrToolsSolver implements ISolverBackend {
      * iteration indices pointing to the relevant lists of tuples. These iteration indices
      * may be obtained via nested for loops or using indexes if available.
      */
-    private OutputIR.Block tableIterationBlock(final String viewName,
+    private OutputIR.ForBlock tableIterationBlock(final String viewName,
                                                final QualifiersByType nonVarQualifiers) {
         final List<CodeBlock> loopStatements = forLoopsOrIndicesFromTableRowGenerators(
                                                         nonVarQualifiers.tableRowGenerators,
@@ -653,8 +652,9 @@ public class OrToolsSolver implements ISolverBackend {
      * Returns a block of code representing an if statement that evaluates constant predicates to determine
      * whether a result-set or constraint applies to a row within a view
      */
-    private OutputIR.Block nonVarFiltersBlock(final String viewName, final QualifiersByType nonVarQualifiers,
-                                              final TranslationContext context) {
+    private Optional<OutputIR.IfBlock> nonVarFiltersBlock(final String viewName,
+                                                          final QualifiersByType nonVarQualifiers,
+                                                          final TranslationContext context) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
                 .map(expr -> exprToStr(expr, false, null, context))
                 .collect(Collectors.joining(" \n    && "));
@@ -668,19 +668,19 @@ public class OrToolsSolver implements ISolverBackend {
         if (!predicateStr.isEmpty()) {
             // Add filter predicate if available
             final String nonVarFilter = CodeBlock.of("if (!($L))", predicateStr).toString();
-            return outputIR.newIfBlock(viewName + "nonVarFilter", nonVarFilter);
+            return Optional.of(outputIR.newIfBlock(viewName + "nonVarFilter", nonVarFilter));
         }
-        return outputIR.newBlock(viewName + "nonVarFilter");
+        return Optional.empty();
     }
 
     /**
      * Returns a block of code representing an if statement that evaluates constant aggregate predicates to determine
      * whether a result-set or constraint applies to a row within a view
      */
-    private OutputIR.Block nonVarAggregateFiltersBlock(final String viewName,
-                                                       final QualifiersByType nonVarQualifiers,
-                                                       final GroupContext groupContext,
-                                                       final TranslationContext translationContext) {
+    private Optional<OutputIR.IfBlock> nonVarAggregateFiltersBlock(final String viewName,
+                                                                   final QualifiersByType nonVarQualifiers,
+                                                                   final GroupContext groupContext,
+                                                                   final TranslationContext translationContext) {
         final String predicateStr = nonVarQualifiers.aggregatePredicates.stream()
                 .map(expr -> exprToStr(expr, false, groupContext, translationContext))
                 .collect(Collectors.joining(" \n    && "));
@@ -688,9 +688,9 @@ public class OrToolsSolver implements ISolverBackend {
         if (!predicateStr.isEmpty()) {
             // Add filter predicate if available
             final String nonVarFilter = CodeBlock.of("if ($L)", predicateStr).toString();
-            return outputIR.newIfBlock(viewName + "nonVarFilter", nonVarFilter);
+            return Optional.of(outputIR.newIfBlock(viewName + "nonVarFilter", nonVarFilter));
         }
-        return outputIR.newBlock(viewName + "nonVarFilter");
+        return Optional.empty();
     }
 
     /**
