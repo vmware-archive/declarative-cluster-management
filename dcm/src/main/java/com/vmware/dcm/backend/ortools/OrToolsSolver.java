@@ -87,7 +87,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -332,10 +331,6 @@ public class OrToolsSolver implements ISolverBackend {
 
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
             // in two steps...
-            final int groupByQualifiersSize = groupByQualifier.getGroupByExprs().size();
-            final JavaTypeList groupByTupleTypeParameters = tupleMetadata.getGroupByTupleType(intermediateView);
-            final JavaTypeList headItemsTupleTypeParamters = tupleMetadata.getViewTupleType(intermediateView);
-            final int innerTupleSize = tupleMetadata.getTupleSize(intermediateView);
 
             // (1) Create the result set
             block.addBody(CodeBlock.builder()
@@ -361,26 +356,13 @@ public class OrToolsSolver implements ISolverBackend {
 
             // (2) Loop over the result set collected from the inner comprehension
             final OutputIR.ForBlock forBlock = outputIR.newForBlock(viewName,
-                    CodeBlock.of("for (final $T<Tuple$L<$L>, List<Tuple$L<$L>>> entry: $L.entrySet())",
-                                            Map.Entry.class, groupByQualifiersSize,
-                                            groupByTupleTypeParameters,
-                                            innerTupleSize,
-                                            headItemsTupleTypeParamters,
-                                            intermediateView)
+                    CodeBlock.of("for (final var entry: $L.entrySet())", intermediateView)
             );
-
-            forBlock.addHeader(
-                CodeBlock.builder()
-                         .addStatement("final Tuple$L<$L> group = entry.getKey()", groupByQualifiersSize,
-                                                                                   groupByTupleTypeParameters)
-                         .addStatement("final List<Tuple$L<$L>> data = entry.getValue()", innerTupleSize,
-                                                                                  headItemsTupleTypeParamters)
-                         .build()
-            );
+            forBlock.addHeader(CodeBlock.builder().addStatement("final var group = entry.getKey()")
+                                                  .addStatement("final var data = entry.getValue()").build());
 
             final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName,
-                        CodeBlock.of("for (final Tuple$L<$L> dataTuple: data)", innerTupleSize,
-                                      headItemsTupleTypeParamters), "data.size()");
+                        CodeBlock.of("for (final var dataTuple: data)"), "data.size()");
             forBlock.addBody(dataForBlock);
 
             final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView, viewName);
@@ -395,14 +377,11 @@ public class OrToolsSolver implements ISolverBackend {
             // If this is not a constraint, we simply add a to a result set
             if (!isConstraint) {
                 final TypeSpec typeSpec = tupleGen.getTupleType(inner.getHead().getSelectExprs().size());
-                final JavaTypeList viewTupleGenericParameters =
-                        tupleMetadata.generateTupleGenericParameters(inner.getHead().getSelectExprs());
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
                                                  .map(e -> exprToStr(e, true, groupContext, context))
                                                  .collect(Collectors.joining(", "));
-                forBlock.addBody(statement("final $1N<$2L> $3L = new $1N<>($4L)",
-                                            typeSpec, viewTupleGenericParameters,
-                                            context.getTupleVarName(), tupleResult));
+                forBlock.addBody(statement("final var $2L = new $1N<>($3L)",
+                                            typeSpec, context.getTupleVarName(), tupleResult));
 
                 // Record field name indices for view
                 tupleMetadata.recordFieldIndices(viewName, inner.getHead().getSelectExprs());
@@ -705,9 +684,8 @@ public class OrToolsSolver implements ISolverBackend {
                     .collect(Collectors.joining(",     \n"));
 
             // Organize the collected tuples from the nested for loops by groupByTuple
-            block.addBody(statement("final Tuple$1L<$2L> groupByTuple = new Tuple$1L<>(\n    $3L\n    )",
-                           numberOfGroupByColumns, Objects.requireNonNull(tupleMetadata.getGroupByTupleType(viewName)),
-                           groupString));
+            block.addBody(statement("final var groupByTuple = new Tuple$1L<>(\n    $2L\n    )",
+                           numberOfGroupByColumns, groupString));
             block.addBody(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add($L)",
                                      resultSetNameStr, ArrayList.class, context.getTupleVarName()));
         } else {

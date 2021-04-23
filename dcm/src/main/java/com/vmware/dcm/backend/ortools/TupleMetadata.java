@@ -12,7 +12,6 @@ import com.vmware.dcm.ModelException;
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
 import com.vmware.dcm.compiler.ir.Expr;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -82,14 +81,6 @@ public class TupleMetadata {
         );
     }
 
-    JavaTypeList getGroupByTupleType(final String viewName) {
-        return viewGroupByTupleTypeParameters.get(viewName);
-    }
-
-    JavaTypeList getViewTupleType(final String viewName) {
-        return viewTupleTypeParameters.get(viewName);
-    }
-
     JavaType getTypeForField(final IRTable table, final IRColumn column) {
         return Objects.requireNonNull(tableToFieldToType.get(table.getName()).get(column.getName()));
     }
@@ -108,15 +99,6 @@ public class TupleMetadata {
 
     boolean canBeAccessedWithViewIndices(final String tableName) {
         return viewToFieldIndex.containsKey(tableName);
-    }
-
-    /*
-     * When duplicates appear for viewToFieldIndex, we increment the fieldIndex counter but do not add a new
-     * entry. This means that the highest fieldIndex (and not the size of the map) is equal to tuple size.
-     * The indices are 0-indexed.
-     */
-    int getTupleSize(final String tableName) {
-        return Collections.max(viewToFieldIndex.get(tableName.toUpperCase(Locale.US)).values()) + 1;
     }
 
     <T extends Expr> JavaTypeList generateTupleGenericParameters(final List<T> exprs) {
