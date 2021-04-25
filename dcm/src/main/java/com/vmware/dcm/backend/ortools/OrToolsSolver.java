@@ -762,14 +762,14 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private String maybeWrapped(final Expr expr,
                                 @Nullable final GroupContext groupContext, final TranslationContext context) {
-        String exprStr = exprToStr(expr, true, groupContext, context).varName();
+        final JavaIdentifier id = exprToStr(expr, true, groupContext, context);
+        String exprStr = id.varName();
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
-        if (expr instanceof Literal && ((Literal<?>) expr).getValue() instanceof Boolean) {
+        if (expr instanceof Literal && id.type() == JavaType.Boolean) {
             exprStr = (Boolean) ((Literal<?>) expr).getValue() ? "1" : "0";
         }
-        return tupleMetadata.inferType(expr) == JavaType.IntVar
-                ? exprStr : String.format("o.toConst(%s)", exprStr);
+        return id.type() == JavaType.IntVar ? exprStr : String.format("o.toConst(%s)", exprStr);
     }
 
     /**
@@ -1345,7 +1345,7 @@ public class OrToolsSolver implements ISolverBackend {
                     Preconditions.checkArgument(id.type() == JavaType.IntVar
                                                 || id.type() == JavaType.Integer
                                                 || id.type() == JavaType.Long);
-                    return apply(id.varName(), id.type(), context);
+                    return apply(id, context);
                 default:
                     throw new IllegalArgumentException(node.toString());
             }
@@ -1514,7 +1514,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (headSelectItemContainsMonoidFunction) {
                 newCtx.enterScope(subQueryBlock);
                 final JavaIdentifier visit = innerVisitor.visit(headSelectItem, newCtx);
-                final JavaIdentifier ret = apply(visit.varName(), visit.type(), context);
+                final JavaIdentifier ret = apply(visit, context);
                 newCtx.leaveScope();
                 return ret;
             } else {
@@ -1548,7 +1548,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (headSelectItem instanceof FunctionCall) {
                 newCtx.enterScope(subQueryBlock);
                 final JavaIdentifier visit = innerVisitor.visit(headSelectItem, newCtx);
-                final JavaIdentifier ret = apply(visit.varName(), visit.type(), context);
+                final JavaIdentifier ret = apply(visit, context);
                 newCtx.leaveScope();
                 return ret;
             } else {
@@ -1579,6 +1579,17 @@ public class OrToolsSolver implements ISolverBackend {
          * Takes an expression, and declares it as an intermediate variable in the current context. It then
          * returns the declared variable name.
          *
+         * @param context current context for translation
+         * @return An intermediate variable name
+         */
+        protected JavaIdentifier apply(final JavaIdentifier identifier, final TranslationContext context) {
+            return new JavaIdentifier(context.declareVariable(identifier.varName()), identifier.type());
+        }
+
+        /**
+         * Takes an expression, and declares it as an intermediate variable in the current context. It then
+         * returns the declared variable name.
+         *
          * @param expression expression to assign to a variable
          * @param context current context for translation
          * @return An intermediate variable name
@@ -1589,11 +1600,6 @@ public class OrToolsSolver implements ISolverBackend {
 
         protected JavaIdentifier boolApply(final String expression, final TranslationContext context) {
             return new JavaIdentifier(context.declareVariable(expression), JavaType.Boolean);
-        }
-
-        protected JavaIdentifier argTypeApply(final String expression, final JavaIdentifier identifier,
-                                              final TranslationContext context) {
-            return new JavaIdentifier(context.declareVariable(expression), identifier.type());
         }
 
         /**
@@ -1658,8 +1664,8 @@ public class OrToolsSolver implements ISolverBackend {
                                      "sumInteger";
             final JavaIdentifier listOfProcessedItem = extractListFromLoop(processedArgument, context.currentScope(),
                                                                            forLoop);
-            return argTypeApply(CodeBlock.of("o.$L($L)", function, listOfProcessedItem.varName()).toString(),
-                                processedArgument, context);
+            return apply(CodeBlock.of("o.$L($L)", function, listOfProcessedItem.varName()).toString(),
+                                processedArgument.type(), context);
         }
 
         /**
