@@ -280,9 +280,9 @@ public class OrToolsSolver implements ISolverBackend {
                     final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
                     final OutputIR.Block outerBlock = outputIR.newBlock("outer");
                     translationContext.enterScope(outerBlock);
-                    final String exprStr = exprToStr(rewrittenComprehension, translationContext);
+                    final JavaIdentifier exprStr = exprToStr(rewrittenComprehension, translationContext);
                     output.addCode(outerBlock.toString());
-                    output.addStatement("o.maximize($L)", exprStr);
+                    output.addStatement("o.maximize($L)", exprStr.varName());
                 });
         addSolvePhase(output, context);
         final MethodSpec solveMethod = output.build();
@@ -379,6 +379,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final TypeSpec typeSpec = tupleGen.getTupleType(inner.getHead().getSelectExprs().size());
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
                                                  .map(e -> exprToStr(e, true, groupContext, context))
+                                                 .map(JavaIdentifier::varName)
                                                  .collect(Collectors.joining(", "));
                 forBlock.addBody(statement("final var $2L = new $1N<>($3L)",
                                             typeSpec, context.getTupleVarName(), tupleResult));
@@ -621,9 +622,11 @@ public class OrToolsSolver implements ISolverBackend {
                                                           final TranslationContext context) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
                 .map(expr -> exprToStr(expr, false, null, context))
+                .map(JavaIdentifier::varName)
                 .collect(Collectors.joining(" \n    && "));
         final String wherePredicateStr = nonVarQualifiers.wherePredicates.stream()
                                                 .map(expr -> exprToStr(expr, false, null, context))
+                                                .map(JavaIdentifier::varName)
                                                 .collect(Collectors.joining(" \n    && "));
         final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
                 .filter(s -> !s.equals(""))
@@ -647,6 +650,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                                    final TranslationContext translationContext) {
         final String predicateStr = nonVarQualifiers.aggregatePredicates.stream()
                 .map(expr -> exprToStr(expr, false, groupContext, translationContext))
+                .map(JavaIdentifier::varName)
                 .collect(Collectors.joining(" \n    && "));
 
         if (!predicateStr.isEmpty()) {
@@ -668,7 +672,7 @@ public class OrToolsSolver implements ISolverBackend {
                                              final TranslationContext context) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
         final String headItemsStr = headItems.stream()
-                .map(expr -> exprToStr(expr, context) + " /* " + expr.getField().getName() + " */")
+                .map(expr -> exprToStr(expr, context).varName() + " /* " + expr.getField().getName() + " */")
                 .collect(Collectors.joining(",\n    "));
         // Create a tuple for the result set
         block.addBody(statement("final var $2L = new Tuple$1L<>(\n    $3L\n    )",
@@ -681,6 +685,7 @@ public class OrToolsSolver implements ISolverBackend {
             // Comma separated list of field accesses to construct a group string
             final String groupString = groupByQualifier.getGroupByExprs().stream()
                     .map(e -> exprToStr(e, context))
+                    .map(JavaIdentifier::varName)
                     .collect(Collectors.joining(",     \n"));
 
             // Organize the collected tuples from the nested for loops by groupByTuple
@@ -708,7 +713,8 @@ public class OrToolsSolver implements ISolverBackend {
                     .map(e -> (BinaryOperatorPredicate) e)
                     .reduce(varQualifiers.joinPredicates.get(0),
                        (left, right) -> new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.AND, left, right));
-            joinPredicateStr = exprToStr(combinedJoinPredicate, true, null, context);
+            joinPredicateStr = exprToStr(combinedJoinPredicate, true, null, context)
+                                    .varName();
         } else {
             joinPredicateStr = "";
         }
@@ -756,7 +762,7 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private String maybeWrapped(final Expr expr,
                                 @Nullable final GroupContext groupContext, final TranslationContext context) {
-        String exprStr = exprToStr(expr, true, groupContext, context);
+        String exprStr = exprToStr(expr, true, groupContext, context).varName();
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
         if (expr instanceof Literal && ((Literal<?>) expr).getValue() instanceof Boolean) {
@@ -1083,11 +1089,11 @@ public class OrToolsSolver implements ISolverBackend {
         return false;
     }
 
-    private String exprToStr(final Expr expr, final TranslationContext context) {
+    private JavaIdentifier exprToStr(final Expr expr, final TranslationContext context) {
         return exprToStr(expr, true, null, context);
     }
 
-    private String exprToStr(final Expr expr, final boolean allowControllable,
+    private JavaIdentifier exprToStr(final Expr expr, final boolean allowControllable,
                              @Nullable final GroupContext currentGroup, final TranslationContext context) {
         final ExprToStrVisitor visitor = new ExprToStrVisitor(allowControllable, currentGroup, null);
         return visitor.visit(expr, context);
@@ -1168,29 +1174,29 @@ public class OrToolsSolver implements ISolverBackend {
                     final ColumnIdentifier columnArg = (ColumnIdentifier) arg;
                     final OutputIR.ForBlock forBlock = tableToForBlock.get(columnArg.getTableName());
                     context.enterScope(forBlock);
-                    final String variableToAssignTo = exprToStr(columnArg, context);
-                    final JavaType type = tupleMetadata.inferType(columnArg);
-                    final boolean shouldCoerce = (i == 2 || i == 3) && type != JavaType.Long;
+                    final JavaIdentifier variable = exprToStr(columnArg, context);
+                    final boolean shouldCoerce = (i == 2 || i == 3) && variable.type() != JavaType.Long;
+                    final JavaIdentifier maybeCoercedVariable;
                     if (shouldCoerce) {
                         // if demands/capacities are in Integer domain, we coerce to longs
-                        forBlock.addBody(statement("final long $L_l = (long) $L", variableToAssignTo,
-                                                                                  variableToAssignTo));
+                        forBlock.addBody(statement("final long $L_l = (long) $L", variable.varName(),
+                                                                                  variable.varName()));
+                        maybeCoercedVariable = new JavaIdentifier(variable.varName() + "_l", JavaType.Long);
+                    } else {
+                        maybeCoercedVariable = variable;
                     }
                     context.leaveScope();
-                    final String parameter = extractListFromLoop(shouldCoerce ?
-                                                                    variableToAssignTo + "_l" : variableToAssignTo,
-                                                                 context.currentScope(),
-                                                                 forBlock,
-                                                                 shouldCoerce ? JavaType.Long : type);
+                    final JavaIdentifier parameter = extractListFromLoop(maybeCoercedVariable, context.currentScope(),
+                                                                         forBlock);
 
                     if (i == 0) { // vars
-                        vars.add(parameter);
+                        vars.add(parameter.varName());
                     } else if (i == 1) { // domain
-                        domain.add(parameter);
+                        domain.add(parameter.varName());
                     } else if (i == 2) { // demands
-                        demands.add(parameter);
+                        demands.add(parameter.varName());
                     } else { // capacities
-                        capacities.add(parameter);
+                        capacities.add(parameter.varName());
                     }
                 }
             }
@@ -1211,7 +1217,7 @@ public class OrToolsSolver implements ISolverBackend {
      * The main logic to parse a comprehension and translate it into a set of intermediate variables and expressions.
      */
     @SuppressFBWarnings("NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE") // false positive
-    private class ExprToStrVisitor extends IRVisitor<String, TranslationContext> {
+    private class ExprToStrVisitor extends IRVisitor<JavaIdentifier, TranslationContext> {
         private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
         @Nullable private final SubQueryContext currentSubQueryContext;
@@ -1225,7 +1231,7 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         @Override
-        protected String visitFunctionCall(final FunctionCall node, final TranslationContext context) {
+        protected JavaIdentifier visitFunctionCall(final FunctionCall node, final TranslationContext context) {
             final String vectorName = currentSubQueryContext == null ? currentGroupContext.getGroupViewName()
                                                                      : currentSubQueryContext.getSubQueryName();
             // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
@@ -1240,15 +1246,17 @@ public class OrToolsSolver implements ISolverBackend {
             }
 
             context.enterScope(forLoop);
-            final String processedArgument = visit(node.getArgument().get(0), context.withEnterFunctionContext());
+            final JavaIdentifier processedArgument = visit(node.getArgument().get(0),
+                                                           context.withEnterFunctionContext());
             context.leaveScope();
 
             final JavaType argumentType = tupleMetadata.inferType(node.getArgument().get(0));
             final boolean argumentIsIntVar = argumentType == JavaType.IntVar;
 
-            final String listOfProcessedItem =
-                    extractListFromLoop(processedArgument, context.currentScope(), forLoop, argumentType);
+            final JavaIdentifier listOfProcessedItem =
+                    extractListFromLoop(processedArgument, context.currentScope(), forLoop);
             final String function;
+            final JavaType outType;
             switch (node.getFunction()) {
                 case SUM:
                     throw new IllegalStateException("Unreachable");
@@ -1262,112 +1270,129 @@ public class OrToolsSolver implements ISolverBackend {
                                                    "data" : currentSubQueryContext.getSubQueryName();
                         return apply(argumentIsIntVar
                                       ? CodeBlock.of("o.toConst($L.size())", scanOver).toString()
-                                      : CodeBlock.of("$L.size()", scanOver).toString(), context);
+                                      : CodeBlock.of("$L.size()", scanOver).toString(),
+                                     argumentIsIntVar ? JavaType.IntVar : JavaType.Long, context);
                     }
                     function = argumentIsIntVar ? "sumV" : "sum";
+                    outType = argumentIsIntVar ? JavaType.IntVar : argumentType;
                     break;
                 case MAX:
                     function = String.format("maxV%s", argumentType);
+                    outType = argumentType;
                     break;
                 case MIN:
                     function = String.format("minV%s", argumentType);
+                    outType = argumentType;
                     break;
                 case ALL_EQUAL:
                     if (argumentIsIntVar) {
-                        context.currentScope().addBody(statement("o.allEqualVar($L)", listOfProcessedItem));
-                        return apply("model.newConstant(1)", context);
+                        context.currentScope().addBody(statement("o.allEqualVar($L)", listOfProcessedItem.varName()));
+                        return apply("model.newConstant(1)", JavaType.IntVar, context);
                     } else {
                         function = "allEqualPrimitive";
+                        outType = JavaType.Boolean;
                         break;
                     }
                 case ALL_DIFFERENT:
-                    context.currentScope().addBody(statement("o.allDifferent($L)", listOfProcessedItem));
-                    return apply("model.newConstant(1)", context);
+                    context.currentScope().addBody(statement("o.allDifferent($L)", listOfProcessedItem.varName()));
+                    return apply("model.newConstant(1)",  JavaType.IntVar, context);
                 case INCREASING:
-                    context.currentScope().addBody(statement("o.increasing($L)", listOfProcessedItem));
-                    return apply("model.newConstant(1)", context);
+                    context.currentScope().addBody(statement("o.increasing($L)", listOfProcessedItem.varName()));
+                    return apply("model.newConstant(1)",  JavaType.IntVar, context);
                 default:
                     throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
             }
-            return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();
+            return new JavaIdentifier(CodeBlock.of("o.$L($L)", function, listOfProcessedItem.varName()).toString(),
+                                      outType);
         }
 
         @Override
-        protected String visitExistsPredicate(final ExistsPredicate node, final TranslationContext context) {
-            final String processedArgument = visit(node.getArgument(), context);
-            return apply(String.format("o.exists(%s)", processedArgument), context);
+        protected JavaIdentifier visitExistsPredicate(final ExistsPredicate node, final TranslationContext context) {
+            final JavaIdentifier processedArgument = visit(node.getArgument(), context);
+            return apply(String.format("o.exists(%s)", processedArgument.varName()), JavaType.IntVar, context);
         }
 
         @Override
-        protected String visitIsNullPredicate(final IsNullPredicate node, final TranslationContext context) {
-            final JavaType type = tupleMetadata.inferType(node.getArgument());
-            final String processedArgument = visit(node.getArgument(), context);
-            Preconditions.checkArgument(type != JavaType.IntVar);
-            return apply(String.format("%s == null", processedArgument), context);
+        protected JavaIdentifier visitIsNullPredicate(final IsNullPredicate node, final TranslationContext context) {
+            final JavaIdentifier processedArgument = visit(node.getArgument(), context);
+            Preconditions.checkArgument(processedArgument.type() != JavaType.IntVar);
+            return apply(String.format("%s == null", processedArgument.varName()), JavaType.Boolean, context);
         }
 
         @Override
-        protected String visitIsNotNullPredicate(final IsNotNullPredicate node, final TranslationContext context) {
-            final JavaType type = tupleMetadata.inferType(node.getArgument());
-            final String processedArgument = visit(node.getArgument(), context);
-            Preconditions.checkArgument(type != JavaType.IntVar);
-            return apply(String.format("%s != null", processedArgument), context);
+        protected JavaIdentifier visitIsNotNullPredicate(final IsNotNullPredicate node,
+                                                         final TranslationContext context) {
+            final JavaIdentifier processedArgument = visit(node.getArgument(), context);
+            Preconditions.checkArgument(processedArgument.type() != JavaType.IntVar);
+            return apply(String.format("%s != null", processedArgument.varName()),  JavaType.Boolean, context);
         }
 
         @Override
-        protected String visitUnaryOperator(final UnaryOperator node, final TranslationContext context) {
+        protected JavaIdentifier visitUnaryOperator(final UnaryOperator node,
+                                                    final TranslationContext context) {
+            final JavaIdentifier id = visit(node.getArgument(), context);
             switch (node.getOperator()) {
                 case NOT:
-                    return apply(String.format("o.not(%s)", visit(node.getArgument(), context)), context);
+                    Preconditions.checkArgument(id.type() == JavaType.IntVar ||
+                                                id.type() == JavaType.Boolean);
+                    return apply(String.format("o.not(%s)", id.varName()), id.type(), context);
                 case MINUS:
-                    return apply(String.format("o.mult(-1, %s)", visit(node.getArgument(), context)), context);
+                    Preconditions.checkArgument(id.type() == JavaType.IntVar
+                                                || id.type() == JavaType.Integer
+                                                || id.type() == JavaType.Long);
+                    return apply(String.format("o.mult(-1, %s)", id.varName()), id.type(), context);
                 case PLUS:
-                    return apply(visit(node.getArgument(), context), context);
+                    Preconditions.checkArgument(id.type() == JavaType.IntVar
+                                                || id.type() == JavaType.Integer
+                                                || id.type() == JavaType.Long);
+                    return apply(id.varName(), id.type(), context);
                 default:
                     throw new IllegalArgumentException(node.toString());
             }
         }
 
         @Override
-        protected String visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
-                                                      final TranslationContext context) {
-            final String left = visit(node.getLeft(), context);
-            final String right = visit(node.getRight(), context);
+        protected JavaIdentifier visitBinaryOperatorPredicate(final BinaryOperatorPredicate node,
+                                                              final TranslationContext context) {
+            final JavaIdentifier leftArg = visit(node.getLeft(), context);
+            final JavaIdentifier rightArg = visit(node.getRight(), context);
+            final String left = leftArg.varName();
+            final String right = rightArg.varName();
             final BinaryOperatorPredicate.Operator op = node.getOperator();
-            final JavaType leftType = tupleMetadata.inferType(node.getLeft());
-            final JavaType rightType = tupleMetadata.inferType(node.getRight());
 
-            if (leftType == JavaType.IntVar || rightType == JavaType.IntVar) {
+            if (leftArg.type() == JavaType.IntVar || rightArg.type() == JavaType.IntVar) {
                 // We need to generate an IntVar.
                 switch (op) {
                     case EQUAL:
-                        return apply(String.format("o.eq(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.eq(%s, %s)", left, right), context);
                     case NOT_EQUAL:
-                        return apply(String.format("o.ne(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.ne(%s, %s)", left, right), context);
                     case AND:
-                        return apply(String.format("o.and(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.and(%s, %s)", left, right), context);
                     case OR:
-                        return apply(String.format("o.or(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.or(%s, %s)", left, right), context);
                     case LESS_THAN_OR_EQUAL:
-                        return apply(String.format("o.leq(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.leq(%s, %s)", left, right), context);
                     case LESS_THAN:
-                        return apply(String.format("o.lt(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.lt(%s, %s)", left, right), context);
                     case GREATER_THAN_OR_EQUAL:
-                        return apply(String.format("o.geq(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.geq(%s, %s)", left, right), context);
                     case GREATER_THAN:
-                        return apply(String.format("o.gt(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.gt(%s, %s)", left, right), context);
                     case ADD:
-                        return apply(String.format("o.plus(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.plus(%s, %s)", left, right), context);
                     case SUBTRACT:
-                        return apply(String.format("o.minus(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.minus(%s, %s)", left, right), context);
                     case MULTIPLY:
-                        return apply(String.format("o.mult(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.mult(%s, %s)", left, right), context);
                     case DIVIDE:
-                        return apply(String.format("o.div(%s, %s)", left, right), context);
+                        return intVarApply(String.format("o.div(%s, %s)", left, right), context);
                     case IN:
-                        return apply(String.format("o.in%s(%s, %s)", rightType, left, right), context);
+                        System.out.println("here");
+                        return intVarApply(String.format("o.in%s(%s, %s)", rightArg.type().innerType().orElseThrow(),
+                                                                           left, right), context);
                     case CONTAINS:
-                        return apply(String.format("o.inObjectArr(%s, %s)", right, left), context);
+                        return intVarApply(String.format("o.inObjectArr(%s, %s)", right, left), context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1376,33 +1401,33 @@ public class OrToolsSolver implements ISolverBackend {
                 // Both operands are non-var, so we generate an expression in Java.
                 switch (op) {
                     case EQUAL:
-                        return apply(String.format("(o.eq(%s, %s))", left, right), context);
+                        return boolApply(String.format("(o.eq(%s, %s))", left, right), context);
                     case NOT_EQUAL:
-                        return apply(String.format("(!o.eq(%s, %s))", left, right), context);
+                        return boolApply(String.format("(!o.eq(%s, %s))", left, right), context);
                     case AND:
-                        return apply(String.format("(%s && %s)", left, right), context);
+                        return boolApply(String.format("(%s && %s)", left, right), context);
                     case OR:
-                        return apply(String.format("(%s || %s)", left, right), context);
+                        return boolApply(String.format("(%s || %s)", left, right), context);
                     case CONTAINS:
-                        return apply(String.format("o.in(%s, %s)", right, left), context);
+                        return boolApply(String.format("o.in(%s, %s)", right, left), context);
                     case IN:
-                        return apply(String.format("(o.in(%s, %s))", left, right), context);
+                        return boolApply(String.format("(o.in(%s, %s))", left, right), context);
                     case LESS_THAN_OR_EQUAL:
-                        return apply(String.format("(%s <= %s)", left, right), context);
+                        return boolApply(String.format("(%s <= %s)", left, right), context);
                     case LESS_THAN:
-                        return apply(String.format("(%s < %s)", left, right), context);
+                        return boolApply(String.format("(%s < %s)", left, right), context);
                     case GREATER_THAN_OR_EQUAL:
-                        return apply(String.format("(%s >= %s)", left, right), context);
+                        return boolApply(String.format("(%s >= %s)", left, right), context);
                     case GREATER_THAN:
-                        return apply(String.format("(%s > %s)", left, right), context);
+                        return boolApply(String.format("(%s > %s)", left, right), context);
                     case ADD:
-                        return apply(String.format("(%s + %s)", left, right), context);
+                        return apply(String.format("(%s + %s)", left, right), JavaType.Long, context);
                     case SUBTRACT:
-                        return apply(String.format("(%s - %s)", left, right), context);
+                        return apply(String.format("(%s - %s)", left, right), JavaType.Long, context);
                     case MULTIPLY:
-                        return apply(String.format("(%s * %s)", left, right), context);
+                        return apply(String.format("(%s * %s)", left, right), JavaType.Long, context);
                     case DIVIDE:
-                        return apply(String.format("(%s / %s)", left, right), context);
+                        return apply(String.format("(%s / %s)", left, right), JavaType.Long, context);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1410,7 +1435,8 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         @Override
-        protected String visitColumnIdentifier(final ColumnIdentifier node, final TranslationContext context) {
+        protected JavaIdentifier visitColumnIdentifier(final ColumnIdentifier node, final TranslationContext context) {
+            final JavaType type = tupleMetadata.inferType(node);
             // If we are evaluating a group-by comprehension, then column accesses that happen outside the context
             // of an aggregation function must refer to the grouping column, not the inner tuple being iterated over.
             if (!context.isFunctionContext() && currentGroupContext != null) {
@@ -1420,7 +1446,7 @@ public class OrToolsSolver implements ISolverBackend {
                 for (final ColumnIdentifier ci: currentGroupContext.getQualifier().getGroupByColumnIdentifiers()) {
                     if (ci.getTableName().equalsIgnoreCase(tableName)
                             && ci.getField().getName().equalsIgnoreCase(fieldName)) {
-                        return apply(String.format("group.value%s()", columnNumber), context);
+                        return apply(String.format("group.value%s()", columnNumber), type, context);
                     }
                     columnNumber++;
                 }
@@ -1434,7 +1460,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isFunctionContext() && currentSubQueryContext != null) {
                 final String tempTableName = currentSubQueryContext.getSubQueryName().toUpperCase(Locale.US);
                 final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
-                return apply(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), context);
+                return apply(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), type, context);
             }
 
             // Within a group-by, we refer to values from the intermediate group by table. This involves an
@@ -1442,7 +1468,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isFunctionContext() && currentGroupContext != null) {
                 final String tempTableName = currentGroupContext.getTempTableName().toUpperCase(Locale.US);
                 final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
-                return apply(String.format("dataTuple.value%s()", fieldIndex), context);
+                return apply(String.format("dataTuple.value%s()", fieldIndex), type, context);
             }
 
             final String tableName = node.getField().getIRTable().getName();
@@ -1451,20 +1477,22 @@ public class OrToolsSolver implements ISolverBackend {
             if (!allowControllable && fieldName.contains("CONTROLLABLE")) {
                 throw new UnsupportedOperationException("Controllable variables not allowed in predicates");
             }
-            return apply(fieldNameStrWithIter(tableName, fieldName, iterStr), context);
+            return apply(fieldNameStrWithIter(tableName, fieldName, iterStr), type, context);
         }
 
         @Override
-        protected String visitLiteral(final Literal node, final TranslationContext context) {
+        protected JavaIdentifier visitLiteral(final Literal node, final TranslationContext context) {
+            final JavaType type = tupleMetadata.inferType(node);
             if (node.getValue() instanceof String) {
-                return node.getValue().toString().replace("'", "\"");
+                return new JavaIdentifier(node.getValue().toString().replace("'", "\""), type);
             } else {
-                return node.getValue().toString();
+                return new JavaIdentifier(node.getValue().toString(), type);
             }
         }
 
         @Override
-        protected String visitListComprehension(final ListComprehension node, final TranslationContext context) {
+        protected JavaIdentifier visitListComprehension(final ListComprehension node,
+                                                        final TranslationContext context) {
             // We are in a subquery.
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
@@ -1485,23 +1513,24 @@ public class OrToolsSolver implements ISolverBackend {
             // If the head contains a function, then this is a scalar subquery
             if (headSelectItemContainsMonoidFunction) {
                 newCtx.enterScope(subQueryBlock);
-                final String ret = apply(innerVisitor.visit(headSelectItem, newCtx), context);
+                final JavaIdentifier visit = innerVisitor.visit(headSelectItem, newCtx);
+                final JavaIdentifier ret = apply(visit.varName(), visit.type(), context);
                 newCtx.leaveScope();
                 return ret;
             } else {
                 // Else, treat the result as a vector
                 newCtx.enterScope(subQueryBlock.getForLoopByName(newSubqueryName));
-                final String processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0), newCtx);
-                final JavaType type = tupleMetadata.inferType(node.getHead().getSelectExprs().get(0));
-                final String listName =
-                        extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
+                final JavaIdentifier processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0),
+                                                                            newCtx);
+                final JavaIdentifier list = extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName);
                 newCtx.leaveScope();
-                return apply(listName, subQueryBlock, context);
+                return apply(list.varName(), list.type(), subQueryBlock, context);
             }
         }
 
         @Override
-        protected String visitGroupByComprehension(final GroupByComprehension node, final TranslationContext context) {
+        protected JavaIdentifier visitGroupByComprehension(final GroupByComprehension node,
+                                                           final TranslationContext context) {
             // We are in a subquery.
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
@@ -1518,20 +1547,19 @@ public class OrToolsSolver implements ISolverBackend {
             // if scalar subquery
             if (headSelectItem instanceof FunctionCall) {
                 newCtx.enterScope(subQueryBlock);
-                final String ret = apply(innerVisitor.visit(headSelectItem, newCtx), context);
+                final JavaIdentifier visit = innerVisitor.visit(headSelectItem, newCtx);
+                final JavaIdentifier ret = apply(visit.varName(), visit.type(), context);
                 newCtx.leaveScope();
                 return ret;
             } else {
                 newCtx.enterScope(subQueryBlock.getForLoopByName(newSubqueryName));
-                final String processedHeadItem =
+                final JavaIdentifier processedHeadItem =
                     innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0), newCtx);
-                final JavaType type =
-                        tupleMetadata.inferType(node.getComprehension().getHead().getSelectExprs().get(0));
-                final String listName =
-                        extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName, type);
+                final JavaIdentifier list =
+                        extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName);
                 newCtx.leaveScope();
                 // Treat as a vector
-                return apply(listName, subQueryBlock, context);
+                return apply(list.varName(), list.type(), subQueryBlock, context);
             }
         }
 
@@ -1543,8 +1571,29 @@ public class OrToolsSolver implements ISolverBackend {
          * @param context current context for translation
          * @return An intermediate variable name
          */
-        protected String apply(final String expression, final TranslationContext context) {
-            return context.declareVariable(expression);
+        protected JavaIdentifier apply(final String expression, final JavaType type, final TranslationContext context) {
+            return new JavaIdentifier(context.declareVariable(expression), type);
+        }
+
+        /**
+         * Takes an expression, and declares it as an intermediate variable in the current context. It then
+         * returns the declared variable name.
+         *
+         * @param expression expression to assign to a variable
+         * @param context current context for translation
+         * @return An intermediate variable name
+         */
+        protected JavaIdentifier intVarApply(final String expression, final TranslationContext context) {
+            return new JavaIdentifier(context.declareVariable(expression), JavaType.IntVar);
+        }
+
+        protected JavaIdentifier boolApply(final String expression, final TranslationContext context) {
+            return new JavaIdentifier(context.declareVariable(expression), JavaType.Boolean);
+        }
+
+        protected JavaIdentifier argTypeApply(final String expression, final JavaIdentifier identifier,
+                                              final TranslationContext context) {
+            return new JavaIdentifier(context.declareVariable(expression), identifier.type());
         }
 
         /**
@@ -1556,8 +1605,9 @@ public class OrToolsSolver implements ISolverBackend {
          * @param context current context for translation
          * @return An intermediate variable name
          */
-        protected String apply(final String expression, final OutputIR.Block block, final TranslationContext context) {
-            return context.declareVariable(expression, block);
+        protected JavaIdentifier apply(final String expression, final JavaType type,
+                               final OutputIR.Block block, final TranslationContext context) {
+            return new JavaIdentifier(context.declareVariable(expression, block), type);
         }
 
         /**
@@ -1579,7 +1629,7 @@ public class OrToolsSolver implements ISolverBackend {
          * @param context the current translation context
          * @return A variable that yields the result of the sum
          */
-        private String attemptSumAsScalarProductOptimization(final Expr node, final OutputIR.Block outerBlock,
+        private JavaIdentifier attemptSumAsScalarProductOptimization(final Expr node, final OutputIR.Block outerBlock,
                                                              final OutputIR.Block forLoop,
                                                              final TranslationContext context) {
             if (configTryScalarProductEncoding && node instanceof BinaryOperatorPredicate) {
@@ -1601,35 +1651,37 @@ public class OrToolsSolver implements ISolverBackend {
             }
             // regular sum
             context.enterScope(forLoop);
-            final String processedArgument = visit(node, context.withEnterFunctionContext());
+            final JavaIdentifier processedArgument = visit(node, context.withEnterFunctionContext());
             context.leaveScope();
-            final JavaType argumentType = tupleMetadata.inferType(node);
-            final String function = argumentType == JavaType.IntVar ? "sumV" :
-                                    argumentType  == JavaType.Long ? "sumLong" :
+            final String function = processedArgument.type() == JavaType.IntVar ? "sumV" :
+                                    processedArgument.type()  == JavaType.Long ? "sumLong" :
                                      "sumInteger";
-            final String listOfProcessedItem =
-                    extractListFromLoop(processedArgument, context.currentScope(), forLoop, argumentType);
-            return CodeBlock.of("o.$L($L)", function, listOfProcessedItem).toString();
+            final JavaIdentifier listOfProcessedItem = extractListFromLoop(processedArgument, context.currentScope(),
+                                                                           forLoop);
+            return argTypeApply(CodeBlock.of("o.$L($L)", function, listOfProcessedItem.varName()).toString(),
+                                processedArgument, context);
         }
 
         /**
          * Given two expressions representing a variable and coefficients, generate a scalar product term. To do so,
          * we extract the necessary lists from the for loop where these variables and coefficients are collected.
          */
-        private String createTermsForScalarProduct(final Expr variables, final Expr coefficients,
+        private JavaIdentifier createTermsForScalarProduct(final Expr variables, final Expr coefficients,
                                                    final TranslationContext context, final OutputIR.Block outerBlock,
                                                    final OutputIR.Block forLoop,
                                                    final JavaType coefficientsType) {
             context.enterScope(forLoop);
-            final String variablesItem = visit(variables, context.withEnterFunctionContext());
-            final String coefficientsItem = visit(coefficients, context.withEnterFunctionContext());
+            final JavaIdentifier variablesItem = visit(variables, context.withEnterFunctionContext());
+            final JavaIdentifier coefficientsItem = visit(coefficients, context.withEnterFunctionContext());
             context.leaveScope();
-            final String listOfVariablesItem =
-                    extractListFromLoop(variablesItem, outerBlock, forLoop, JavaType.IntVar);
-            final String listOfCoefficientsItem =
-                    extractListFromLoop(coefficientsItem, outerBlock, forLoop, coefficientsType);
-            return CodeBlock.of("o.scalProd$L($L, $L)", coefficientsType, listOfVariablesItem, listOfCoefficientsItem)
-                            .toString();
+            Preconditions.checkArgument(variablesItem.type() == JavaType.IntVar);
+            Preconditions.checkArgument(coefficientsItem.type() == coefficientsType);
+            final JavaIdentifier listOfVariablesItem =
+                    extractListFromLoop(variablesItem, outerBlock, forLoop);
+            final JavaIdentifier listOfCoefficientsItem =
+                    extractListFromLoop(coefficientsItem, outerBlock, forLoop);
+            return intVarApply(CodeBlock.of("o.scalProd$L($L, $L)", coefficientsType, listOfVariablesItem.varName(),
+                                listOfCoefficientsItem.varName()).toString(), context);
         }
 
         /**
@@ -1654,22 +1706,21 @@ public class OrToolsSolver implements ISolverBackend {
      * @param variableToExtract a variable name from within a block to extract out of a loop
      * @param outerBlock the block outside the loop where the extracted list will be created
      * @param innerBlock the name of the block from which we want to extract a list of `variableToExtract` instances
-     * @param variableType the type of `variableToExtract`
      * @return the name of the list being extracted
      */
-    private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
-                                       final OutputIR.Block innerBlock, final JavaType variableType) {
-        final String listName = "listOf" + variableToExtract;
+    private JavaIdentifier extractListFromLoop(final JavaIdentifier variableToExtract, final OutputIR.Block outerBlock,
+                                       final OutputIR.Block innerBlock) {
+        final String listName = "listOf" + variableToExtract.varName();
         // For computing aggregates, the list being scanned is always named "data", and
         // those loop blocks have a valid size. Use this for pre-allocating lists.
         final String maybeGuessSize = innerBlock instanceof OutputIR.ForBlock ?
                 ((OutputIR.ForBlock) innerBlock).getSize() : "";
         final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>($L)",
-                variableType, variableToExtract, ArrayList.class, maybeGuessSize));
+                variableToExtract.type(), variableToExtract.varName(), ArrayList.class, maybeGuessSize));
         if (wasAdded) {
-            innerBlock.addBody(statement("$L.add($L)", listName, variableToExtract));
+            innerBlock.addBody(statement("$L.add($L)", listName, variableToExtract.varName()));
         }
-        return listName;
+        return new JavaIdentifier(listName, JavaType.listType(variableToExtract.type()));
     }
 
     /**
@@ -1679,14 +1730,13 @@ public class OrToolsSolver implements ISolverBackend {
      * @param variableToExtract a variable name from within a block to extract out of a loop
      * @param outerBlock the block outside the loop where the extracted list will be created
      * @param loopBlockName the name of the loop from which we want to extract a list
-     * @param variableType the type of `variableToExtract`
      * @return the name of the list being extracted
      */
     @SuppressFBWarnings("UPM_UNCALLED_PRIVATE_METHOD") // false positive
-    private String extractListFromLoop(final String variableToExtract, final OutputIR.Block outerBlock,
-                                       final String loopBlockName, final JavaType variableType) {
+    private JavaIdentifier extractListFromLoop(final JavaIdentifier variableToExtract, final OutputIR.Block outerBlock,
+                                       final String loopBlockName) {
         final OutputIR.Block forLoop = outerBlock.getForLoopByName(loopBlockName);
-        return extractListFromLoop(variableToExtract, outerBlock, forLoop, variableType);
+        return extractListFromLoop(variableToExtract, outerBlock, forLoop);
     }
 
     private static class QualifiersByType {
