@@ -1251,7 +1251,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                            context.withEnterFunctionContext());
             context.leaveScope();
 
-            final JavaType argumentType = tupleMetadata.inferType(node.getArgument().get(0));
+            final JavaType argumentType = processedArgument.type();
             final boolean argumentIsIntVar = argumentType == JavaType.IntVar;
 
             final JavaExpression listOfProcessedItem =
