@@ -365,36 +365,36 @@ public class OrToolsSolver implements ISolverBackend {
                         CodeBlock.of("for (final var dataTuple: data)"), "data.size()");
             forBlock.addBody(dataForBlock);
 
-            final GroupContext groupContext = new GroupContext(groupByQualifier, intermediateView, viewName);
-            context.enterScope(forBlock);
+            final TranslationContext groupByContext = context.withEnterGroupContext(groupByQualifier, intermediateView,
+                                                                                  viewName);
+            groupByContext.enterScope(forBlock);
 
             // (3) Filter if necessary
             final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(inner, false);
             final Optional<OutputIR.IfBlock> nonVarAggregateFiltersBlock = nonVarAggregateFiltersBlock(viewName,
-                    qualifiersByVarType.nonVar, groupContext, context);
+                    qualifiersByVarType.nonVar, groupByContext);
             nonVarAggregateFiltersBlock.ifPresent(forBlock::addBody);
 
             // If this is not a constraint, we simply add a to a result set
             if (!isConstraint) {
                 final TypeSpec typeSpec = tupleGen.getTupleType(inner.getHead().getSelectExprs().size());
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
-                                                 .map(e -> toJavaExpression(e, groupContext, context))
+                                                 .map(e -> toJavaExpression(e, groupByContext))
                                                  .map(JavaExpression::asString)
                                                  .collect(Collectors.joining(", "));
                 forBlock.addBody(statement("final var $2L = new $1N<>($3L)",
-                                            typeSpec, context.getTupleVarName(), tupleResult));
+                                            typeSpec, groupByContext.getTupleVarName(), tupleResult));
 
                 // Record field name indices for view
                 tupleMetadata.recordFieldIndices(viewName, inner.getHead().getSelectExprs());
-                forBlock.addBody(statement("$L.add($L)", tableNameStr(viewName), context.getTupleVarName()));
+                forBlock.addBody(statement("$L.add($L)", tableNameStr(viewName), groupByContext.getTupleVarName()));
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
-                final List<CodeBlock> constraintBlocks = aggregateConstraintBlock(qualifiersByVarType,
-                        new GroupContext(groupByQualifier, intermediateView, viewName), context);
+                final List<CodeBlock> constraintBlocks = aggregateConstraintBlock(qualifiersByVarType, groupByContext);
                 constraintBlocks.forEach(forBlock::addBody);
             }
-            context.leaveScope(); // forBlock
+            groupByContext.leaveScope(); // forBlock
             block.addBody(forBlock);
             block.addBody(printTime("Group-by final view"));
             return block;
@@ -621,11 +621,11 @@ public class OrToolsSolver implements ISolverBackend {
                                                           final QualifiersByType nonVarQualifiers,
                                                           final TranslationContext context) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
-                .map(expr -> toJavaExpression(expr, null, context))
+                .map(expr -> toJavaExpression(expr, context))
                 .map(JavaExpression::asString)
                 .collect(Collectors.joining(" \n    && "));
         final String wherePredicateStr = nonVarQualifiers.wherePredicates.stream()
-                                                .map(expr -> toJavaExpression(expr, null, context))
+                                                .map(expr -> toJavaExpression(expr, context))
                                                 .map(JavaExpression::asString)
                                                 .collect(Collectors.joining(" \n    && "));
         final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
@@ -646,10 +646,9 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private Optional<OutputIR.IfBlock> nonVarAggregateFiltersBlock(final String viewName,
                                                                    final QualifiersByType nonVarQualifiers,
-                                                                   final GroupContext groupContext,
                                                                    final TranslationContext translationContext) {
         final String predicateStr = nonVarQualifiers.aggregatePredicates.stream()
-                .map(expr -> toJavaExpression(expr, groupContext, translationContext))
+                .map(expr -> toJavaExpression(expr, translationContext))
                 .map(JavaExpression::asString)
                 .collect(Collectors.joining(" \n    && "));
 
@@ -713,16 +712,16 @@ public class OrToolsSolver implements ISolverBackend {
                     .map(e -> (BinaryOperatorPredicate) e)
                     .reduce(varQualifiers.joinPredicates.get(0),
                        (left, right) -> new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.AND, left, right));
-            joinPredicateStr = toJavaExpression(combinedJoinPredicate, null, context)
+            joinPredicateStr = toJavaExpression(combinedJoinPredicate, context)
                                     .asString();
         } else {
             joinPredicateStr = "";
         }
         final List<CodeBlock> results = new ArrayList<>();
         varQualifiers.checkQualifiers.forEach(e ->
-                results.add(topLevelConstraintBlock(e.getExpr(), joinPredicateStr, null, context)));
+                results.add(topLevelConstraintBlock(e.getExpr(), joinPredicateStr, context)));
         nonVarQualifiers.checkQualifiers.forEach(e ->
-                results.add(topLevelConstraintBlock(e.getExpr(), joinPredicateStr, null, context)));
+                results.add(topLevelConstraintBlock(e.getExpr(), joinPredicateStr, context)));
         return results;
     }
 
@@ -730,13 +729,12 @@ public class OrToolsSolver implements ISolverBackend {
      * Returns a list of code blocks representing aggregate constraints posted against rows within a view
      */
     private List<CodeBlock> aggregateConstraintBlock(final QualifiersByVarType qualifiersByVarType,
-                                                     final GroupContext groupContext,
                                                      final TranslationContext context) {
         final List<CodeBlock> results = new ArrayList<>();
         qualifiersByVarType.var.checkQualifiers.forEach(e ->
-                results.add(topLevelConstraintBlock(e.getExpr(), "", groupContext, context)));
+                results.add(topLevelConstraintBlock(e.getExpr(), "", context)));
         qualifiersByVarType.nonVar.checkQualifiers.forEach(e ->
-                results.add(topLevelConstraintBlock(e.getExpr(), "", groupContext, context)));
+                results.add(topLevelConstraintBlock(e.getExpr(), "", context)));
         return results;
     }
 
@@ -744,10 +742,9 @@ public class OrToolsSolver implements ISolverBackend {
      * Creates a string representing a declared constraint
      */
     private CodeBlock topLevelConstraintBlock(final Expr expr, final String joinPredicateStr,
-                                              @Nullable final GroupContext groupContext,
                                               final TranslationContext context) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
-        final String statement = maybeWrapped(expr, groupContext, context);
+        final String statement = maybeWrapped(expr, context);
 
         if (joinPredicateStr.isEmpty()) {
             return CodeBlock.builder().addStatement("model.addEquality($L, 1)", statement).build();
@@ -760,9 +757,8 @@ public class OrToolsSolver implements ISolverBackend {
     /**
      * Wrap constants 'x' in model.newConstant(x) depending on the type. Also converts true/false to 1/0.
      */
-    private String maybeWrapped(final Expr expr,
-                                @Nullable final GroupContext groupContext, final TranslationContext context) {
-        final JavaExpression javaExpr = toJavaExpression(expr, groupContext, context);
+    private String maybeWrapped(final Expr expr, final TranslationContext context) {
+        final JavaExpression javaExpr = toJavaExpression(expr, context);
         String exprStr = javaExpr.asString();
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
@@ -1090,12 +1086,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private JavaExpression toJavaExpression(final Expr expr, final TranslationContext context) {
-        return toJavaExpression(expr, null, context);
-    }
-
-    private JavaExpression toJavaExpression(final Expr expr, @Nullable final GroupContext currentGroup,
-                                            final TranslationContext context) {
-        final IRToJavaExpression visitor = new IRToJavaExpression(currentGroup, null);
+        final IRToJavaExpression visitor = new IRToJavaExpression(null);
         return visitor.visit(expr, context);
     }
 
@@ -1218,18 +1209,15 @@ public class OrToolsSolver implements ISolverBackend {
      */
     @SuppressFBWarnings("NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE") // false positive
     private class IRToJavaExpression extends IRVisitor<JavaExpression, TranslationContext> {
-        @Nullable private final GroupContext currentGroupContext;
         @Nullable private final SubQueryContext currentSubQueryContext;
 
-        private IRToJavaExpression(@Nullable final GroupContext currentGroupContext,
-                                   @Nullable final SubQueryContext currentSubQueryContext) {
-            this.currentGroupContext = currentGroupContext;
+        private IRToJavaExpression(@Nullable final SubQueryContext currentSubQueryContext) {
             this.currentSubQueryContext = currentSubQueryContext;
         }
 
         @Override
         protected JavaExpression visitFunctionCall(final FunctionCall node, final TranslationContext context) {
-            final String vectorName = currentSubQueryContext == null ? currentGroupContext.getGroupViewName()
+            final String vectorName = currentSubQueryContext == null ? context.getGroupContext().getGroupViewName()
                                                                      : currentSubQueryContext.getSubQueryName();
             // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
             // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
@@ -1434,25 +1422,24 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected JavaExpression visitColumnIdentifier(final ColumnIdentifier node, final TranslationContext context) {
             final JavaType type = tupleMetadata.inferType(node);
+            // Check whether this is referring to a group by column.
             // If we are evaluating a group-by comprehension, then column accesses that happen outside the context
             // of an aggregation function must refer to the grouping column, not the inner tuple being iterated over.
-            if (!context.isFunctionContext() && currentGroupContext != null) {
+            if (!context.isFunctionContext() && context.isGroupContext()) {
                 final String tableName = node.getTableName();
                 final String fieldName = node.getField().getName();
                 int columnNumber = 0;
-                for (final ColumnIdentifier ci: currentGroupContext.getQualifier().getGroupByColumnIdentifiers()) {
+                final GroupContext groupContext = context.getGroupContext();
+                for (final ColumnIdentifier ci: groupContext.getQualifier().getGroupByColumnIdentifiers()) {
                     if (ci.getTableName().equalsIgnoreCase(tableName)
                             && ci.getField().getName().equalsIgnoreCase(fieldName)) {
                         return declare(String.format("group.value%s()", columnNumber), type, context);
                     }
                     columnNumber++;
                 }
-                throw new UnsupportedOperationException("Could not find group-by column " + node);
+                // This is not a grouping column access. Fall through
             }
 
-            // TODO: The next two blocks can both simultaneously be true. This can happen when we are within
-            //  a subquery and a group-by context at the same time. We need a cleaner way to distinguish what
-            //  scope to be searching for the indices.
             // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
             if (context.isFunctionContext() && currentSubQueryContext != null) {
                 final String tempTableName = currentSubQueryContext.getSubQueryName().toUpperCase(Locale.US);
@@ -1462,12 +1449,13 @@ public class OrToolsSolver implements ISolverBackend {
 
             // Within a group-by, we refer to values from the intermediate group by table. This involves an
             // indirection from columns to tuple indices
-            if (context.isFunctionContext() && currentGroupContext != null) {
-                final String tempTableName = currentGroupContext.getTempTableName().toUpperCase(Locale.US);
+            if (context.isFunctionContext() && context.isGroupContext()) {
+                final String tempTableName = context.getGroupContext().getTempTableName().toUpperCase(Locale.US);
                 final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
                 return declare(String.format("dataTuple.value%s()", fieldIndex), type, context);
             }
 
+            // Simple field access
             final String tableName = node.getField().getIRTable().getName();
             final String fieldName = node.getField().getName();
             final String iterStr = iterStr(node.getTableName());
@@ -1491,8 +1479,7 @@ public class OrToolsSolver implements ISolverBackend {
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
-            final IRToJavaExpression innerVisitor = new IRToJavaExpression(currentGroupContext,
-                                                                           new SubQueryContext(newSubqueryName));
+            final IRToJavaExpression innerVisitor = new IRToJavaExpression(new SubQueryContext(newSubqueryName));
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getHead().getSelectExprs().get(0);
 
@@ -1528,8 +1515,7 @@ public class OrToolsSolver implements ISolverBackend {
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
-            final IRToJavaExpression innerVisitor = new IRToJavaExpression(currentGroupContext,
-                                                                           new SubQueryContext(newSubqueryName));
+            final IRToJavaExpression innerVisitor = new IRToJavaExpression(new SubQueryContext(newSubqueryName));
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
 

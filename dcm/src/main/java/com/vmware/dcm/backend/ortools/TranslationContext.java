@@ -5,6 +5,9 @@
 
 package com.vmware.dcm.backend.ortools;
 
+import com.vmware.dcm.compiler.ir.GroupByQualifier;
+import edu.umd.cs.findbugs.annotations.Nullable;
+
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Objects;
@@ -18,24 +21,43 @@ class TranslationContext {
     private static final String SUBQUERY_NAME_PREFIX = "subquery";
     private final Deque<OutputIR.Block> scopeStack;
     private final boolean isFunctionContext;
-    private final AtomicInteger subqueryCounter = new AtomicInteger(0);
+    @Nullable private final GroupContext groupContext;
+    private final AtomicInteger subqueryCounter;
 
-    private TranslationContext(final Deque<OutputIR.Block> declarations, final boolean isFunctionContext) {
+    private TranslationContext(final Deque<OutputIR.Block> declarations, final boolean isFunctionContext,
+                               final GroupContext groupContext, final AtomicInteger subqueryCounter) {
         this.scopeStack = declarations;
         this.isFunctionContext = isFunctionContext;
+        this.groupContext = groupContext;
+        this.subqueryCounter = subqueryCounter;
     }
 
     TranslationContext(final boolean isFunctionContext) {
-        this(new ArrayDeque<>(), isFunctionContext);
+        this(new ArrayDeque<>(), isFunctionContext, null, new AtomicInteger(0));
     }
 
     TranslationContext withEnterFunctionContext() {
         final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
-        return new TranslationContext(stackCopy, true);
+        return new TranslationContext(stackCopy, true, groupContext, subqueryCounter);
+    }
+
+    TranslationContext withEnterGroupContext(final GroupByQualifier qualifier, final String tempTableName,
+                                             final String groupViewName) {
+        final GroupContext groupContext = new GroupContext(qualifier, tempTableName, groupViewName);
+        final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
+        return new TranslationContext(stackCopy, isFunctionContext, groupContext, subqueryCounter);
     }
 
     boolean isFunctionContext() {
         return isFunctionContext;
+    }
+
+    public boolean isGroupContext() {
+        return groupContext != null;
+    }
+
+    public GroupContext getGroupContext() {
+        return Objects.requireNonNull(groupContext);
     }
 
     void enterScope(final OutputIR.Block block) {

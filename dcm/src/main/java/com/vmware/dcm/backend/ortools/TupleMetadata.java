@@ -49,7 +49,7 @@ public class TupleMetadata {
     }
 
     <T extends Expr> JavaTypeList computeViewTupleType(final String viewName, final List<T> exprs) {
-        Preconditions.checkArgument(!viewTupleTypeParameters.containsKey(viewName));
+        Preconditions.checkArgument(!viewTupleTypeParameters.containsKey(viewName), viewName + " " + exprs);
         return viewTupleTypeParameters.compute(viewName, (k, v) -> computeTupleGenericParameters(exprs));
     }
 
