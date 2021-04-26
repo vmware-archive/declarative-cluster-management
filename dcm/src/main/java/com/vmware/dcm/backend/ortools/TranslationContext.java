@@ -22,30 +22,39 @@ class TranslationContext {
     private final Deque<OutputIR.Block> scopeStack;
     private final boolean isFunctionContext;
     @Nullable private final GroupContext groupContext;
+    @Nullable private final SubQueryContext subQueryContext;
     private final AtomicInteger subqueryCounter;
 
     private TranslationContext(final Deque<OutputIR.Block> declarations, final boolean isFunctionContext,
-                               final GroupContext groupContext, final AtomicInteger subqueryCounter) {
+                               final GroupContext groupContext, final SubQueryContext subQueryContext,
+                               final AtomicInteger subqueryCounter) {
         this.scopeStack = declarations;
         this.isFunctionContext = isFunctionContext;
         this.groupContext = groupContext;
+        this.subQueryContext = subQueryContext;
         this.subqueryCounter = subqueryCounter;
     }
 
     TranslationContext(final boolean isFunctionContext) {
-        this(new ArrayDeque<>(), isFunctionContext, null, new AtomicInteger(0));
+        this(new ArrayDeque<>(), isFunctionContext, null, null, new AtomicInteger(0));
     }
 
     TranslationContext withEnterFunctionContext() {
         final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
-        return new TranslationContext(stackCopy, true, groupContext, subqueryCounter);
+        return new TranslationContext(stackCopy, true, groupContext, subQueryContext, subqueryCounter);
+    }
+
+    TranslationContext withEnterSubQueryContext(final String newSubqueryName) {
+        final SubQueryContext subQueryContext = new SubQueryContext(newSubqueryName);
+        final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
+        return new TranslationContext(stackCopy, isFunctionContext, groupContext, subQueryContext, subqueryCounter);
     }
 
     TranslationContext withEnterGroupContext(final GroupByQualifier qualifier, final String tempTableName,
                                              final String groupViewName) {
         final GroupContext groupContext = new GroupContext(qualifier, tempTableName, groupViewName);
         final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
-        return new TranslationContext(stackCopy, isFunctionContext, groupContext, subqueryCounter);
+        return new TranslationContext(stackCopy, isFunctionContext, groupContext, subQueryContext, subqueryCounter);
     }
 
     boolean isFunctionContext() {
@@ -58,6 +67,14 @@ class TranslationContext {
 
     public GroupContext getGroupContext() {
         return Objects.requireNonNull(groupContext);
+    }
+
+    public boolean isSubQueryContext() {
+        return subQueryContext != null;
+    }
+
+    public SubQueryContext getSubQueryContext() {
+        return Objects.requireNonNull(subQueryContext);
     }
 
     void enterScope(final OutputIR.Block block) {

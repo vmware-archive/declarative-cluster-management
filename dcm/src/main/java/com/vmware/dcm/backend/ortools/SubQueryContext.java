@@ -5,7 +5,6 @@
 
 package com.vmware.dcm.backend.ortools;
 
-// TODO: consolidate into TranslationContext
 class SubQueryContext {
     private final String subQueryName;
 

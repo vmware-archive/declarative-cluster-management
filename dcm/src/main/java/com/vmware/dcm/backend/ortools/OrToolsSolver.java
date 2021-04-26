@@ -1086,7 +1086,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private JavaExpression toJavaExpression(final Expr expr, final TranslationContext context) {
-        final IRToJavaExpression visitor = new IRToJavaExpression(null);
+        final IRToJavaExpression visitor = new IRToJavaExpression();
         return visitor.visit(expr, context);
     }
 
@@ -1209,16 +1209,11 @@ public class OrToolsSolver implements ISolverBackend {
      */
     @SuppressFBWarnings("NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE") // false positive
     private class IRToJavaExpression extends IRVisitor<JavaExpression, TranslationContext> {
-        @Nullable private final SubQueryContext currentSubQueryContext;
-
-        private IRToJavaExpression(@Nullable final SubQueryContext currentSubQueryContext) {
-            this.currentSubQueryContext = currentSubQueryContext;
-        }
 
         @Override
         protected JavaExpression visitFunctionCall(final FunctionCall node, final TranslationContext context) {
-            final String vectorName = currentSubQueryContext == null ? context.getGroupContext().getGroupViewName()
-                                                                     : currentSubQueryContext.getSubQueryName();
+            final String vectorName = context.isSubQueryContext() ? context.getSubQueryContext().getSubQueryName()
+                                                                  : context.getGroupContext().getGroupViewName();
             // Functions always apply on a vector. We compute the arguments to the function, and in doing so,
             // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
             final OutputIR.Block forLoop = context.currentScope().getForLoopByName(vectorName);
@@ -1251,8 +1246,8 @@ public class OrToolsSolver implements ISolverBackend {
                          node.getArgument().get(0) instanceof ColumnIdentifier)) {
                         // TODO: another sign that groupContext/subQueryContext should be handled by ExprContext
                         //  and scopes
-                        final String scanOver = currentSubQueryContext == null ?
-                                                   "data" : currentSubQueryContext.getSubQueryName();
+                        final String scanOver = context.isSubQueryContext() ?
+                                context.getSubQueryContext().getSubQueryName() : "data" ;
                         return declare(argumentIsIntVar
                                       ? CodeBlock.of("o.toConst($L.size())", scanOver).toString()
                                       : CodeBlock.of("$L.size()", scanOver).toString(),
@@ -1422,6 +1417,14 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected JavaExpression visitColumnIdentifier(final ColumnIdentifier node, final TranslationContext context) {
             final JavaType type = tupleMetadata.inferType(node);
+
+            // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
+            if (context.isSubQueryContext()) {
+                final String tempTableName = context.getSubQueryContext().getSubQueryName().toUpperCase(Locale.US);
+                final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
+                return declare(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), type, context);
+            }
+
             // Check whether this is referring to a group by column.
             // If we are evaluating a group-by comprehension, then column accesses that happen outside the context
             // of an aggregation function must refer to the grouping column, not the inner tuple being iterated over.
@@ -1438,13 +1441,6 @@ public class OrToolsSolver implements ISolverBackend {
                     columnNumber++;
                 }
                 // This is not a grouping column access. Fall through
-            }
-
-            // Sub-queries also use an intermediate view, and we again need an indirection from column names to indices
-            if (context.isFunctionContext() && currentSubQueryContext != null) {
-                final String tempTableName = currentSubQueryContext.getSubQueryName().toUpperCase(Locale.US);
-                final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
-                return declare(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), type, context);
             }
 
             // Within a group-by, we refer to values from the intermediate group by table. This involves an
@@ -1479,29 +1475,27 @@ public class OrToolsSolver implements ISolverBackend {
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
-            final IRToJavaExpression innerVisitor = new IRToJavaExpression(new SubQueryContext(newSubqueryName));
-            Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getHead().getSelectExprs().get(0);
 
             final ContainsFunctionCall visitor = new ContainsFunctionCall();
             visitor.visit(headSelectItem);
-            final boolean headSelectItemContainsMonoidFunction = visitor.getFound();
+            final boolean headContainsFunctionCall = visitor.getFound();
 
             attemptConstantSubqueryOptimization(node, subQueryBlock, context);
 
-            final TranslationContext newCtx = context.withEnterFunctionContext();
+            final TranslationContext newCtx = context.withEnterSubQueryContext(newSubqueryName);
             // If the head contains a function, then this is a scalar subquery
-            if (headSelectItemContainsMonoidFunction) {
+            if (headContainsFunctionCall) {
                 newCtx.enterScope(subQueryBlock);
-                final JavaExpression visit = innerVisitor.visit(headSelectItem, newCtx);
-                final JavaExpression ret = declare(visit, context);
+                final JavaExpression processedItem = toJavaExpression(headSelectItem, newCtx);
+                final JavaExpression ret = declare(processedItem, context);
                 newCtx.leaveScope();
                 return ret;
             } else {
                 // Else, treat the result as a vector
                 newCtx.enterScope(subQueryBlock.getForLoopByName(newSubqueryName));
-                final JavaExpression processedHeadItem = innerVisitor.visit(node.getHead().getSelectExprs().get(0),
-                                                                            newCtx);
+                final JavaExpression processedHeadItem = toJavaExpression(node.getHead().getSelectExprs().get(0),
+                                                                          newCtx);
                 final JavaExpression list = extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName);
                 newCtx.leaveScope();
                 return declare(list, subQueryBlock, context);
@@ -1515,25 +1509,22 @@ public class OrToolsSolver implements ISolverBackend {
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
-            final IRToJavaExpression innerVisitor = new IRToJavaExpression(new SubQueryContext(newSubqueryName));
-            Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
 
-            final TranslationContext newCtx = context.withEnterFunctionContext();
-
+            final TranslationContext newCtx = context.withEnterSubQueryContext(newSubqueryName);
             attemptConstantSubqueryOptimization(node, subQueryBlock, context);
 
             // if scalar subquery
             if (headSelectItem instanceof FunctionCall) {
                 newCtx.enterScope(subQueryBlock);
-                final JavaExpression visit = innerVisitor.visit(headSelectItem, newCtx);
-                final JavaExpression ret = declare(visit, context);
+                final JavaExpression processedItem = toJavaExpression(headSelectItem, newCtx);
+                final JavaExpression ret = declare(processedItem, context);
                 newCtx.leaveScope();
                 return ret;
             } else {
                 newCtx.enterScope(subQueryBlock.getForLoopByName(newSubqueryName));
                 final JavaExpression processedHeadItem =
-                    innerVisitor.visit(node.getComprehension().getHead().getSelectExprs().get(0), newCtx);
+                    toJavaExpression(node.getComprehension().getHead().getSelectExprs().get(0), newCtx);
                 final JavaExpression list =
                         extractListFromLoop(processedHeadItem, subQueryBlock, newSubqueryName);
                 newCtx.leaveScope();

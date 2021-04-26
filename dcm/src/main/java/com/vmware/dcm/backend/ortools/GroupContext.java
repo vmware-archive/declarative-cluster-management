@@ -7,7 +7,6 @@ package com.vmware.dcm.backend.ortools;
 
 import com.vmware.dcm.compiler.ir.GroupByQualifier;
 
-// TODO: consolidate into TranslationContext
 class GroupContext {
     private final GroupByQualifier qualifier;
     private final String tempTableName;
