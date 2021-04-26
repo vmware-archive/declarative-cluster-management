@@ -378,7 +378,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (!isConstraint) {
                 final TypeSpec typeSpec = tupleGen.getTupleType(inner.getHead().getSelectExprs().size());
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
-                                                 .map(e -> toJavaExpression(e, true, groupContext, context))
+                                                 .map(e -> toJavaExpression(e, groupContext, context))
                                                  .map(JavaExpression::asString)
                                                  .collect(Collectors.joining(", "));
                 forBlock.addBody(statement("final var $2L = new $1N<>($3L)",
@@ -621,11 +621,11 @@ public class OrToolsSolver implements ISolverBackend {
                                                           final QualifiersByType nonVarQualifiers,
                                                           final TranslationContext context) {
         final String joinPredicateStr = nonVarQualifiers.joinPredicates.stream()
-                .map(expr -> toJavaExpression(expr, false, null, context))
+                .map(expr -> toJavaExpression(expr, null, context))
                 .map(JavaExpression::asString)
                 .collect(Collectors.joining(" \n    && "));
         final String wherePredicateStr = nonVarQualifiers.wherePredicates.stream()
-                                                .map(expr -> toJavaExpression(expr, false, null, context))
+                                                .map(expr -> toJavaExpression(expr, null, context))
                                                 .map(JavaExpression::asString)
                                                 .collect(Collectors.joining(" \n    && "));
         final String predicateStr = Stream.of(joinPredicateStr, wherePredicateStr)
@@ -649,7 +649,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                                    final GroupContext groupContext,
                                                                    final TranslationContext translationContext) {
         final String predicateStr = nonVarQualifiers.aggregatePredicates.stream()
-                .map(expr -> toJavaExpression(expr, false, groupContext, translationContext))
+                .map(expr -> toJavaExpression(expr, groupContext, translationContext))
                 .map(JavaExpression::asString)
                 .collect(Collectors.joining(" \n    && "));
 
@@ -713,7 +713,7 @@ public class OrToolsSolver implements ISolverBackend {
                     .map(e -> (BinaryOperatorPredicate) e)
                     .reduce(varQualifiers.joinPredicates.get(0),
                        (left, right) -> new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.AND, left, right));
-            joinPredicateStr = toJavaExpression(combinedJoinPredicate, true, null, context)
+            joinPredicateStr = toJavaExpression(combinedJoinPredicate, null, context)
                                     .asString();
         } else {
             joinPredicateStr = "";
@@ -762,7 +762,7 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private String maybeWrapped(final Expr expr,
                                 @Nullable final GroupContext groupContext, final TranslationContext context) {
-        final JavaExpression javaExpr = toJavaExpression(expr, true, groupContext, context);
+        final JavaExpression javaExpr = toJavaExpression(expr, groupContext, context);
         String exprStr = javaExpr.asString();
 
         // Some special cases to handle booleans because the or-tools API does not convert well to booleans
@@ -1090,13 +1090,12 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private JavaExpression toJavaExpression(final Expr expr, final TranslationContext context) {
-        return toJavaExpression(expr, true, null, context);
+        return toJavaExpression(expr, null, context);
     }
 
-    private JavaExpression toJavaExpression(final Expr expr, final boolean allowControllable,
-                                            @Nullable final GroupContext currentGroup,
+    private JavaExpression toJavaExpression(final Expr expr, @Nullable final GroupContext currentGroup,
                                             final TranslationContext context) {
-        final IRToJavaExpression visitor = new IRToJavaExpression(allowControllable, currentGroup, null);
+        final IRToJavaExpression visitor = new IRToJavaExpression(currentGroup, null);
         return visitor.visit(expr, context);
     }
 
@@ -1219,14 +1218,11 @@ public class OrToolsSolver implements ISolverBackend {
      */
     @SuppressFBWarnings("NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE") // false positive
     private class IRToJavaExpression extends IRVisitor<JavaExpression, TranslationContext> {
-        private final boolean allowControllable;
         @Nullable private final GroupContext currentGroupContext;
         @Nullable private final SubQueryContext currentSubQueryContext;
 
-        private IRToJavaExpression(final boolean allowControllable,
-                                   @Nullable final GroupContext currentGroupContext,
+        private IRToJavaExpression(@Nullable final GroupContext currentGroupContext,
                                    @Nullable final SubQueryContext currentSubQueryContext) {
-            this.allowControllable = allowControllable;
             this.currentGroupContext = currentGroupContext;
             this.currentSubQueryContext = currentSubQueryContext;
         }
@@ -1475,9 +1471,6 @@ public class OrToolsSolver implements ISolverBackend {
             final String tableName = node.getField().getIRTable().getName();
             final String fieldName = node.getField().getName();
             final String iterStr = iterStr(node.getTableName());
-            if (!allowControllable && fieldName.contains("CONTROLLABLE")) {
-                throw new UnsupportedOperationException("Controllable variables not allowed in predicates");
-            }
             return declare(fieldNameStrWithIter(tableName, fieldName, iterStr), type, context);
         }
 
@@ -1498,9 +1491,8 @@ public class OrToolsSolver implements ISolverBackend {
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
-            final IRToJavaExpression innerVisitor =
-                    new IRToJavaExpression(allowControllable, currentGroupContext,
-                                         new SubQueryContext(newSubqueryName));
+            final IRToJavaExpression innerVisitor = new IRToJavaExpression(currentGroupContext,
+                                                                           new SubQueryContext(newSubqueryName));
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getHead().getSelectExprs().get(0);
 
@@ -1536,8 +1528,8 @@ public class OrToolsSolver implements ISolverBackend {
             final String newSubqueryName = context.getNewSubqueryName();
             final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
-            final IRToJavaExpression innerVisitor = new IRToJavaExpression(allowControllable,
-                                                        currentGroupContext, new SubQueryContext(newSubqueryName));
+            final IRToJavaExpression innerVisitor = new IRToJavaExpression(currentGroupContext,
+                                                                           new SubQueryContext(newSubqueryName));
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
 
