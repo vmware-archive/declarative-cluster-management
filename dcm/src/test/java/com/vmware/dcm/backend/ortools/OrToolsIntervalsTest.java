@@ -122,7 +122,7 @@ public class OrToolsIntervalsTest {
 
         // Create the variables.
         final int numTasks = 50;
-        final int numNodes = 1000;
+        final int numNodes = 100;
         final IntVar[] taskToNodeAssignment = new IntVar[numTasks];
         final int[] taskDemands1 = new int[numTasks];
         final int[] taskDemands2 = new int[numTasks];
