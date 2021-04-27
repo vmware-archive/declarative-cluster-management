@@ -425,19 +425,19 @@ public class OrToolsSolver implements ISolverBackend {
         // whether the query is a group by or not)
         final OutputIR.Block resultSetDeclBlock = mapOrListForResultSetBlock(viewName, headItemsList,
                                                                              groupByQualifier, isConstraint);
+        viewBlock.addBody(resultSetDeclBlock);
 
         // Separate out qualifiers into variable and non-variable types.
         final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(comprehension, true);
 
         // Start control flows to iterate over tables/views
         final OutputIR.ForBlock iterationBlock = tableIterationBlock(viewName, qualifiersByVarType.nonVar);
+        viewBlock.addBody(iterationBlock);
         context.enterScope(iterationBlock);
 
         // Filter out nested for loops using an if(predicate) statement
         final Optional<OutputIR.IfBlock> nonVarFiltersBlock = nonVarFiltersBlock(viewName, qualifiersByVarType.nonVar,
                                                                                  context);
-        viewBlock.addBody(resultSetDeclBlock);
-        viewBlock.addBody(iterationBlock);
         nonVarFiltersBlock.ifPresent(iterationBlock::addBody);
         if (!isConstraint // for simple constraints, we post constraints in this inner loop itself
            || (groupByQualifier != null) // for aggregate constraints, we populate a
@@ -445,7 +445,6 @@ public class OrToolsSolver implements ISolverBackend {
         ) {
             // If filter predicate is true, then retrieve expressions to collect into result set. Note, this does not
             // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
-
             final OutputIR.Block resultSetAddBlock = resultSetAddBlock(viewName, headItemsList,
                                                                        groupByQualifier, context);
             iterationBlock.addBody(resultSetAddBlock);
@@ -672,8 +671,8 @@ public class OrToolsSolver implements ISolverBackend {
                 .map(expr -> toJavaExpression(expr, context).asString() + " /* " + expr.getField().getName() + " */")
                 .collect(Collectors.joining(",\n    "));
         // Create a tuple for the result set
-        block.addBody(statement("final var $2L = new Tuple$1L<>(\n    $3L\n    )",
-                                headItems.size(), context.getTupleVarName(), headItemsStr));
+        block.addBody(statement("final var $L = new Tuple$L<>(\n    $L\n    )",
+                                context.getTupleVarName(), headItems.size(), headItemsStr));
         final String resultSetNameStr = nonConstraintViewName(viewName);
 
         // Update result set
@@ -686,8 +685,8 @@ public class OrToolsSolver implements ISolverBackend {
                     .collect(Collectors.joining(",     \n"));
 
             // Organize the collected tuples from the nested for loops by groupByTuple
-            block.addBody(statement("final var groupByTuple = new Tuple$1L<>(\n    $2L\n    )",
-                           numberOfGroupByColumns, groupString));
+            block.addBody(statement("final var groupByTuple = new Tuple$L<>(\n    $L\n    )",
+                                    numberOfGroupByColumns, groupString));
             block.addBody(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>()).add($L)",
                                      resultSetNameStr, ArrayList.class, context.getTupleVarName()));
         } else {
