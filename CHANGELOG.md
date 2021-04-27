@@ -1,12 +1,23 @@
 # Changelog
 
-## Ongoing: Release 0.9.0
+## Ongoing: Release 0.10.0
 
+
+## Apr 27, 2021: Release 0.9.0
+* Public API changes:
+   * With #91, no longer requires Jcenter repository
+   * Upgrade to Google OrTools 8.2.9025
+
+* Issues fixed:
+  * #91: Migrate to official ortools Maven dependency  
+  * #89: ortools: using sharper types in backend code generator  
+  * #45: Reduce presolve times enhancement 
+  * Several performance improvements 
 
 ## Mar 24, 2021: Release 0.8.0
 
 * Public API changes:
-  * Objective functios no longer need to be scalar expressions, but
+  * Objective functions no longer need to be scalar expressions, but
     can be any column expression. Each value in the column will be
     treated as an objective function. (#81, #82)
 * Issues fixed: #41, 81, #82, #85, #86
