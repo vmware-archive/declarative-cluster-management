@@ -69,7 +69,7 @@ implementation 'com.vmware.dcm:dcm:0.8.0'
 
 3. We currently support two solver backends. 
 
-   * **Google OR-tools CP-SAT (version 7.8)**. This is available by default when using the maven dependency. 
+   * **Google OR-tools CP-SAT (version 8.2.9025)**. This is available by default when using the maven dependency. 
 
    * **MiniZinc (version 2.3.2)**. This backend is currently being deprecated. If you still want to use it,
    you will have to install MiniZinc out-of-band. 
