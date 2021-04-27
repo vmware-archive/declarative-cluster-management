@@ -12,12 +12,12 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import com.google.ortools.Loader;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.util.Domain;
-import com.skaggsm.ortools.OrToolsHelper;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
@@ -124,7 +124,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final boolean configPrintDiagnostics;
 
     static {
-        OrToolsHelper.loadLibrary();
+        Loader.loadNativeLibraries();
     }
 
     @Nullable private IGeneratedBackend generatedBackend;

@@ -60,26 +60,6 @@ To use within a Gradle-based project:
 implementation 'com.vmware.dcm:dcm:0.8.0'
 ```
 
-For now, one of DCM's dependencies is only available on Jcenter (we expect this to change soon). 
-Until then, you also need to add Jcenter to your list of repositories.
-
-Maven:
-```xml
-<repositories>
-    <repository>
-      <id>jcenter</id>
-      <url>https://jcenter.bintray.com/</url>
-    </repository>
-</repositories>
-```
-
-Gradle:
-```
-repositories {
-    jcenter()
-}
-```
-
 ### Pre-requisites for use
 
 1. We build the repository using JDK 12. Please file an [issue](https://github.com/vmware/declarative-cluster-management/)
