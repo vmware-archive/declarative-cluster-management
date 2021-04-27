@@ -39,6 +39,29 @@ class TranslationContext {
         this(new ArrayDeque<>(), isFunctionContext, null, null, new AtomicInteger(0));
     }
 
+    /**
+     * Takes an expression, and declares it as an intermediate variable in the current context. It then
+     * returns the declared variable name.
+     *
+     * @param expression expression to assign to a variable
+     * @param type type of the expression
+     * @return An intermediate variable name
+     */
+    JavaExpression declare(final String expression, final JavaType type) {
+        return new JavaExpression(declareVariable(expression), type);
+    }
+
+    /**
+     * Takes an expression, and declares it as an intermediate variable in the current context. It then
+     * returns the declared variable name.
+     *
+     * @param identifier a typed expression to assign to a variable
+     * @return An intermediate variable name
+     */
+    JavaExpression declare(final JavaExpression identifier) {
+        return new JavaExpression(declareVariable(identifier.asString()), identifier.type());
+    }
+
     TranslationContext withEnterFunctionContext() {
         final Deque<OutputIR.Block> stackCopy = new ArrayDeque<>(scopeStack);
         return new TranslationContext(stackCopy, true, groupContext, subQueryContext, subqueryCounter);

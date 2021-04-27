@@ -148,7 +148,6 @@ public class OrToolsSolver implements ISolverBackend {
         private boolean useIndicesForEqualityBasedJoins = true;
         private boolean printDiagnostics = false;
 
-
         /**
          * Number of solver threads. Corresponds to CP-SAT's setNumSearchWorkers parameter.
          * @param numThreads number of solver threads to use. Defaults to {@value NUM_THREADS_DEFAULT}.
@@ -192,7 +191,6 @@ public class OrToolsSolver implements ISolverBackend {
             this.useIndicesForEqualityBasedJoins = useIndicesForEqualityBasedJoins;
             return this;
         }
-
 
         /**
          * Configures whether or not to print diagnostics for each invocation of solve()
@@ -382,8 +380,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                  .map(e -> toJavaExpression(e, groupByContext))
                                                  .map(JavaExpression::asString)
                                                  .collect(Collectors.joining(", "));
-                forBlock.addBody(statement("final var $2L = new $1N<>($3L)",
-                                            typeSpec, groupByContext.getTupleVarName(), tupleResult));
+                forBlock.addBody(statement("final var $L = new $N<>($L)",
+                                            groupByContext.getTupleVarName(), typeSpec, tupleResult));
 
                 // Record field name indices for view
                 tupleMetadata.recordFieldIndices(viewName, inner.getHead().getSelectExprs());
@@ -1248,10 +1246,10 @@ public class OrToolsSolver implements ISolverBackend {
                         //  and scopes
                         final String scanOver = context.isSubQueryContext() ?
                                 context.getSubQueryContext().getSubQueryName() : "data" ;
-                        return declare(argumentIsIntVar
-                                      ? CodeBlock.of("o.toConst($L.size())", scanOver).toString()
-                                      : CodeBlock.of("$L.size()", scanOver).toString(),
-                                     argumentIsIntVar ? JavaType.IntVar : JavaType.Long, context);
+                        return context.declare(argumentIsIntVar
+                                                  ? CodeBlock.of("o.toConst($L.size())", scanOver).toString()
+                                                  : CodeBlock.of("$L.size()", scanOver).toString(),
+                                                 argumentIsIntVar ? JavaType.IntVar : JavaType.Long);
                     }
                     function = argumentIsIntVar ? "sumV" : "sum";
                     outType = argumentIsIntVar ? JavaType.IntVar : argumentType;
@@ -1267,7 +1265,7 @@ public class OrToolsSolver implements ISolverBackend {
                 case ALL_EQUAL:
                     if (argumentIsIntVar) {
                         context.currentScope().addBody(statement("o.allEqualVar($L)", listOfProcessedItem.asString()));
-                        return declare("model.newConstant(1)", JavaType.IntVar, context);
+                        return context.declare("model.newConstant(1)", JavaType.IntVar);
                     } else {
                         function = "allEqualPrimitive";
                         outType = JavaType.Boolean;
@@ -1275,10 +1273,10 @@ public class OrToolsSolver implements ISolverBackend {
                     }
                 case ALL_DIFFERENT:
                     context.currentScope().addBody(statement("o.allDifferent($L)", listOfProcessedItem.asString()));
-                    return declare("model.newConstant(1)",  JavaType.IntVar, context);
+                    return context.declare("model.newConstant(1)",  JavaType.IntVar);
                 case INCREASING:
                     context.currentScope().addBody(statement("o.increasing($L)", listOfProcessedItem.asString()));
-                    return declare("model.newConstant(1)",  JavaType.IntVar, context);
+                    return context.declare("model.newConstant(1)",  JavaType.IntVar);
                 default:
                     throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
             }
@@ -1289,14 +1287,14 @@ public class OrToolsSolver implements ISolverBackend {
         @Override
         protected JavaExpression visitExistsPredicate(final ExistsPredicate node, final TranslationContext context) {
             final JavaExpression processedArgument = visit(node.getArgument(), context);
-            return declare(String.format("o.exists(%s)", processedArgument.asString()), JavaType.IntVar, context);
+            return context.declare(String.format("o.exists(%s)", processedArgument.asString()), JavaType.IntVar);
         }
 
         @Override
         protected JavaExpression visitIsNullPredicate(final IsNullPredicate node, final TranslationContext context) {
             final JavaExpression processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(processedArgument.type() != JavaType.IntVar);
-            return declare(String.format("%s == null", processedArgument.asString()), JavaType.Boolean, context);
+            return context.declare(String.format("%s == null", processedArgument.asString()), JavaType.Boolean);
         }
 
         @Override
@@ -1304,7 +1302,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                          final TranslationContext context) {
             final JavaExpression processedArgument = visit(node.getArgument(), context);
             Preconditions.checkArgument(processedArgument.type() != JavaType.IntVar);
-            return declare(String.format("%s != null", processedArgument.asString()),  JavaType.Boolean, context);
+            return context.declare(String.format("%s != null", processedArgument.asString()),  JavaType.Boolean);
         }
 
         @Override
@@ -1315,17 +1313,17 @@ public class OrToolsSolver implements ISolverBackend {
                 case NOT:
                     Preconditions.checkArgument(id.type() == JavaType.IntVar ||
                                                 id.type() == JavaType.Boolean);
-                    return declare(String.format("o.not(%s)", id.asString()), id.type(), context);
+                    return context.declare(String.format("o.not(%s)", id.asString()), id.type());
                 case MINUS:
                     Preconditions.checkArgument(id.type() == JavaType.IntVar
                                                 || id.type() == JavaType.Integer
                                                 || id.type() == JavaType.Long);
-                    return declare(String.format("o.mult(-1, %s)", id.asString()), id.type(), context);
+                    return context.declare(String.format("o.mult(-1, %s)", id.asString()), id.type());
                 case PLUS:
                     Preconditions.checkArgument(id.type() == JavaType.IntVar
                                                 || id.type() == JavaType.Integer
                                                 || id.type() == JavaType.Long);
-                    return declare(id, context);
+                    return context.declare(id);
                 default:
                     throw new IllegalArgumentException(node.toString());
             }
@@ -1344,35 +1342,34 @@ public class OrToolsSolver implements ISolverBackend {
                 // We need to generate an IntVar.
                 switch (op) {
                     case EQUAL:
-                        return declare(String.format("o.eq(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.eq(%s, %s)", left, right), JavaType.IntVar);
                     case NOT_EQUAL:
-                        return declare(String.format("o.ne(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.ne(%s, %s)", left, right), JavaType.IntVar);
                     case AND:
-                        return declare(String.format("o.and(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.and(%s, %s)", left, right), JavaType.IntVar);
                     case OR:
-                        return declare(String.format("o.or(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.or(%s, %s)", left, right), JavaType.IntVar);
                     case LESS_THAN_OR_EQUAL:
-                        return declare(String.format("o.leq(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.leq(%s, %s)", left, right), JavaType.IntVar);
                     case LESS_THAN:
-                        return declare(String.format("o.lt(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.lt(%s, %s)", left, right), JavaType.IntVar);
                     case GREATER_THAN_OR_EQUAL:
-                        return declare(String.format("o.geq(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.geq(%s, %s)", left, right), JavaType.IntVar);
                     case GREATER_THAN:
-                        return declare(String.format("o.gt(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.gt(%s, %s)", left, right), JavaType.IntVar);
                     case ADD:
-                        return declare(String.format("o.plus(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.plus(%s, %s)", left, right), JavaType.IntVar);
                     case SUBTRACT:
-                        return declare(String.format("o.minus(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.minus(%s, %s)", left, right), JavaType.IntVar);
                     case MULTIPLY:
-                        return declare(String.format("o.mult(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.mult(%s, %s)", left, right), JavaType.IntVar);
                     case DIVIDE:
-                        return declare(String.format("o.div(%s, %s)", left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.div(%s, %s)", left, right), JavaType.IntVar);
                     case IN:
-                        System.out.println("here");
-                        return declare(String.format("o.in%s(%s, %s)", rightArg.type().innerType().orElseThrow(),
-                                                                           left, right), JavaType.IntVar, context);
+                        return context.declare(String.format("o.in%s(%s, %s)",
+                                rightArg.type().innerType().orElseThrow(), left, right), JavaType.IntVar);
                     case CONTAINS:
-                        return declare(String.format("o.inObjectArr(%s, %s)", right, left), JavaType.IntVar, context);
+                        return context.declare(String.format("o.inObjectArr(%s, %s)", right, left), JavaType.IntVar);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1381,33 +1378,33 @@ public class OrToolsSolver implements ISolverBackend {
                 // Both operands are non-var, so we generate an expression in Java.
                 switch (op) {
                     case EQUAL:
-                        return declare(String.format("(o.eq(%s, %s))", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(o.eq(%s, %s))", left, right), JavaType.Boolean);
                     case NOT_EQUAL:
-                        return declare(String.format("(!o.eq(%s, %s))", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(!o.eq(%s, %s))", left, right), JavaType.Boolean);
                     case AND:
-                        return declare(String.format("(%s && %s)", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(%s && %s)", left, right), JavaType.Boolean);
                     case OR:
-                        return declare(String.format("(%s || %s)", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(%s || %s)", left, right), JavaType.Boolean);
                     case CONTAINS:
-                        return declare(String.format("o.in(%s, %s)", right, left), JavaType.Boolean, context);
+                        return context.declare(String.format("o.in(%s, %s)", right, left), JavaType.Boolean);
                     case IN:
-                        return declare(String.format("(o.in(%s, %s))", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(o.in(%s, %s))", left, right), JavaType.Boolean);
                     case LESS_THAN_OR_EQUAL:
-                        return declare(String.format("(%s <= %s)", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(%s <= %s)", left, right), JavaType.Boolean);
                     case LESS_THAN:
-                        return declare(String.format("(%s < %s)", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(%s < %s)", left, right), JavaType.Boolean);
                     case GREATER_THAN_OR_EQUAL:
-                        return declare(String.format("(%s >= %s)", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(%s >= %s)", left, right), JavaType.Boolean);
                     case GREATER_THAN:
-                        return declare(String.format("(%s > %s)", left, right), JavaType.Boolean, context);
+                        return context.declare(String.format("(%s > %s)", left, right), JavaType.Boolean);
                     case ADD:
-                        return declare(String.format("(%s + %s)", left, right), JavaType.Long, context);
+                        return context.declare(String.format("(%s + %s)", left, right), JavaType.Long);
                     case SUBTRACT:
-                        return declare(String.format("(%s - %s)", left, right), JavaType.Long, context);
+                        return context.declare(String.format("(%s - %s)", left, right), JavaType.Long);
                     case MULTIPLY:
-                        return declare(String.format("(%s * %s)", left, right), JavaType.Long, context);
+                        return context.declare(String.format("(%s * %s)", left, right), JavaType.Long);
                     case DIVIDE:
-                        return declare(String.format("(%s / %s)", left, right), JavaType.Long, context);
+                        return context.declare(String.format("(%s / %s)", left, right), JavaType.Long);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }
@@ -1422,7 +1419,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isSubQueryContext()) {
                 final String tempTableName = context.getSubQueryContext().getSubQueryName().toUpperCase(Locale.US);
                 final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
-                return declare(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), type, context);
+                return context.declare(String.format("%s.value%s()", context.getTupleVarName(), fieldIndex), type);
             }
 
             // Check whether this is referring to a group by column.
@@ -1436,7 +1433,7 @@ public class OrToolsSolver implements ISolverBackend {
                 for (final ColumnIdentifier ci: groupContext.getQualifier().getGroupByColumnIdentifiers()) {
                     if (ci.getTableName().equalsIgnoreCase(tableName)
                             && ci.getField().getName().equalsIgnoreCase(fieldName)) {
-                        return declare(String.format("group.value%s()", columnNumber), type, context);
+                        return context.declare(String.format("group.value%s()", columnNumber), type);
                     }
                     columnNumber++;
                 }
@@ -1448,14 +1445,14 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isFunctionContext() && context.isGroupContext()) {
                 final String tempTableName = context.getGroupContext().getTempTableName().toUpperCase(Locale.US);
                 final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
-                return declare(String.format("dataTuple.value%s()", fieldIndex), type, context);
+                return context.declare(String.format("dataTuple.value%s()", fieldIndex), type);
             }
 
             // Simple field access
             final String tableName = node.getField().getIRTable().getName();
             final String fieldName = node.getField().getName();
             final String iterStr = iterStr(node.getTableName());
-            return declare(fieldNameStrWithIter(tableName, fieldName, iterStr), type, context);
+            return context.declare(fieldNameStrWithIter(tableName, fieldName, iterStr), type);
         }
 
         @Override
@@ -1488,7 +1485,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (headContainsFunctionCall) {
                 newCtx.enterScope(subQueryBlock);
                 final JavaExpression processedItem = toJavaExpression(headSelectItem, newCtx);
-                final JavaExpression ret = declare(processedItem, context);
+                final JavaExpression ret = context.declare(processedItem);
                 newCtx.leaveScope();
                 return ret;
             } else {
@@ -1518,7 +1515,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (headSelectItem instanceof FunctionCall) {
                 newCtx.enterScope(subQueryBlock);
                 final JavaExpression processedItem = toJavaExpression(headSelectItem, newCtx);
-                final JavaExpression ret = declare(processedItem, context);
+                final JavaExpression ret = context.declare(processedItem);
                 newCtx.leaveScope();
                 return ret;
             } else {
@@ -1531,32 +1528,6 @@ public class OrToolsSolver implements ISolverBackend {
                 // Treat as a vector
                 return declare(list, subQueryBlock, context);
             }
-        }
-
-        /**
-         * Takes an expression, and declares it as an intermediate variable in the current context. It then
-         * returns the declared variable name.
-         *
-         * @param expression expression to assign to a variable
-         * @param type type of the expression
-         * @param context current context for translation
-         * @return An intermediate variable name
-         */
-        protected JavaExpression declare(final String expression, final JavaType type,
-                                         final TranslationContext context) {
-            return new JavaExpression(context.declareVariable(expression), type);
-        }
-
-        /**
-         * Takes an expression, and declares it as an intermediate variable in the current context. It then
-         * returns the declared variable name.
-         *
-         * @param identifier a typed expression to assign to a variable
-         * @param context current context for translation
-         * @return An intermediate variable name
-         */
-        protected JavaExpression declare(final JavaExpression identifier, final TranslationContext context) {
-            return new JavaExpression(context.declareVariable(identifier.asString()), identifier.type());
         }
 
         /**
@@ -1621,8 +1592,8 @@ public class OrToolsSolver implements ISolverBackend {
                                      "sumInteger";
             final JavaExpression listOfProcessedItem = extractListFromLoop(processedArgument, context.currentScope(),
                                                                            forLoop);
-            return declare(CodeBlock.of("o.$L($L)", function, listOfProcessedItem.asString()).toString(),
-                                processedArgument.type(), context);
+            return context.declare(CodeBlock.of("o.$L($L)", function, listOfProcessedItem.asString()).toString(),
+                                   processedArgument.type());
         }
 
         /**
@@ -1644,8 +1615,9 @@ public class OrToolsSolver implements ISolverBackend {
                     extractListFromLoop(variablesItem, outerBlock, forLoop);
             final JavaExpression listOfCoefficientsItem =
                     extractListFromLoop(coefficientsItem, outerBlock, forLoop);
-            return declare(CodeBlock.of("o.scalProd$L($L, $L)", coefficientsType, listOfVariablesItem.asString(),
-                                listOfCoefficientsItem.asString()).toString(), JavaType.IntVar, context);
+            return context.declare(CodeBlock.of("o.scalProd$L($L, $L)", coefficientsType,
+                                   listOfVariablesItem.asString(), listOfCoefficientsItem.asString()).toString(),
+                                   JavaType.IntVar);
         }
 
         /**
