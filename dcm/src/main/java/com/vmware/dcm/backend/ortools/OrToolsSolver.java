@@ -742,11 +742,13 @@ public class OrToolsSolver implements ISolverBackend {
                                               final TranslationContext context) {
         Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
         final String statement = maybeWrapped(expr, context);
-
         if (joinPredicateStr.isEmpty()) {
-            return CodeBlock.builder().addStatement("model.addEquality($L, 1)", statement).build();
+            return CodeBlock.builder().addStatement("o.assume($L, $S)",
+                                                    statement, context.currentScope().getName())
+                            .build();
         } else {
-            return CodeBlock.builder().addStatement("model.addImplication($L, $L)", joinPredicateStr, statement)
+            return CodeBlock.builder().addStatement("o.assumeImplication($L, $L, $S)",
+                                                    joinPredicateStr, statement, context.currentScope().getName())
                             .build();
         }
     }

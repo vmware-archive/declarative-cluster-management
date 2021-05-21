@@ -772,4 +772,21 @@ public class Ops {
     public void maximize(final List<IntVar> list) {
         list.forEach(model::maximize);
     }
+
+    /*
+     * Assumes var is true
+     */
+    public void assume(final IntVar var, final String name) {
+        model.getBuilder().getVariables(var.getIndex()).toBuilder().setName(name).build();
+        model.addAssumption(var);
+    }
+
+    /*
+     * Assume "left implies right" is true
+     */
+    public void assumeImplication(final IntVar left, final IntVar right, final String name) {
+        final Literal assumptionLiteral = model.newBoolVar(name);
+        model.addImplication(left, right).onlyEnforceIf(assumptionLiteral);
+        model.addAssumption(assumptionLiteral);
+    }
 }
