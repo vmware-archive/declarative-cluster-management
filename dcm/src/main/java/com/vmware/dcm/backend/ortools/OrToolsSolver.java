@@ -984,7 +984,8 @@ public class OrToolsSolver implements ISolverBackend {
         }
         output.addStatement("return result");
         output.endControlFlow();
-        output.addStatement("throw new $T(status.toString())", SolverException.class);
+        output.addStatement("final List<String> failedConstraints = o.findSufficientAssumptions(solver)");
+        output.addStatement("throw new $T(status.toString(), failedConstraints)", SolverException.class);
     }
 
     private static String tableNameStr(final String tableName) {
@@ -1273,7 +1274,9 @@ public class OrToolsSolver implements ISolverBackend {
                         break;
                     }
                 case ALL_DIFFERENT:
-                    context.currentScope().addBody(statement("o.allDifferent($L)", listOfProcessedItem.asString()));
+                    context.currentScope().addBody(
+                            statement("o.allDifferent($L, $S)", listOfProcessedItem.asString(),
+                                                                 context.currentScope().getName()));
                     return context.declare("model.newConstant(1)",  JavaType.IntVar);
                 case INCREASING:
                     context.currentScope().addBody(statement("o.increasing($L)", listOfProcessedItem.asString()));

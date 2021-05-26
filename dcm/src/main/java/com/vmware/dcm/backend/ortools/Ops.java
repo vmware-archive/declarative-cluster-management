@@ -8,7 +8,10 @@ package com.vmware.dcm.backend.ortools;
 
 import com.google.common.base.Preconditions;
 import com.google.ortools.sat.CpModel;
+import com.google.ortools.sat.CpSolver;
+import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
+import com.google.ortools.sat.IntegerVariableProto;
 import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearExpr;
 import com.google.ortools.sat.Literal;
@@ -18,13 +21,13 @@ import com.vmware.dcm.SolverException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class Ops {
     private final CpModel model;
     private final StringEncoding encoder;
     private final IntVar trueVar;
     private final IntVar falseVar;
-
 
     public Ops(final CpModel model, final StringEncoding encoding) {
         this.model = model;
@@ -643,6 +646,12 @@ public class Ops {
         model.addAllDifferent(intVars);
     }
 
+    public <T> void allDifferent(final List<IntVar> array, final String assumptionContext) {
+        final IntVar[] intVars = array.toArray(new IntVar[0]);
+        final IntVar[] assumptionVars = assumptionLinkedVars(intVars, assumptionContext);
+        model.addAllDifferent(assumptionVars);
+    }
+
     public IntVar toConst(final boolean expr) {
         return expr ? trueVar : falseVar;
     }
@@ -773,20 +782,60 @@ public class Ops {
         list.forEach(model::maximize);
     }
 
+
     /*
      * Assumes var is true
      */
-    public void assume(final IntVar var, final String name) {
-        model.getBuilder().getVariables(var.getIndex()).toBuilder().setName(name).build();
+    public void assume(final IntVar var, final String assumptionContext) {
+        var.getBuilder().setName(assumptionContext).build();
         model.addAssumption(var);
     }
 
     /*
      * Assume "left implies right" is true
      */
-    public void assumeImplication(final IntVar left, final IntVar right, final String name) {
-        final Literal assumptionLiteral = model.newBoolVar(name);
+    public void assumeImplication(final IntVar left, final IntVar right, final String assumptionContext) {
+        final Literal assumptionLiteral = model.newBoolVar(assumptionContext);
         model.addImplication(left, right).onlyEnforceIf(assumptionLiteral);
         model.addAssumption(assumptionLiteral);
+    }
+
+    /*
+     * Returns an array of IntVars that assumes it can mirror the values of the input IntVars.
+     *
+     * We use this to add assumption literals for constraints that do not support enforcement literals.
+     */
+    private IntVar[] assumptionLinkedVars(final IntVar[] input, final String assumptionContext) {
+        final IntVar[] output = new IntVar[input.length];
+        final IntVar[] assumptionLiterals = new IntVar[input.length];
+        for (int i = 0; i < input.length; i++) {
+            output[i] = model.newIntVarFromDomain(input[i].getDomain(), "");
+            assumptionLiterals[i] = model.newBoolVar(assumptionContext);
+            model.addEquality(output[i], input[i]).onlyEnforceIf(assumptionLiterals[i]);
+        }
+        model.addAssumptions(assumptionLiterals);
+        return output;
+    }
+
+    /*
+     * Returns an array of IntVars that assumes, it can mirror the values of the input IntVars.
+     *
+     * We use this to add assumption literals for constraints that do not support enforcement literals.
+     */
+    public List<String> findSufficientAssumptions(final CpSolver solver) {
+        // For the assumptions interface to work, there should be no objective functions,
+        // and there should be only a single search worker.
+        // Please see: https://github.com/google/or-tools/issues/2563
+        solver.getParameters().setNumSearchWorkers(1);
+        model.getBuilder().getObjective().toBuilder().clear().build();
+
+        // Resolve with updated model
+        final CpSolverStatus solve = solver.solve(model);
+        Preconditions.checkArgument(solve == CpSolverStatus.INFEASIBLE,
+                "Ops.sufficientAssumptions() should not be invoked unless the model is UNSAT");
+        return solver.sufficientAssumptionsForInfeasibility().stream()
+                 .map(model.getBuilder()::getVariables)
+                 .map(IntegerVariableProto::getName)
+                 .collect(Collectors.toList());
     }
 }
