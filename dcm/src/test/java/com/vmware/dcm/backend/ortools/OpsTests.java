@@ -32,8 +32,7 @@ public class OpsTests {
 
     static {
         // Causes or-tools JNI library to be loaded
-        final OrToolsSolver builder = new OrToolsSolver.Builder().build();
-        System.out.println(builder);
+        new OrToolsSolver.Builder().build();
     }
 
     @Nullable private CpModel model;
