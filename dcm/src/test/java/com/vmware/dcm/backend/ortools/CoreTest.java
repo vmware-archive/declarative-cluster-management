@@ -10,12 +10,13 @@ import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
-import com.google.ortools.sat.Literal;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CoreTest {
     static {
@@ -43,9 +44,11 @@ public class CoreTest {
         final CpSolverStatus status = solver.solve(model);
 
         assertEquals(CpSolverStatus.INFEASIBLE, status);
-        for (final int varIndex: solver.sufficientAssumptionsForInfeasibility()) {
-            System.out.println(model.getBuilder().getVariables(varIndex).getName()); // correctly prints variable "v1"
-        }
+        assertTrue(solver.sufficientAssumptionsForInfeasibility()
+                .stream()
+                .map(e -> model.getBuilder().getVariables(e).getName())
+                .collect(Collectors.toList())
+                .contains("v1"));
     }
 
     @Test
@@ -70,9 +73,10 @@ public class CoreTest {
         final CpSolverStatus status = solver.solve(model);
 
         assertEquals(CpSolverStatus.INFEASIBLE, status);
-        for (final int varIndex: solver.sufficientAssumptionsForInfeasibility()) {
-            System.out.println(varIndex);
-            System.out.println(model.getBuilder().getVariables(varIndex).getName()); // correctly prints variable "v1"
-        }
+        assertTrue(solver.sufficientAssumptionsForInfeasibility()
+                .stream()
+                .map(e -> model.getBuilder().getVariables(e).getName())
+                .collect(Collectors.toList())
+                .containsAll(List.of("i1 constraint_all_different", "i1 constraint_domain")));
     }
 }
