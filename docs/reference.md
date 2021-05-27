@@ -248,14 +248,14 @@ Name | Operator | Arguments | Example
 Boolean AND | `AND`| `(boolean expr) AND (boolean expr)`| `CHECK (column_a = 10 AND column_b < 100)` 
 Boolean OR | `OR` | `(boolean expr) OR (boolean expr)`| `CHECK (column_a = 10 OR column_b < 100)`
 Equals | `=` | `(T expr) = (T expr)`| `CHECK (column_a = 10)`
-Not Equals | `!=` | `(T expr) = (T expr)`| `CHECK (column_a != 10)`
+Not equals | `!=` | `(T expr) = (T expr)`| `CHECK (column_a != 10)`
 Greater than | `\>` | `(Numeric expr) > (Numeric expr)`| `CHECK (column_a > 10)`
 Greater than or equal to | `\>=` | `(Numeric expr) \>= (Numeric expr)`| `CHECK (column_a \>= 10)`
 Less than | `\<` | `(Numeric expr) \< (Numeric expr)`| `CHECK (column_a \< 10)`
 Less than or equal to | `\<=` | `(Numeric expr) \<= (Numeric expr)`| `CHECK (column_a \<= 10)`
 In | `IN` | `(T expr) IN (SELECT T expr FROM....)`| `CHECK (column_a IN (SELECT column_b FROM mytable))`
 Exists | `EXISTS` | `EXISTS (SELECT T expr FROM...)`| `CHECK EXISTS (SELECT column_a = 10 FROM...)`
-Array Contains | `CONTAINS` | `CONTAINS (ARRAY expr, ARRAY column)`| `CHECK CONTAINS (column_arr, controllable__a)`
+Array contains | `CONTAINS` | `CONTAINS (ARRAY expr, ARRAY column)`| `CHECK CONTAINS (column_arr, controllable__a)`
 
 ### Arithmetic operators
 
