@@ -9,7 +9,8 @@ This document lays out all of DCM's APIs to instantiate models and specify const
     * [Instantiating models with Model.build()](#instantiating-a-model)  
     * [Solving models](#solving-models)
       * [model.updateData()](#modelupdatedata)    
-      * [model.solve()](#modelsolve)  
+      * [model.solve()](#modelsolve)
+    * [Debugging models](#finding-out-which-constraints-were-unsatisfiable)
 * [Writing constraints](#writing-constraints)  
    * [Hard constraints](#hard-constraints)  
    * [Soft constraints](#soft-constraints)  
@@ -49,6 +50,7 @@ is used. Here's an example of this API's use in our Kubernetes scheduler:
       case "ORTOOLS":
           final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
                                                .setNumThreads(numThreads)
+                                               .setPrintDiagnostics(debugMode)
                                                .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
           return Model.build(conn, orToolsSolver, policies);
       case "MNZ-CHUFFED":
@@ -58,7 +60,6 @@ is used. Here's an example of this API's use in our Kubernetes scheduler:
           return Model.build(conn, solver, policies);
       default:
           throw new IllegalArgumentException(solverToUse);
-  }
   ```
   To see all the configuration parameters for an `OrToolsSolver` instance, see the 
 [OrToolsSolverBuilder Javadocs](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/backend/ortools/OrToolsSolver.Builder.html). 
@@ -104,10 +105,47 @@ There are two methods to solve models based on the most recent inputs fetched vi
 [Model.solve(String tableName)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve())  
 [Model.solve(Set\<String\> tableNames)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve(java.util.Set))
 
-
 Both methods return records corresponding to one or more tables (specified by the `tableName/tableNames` argument).
 If the call to `solve()` succeeds, tables with variable columns will have their values updated as per the 
 constraints specified during `Model.build()`. If `solve()` fails, a `SolverException` exception is thrown.
+
+### Finding out which constraints were unsatisfiable
+
+If `model.solve()` fails, a `SolverException` is thrown. If the model was proven to be unsatisfiable,
+the or-tools solver will also compute the set of offending constraints. This set can be accessed
+via the `SolverException.core()` method. For now, `core()` returns only the string names of constraint
+views that were unsatisfiable. We are currently working on returning fine-grained information about
+which table-rows contributed to the unsatisfiability. 
+
+<!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L238-L263 -->
+```java
+final DSLContext conn = DSL.using("jdbc:h2:mem:");
+conn.execute("create table t1(id integer, controllable__var integer)");
+conn.execute("insert into t1 values (1, null)");
+conn.execute("insert into t1 values (2, null)");
+conn.execute("insert into t1 values (3, null)");
+
+// Unsatisfiable
+final String allDifferent = "create view constraint_all_different as " +
+        "select * from t1 check all_different(controllable__var) = true";
+
+// Unsatisfiable
+final String domain1 = "create view constraint_domain_1 as " +
+        "select * from t1 check controllable__var >= 1 and controllable__var <= 2";
+
+// Satisfiable
+final String domain2 = "create view constraint_domain_2 as " +
+        "select * from t1 check id != 1 or controllable__var = 1";
+
+final Model model = Model.build(conn, List.of(allDifferent, domain1, domain2));
+model.updateData();
+try {
+    model.solve("T1");
+    fail();
+} catch (final SolverException exception) {
+    assertTrue(exception.core().containsAll(List.of("constraint_all_different", "constraint_domain_1")));
+}
+```
 
 ## Writing constraints
 

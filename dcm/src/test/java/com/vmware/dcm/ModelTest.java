@@ -237,28 +237,29 @@ public class ModelTest {
     public void allDifferentInfeasibilityTest() {
         final DSLContext conn = DSL.using("jdbc:h2:mem:");
         conn.execute("create table t1(id integer, controllable__var integer)");
-
-        final String allDifferent = "create view constraint_all_different as " +
-                "select * from t1 check all_different(controllable__var) = true";
-
-        final String domain1 = "create view constraint_domain as " +
-                "select * from t1 check controllable__var >= 1 and controllable__var <= 2";
-
-        final String domain2 = "create view constraint_domain_3 as " +
-                "select * from t1 check id != 1 or controllable__var = 1";
-
         conn.execute("insert into t1 values (1, null)");
         conn.execute("insert into t1 values (2, null)");
         conn.execute("insert into t1 values (3, null)");
 
+        // Unsatisfiable
+        final String allDifferent = "create view constraint_all_different as " +
+                "select * from t1 check all_different(controllable__var) = true";
+
+        // Unsatisfiable
+        final String domain1 = "create view constraint_domain_1 as " +
+                "select * from t1 check controllable__var >= 1 and controllable__var <= 2";
+
+        // Satisfiable
+        final String domain2 = "create view constraint_domain_2 as " +
+                "select * from t1 check id != 1 or controllable__var = 1";
+
         final Model model = Model.build(conn, List.of(allDifferent, domain1, domain2));
         model.updateData();
-
         try {
             model.solve("T1");
             fail();
         } catch (final SolverException exception) {
-            assertTrue(exception.core().containsAll(List.of("constraint_all_different", "constraint_domain")));
+            assertTrue(exception.core().containsAll(List.of("constraint_all_different", "constraint_domain_1")));
         }
     }
 
