@@ -240,35 +240,32 @@ column expression (like the second example above) is treated as one objective fu
 
 ### Boolean expressions
 
-#### and
+In the below table: a `Numeric expr` may be an `integer` column or literal, a `bigint` column or literal, 
+or an arithmetic expression. `T expr` is an expression of type T.
 
-#### or
-
-#### =
-
-#### !=
-
-#### \>
-
-#### \>=
-
-#### \<
-
-#### \<=
-
-#### in
-
-#### exists
-
-#### contains
+Name | Operator | Arguments | Example
+--- | --- | --- | ---
+Boolean AND | `AND`| `(boolean expr) AND (boolean expr)`| `CHECK (column_a = 10 AND column_b < 100)` 
+Boolean OR | `OR` | `(boolean expr) OR (boolean expr)`| `CHECK (column_a = 10 OR column_b < 100)`
+Equals | `=` | `(T expr) = (T expr)`| `CHECK (column_a = 10)`
+Not Equals | `!=` | `(T expr) = (T expr)`| `CHECK (column_a != 10)`
+Greater than | `\>` | `(Numeric expr) > (Numeric expr)`| `CHECK (column_a > 10)`
+Greater than or equal to | `\>=` | `(Numeric expr) \>= (Numeric expr)`| `CHECK (column_a \>= 10)`
+Less than | `\<` | `(Numeric expr) \< (Numeric expr)`| `CHECK (column_a \< 10)`
+Less than or equal to | `\<=` | `(Numeric expr) \<= (Numeric expr)`| `CHECK (column_a \<= 10)`
+In | `IN` | `(T expr) IN (SELECT T expr FROM....)`| `CHECK (column_a IN (SELECT column_b FROM mytable))`
+Exists | `EXISTS` | `EXISTS (SELECT T expr FROM...)`| `CHECK EXISTS (SELECT column_a = 10 FROM...)`
+Array Contains | `CONTAINS` | `CONTAINS (ARRAY expr, ARRAY column)`| `CHECK CONTAINS (column_arr, controllable__a)`
 
 ### Arithmetic operators
 
-### +
-### -
-### *
-### /
-### %
+Name | Operator | Arguments | Example
+--- | --- | --- | ---
+Plus | `+`| `(Numeric expr) + (Numeric expr)`| `CHECK (column_a + column_b = 10)`
+Minus | `-`| `(Numeric expr) - (Numeric expr)`| `CHECK (column_a - column_b = 10)`
+Multiplication | `*`| `(Numeric expr) * (Numeric expr)`| `CHECK (column_a * column_b = 10)`
+Integer division | `/`| `(Numeric expr) / (Numeric expr)`| `CHECK (column_a / column_b = 10)`
+Modulus | `%`| `(Numeric expr) % (Numeric expr)`| `CHECK (column_a % column_b = 10)`
 
 ### Supported aggregates
 
