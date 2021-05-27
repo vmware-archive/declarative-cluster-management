@@ -263,6 +263,7 @@ Name | Operator | Arguments | Example
 --- | --- | --- | ---
 Plus | `+`| `(Numeric expr) + (Numeric expr)`| `CHECK (column_a + column_b = 10)`
 Minus | `-`| `(Numeric expr) - (Numeric expr)`| `CHECK (column_a - column_b = 10)`
+Negation | `-`| `- (Numeric expr)`| `CHECK (-column_a = 10)`
 Multiplication | `*`| `(Numeric expr) * (Numeric expr)`| `CHECK (column_a * column_b = 10)`
 Integer division | `/`| `(Numeric expr) / (Numeric expr)`| `CHECK (column_a / column_b = 10)`
 Modulus | `%`| `(Numeric expr) % (Numeric expr)`| `CHECK (column_a % column_b = 10)`
