@@ -11,7 +11,8 @@ This document lays out all of DCM's APIs to instantiate models and specify const
       * [model.updateData()](#modelupdatedata)    
       * [model.solve()](#modelsolve)
     * [Debugging models](#finding-out-which-constraints-were-unsatisfiable)
-* [Writing constraints](#writing-constraints)  
+* [Writing constraints](#writing-constraints)
+   * [Variable columns](#variable-columns)
    * [Hard constraints](#hard-constraints)  
    * [Soft constraints](#soft-constraints)  
 * [Supported column types for inputs](#supported-column-types-for-inputs)
@@ -148,6 +149,53 @@ try {
 ```
 
 ## Writing constraints
+
+### Variable columns
+
+Every DCM model computes values for one or more *variable columns*. A variable column is a column whose name
+is prefixed with the keyword `controllable__`. A variable column can be of integer, bigint or
+varchar types. DCM guarantees that a returned solution will assign values to variable columns such that
+all hard constraints are satisfied, while maximizing  the number of soft constraints that are met.
+
+A variable column can appear in a table or a view.
+
+Example usage in a table:
+<!-- embedme ../examples/src/main/resources/schema.sql#L11-L18 -->
+```sql
+-- controllable__physical_machine represents a variable that the solver will assign values to
+create table virtual_machine (
+    name varchar(30) primary key not null,
+    cpu  integer  not null,
+    memory integer  not null,
+    controllable__physical_machine varchar(30),
+    foreign key (controllable__physical_machine) references physical_machine(name)
+);
+```
+
+Example usage in a view:
+<!-- embedme ../k8s-scheduler/src/main/resources/scheduler_tables.sql#L213-L232 -->
+```sql
+create view pods_to_assign_no_limit as
+select
+  uid,
+  pod_name,
+  status,
+  node_name as controllable__node_name,
+  namespace,
+  cpu_request,
+  memory_request,
+  ephemeral_storage_request,
+  pods_request,
+  owner_name,
+  creation_timestamp,
+  has_node_selector_labels,
+  has_pod_affinity_requirements,
+  has_pod_anti_affinity_requirements,
+  equivalence_class,
+  qos_class
+from pod_info
+where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler';
+```
 
 ### Hard constraints
 
