@@ -1095,7 +1095,7 @@ public class OrToolsSolver implements ISolverBackend {
         return visitor.visit(expr, context);
     }
 
-    private ListComprehension rewritePipeline(final ListComprehension comprehension) {
+    private ListComprehension rewritePipeline(final String name, final ListComprehension comprehension) {
         return Stream.of(comprehension)
                 .map(RewriteArity::apply)
                 .map(RewriteContains::apply)
