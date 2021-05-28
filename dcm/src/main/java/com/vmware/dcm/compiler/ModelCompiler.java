@@ -44,11 +44,12 @@ public class ModelCompiler {
         final Program<ViewsWithAnnotations> sqlProgram = toSqlProgram(views);
 
         // Create IRTable entries for non-constraint views
-        sqlProgram.forEachNonConstraint((name, view) ->
-                                         createIRTablesForNonConstraintViews(name, view.getCreateView().getQuery()));
+        sqlProgram.nonConstraintViews()
+                  .forEach((name, view) -> createIRTablesForNonConstraintViews(name, view.getCreateView().getQuery()));
 
         // Convert from SQL to list comprehension syntax
-        final Program<ListComprehension> irProgram = sqlProgram.transformWith(this::toListComprehension);
+        final Program<ListComprehension> irProgram = sqlProgram.transformWith(this::toListComprehension)
+                .transformWith((name, view) -> DesugarExists.apply(view));
 
         // Backend-specific code generation begins here.
         return backend.generateModelCode(irContext, irProgram);
@@ -75,9 +76,6 @@ public class ModelCompiler {
      * A pass to create IRTable entries for non-constraint views. These views are used as intermediate
      * computations, so it is convenient in later stages of the compiler to have an IRTable entry for such views
      * to track relevant metadata (like column type information).
-     *
-     * @param viewName view being parsed
-     * @param view AST representing the view
      */
     private void createIRTablesForNonConstraintViews(final String viewName, final Query view) {
         final FromExtractor fromParser = new FromExtractor(irContext);

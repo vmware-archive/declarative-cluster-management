@@ -13,7 +13,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/**
+/*
  * A program is a representation of the set of views passed to a model.
  */
 public class Program<T> {
@@ -64,10 +64,6 @@ public class Program<T> {
         return (inputMap) -> inputMap.entrySet().stream()
                             .collect(Collectors.toMap(Map.Entry::getKey,
                                                       entry -> function.apply(entry.getKey(), entry.getValue())));
-    }
-
-    public void forEachNonConstraint(final BiConsumer<? super String, ? super T> action) {
-        nonConstraintViews.forEach(action);
     }
 
     public void forEach(final BiConsumer<? super String, ? super T> action) {

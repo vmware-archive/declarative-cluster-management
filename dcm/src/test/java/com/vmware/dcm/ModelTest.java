@@ -870,7 +870,7 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW constraint_t1 AS " +
-                "SELECT * FROM t1 check exists(select c1 from t2 where t2.c1 = t1.controllable__c1) = true;");
+                "SELECT * FROM t1 check exists(select c1 from t2 where t2.c1 = t1.controllable__c1);");
 
         // insert data
         conn.execute("insert into t1 values (2)");
