@@ -19,40 +19,37 @@ import java.util.List;
 /*
  * Expands an exists() predicate into "exists() = true"
  */
-class DesugarExists {
+class DesugarExists extends ComprehensionRewriter {
+    private final List<Expr> stack = new ArrayList<>();
 
     static ListComprehension apply(final ListComprehension view) {
-        final DesugarExistsInner inner = new DesugarExistsInner();
+        final DesugarExists inner = new DesugarExists();
         return (ListComprehension) inner.visit(view);
     }
 
-    private static class DesugarExistsInner extends ComprehensionRewriter {
-        private final List<Expr> stack = new ArrayList<>();
+    @Override
+    public Expr visit(final Expr expr, final VoidType context) {
+        stack.add(expr);
+        final Expr result = super.visit(expr, context);
+        stack.remove(stack.size() - 1);
+        return result;
+    }
 
-        @Override
-        public Expr visit(final Expr expr, final VoidType context) {
-            stack.add(expr);
-            final Expr result = super.visit(expr, context);
-            stack.remove(stack.size() - 1);
-            return result;
-        }
-
-        @Override
-        protected Expr visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
-            // The node being visited is at the top of the stack. Peek one level behind it for the ancestor.
-            final Expr ancestor = stack.get(stack.size() - 2);
-            if (ancestor instanceof BinaryOperatorPredicate) {
-                final BinaryOperatorPredicate.Operator op = ((BinaryOperatorPredicate) ancestor).getOperator();
-                switch (op) {
-                    case EQUAL:
-                    case NOT_EQUAL:
-                        return super.visitExistsPredicate(node, context);
-                    default:
-                        break;
-                }
+    @Override
+    protected Expr visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
+        // The node being visited is at the top of the stack. Peek one level behind it for the ancestor.
+        final Expr ancestor = stack.get(stack.size() - 2);
+        if (ancestor instanceof BinaryOperatorPredicate) {
+            final BinaryOperatorPredicate.Operator op = ((BinaryOperatorPredicate) ancestor).getOperator();
+            switch (op) {
+                case EQUAL:
+                case NOT_EQUAL:
+                    return super.visitExistsPredicate(node, context);
+                default:
+                    break;
             }
-            return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node,
-                    new Literal<>(true, Boolean.class));
         }
+        return new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, node,
+                new Literal<>(true, Boolean.class));
     }
 }
