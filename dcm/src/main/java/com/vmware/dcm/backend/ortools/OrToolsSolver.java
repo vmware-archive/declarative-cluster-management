@@ -242,11 +242,12 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         final TranslationContext translationContext = new TranslationContext(false);
-        program.forEach(
-                (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, output, translationContext),
-                (name, comprehension) -> constraintViewCodeGen(name, comprehension, output, translationContext),
-                (name, comprehension) -> objectiveViewCodeGen(name, comprehension, output, translationContext)
-        );
+        program.transformWith(this::rewritePipeline)
+                .forEach(
+                    (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, output, translationContext),
+                    (name, comprehension) -> constraintViewCodeGen(name, comprehension, output, translationContext),
+                    (name, comprehension) -> objectiveViewCodeGen(name, comprehension, output, translationContext)
+                );
         addSolvePhase(output, context);
         final MethodSpec solveMethod = output.build();
 
@@ -267,10 +268,9 @@ public class OrToolsSolver implements ISolverBackend {
     private void nonConstraintViewCodeGen(final String name, final ListComprehension comprehension,
                                           final MethodSpec.Builder output,
                                           final TranslationContext translationContext) {
-        final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
         translationContext.enterScope(outerBlock);
-        final OutputIR.Block block = viewBlock(name, rewrittenComprehension, false, translationContext);
+        final OutputIR.Block block = viewBlock(name, comprehension, false, translationContext);
         output.addCode(translationContext.leaveScope().toString());
         output.addCode(block.toString());
     }
@@ -279,10 +279,9 @@ public class OrToolsSolver implements ISolverBackend {
                                        final MethodSpec.Builder output, final TranslationContext translationContext) {
         final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
         if (capacityConstraints.isEmpty()) {
-            final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
             final OutputIR.Block outerBlock = outputIR.newBlock("outer");
             translationContext.enterScope(outerBlock);
-            final OutputIR.Block block = viewBlock(name, rewrittenComprehension, true, translationContext);
+            final OutputIR.Block block = viewBlock(name, comprehension, true, translationContext);
             output.addCode(translationContext.leaveScope().toString());
             output.addCode(block.toString());
         } else {
@@ -298,10 +297,9 @@ public class OrToolsSolver implements ISolverBackend {
 
     private void objectiveViewCodeGen(final String name, final ListComprehension comprehension,
                                       final MethodSpec.Builder output, final TranslationContext translationContext) {
-        final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
         translationContext.enterScope(outerBlock);
-        final JavaExpression expression = toJavaExpression(rewrittenComprehension, translationContext);
+        final JavaExpression expression = toJavaExpression(comprehension, translationContext);
         output.addCode(outerBlock.toString());
         output.addStatement("o.maximize($L) /* $L */", expression.asString(), name);
     }
