@@ -284,10 +284,10 @@ as shown below. Their results cannot be used in a larger expression (other than 
 
 Operator | Arguments | Top-level only? | Examples | Description 
 --- | --- | --- | --- | ---
-`sum`| `sum( NumExpr )`| No | `SELECT sum(column_a) FROM ...`, `CHECK sum(column_a) = 10` | 
-`count`| `count( NumExpr )`| No |  `SELECT count(column_a) FROM ...`, `CHECK count(column_a) = 10` |
-`min`| `min( NumExpr )`| No | `SELECT min(column_a) FROM ...`, `CHECK min(column_a) = 10` |
-`max`| `max( NumExpr )`| No | `SELECT max(column_a) FROM ...`, `CHECK max(column_a) = 10` |
+`sum`| `sum(NumExpr)`| No | `SELECT sum(column_a) FROM ...`, `CHECK sum(column_a) = 10` | 
+`count`| `count(NumExpr)`| No |  `SELECT count(column_a) FROM ...`, `CHECK count(column_a) = 10` |
+`min`| `min(NumExpr)`| No | `SELECT min(column_a) FROM ...`, `CHECK min(column_a) = 10` |
+`max`| `max(NumExpr)`| No | `SELECT max(column_a) FROM ...`, `CHECK max(column_a) = 10` |
 `all_different`| `all_different(NumExpr)` | Yes | `CHECK all_different(column_a)` | Enforce all values in the column to be mutually different.
 `all_equal`| `all_equal(Expr)` | Yes | `CHECK all_equal(column_a)` | Enforce all values in the column to be equal.
 `increasing`| `increasing(NumExpr)`| Yes | `CHECK increasing(column_a)` | Enforce ascending order for all values in this column
