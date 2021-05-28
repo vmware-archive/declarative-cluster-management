@@ -242,6 +242,8 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         final TranslationContext translationContext = new TranslationContext(false);
+
+        // Lower the program to a block of Java code.
         program.transformWith(this::rewritePipeline) // Program<ListComprehension> -> Program<ListComprehension>
                .transformWith(
                     (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, translationContext),
@@ -280,9 +282,9 @@ public class OrToolsSolver implements ISolverBackend {
 
     private OutputIR.Block constraintViewCodeGen(final String name, final ListComprehension comprehension,
                                                  final TranslationContext translationContext) {
-        final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
         translationContext.enterScope(outerBlock);
+        final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
         final OutputIR.Block block = capacityConstraints.isEmpty() ?
                         viewBlock(name, comprehension, true, translationContext) :
                         createCapacityConstraint(name, comprehension, translationContext, capacityConstraints);
