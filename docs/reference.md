@@ -258,10 +258,10 @@ Boolean AND | `AND`| `BoolExpr AND BoolExpr`| `CHECK (column_a = 10 AND column_b
 Boolean OR | `OR` | `BoolExpr OR BoolExpr`| `CHECK (column_a = 10 OR column_b < 100)`
 Equals | `=` | `Expr = Expr`| `CHECK (column_a = 10)`
 Not equals | `!=` | `Expr = Expr`| `CHECK (column_a != 10)`
-Greater than | `\>` | `NumExpr > NumExpr`| `CHECK (column_a > 10)`
-Greater than or equal to | `\>=` | `NumExpr \>= NumExpr`| `CHECK (column_a \>= 10)`
-Less than | `\<` | `NumExpr \< NumExpr`| `CHECK (column_a \< 10)`
-Less than or equal to | `\<=` | `NumExpr \<= NumExpr`| `CHECK (column_a \<= 10)`
+Greater than | `>` | `NumExpr > NumExpr`| `CHECK (column_a > 10)`
+Greater than or equal to | `>=` | `NumExpr >= NumExpr`| `CHECK (column_a >= 10)`
+Less than | `<` | `NumExpr < NumExpr`| `CHECK (column_a < 10)`
+Less than or equal to | `<=` | `NumExpr <= NumExpr`| `CHECK (column_a <= 10)`
 In | `IN` | `Expr IN (SELECT Expr FROM....)`| `CHECK (column_a IN (SELECT column_b FROM mytable))`
 Exists | `EXISTS` | `EXISTS (SELECT Expr FROM...)`| `CHECK EXISTS (SELECT column_a = 10 FROM...)`
 Array contains | `CONTAINS` | `CONTAINS (ARRAY expr, ARRAY column)`| `CHECK CONTAINS (column_arr, controllable__a)`
