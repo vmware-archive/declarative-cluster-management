@@ -242,12 +242,16 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         final TranslationContext translationContext = new TranslationContext(false);
-        program.transformWith(this::rewritePipeline)
-                .forEach(
-                    (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, output, translationContext),
-                    (name, comprehension) -> constraintViewCodeGen(name, comprehension, output, translationContext),
-                    (name, comprehension) -> objectiveViewCodeGen(name, comprehension, output, translationContext)
-                );
+        program.transformWith(this::rewritePipeline) // Program<ListComprehension> -> Program<ListComprehension>
+               .transformWith(
+                    (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, translationContext),
+                    (name, comprehension) -> constraintViewCodeGen(name, comprehension, translationContext),
+                    (name, comprehension) -> objectiveViewCodeGen(name, comprehension, translationContext)
+               )                                    // Program<ListComprehension> -> Program<OutputIR.Block>
+               .transformWith(
+                    (name, outputIrBlock) -> CodeBlock.builder().add(outputIrBlock.toString()).build()
+               )                                    // Program<OutputIR.Block> -> Program<CodeBlock>
+               .forEach((name, codeBlock) -> output.addCode(codeBlock));
         addSolvePhase(output, context);
         final MethodSpec solveMethod = output.build();
 
@@ -265,43 +269,35 @@ public class OrToolsSolver implements ISolverBackend {
         return compile(spec);
     }
 
-    private void nonConstraintViewCodeGen(final String name, final ListComprehension comprehension,
-                                          final MethodSpec.Builder output,
-                                          final TranslationContext translationContext) {
+    private OutputIR.Block nonConstraintViewCodeGen(final String name, final ListComprehension comprehension,
+                                               final TranslationContext translationContext) {
         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
         translationContext.enterScope(outerBlock);
         final OutputIR.Block block = viewBlock(name, comprehension, false, translationContext);
-        output.addCode(translationContext.leaveScope().toString());
-        output.addCode(block.toString());
+        outerBlock.addBody(block);
+        return outerBlock;
     }
 
-    private void constraintViewCodeGen(final String name, final ListComprehension comprehension,
-                                       final MethodSpec.Builder output, final TranslationContext translationContext) {
+    private OutputIR.Block constraintViewCodeGen(final String name, final ListComprehension comprehension,
+                                                 final TranslationContext translationContext) {
         final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
-        if (capacityConstraints.isEmpty()) {
-            final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-            translationContext.enterScope(outerBlock);
-            final OutputIR.Block block = viewBlock(name, comprehension, true, translationContext);
-            output.addCode(translationContext.leaveScope().toString());
-            output.addCode(block.toString());
-        } else {
-            final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-            translationContext.enterScope(outerBlock);
-            final OutputIR.Block block = createCapacityConstraint(name, comprehension, translationContext,
-                    capacityConstraints);
-            translationContext.currentScope().addBody(block);
-            translationContext.leaveScope();
-            output.addCode(block.toString());
-        }
+        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+        translationContext.enterScope(outerBlock);
+        final OutputIR.Block block = capacityConstraints.isEmpty() ?
+                        viewBlock(name, comprehension, true, translationContext) :
+                        createCapacityConstraint(name, comprehension, translationContext, capacityConstraints);
+        translationContext.leaveScope();
+        outerBlock.addBody(block);
+        return outerBlock;
     }
 
-    private void objectiveViewCodeGen(final String name, final ListComprehension comprehension,
-                                      final MethodSpec.Builder output, final TranslationContext translationContext) {
+    private OutputIR.Block objectiveViewCodeGen(final String name, final ListComprehension comprehension,
+                                                final TranslationContext translationContext) {
         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
         translationContext.enterScope(outerBlock);
         final JavaExpression expression = toJavaExpression(comprehension, translationContext);
-        output.addCode(outerBlock.toString());
-        output.addStatement("o.maximize($L) /* $L */", expression.asString(), name);
+        outerBlock.addBody(CodeBlock.of("o.maximize($L); /* $L */", expression.asString(), name));
+        return outerBlock;
     }
 
     /**
