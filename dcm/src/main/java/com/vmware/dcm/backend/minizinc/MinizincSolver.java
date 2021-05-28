@@ -18,6 +18,7 @@ import com.vmware.dcm.ModelException;
 import com.vmware.dcm.SolverException;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
+import com.vmware.dcm.compiler.Program;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import freemarker.cache.ClassTemplateLoader;
 import freemarker.template.Configuration;
@@ -118,13 +119,9 @@ public class MinizincSolver implements ISolverBackend {
     }
 
 
-    private void findStringLiterals(final Map<String, ListComprehension> nonConstraintViews,
-                                    final Map<String, ListComprehension> constraintViews,
-                                    final Map<String, ListComprehension> objectiveFunctions) {
+    private void findStringLiterals(final Program<ListComprehension> program) {
         final FindStringLiterals search = new FindStringLiterals();
-        nonConstraintViews.forEach((k, v) -> search.visit(v));
-        constraintViews.forEach((k, v) -> search.visit(v));
-        objectiveFunctions.forEach((k, v) -> search.visit(v));
+        program.forEach((k, v) -> search.visit(v));
         stringLiteralsInModel.addAll(search.getStringLiterals());
         Preconditions.checkArgument(!stringLiteralsInModel.contains("'null'"));
         stringLiteralsInModel.add("'null'"); // Used instead of null
@@ -132,16 +129,14 @@ public class MinizincSolver implements ISolverBackend {
 
     @Override
     public List<String> generateModelCode(final IRContext context,
-                                          final Map<String, ListComprehension> nonConstraintViews,
-                                          final Map<String, ListComprehension> constraintViews,
-                                          final Map<String, ListComprehension> objectiveFunctions) {
-        findStringLiterals(nonConstraintViews, constraintViews, objectiveFunctions);
+                                          final Program<ListComprehension> program) {
+        findStringLiterals(program);
         final Map<String, List<String>> templateVars = new HashMap<>();
         final MinizincCodeGenerator visitor = new MinizincCodeGenerator();
         final List<String> arrayDeclarations = visitor.generateArrayDeclarations(context);
         templateVars.put("arrayDeclarations", arrayDeclarations);
 
-        final List<String> nonConstraintViewCode = nonConstraintViews.entrySet().stream().flatMap(entry -> {
+        final List<String> nonConstraintViewCode = program.nonConstraintViews().entrySet().stream().flatMap(entry -> {
             final List<ListComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), false);
             final List<String> result = new ArrayList<>();
             boolean generateArrayDeclaration = true;
@@ -155,7 +150,7 @@ public class MinizincSolver implements ISolverBackend {
         }).collect(Collectors.toList());
         templateVars.put("nonConstraintViewCode", nonConstraintViewCode);
 
-        final List<String> constraintViewCode = constraintViews.entrySet().stream().flatMap(entry -> {
+        final List<String> constraintViewCode = program.constraintViews().entrySet().stream().flatMap(entry -> {
             final List<ListComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), true);
             final List<String> result = new ArrayList<>();
             for (final ListComprehension c: comprehensions) {
@@ -167,7 +162,8 @@ public class MinizincSolver implements ISolverBackend {
         }).collect(Collectors.toList());
         templateVars.put("constraintViewCode", constraintViewCode);
 
-        final List<String> objectiveFunctionsCode = objectiveFunctions.entrySet().stream().flatMap(entry -> {
+        final List<String> objectiveFunctionsCode = program.objectiveFunctionViews()
+                                                           .entrySet().stream().flatMap(entry -> {
             final List<ListComprehension> comprehensions = comprehensionRewritePipeline(entry.getValue(), false);
             final List<String> result = new ArrayList<>();
             for (final ListComprehension c: comprehensions) {

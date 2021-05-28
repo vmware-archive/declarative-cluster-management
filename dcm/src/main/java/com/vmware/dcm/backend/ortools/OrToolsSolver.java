@@ -36,6 +36,7 @@ import com.vmware.dcm.backend.IGeneratedBackend;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
 import com.vmware.dcm.backend.RewriteContains;
+import com.vmware.dcm.compiler.Program;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.ir.CheckQualifier;
@@ -226,10 +227,7 @@ public class OrToolsSolver implements ISolverBackend {
      * into nested for loops. It re-uses JOOQ tables wherever possible for constants.
      */
     @Override
-    public List<String> generateModelCode(final IRContext context,
-                                          final Map<String, ListComprehension> nonConstraintViews,
-                                          final Map<String, ListComprehension> constraintViews,
-                                          final Map<String, ListComprehension> objectiveFunctions) {
+    public List<String> generateModelCode(final IRContext context, final Program<ListComprehension> program) {
         if (generatedBackend != null) {
             return Collections.emptyList();
         }
@@ -244,44 +242,11 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         final TranslationContext translationContext = new TranslationContext(false);
-        nonConstraintViews
-                .forEach((name, comprehension) -> {
-                    final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                    translationContext.enterScope(outerBlock);
-                    final OutputIR.Block block = viewBlock(name, rewrittenComprehension, false, translationContext);
-                    output.addCode(translationContext.leaveScope().toString());
-                    output.addCode(block.toString());
-                });
-        constraintViews
-                .forEach((name, comprehension) -> {
-                    final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
-                    if (capacityConstraints.isEmpty()) {
-                        final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                        translationContext.enterScope(outerBlock);
-                        final OutputIR.Block block = viewBlock(name, rewrittenComprehension, true, translationContext);
-                        output.addCode(translationContext.leaveScope().toString());
-                        output.addCode(block.toString());
-                    } else {
-                        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                        translationContext.enterScope(outerBlock);
-                        final OutputIR.Block block = createCapacityConstraint(name, comprehension, translationContext,
-                                                                              capacityConstraints);
-                        translationContext.currentScope().addBody(block);
-                        translationContext.leaveScope();
-                        output.addCode(block.toString());
-                    }
-                });
-        objectiveFunctions
-                .forEach((name, comprehension) -> {
-                    final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                    translationContext.enterScope(outerBlock);
-                    final JavaExpression expression = toJavaExpression(rewrittenComprehension, translationContext);
-                    output.addCode(outerBlock.toString());
-                    output.addStatement("o.maximize($L)", expression.asString());
-                });
+        program.forEach(
+                (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, output, translationContext),
+                (name, comprehension) -> constraintViewCodeGen(name, comprehension, output, translationContext),
+                (name, comprehension) -> objectiveViewCodeGen(name, comprehension, output, translationContext)
+        );
         addSolvePhase(output, context);
         final MethodSpec solveMethod = output.build();
 
@@ -297,6 +262,48 @@ public class OrToolsSolver implements ISolverBackend {
 
         final TypeSpec spec = backendClassBuilder.build();
         return compile(spec);
+    }
+
+    private void nonConstraintViewCodeGen(final String name, final ListComprehension comprehension,
+                                          final MethodSpec.Builder output,
+                                          final TranslationContext translationContext) {
+        final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
+        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+        translationContext.enterScope(outerBlock);
+        final OutputIR.Block block = viewBlock(name, rewrittenComprehension, false, translationContext);
+        output.addCode(translationContext.leaveScope().toString());
+        output.addCode(block.toString());
+    }
+
+    private void constraintViewCodeGen(final String name, final ListComprehension comprehension,
+                                       final MethodSpec.Builder output, final TranslationContext translationContext) {
+        final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
+        if (capacityConstraints.isEmpty()) {
+            final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
+            final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+            translationContext.enterScope(outerBlock);
+            final OutputIR.Block block = viewBlock(name, rewrittenComprehension, true, translationContext);
+            output.addCode(translationContext.leaveScope().toString());
+            output.addCode(block.toString());
+        } else {
+            final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+            translationContext.enterScope(outerBlock);
+            final OutputIR.Block block = createCapacityConstraint(name, comprehension, translationContext,
+                    capacityConstraints);
+            translationContext.currentScope().addBody(block);
+            translationContext.leaveScope();
+            output.addCode(block.toString());
+        }
+    }
+
+    private void objectiveViewCodeGen(final String name, final ListComprehension comprehension,
+                                      final MethodSpec.Builder output, final TranslationContext translationContext) {
+        final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
+        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+        translationContext.enterScope(outerBlock);
+        final JavaExpression expression = toJavaExpression(rewrittenComprehension, translationContext);
+        output.addCode(outerBlock.toString());
+        output.addStatement("o.maximize($L) /* $L */", expression.asString(), name);
     }
 
     /**
