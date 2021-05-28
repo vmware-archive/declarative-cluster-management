@@ -282,13 +282,13 @@ Modulus | `%`| `NumExpr % NumExpr`| `CHECK (column_a % column_b = 10)`
 Some aggregates are *top-level constraints only*. This means that they can only be used on their own in a `CHECK` clause
 as shown below. Their results cannot be used in a larger expression (other than to check for equality to `true`).
 
-Name | Operator | Arguments | Top-level only? | Examples | Description 
---- | --- | --- | --- | --- | ---
-Sum | `sum`| `sum( NumExpr )`| No | `SELECT sum(column_a) FROM ...`, `CHECK sum(column_a) = 10` | 
-Count | `count`| `count( NumExpr )`| No |  `SELECT count(column_a) FROM ...`, `CHECK count(column_a) = 10` |
-Min | `min`| `min( NumExpr )`| No | `SELECT min(column_a) FROM ...`, `CHECK min(column_a) = 10` |
-Max | `max`| `max( NumExpr )`| No | `SELECT max(column_a) FROM ...`, `CHECK max(column_a) = 10` |
-Enforce all different | `all_different`| `all_different(NumExpr)` | Yes | `CHECK all_different(column_a)` | Enforce all values in the column to be mutually different.
-Enforce all equal | `all_equal`| `all_equal(Expr)` | Yes | `CHECK all_equal(column_a)` | Enforce all values in the column to be equal.
-Enforce increasing | `increasing`| `increasing(NumExpr)`| Yes | `CHECK increasing(column_a)` | Enforce ascending order for all values in this column
-Enforce capacity constraint | `capacity_constraint`| `capacity_constraint(Var NumExpr, Const NumExpr, Const NumExpr, Const NumExpr)`| Yes | `CHECK capacity_constraint(controllable_a, domain, demand, capacity)` | Assign values to `controllable_a` from `domain`, such that the total `demand` does not exceed the `capacity`. The length of the `controllable_a` argument should match that of the `demand` argument. The length of the `domain` argument should match that of the `capacity` argument.
+Operator | Arguments | Top-level only? | Examples | Description 
+--- | --- | --- | --- | ---
+`sum`| `sum( NumExpr )`| No | `SELECT sum(column_a) FROM ...`, `CHECK sum(column_a) = 10` | 
+`count`| `count( NumExpr )`| No |  `SELECT count(column_a) FROM ...`, `CHECK count(column_a) = 10` |
+`min`| `min( NumExpr )`| No | `SELECT min(column_a) FROM ...`, `CHECK min(column_a) = 10` |
+`max`| `max( NumExpr )`| No | `SELECT max(column_a) FROM ...`, `CHECK max(column_a) = 10` |
+`all_different`| `all_different(NumExpr)` | Yes | `CHECK all_different(column_a)` | Enforce all values in the column to be mutually different.
+`all_equal`| `all_equal(Expr)` | Yes | `CHECK all_equal(column_a)` | Enforce all values in the column to be equal.
+`increasing`| `increasing(NumExpr)`| Yes | `CHECK increasing(column_a)` | Enforce ascending order for all values in this column
+`capacity_constraint`| `capacity_constraint(Var NumExpr, Const NumExpr, Const NumExpr, Const NumExpr)`| Yes | `CHECK capacity_constraint(controllable_a, domain, demand, capacity)` | Assign values to `controllable_a` from `domain`, such that the total `demand` does not exceed the `capacity`. The length of the `controllable_a` argument should match that of the `demand` argument. The length of the `domain` argument should match that of the `capacity` argument.
