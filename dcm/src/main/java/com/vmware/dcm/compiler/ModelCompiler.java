@@ -102,7 +102,7 @@ public class ModelCompiler {
         irContext.addAliasedOrViewTable(viewTable);
     }
 
-    private ListComprehension toListComprehension(final ViewsWithAnnotations view) {
+    private ListComprehension toListComprehension(final String name, final ViewsWithAnnotations view) {
         return TranslateViewToIR.apply(view.getCreateView().getQuery(), view.getCheckExpression(), irContext);
     }
 }

@@ -9,6 +9,7 @@ package com.vmware.dcm.compiler;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -45,11 +46,24 @@ public class Program<T> {
         return constraintViews;
     }
 
-    public <R> Program<R> transformWith(final Function<T, R> function) {
-        final Function<Map<String, T>, Map<String, R>> mapFunction = (inputMap) -> inputMap.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> function.apply(entry.getValue())));
-        return new Program<>(mapFunction.apply(nonConstraintViews), mapFunction.apply(constraintViews),
-                             mapFunction.apply(objectiveFunctionViews));
+    public <R> Program<R> transformWith(final BiFunction<String, T, R> function) {
+        return new Program<>(toMapFunction(function).apply(nonConstraintViews),
+                             toMapFunction(function).apply(constraintViews),
+                             toMapFunction(function).apply(objectiveFunctionViews));
+    }
+
+    public <R> Program<R> transformWith(final BiFunction<String, T, R> nonConstraintViewAction,
+                                        final BiFunction<String, T, R> constraintViewAction,
+                                        final BiFunction<String, T, R> objectiveViewAction) {
+        return new Program<>(toMapFunction(nonConstraintViewAction).apply(nonConstraintViews),
+                             toMapFunction(constraintViewAction).apply(constraintViews),
+                             toMapFunction(objectiveViewAction).apply(objectiveFunctionViews));
+    }
+
+    public <R> Function<Map<String, T>, Map<String, R>> toMapFunction(final BiFunction<String, T, R> function) {
+        return (inputMap) -> inputMap.entrySet().stream()
+                            .collect(Collectors.toMap(Map.Entry::getKey,
+                                                      entry -> function.apply(entry.getKey(), entry.getValue())));
     }
 
     public void forEachNonConstraint(final BiConsumer<? super String, ? super T> action) {
