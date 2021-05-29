@@ -244,15 +244,20 @@ public class OrToolsSolver implements ISolverBackend {
         final TranslationContext translationContext = new TranslationContext(false);
 
         // Lower the program to a block of Java code.
-        program.transformWith(this::rewritePipeline) // Program<ListComprehension> -> Program<ListComprehension>
+        // Start with some passes on Program<ListComprehension>
+        program.transformWith((s, comprehension) -> RewriteArity.apply(comprehension))
+               .transformWith((s, comprehension) -> RewriteContains.apply(comprehension))
+               // ... then convert to Program<OutputIR.Block>
                .transformWith(
                     (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, translationContext),
                     (name, comprehension) -> constraintViewCodeGen(name, comprehension, translationContext),
                     (name, comprehension) -> objectiveViewCodeGen(name, comprehension, translationContext)
-               )                                    // Program<ListComprehension> -> Program<OutputIR.Block>
+               )
+               // ... then lower to Program<CodeBlock>
                .transformWith(
                     (name, outputIrBlock) -> CodeBlock.builder().add(outputIrBlock.toString()).build()
-               )                                    // Program<OutputIR.Block> -> Program<CodeBlock>
+               )
+               // ... then add the resulting string to the generated method
                .forEach((name, codeBlock) -> output.addCode(codeBlock));
         addSolvePhase(output, context);
         final MethodSpec solveMethod = output.build();
@@ -1091,13 +1096,6 @@ public class OrToolsSolver implements ISolverBackend {
     private JavaExpression toJavaExpression(final Expr expr, final TranslationContext context) {
         final IRToJavaExpression visitor = new IRToJavaExpression();
         return visitor.visit(expr, context);
-    }
-
-    private ListComprehension rewritePipeline(final String name, final ListComprehension comprehension) {
-        return Stream.of(comprehension)
-                .map(RewriteArity::apply)
-                .map(RewriteContains::apply)
-                .findFirst().orElseThrow();
     }
 
     private QualifiersByVarType extractQualifiersByVarType(final ListComprehension comprehension,
