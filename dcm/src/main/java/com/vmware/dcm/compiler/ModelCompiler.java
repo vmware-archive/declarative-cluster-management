@@ -48,8 +48,8 @@ public class ModelCompiler {
                   .forEach((name, view) -> createIRTablesForNonConstraintViews(name, view.getCreateView().getQuery()));
 
         // Convert from SQL to list comprehension syntax
-        final Program<ListComprehension> irProgram = sqlProgram.transformWith(this::toListComprehension)
-                .transformWith((name, view) -> DesugarExists.apply(view));
+        final Program<ListComprehension> irProgram = sqlProgram.map(this::toListComprehension)
+                .map((name, view) -> DesugarExists.apply(view));
 
         // Backend-specific code generation begins here.
         return backend.generateModelCode(irContext, irProgram);
@@ -100,7 +100,7 @@ public class ModelCompiler {
         irContext.addAliasedOrViewTable(viewTable);
     }
 
-    private ListComprehension toListComprehension(final String name, final ViewsWithAnnotations view) {
+    private ListComprehension toListComprehension(final ViewsWithAnnotations view) {
         return TranslateViewToIR.apply(view.getCreateView().getQuery(), view.getCheckExpression(), irContext);
     }
 }

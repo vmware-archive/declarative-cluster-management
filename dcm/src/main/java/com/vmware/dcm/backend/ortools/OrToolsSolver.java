@@ -245,18 +245,16 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Lower the program to a block of Java code.
         // Start with some passes on Program<ListComprehension>
-        program.transformWith((s, comprehension) -> RewriteArity.apply(comprehension))
-               .transformWith((s, comprehension) -> RewriteContains.apply(comprehension))
+        program.map(RewriteArity::apply)
+               .map(RewriteContains::apply)
                // ... then convert to Program<OutputIR.Block>
-               .transformWith(
+               .map(
                     (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, translationContext),
                     (name, comprehension) -> constraintViewCodeGen(name, comprehension, translationContext),
                     (name, comprehension) -> objectiveViewCodeGen(name, comprehension, translationContext)
                )
                // ... then lower to Program<CodeBlock>
-               .transformWith(
-                    (name, outputIrBlock) -> CodeBlock.builder().add(outputIrBlock.toString()).build()
-               )
+               .map(outputIrBlock -> CodeBlock.builder().add(outputIrBlock.toString()).build())
                // ... then add the resulting string to the generated method
                .forEach((name, codeBlock) -> output.addCode(codeBlock));
         addSolvePhase(output, context);
