@@ -103,7 +103,7 @@ public class Program<T> {
      *
      * @param action An action that executes per instance of a view of type T
      */
-    public void forEach(final BiConsumer<? super String, ? super T> action) {
+    public void forEach(final BiConsumer<String, T> action) {
         nonConstraintViews.forEach(action);
         constraintViews.forEach(action);
         objectiveFunctionViews.forEach(action);
@@ -116,9 +116,9 @@ public class Program<T> {
      * @param constraintViewAction An action that executes per instance of a constraint view of type T
      * @param objectiveViewAction An action that executes per instance of a objective view of type T
      */
-    public void forEach(final BiConsumer<? super String, ? super T> nonConstraintViewAction,
-                        final BiConsumer<? super String, ? super T> constraintViewAction,
-                        final BiConsumer<? super String, ? super T> objectiveViewAction) {
+    public void forEach(final BiConsumer<String, T> nonConstraintViewAction,
+                        final BiConsumer<String, T> constraintViewAction,
+                        final BiConsumer<String, T> objectiveViewAction) {
         nonConstraintViews.forEach(nonConstraintViewAction);
         constraintViews.forEach(constraintViewAction);
         objectiveFunctionViews.forEach(objectiveViewAction);
