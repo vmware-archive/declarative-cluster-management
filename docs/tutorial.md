@@ -97,8 +97,11 @@ Start reading from the
 5. Let's now introduce some constraints. We'll start with a very simple hard constraint: 
    assign all VMs to physical machine `pm3`:
 
-   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L25-L38 -->
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L25-L41 -->
    ```java
+   private static final int NUM_PHYSICAL_MACHINES = 5;
+   private static final int NUM_VIRTUAL_MACHINES = 10;
+   
    /*
     * A simple constraint that forces all assignments to go the same node
     */
@@ -140,7 +143,7 @@ Start reading from the
    sum of demands from all VMs assigned to a physical machine does not exceed the capacity of that machine. 
    To specify that, we write the following constraint:
 
-   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L40-L64 -->
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L43-L67 -->
    ```java
    /*
     * We now add a capacity constraint to make sure that no physical machine is assigned more VMs
@@ -190,7 +193,7 @@ Start reading from the
 7. Note that the constraints we have seen so far are hard constraints. Let's now add a soft constraint, a load balancing
    objective:
    
-   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L66-L101 -->
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L69-L104 -->
    ```java
    /*
     * Add a load balancing objective function. This should spread out VMs across all physical machines.
@@ -253,3 +256,80 @@ Start reading from the
    |vm9 |  10|    10|pm1                           |
    +----+----+------+------------------------------+
    ``` 
+
+8. Constraints can also refer to views computed in the database. This allows you to push a significant
+   amount of complexity to the database and leverage the database's strengths (e.g., indexes, joins, aggregates,
+   a rich suite of functions, and even user-defined functions). 
+   
+   For example, let's compute a simple view that pulls a subset of VMs from the database according to some labels:
+
+   <!-- embedme ../examples/src/main/resources/schema.sql#L20-L22 -->
+   ```sql
+   -- Constraints can refer to views computed in the database as well
+   create view vm_subset as
+   select * from virtual_machine where name ='vm1' or name = 'vm2';
+   ```
+
+   Next, let's write a policy that directs that subset of VMs to the same physical machine, `pm3`:
+
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L106-L120 -->
+   ```java
+   /*
+    * An example where we also refer to views computed in the database
+    */
+   @Test
+   public void testDatabaseViews() {
+       final String someVmsGoToPm3 = "create view constraint_simple as " +
+               "select * from virtual_machine " +
+               "check name not in (select name from vm_subset) or controllable__physical_machine = 'pm3'";
+   
+       final LoadBalance lb = new LoadBalance(List.of(someVmsGoToPm3));
+       addInventory(lb);
+       final Result<? extends Record> result = lb.run();
+       result.stream().filter(e -> e.get("NAME").equals("vm1") || e.get("NAME").equals("vm2"))
+             .forEach(e -> assertEquals("pm3", e.get("CONTROLLABLE__PHYSICAL_MACHINE")));
+   }
+   ```
+   
+9. Constraints may not always be satisfiable. When a model is unsatisfiable, `model.solve()` throws a `SolverException`,
+   which has a `core()` method that returns the list of failed constraints:
+
+   <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/LoadBalanceTest.java#L122-L157 -->
+   ```java
+   /*
+    * We now introduce two mutually unsatisfiable constraints to showcase the UNSAT core API
+    */
+   @Test
+   public void testUnsat() {
+       // Satisfiable
+       final String someVmsAvoidPm3 = "create view constraint_some_avoid_pm3 as " +
+               "select * from virtual_machine " +
+               "check name not in (select name from vm_subset) or controllable__physical_machine != 'pm3'";
+   
+       // The next two constraints are mutually unsatisfiable. The first constraint forces too many VMs
+       // to go the same physical machine, but that violates the capacity constraint
+       final String restGoToPm3 = "create view constraint_rest_to_pm3 as " +
+               "select * from virtual_machine " +
+               "check name in (select name from vm_subset) or controllable__physical_machine = 'pm3'";
+   
+       final String capacityConstraint =
+               "create view constraint_capacity as " +
+               "select * from virtual_machine " +
+               "join physical_machine " +
+               "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
+               "group by physical_machine.name, physical_machine.cpu_capacity, physical_machine.memory_capacity " +
+               "check sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
+               "       sum(virtual_machine.memory) <= physical_machine.memory_capacity";
+   
+       final LoadBalance lb = new LoadBalance(List.of(someVmsAvoidPm3, restGoToPm3, capacityConstraint));
+       addInventory(lb);
+       try {
+           lb.run();
+           fail();
+       } catch (final SolverException e) {
+           System.out.println(e.core());
+           assertTrue(e.core().containsAll(List.of("constraint_rest_to_pm3", "constraint_capacity")));
+           assertFalse(e.core().contains("constraint_some_avoid_pm3"));
+       }
+   }
+   ```
