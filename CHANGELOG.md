@@ -1,7 +1,13 @@
 # Changelog
 
 ## Ongoing: Release 0.10.0
+* Public API changes:  
+  * Upgrade to Google OrTools 9.0.9048  
+  * #93: UNSAT core interface  
 
+* Issues fixed:
+  * #93: Add UNSAT core interface   
+  * #94: re-organize compiler code as a pipeline of passes against a `Program<T>` representation  
 
 ## Apr 27, 2021: Release 0.9.0
 * Public API changes:
