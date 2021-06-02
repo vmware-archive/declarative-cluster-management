@@ -746,7 +746,6 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private CodeBlock topLevelConstraintBlock(final Expr expr, final String joinPredicateStr,
                                               final TranslationContext context) {
-        Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
         final String statement = maybeWrapped(expr, context);
         if (joinPredicateStr.isEmpty()) {
             return CodeBlock.builder().addStatement("o.assume($L, $S)",
