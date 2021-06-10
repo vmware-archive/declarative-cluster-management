@@ -41,7 +41,7 @@ Start reading from the
    ```
    Here, the `virtual_machine` table has a special column, `controllable__physical_machine`. 
    The `controllable__` prefix signals to DCM that it has to
-   assign values to this column  satisfy all the supplied constraints. In doing so, we expect DCM to help us
+   assign values to this column to satisfy all the supplied constraints. In doing so, we expect DCM to help us
    find a mapping of virtual machines to physical machines. 
 
 2. We populate the tables with some data using a few helper methods (`LoadBalance.addVirtualMachine()` and
