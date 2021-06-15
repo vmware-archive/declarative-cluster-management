@@ -30,6 +30,7 @@ import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
+import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 
@@ -59,6 +60,7 @@ public class EndToEndBenchmark {
 
     @State(Scope.Benchmark)
     public static class BenchmarkState {
+        @Nullable Scheduler scheduler = null;
         @Nullable PodResourceEventHandler handler = null;
         @Nullable EmulatedPodToNodeBinder binder = null;
 
@@ -72,7 +74,7 @@ public class EndToEndBenchmark {
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
 
             final List<String> policies = Policies.getDefaultPolicies();
-            final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, true, numThreads);
+            scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, true, numThreads);
             handler = new PodResourceEventHandler(scheduler::handlePodEvent);
             scheduler.startScheduler(binder, 100, 500);
             for (int i = 0; i < numNodes; i++) {
@@ -99,6 +101,16 @@ public class EndToEndBenchmark {
                     pod.getSpec().setNodeName(nodeName);
                     handler.onAddSync(pod);
                 }
+            }
+        }
+
+        @TearDown(Level.Trial)
+        public void shutDown() throws InterruptedException {
+            if (scheduler != null) {
+                scheduler.shutdown();
+            }
+            if (handler != null) {
+                handler.shutdown();
             }
         }
 
