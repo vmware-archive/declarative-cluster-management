@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit;
 @Warmup(iterations = 5, time = 5, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 10, time = 10, timeUnit = TimeUnit.SECONDS)
 @Fork(1)
-@BenchmarkMode({Mode.AverageTime, Mode.SampleTime, Mode.SingleShotTime})
+@BenchmarkMode(Mode.SampleTime) // {Mode.AverageTime, Mode.SampleTime, Mode.SingleShotTime}
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
 public class ScaleNodeBenchmark {
