@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit;
 @Warmup(iterations = 5, time = 5, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 10, time = 10, timeUnit = TimeUnit.SECONDS)
 @Fork(1)
-@BenchmarkMode(Mode.SampleTime) // useful modes: Mode.AverageTime, Mode.SampleTime, Mode.SingleShotTime
+@BenchmarkMode({Mode.AverageTime, Mode.SampleTime, Mode.SingleShotTime})
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
 public class ScaleNodeBenchmark {
@@ -67,7 +67,7 @@ public class ScaleNodeBenchmark {
         @Nullable PodResourceEventHandler handler = null;
         @Nullable EmulatedPodToNodeBinder binder = null;
 
-        @Setup(Level.Trial)
+        @Setup(Level.Iteration)
         public void setUp() {
             System.out.println("Running Setup...");
 
@@ -108,7 +108,7 @@ public class ScaleNodeBenchmark {
             }
         }
 
-        @TearDown(Level.Trial)
+        @TearDown(Level.Iteration)
         public void shutDown() throws InterruptedException {
             System.out.println("Running TearDown...");
 
