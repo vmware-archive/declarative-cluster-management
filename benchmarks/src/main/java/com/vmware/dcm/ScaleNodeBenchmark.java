@@ -188,7 +188,7 @@ public class ScaleNodeBenchmark {
             throws ExecutionException, InterruptedException {
         System.out.println("Running Benchmark...");
 
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 20; i++) {
             final Pod podToAdd = state.newPod("pod-" + i,
                     "Pending", Collections.emptyMap(), Collections.emptyMap());
             final ListenableFuture<Boolean> booleanListenableFuture = state.binder.waitForPodBinding(
