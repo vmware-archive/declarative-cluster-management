@@ -58,7 +58,7 @@ public class ScaleNodeBenchmark {
     @Param("1")
     static int numThreads;
 
-     @Param({"30", "100", "300", "1000", "3000", "10000"})
+     @Param({"100", "300", "1000", "3000", "10000"})
     static int numNodes;
 
     @State(Scope.Benchmark)
@@ -67,7 +67,7 @@ public class ScaleNodeBenchmark {
         @Nullable PodResourceEventHandler handler = null;
         @Nullable EmulatedPodToNodeBinder binder = null;
 
-        @Setup(Level.Iteration)
+        @Setup(Level.Trial)
         public void setUp() {
             System.out.println("Running Setup...");
 
@@ -108,7 +108,7 @@ public class ScaleNodeBenchmark {
             }
         }
 
-        @TearDown(Level.Iteration)
+        @TearDown(Level.Trial)
         public void shutDown() throws InterruptedException {
             System.out.println("Running TearDown...");
 
