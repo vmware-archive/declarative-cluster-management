@@ -53,12 +53,8 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Benchmark)
 public class ScaleNodeBenchmark {
 
-    @Param("ORTOOLS")
-    static String solverToUse;
-    @Param("1")
-    static int numThreads;
-    @Param("5")
-    static int systemPodsPerNode;
+    @Param({"0", "50", "70", "80"})
+    static int systemMinLoad;
     @Param({"10", "50"})
     static int newPods;
     @Param({"100", "300", "1000", "3000", "10000", "30000"})
@@ -80,33 +76,35 @@ public class ScaleNodeBenchmark {
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
 
             final List<String> policies = Policies.getDefaultPolicies();
-            scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, true, numThreads);
+            final String solverToUse = "ORTOOLS";
+            final boolean debugMode = true;
+            final int numThreads = 1;
+            scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, debugMode, numThreads);
             handler = new PodResourceEventHandler(scheduler::handlePodEventNoNotify);
             addedPods = new HashSet<Pod>();
             for (int i = 0; i < numNodes; i++) {
+                // Add node
                 final String nodeName = "n" + i;
                 final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-                node.getStatus().getCapacity().put("cpu", new Quantity("8"));
+                node.getStatus().getCapacity().put("cpu", new Quantity("100"));
                 node.getStatus().getCapacity().put("memory", new Quantity("100"));
-                node.getStatus().getCapacity().put("pods", new Quantity("110"));
+                node.getStatus().getCapacity().put("pods", new Quantity("100"));
                 nodeResourceEventHandler.onAddSync(node);
 
-                // Add several existing pods per node
-                for (int j = 0; j < systemPodsPerNode; j++) {
-                    final int cpuTlRand = ThreadLocalRandom.current().nextInt(100);
-                    final int memTlRand = ThreadLocalRandom.current().nextInt(20);
-                    final String podName = "system-pod-" + nodeName;
-                    final String status = "Running";
-                    final Pod pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
-                    final Map<String, Quantity> resourceRequests = new HashMap<>();
-                    resourceRequests.put("cpu", new Quantity((100 + cpuTlRand) + "m"));
-                    resourceRequests.put("memory", new Quantity(memTlRand + ""));
-                    resourceRequests.put("pods", new Quantity("1"));
-                    pod.getMetadata().setNamespace("kube-system");
-                    pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
-                    pod.getSpec().setNodeName(nodeName);
-                    handler.onAddSync(pod);
-                }
+                // Add a resource consuming pod
+                final String podName = "system-pod-" + nodeName;
+                final String status = "Running";
+                final Pod pod = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+
+                final int systemLoad = ThreadLocalRandom.current().nextInt(systemMinLoad, 100);
+                final Map<String, Quantity> resourceRequests = new HashMap<>();
+                resourceRequests.put("cpu", new Quantity(systemLoad + ""));
+                resourceRequests.put("memory", new Quantity(systemLoad + ""));
+                resourceRequests.put("pods", new Quantity("1"));
+                pod.getMetadata().setNamespace("kube-system");
+                pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+                pod.getSpec().setNodeName(nodeName);
+                handler.onAddSync(pod);
             }
         }
 
@@ -127,8 +125,20 @@ public class ScaleNodeBenchmark {
             System.out.println("Running per Iteration Setup...");
 
             for (int i = 0; i < newPods; i++) {
-                final Pod podToAdd = newPod("pod-" + i,
-                        "Pending", Collections.emptyMap(), Collections.emptyMap());
+                // add pending pods to be scheduled
+                final String podName = "pod-" + i;
+                final String status = "Pending";
+                final Pod podToAdd = newPod(podName, status, Collections.emptyMap(), Collections.emptyMap());
+
+                final int minPodReq = 5;
+                final int maxPodReq = 15;
+                final int podReq = ThreadLocalRandom.current().nextInt(minPodReq, maxPodReq);
+                final Map<String, Quantity> resourceRequests = new HashMap<>();
+                resourceRequests.put("cpu", new Quantity(podReq + ""));
+                resourceRequests.put("memory", new Quantity(podReq + ""));
+                resourceRequests.put("pods", new Quantity("1"));
+                podToAdd.getMetadata().setNamespace("kube-system");
+                podToAdd.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
                 handler.onAddSync(podToAdd);
                 addedPods.add(podToAdd);
             }
