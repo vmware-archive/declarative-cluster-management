@@ -14,7 +14,7 @@ This document lays out all of DCM's APIs to instantiate models and specify const
 * [Writing constraints](#writing-constraints)
    * [Variable columns](#variable-columns)
    * [Hard constraints](#hard-constraints)  
-   * [Soft constraints](#soft-constraints)  
+   * [Objective functions](#objective-functions)  
 * [Supported column types for inputs](#supported-column-types-for-inputs)
 * [Boolean expressions](#boolean-expressions)
 * [Arithmetic operators](#arithmetic-operators)
@@ -86,7 +86,7 @@ for the solver.
   are fetched from specific tables.
 
   Here is a code sample illustrating how this API could be used:
-  <!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L101-L109 -->
+  <!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L102-L110 -->
   ```java
   final int minimumPodId = 7;
   model.updateData((table) -> {
@@ -118,34 +118,33 @@ via the `SolverException.core()` method. For now, `core()` returns only the stri
 views that were unsatisfiable. We are currently working on returning fine-grained information about
 which table-rows contributed to the unsatisfiability. 
 
-<!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L238-L263 -->
+<!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L239-L263 -->
 ```java
 final DSLContext conn = DSL.using("jdbc:h2:mem:");
 conn.execute("create table t1(id integer, controllable__var integer)");
+
+final String constraint_where1 = "create view constraint_where1 as " +
+        "select * from t1 where id <= 2 check controllable__var = 7";
+
+final String constraint_where2 = "create view constraint_where2 as " +
+        "select * from t1 where id > 2 check controllable__var = 3";
+
+final String domain = "create view constraint_domain as " +
+        "select * from t1 check controllable__var <= 10 and controllable__var >= 1";
+
 conn.execute("insert into t1 values (1, null)");
 conn.execute("insert into t1 values (2, null)");
 conn.execute("insert into t1 values (3, null)");
 
-// Unsatisfiable
-final String allDifferent = "create view constraint_all_different as " +
-        "select * from t1 check all_different(controllable__var) = true";
-
-// Unsatisfiable
-final String domain1 = "create view constraint_domain_1 as " +
-        "select * from t1 check controllable__var >= 1 and controllable__var <= 2";
-
-// Satisfiable
-final String domain2 = "create view constraint_domain_2 as " +
-        "select * from t1 check id != 1 or controllable__var = 1";
-
-final Model model = Model.build(conn, List.of(allDifferent, domain1, domain2));
+final Model model = Model.build(conn, List.of(constraint_where1, constraint_where2, domain));
 model.updateData();
-try {
-    model.solve("T1");
-    fail();
-} catch (final SolverException exception) {
-    assertTrue(exception.core().containsAll(List.of("constraint_all_different", "constraint_domain_1")));
-}
+
+final Result<? extends Record> results = model.solve("T1");
+final List<Integer> controllableVars = results.stream().map(e -> e.get("CONTROLLABLE__VAR", Integer.class))
+        .collect(Collectors.toList());
+assertEquals(7, controllableVars.get(0));
+assertEquals(7, controllableVars.get(1));
+assertEquals(3, controllableVars.get(2));
 ```
 
 ## Writing constraints
@@ -155,7 +154,7 @@ try {
 Every DCM model computes values for one or more *variable columns*. A variable column is a column whose name
 is prefixed with the keyword `controllable__`. A variable column can be of integer, bigint or
 varchar types. DCM guarantees that a returned solution will assign values to variable columns such that
-all hard constraints are satisfied, while maximizing  the number of soft constraints that are met.
+all hard constraints are satisfied, while maximizing the sum of supplied objective functions.
 
 A variable column can appear in a table or a view.
 
@@ -208,23 +207,24 @@ select * from virtual_machine
 check controllable__physical_machine = 'pm3';
 ```
 
-### Soft constraints
+### Objective functions
 
-A soft constraint is structured as a view that computes a single column of integers, 
-whose value DCM will try to maximize, followed by the `maximize` annotation. For example,
+An objective function is structured as a view that specifies a relation followed by a `MAXIMIZE` clause. 
+The `MAXIMIZE` clause computes a single column of integers (booleans are automatically cast into integers), 
+whose value DCM will try to maximize. For example,
 
 ```sql
 create view objective_load_cpu as 
-select min(cpu_spare) from spare_cpu
-maximize;
+select * from spare_cpu
+maximize min(cpu_spare);
 ```
 
 or
 
 ```sql
 create view objective_load_cpu as 
-select cpu_spare from spare_cpu
-maximize;
+select * from spare_cpu
+maximize cpu_spare;
 ```
 
 DCM will try to maximize the sum of all objective functions. An objective function view that computes a 
