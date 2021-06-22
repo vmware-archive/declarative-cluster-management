@@ -6,7 +6,6 @@
 
 package com.vmware.dcm;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
@@ -20,6 +19,8 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import org.jooq.Record;
+import org.jooq.Result;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -39,48 +40,49 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 @Warmup(iterations = 5, time = 5, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 10, time = 10, timeUnit = TimeUnit.SECONDS)
 @Fork(1)
-@BenchmarkMode(Mode.SampleTime) // {Mode.AverageTime, Mode.SampleTime, Mode.SingleShotTime}
+@BenchmarkMode({Mode.AverageTime, Mode.SampleTime, Mode.SingleShotTime})
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
 public class ScaleNodeBenchmark {
 
     @Param("ORTOOLS")
     static String solverToUse;
-
     @Param("1")
     static int numThreads;
-
-     @Param({"100", "300", "1000", "3000", "10000"})
+    @Param("5")
+    static int systemPodsPerNode;
+    @Param("50")
+    static int newPods;
+    @Param({"100", "300", "1000", "3000", "10000"})
     static int numNodes;
 
     @State(Scope.Benchmark)
     public static class BenchmarkState {
         @Nullable Scheduler scheduler = null;
         @Nullable PodResourceEventHandler handler = null;
-        @Nullable EmulatedPodToNodeBinder binder = null;
+        @Nullable HashSet<Pod> addedPods = null;
 
         @Setup(Level.Trial)
         public void setUp() {
-            System.out.println("Running Setup...");
+            System.out.println("Running per Trial Setup...");
 
             final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-            binder = new EmulatedPodToNodeBinder(dbConnectionPool);
 
             // Add all nodes
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
 
             final List<String> policies = Policies.getDefaultPolicies();
             scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, true, numThreads);
-            handler = new PodResourceEventHandler(scheduler::handlePodEvent);
-            scheduler.startScheduler(binder, 100, 500);
+            handler = new PodResourceEventHandler(scheduler::handlePodEventNoNotify);
+            addedPods = new HashSet<Pod>();
             for (int i = 0; i < numNodes; i++) {
                 final String nodeName = "n" + i;
                 final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());
@@ -90,7 +92,7 @@ public class ScaleNodeBenchmark {
                 nodeResourceEventHandler.onAddSync(node);
 
                 // Add several existing pods per node
-                for (int j = 0; j < 5; j++) {
+                for (int j = 0; j < systemPodsPerNode; j++) {
                     final int cpuTlRand = ThreadLocalRandom.current().nextInt(100);
                     final int memTlRand = ThreadLocalRandom.current().nextInt(20);
                     final String podName = "system-pod-" + nodeName;
@@ -109,8 +111,8 @@ public class ScaleNodeBenchmark {
         }
 
         @TearDown(Level.Trial)
-        public void shutDown() throws InterruptedException {
-            System.out.println("Running TearDown...");
+        public void tearDown() throws InterruptedException {
+            System.out.println("Running per Trial TearDown...");
 
             if (scheduler != null) {
                 scheduler.shutdown();
@@ -120,6 +122,27 @@ public class ScaleNodeBenchmark {
             }
         }
 
+        @Setup(Level.Iteration)
+        public void addPods() {
+            System.out.println("Running per Iteration Setup...");
+
+            for (int i = 0; i < newPods; i++) {
+                final Pod podToAdd = newPod("pod-" + i,
+                        "Pending", Collections.emptyMap(), Collections.emptyMap());
+                handler.onAddSync(podToAdd);
+                addedPods.add(podToAdd);
+            }
+        }
+
+        @TearDown(Level.Iteration)
+        public void removePods() {
+            System.out.println("Running per Iteration TearDown...");
+
+            for (final Pod podToRemove : addedPods) {
+                handler.onDeleteSync(podToRemove, true);
+            }
+            addedPods.clear();
+        }
 
         private Node addNode(final String nodeName, final Map<String, String> labels,
                              final List<NodeCondition> conditions) {
@@ -184,17 +207,12 @@ public class ScaleNodeBenchmark {
     }
 
     @Benchmark
-    public void testSinglePodPlacement(final BenchmarkState state)
-            throws ExecutionException, InterruptedException {
+    public void testSinglePodPlacement(final BenchmarkState state) {
         System.out.println("Running Benchmark...");
 
-        for (int i = 0; i < 20; i++) {
-            final Pod podToAdd = state.newPod("pod-" + i,
-                    "Pending", Collections.emptyMap(), Collections.emptyMap());
-            final ListenableFuture<Boolean> booleanListenableFuture = state.binder.waitForPodBinding(
-                    podToAdd.getMetadata().getUid());
-            state.handler.onAdd(podToAdd);
-            booleanListenableFuture.get();
+        final Result<? extends Record> solverOutput = state.scheduler.runOneLoop();
+        if (solverOutput.size() != newPods) {
+            throw new SolverException("Could not execute solver with all " + newPods + " pods.");
         }
     }
 }
