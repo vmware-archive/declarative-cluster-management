@@ -45,8 +45,8 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
-@Warmup(iterations = 5, time = 5, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 10, time = 10, timeUnit = TimeUnit.SECONDS)
+@Warmup(iterations = 4, time = 10, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 16, time = 10, timeUnit = TimeUnit.SECONDS)
 @Fork(1)
 @BenchmarkMode({Mode.AverageTime, Mode.SampleTime, Mode.SingleShotTime})
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
@@ -59,9 +59,9 @@ public class ScaleNodeBenchmark {
     static int numThreads;
     @Param("5")
     static int systemPodsPerNode;
-    @Param("50")
+    @Param({"10", "50"})
     static int newPods;
-    @Param({"100", "300", "1000", "3000", "10000"})
+    @Param({"100", "300", "1000", "3000", "10000", "30000"})
     static int numNodes;
 
     @State(Scope.Benchmark)
