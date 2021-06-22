@@ -1,6 +1,13 @@
 # Changelog
 
-## Ongoing: Release 0.10.0
+## Ongoing: Release 0.11.0
+* Public API changes:
+  * #96: Use consistent syntax for hard and soft constraints
+
+* Issues fixed:
+  * #96: Use consistent syntax for hard and soft constraints
+  
+## June 2, 2021: Release 0.10.0
 * Public API changes:  
   * Upgrade to Google OrTools 9.0.9048  
   * #93: UNSAT core interface  
