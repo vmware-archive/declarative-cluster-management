@@ -101,6 +101,7 @@ public class ModelCompiler {
     }
 
     private ListComprehension toListComprehension(final ViewsWithAnnotations view) {
-        return TranslateViewToIR.apply(view.getCreateView().getQuery(), view.getCheckExpression(), irContext);
+        return TranslateViewToIR.apply(view.getCreateView().getQuery(),
+                view.getCheckExpression().or(view::getMaximizeExpression), irContext);
     }
 }

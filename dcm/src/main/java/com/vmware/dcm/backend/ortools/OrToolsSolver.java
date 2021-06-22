@@ -275,10 +275,10 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     private OutputIR.Block nonConstraintViewCodeGen(final String name, final ListComprehension comprehension,
-                                               final TranslationContext translationContext) {
+                                                    final TranslationContext translationContext) {
         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
         translationContext.enterScope(outerBlock);
-        final OutputIR.Block block = viewBlock(name, comprehension, false, translationContext);
+        final OutputIR.Block block = viewBlock(name, comprehension, ConstraintType.NON_CONSTRAINT, translationContext);
         outerBlock.addBody(block);
         return outerBlock;
     }
@@ -289,7 +289,7 @@ public class OrToolsSolver implements ISolverBackend {
         translationContext.enterScope(outerBlock);
         final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
         final OutputIR.Block block = capacityConstraints.isEmpty() ?
-                        viewBlock(name, comprehension, true, translationContext) :
+                        viewBlock(name, comprehension, ConstraintType.HARD_CONSTRAINT, translationContext) :
                         createCapacityConstraint(name, comprehension, translationContext, capacityConstraints);
         translationContext.leaveScope();
         outerBlock.addBody(block);
@@ -300,8 +300,9 @@ public class OrToolsSolver implements ISolverBackend {
                                                 final TranslationContext translationContext) {
         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
         translationContext.enterScope(outerBlock);
-        final JavaExpression expression = toJavaExpression(comprehension, translationContext);
-        outerBlock.addBody(CodeBlock.of("o.maximize($L); /* $L */", expression.asString(), name));
+        final OutputIR.Block block = viewBlock(name, comprehension, ConstraintType.OBJECTIVE, translationContext);
+        translationContext.leaveScope();
+        outerBlock.addBody(block);
         return outerBlock;
     }
 
@@ -310,12 +311,12 @@ public class OrToolsSolver implements ISolverBackend {
      * for loops and result sets.
      * @param viewName name of the view to be created
      * @param comprehension comprehension corresponding to `viewName`, to be translated into a block of code
-     * @param isConstraint whether the comprehension represents a constraint
+     * @param constraintType whether the comprehension represents a constraint
      * @param context the translation context for the comprehension
      * @return the block created for the comprehension
      */
     private OutputIR.Block viewBlock(final String viewName, final ListComprehension comprehension,
-                                     final boolean isConstraint, final TranslationContext context) {
+                                     final ConstraintType constraintType, final TranslationContext context) {
         if (comprehension instanceof GroupByComprehension) {
             final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
             final ListComprehension inner = groupByComprehension.getComprehension();
@@ -330,7 +331,7 @@ public class OrToolsSolver implements ISolverBackend {
             // We create an intermediate view that extracts groups and returns a List<Tuple> per group
             final String intermediateView = getTempViewName();
             final OutputIR.Block intermediateViewBlock =
-                    innerComprehensionBlock(intermediateView, inner, groupByQualifier, isConstraint, context);
+                    innerComprehensionBlock(intermediateView, inner, groupByQualifier, constraintType, context);
             block.addBody(intermediateViewBlock);
 
             // We now construct the actual result set that hosts the aggregated tuples by group. This is done
@@ -340,12 +341,11 @@ public class OrToolsSolver implements ISolverBackend {
             block.addBody(CodeBlock.builder()
                                  .add("\n")
                                  .addStatement(printTime("Group-by intermediate view"))
-                                 .add("/* $L view $L */\n", isConstraint ? "Constraint" : "Non-constraint",
-                                                    tableNameStr(viewName))
+                                 .add("/* $L view $L */\n", constraintType, tableNameStr(viewName))
                                  .build()
             );
 
-            if (!isConstraint) {
+            if (constraintType == ConstraintType.NON_CONSTRAINT) {
                 final int selectExprSize = inner.getHead().getSelectExprs().size();
                 final TypeSpec typeSpec = tupleGen.getTupleType(selectExprSize);
                 final JavaTypeList viewTupleGenericParameters =
@@ -380,7 +380,7 @@ public class OrToolsSolver implements ISolverBackend {
             nonVarAggregateFiltersBlock.ifPresent(forBlock::addBody);
 
             // If this is not a constraint, we simply add a to a result set
-            if (!isConstraint) {
+            if (constraintType == ConstraintType.NON_CONSTRAINT) {
                 final TypeSpec typeSpec = tupleGen.getTupleType(inner.getHead().getSelectExprs().size());
                 final String tupleResult = inner.getHead().getSelectExprs().stream()
                                                  .map(e -> toJavaExpression(e, groupByContext))
@@ -395,7 +395,8 @@ public class OrToolsSolver implements ISolverBackend {
             }
             else  {
                 // If this is a constraint, we translate having clauses into a constraint statement
-                final List<CodeBlock> constraintBlocks = aggregateConstraintBlock(qualifiersByVarType, groupByContext);
+                final List<CodeBlock> constraintBlocks = aggregateConstraintBlock(qualifiersByVarType,
+                                                                                  constraintType, groupByContext);
                 constraintBlocks.forEach(forBlock::addBody);
             }
             groupByContext.leaveScope(); // forBlock
@@ -403,7 +404,7 @@ public class OrToolsSolver implements ISolverBackend {
             block.addBody(printTime("Group-by final view"));
             return block;
         }
-        return innerComprehensionBlock(viewName, comprehension, null, isConstraint, context);
+        return innerComprehensionBlock(viewName, comprehension, null, constraintType, context);
     }
 
     /**
@@ -413,16 +414,17 @@ public class OrToolsSolver implements ISolverBackend {
     private OutputIR.Block innerComprehensionBlock(final String viewName,
                                                    final ListComprehension comprehension,
                                                    @Nullable final GroupByQualifier groupByQualifier,
-                                                   final boolean isConstraint, final TranslationContext context) {
+                                                   final ConstraintType constraintType,
+                                                   final TranslationContext context) {
         final OutputIR.Block viewBlock = outputIR.newBlock(viewName);
         // Add a comment with the view name
         viewBlock.addHeader(CodeBlock.builder().add("\n")
-                     .add("/* $L view $L */\n", isConstraint ? "Constraint" : "Non-constraint", viewName)
+                     .add("/* $L view $L */\n", constraintType, viewName)
                      .build()
         );
 
         // Extract the set of columns being selected in this view
-        final List<ColumnIdentifier> headItemsList = getColumnsAccessed(comprehension, isConstraint);
+        final List<ColumnIdentifier> headItemsList = getColumnsAccessed(comprehension, constraintType);
         tupleMetadata.recordFieldIndices(viewName, headItemsList);
 
         context.enterScope(viewBlock);
@@ -430,7 +432,7 @@ public class OrToolsSolver implements ISolverBackend {
         // For non-constraints, create a Map<> or a List<> to collect the result-set (depending on
         // whether the query is a group by or not)
         final OutputIR.Block resultSetDeclBlock = mapOrListForResultSetBlock(viewName, headItemsList,
-                                                                             groupByQualifier, isConstraint);
+                                                                             groupByQualifier, constraintType);
         viewBlock.addBody(resultSetDeclBlock);
 
         // Separate out qualifiers into variable and non-variable types.
@@ -445,7 +447,7 @@ public class OrToolsSolver implements ISolverBackend {
         final Optional<OutputIR.IfBlock> nonVarFiltersBlock = nonVarFiltersBlock(viewName, qualifiersByVarType.nonVar,
                                                                                  context);
         nonVarFiltersBlock.ifPresent(iterationBlock::addBody);
-        if (!isConstraint // for simple constraints, we post constraints in this inner loop itself
+        if (constraintType == ConstraintType.NON_CONSTRAINT
            || (groupByQualifier != null) // for aggregate constraints, we populate a
                                          // result set and post constraints elsewhere
         ) {
@@ -455,7 +457,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                                        groupByQualifier, context);
             iterationBlock.addBody(resultSetAddBlock);
         } else {
-            final List<CodeBlock> addRowConstraintBlock = rowConstraintBlock(qualifiersByVarType, context);
+            final List<CodeBlock> addRowConstraintBlock =
+                    rowConstraintBlock(qualifiersByVarType, constraintType, context);
             addRowConstraintBlock.forEach(iterationBlock::addBody);
         }
         context.leaveScope(); // iteration block
@@ -472,8 +475,8 @@ public class OrToolsSolver implements ISolverBackend {
      * @return a list of ColumnIdentifiers corresponding to columns within the comprehension
      */
     private List<ColumnIdentifier> getColumnsAccessed(final ListComprehension comprehension,
-                                                      final boolean isConstraint) {
-        if (isConstraint) {
+                                                      final ConstraintType isConstraint) {
+        if (isConstraint != ConstraintType.NON_CONSTRAINT) {
             final List<ColumnIdentifier> columnsAccessed = getColumnsAccessed(comprehension.getQualifiers());
             if (columnsAccessed.isEmpty()) {
                 // There are constraints that are trivially true or false, wherein the predicate does not depend on
@@ -509,7 +512,7 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private OutputIR.Block mapOrListForResultSetBlock(final String viewName, final List<ColumnIdentifier> headItemsList,
                                                       @Nullable final GroupByQualifier groupByQualifier,
-                                                      final boolean isConstraint) {
+                                                      final ConstraintType isConstraint) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "CreateResultSet");
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
@@ -532,7 +535,7 @@ public class OrToolsSolver implements ISolverBackend {
                                         headItemsListTupleGenericParameters,
                                         resultSetNameStr, HashMap.class));
         } else {
-            if (!isConstraint) {
+            if (isConstraint == ConstraintType.NON_CONSTRAINT) {
                 block.addHeader(statement("final $T<$N<$L>> $L = new $T<>()",
                                           List.class, tupleSpec, headItemsListTupleGenericParameters,
                                           resultSetNameStr, ArrayList.class));
@@ -705,6 +708,7 @@ public class OrToolsSolver implements ISolverBackend {
      * Returns a list of code blocks representing constraints posted against rows within a view
      */
     private List<CodeBlock> rowConstraintBlock(final QualifiersByVarType qualifiersByVarType,
+                                               final ConstraintType constraintType,
                                                final TranslationContext context) {
         final QualifiersByType varQualifiers = qualifiersByVarType.var;
         final QualifiersByType nonVarQualifiers = qualifiersByVarType.nonVar;
@@ -722,9 +726,9 @@ public class OrToolsSolver implements ISolverBackend {
         }
         final List<CodeBlock> results = new ArrayList<>();
         varQualifiers.checkQualifiers.forEach(e ->
-                results.add(topLevelConstraintBlock(e.getExpr(), joinPredicateStr, context)));
+                results.add(topLevelConstraintBlock(e.getExpr(), joinPredicateStr, constraintType, context)));
         nonVarQualifiers.checkQualifiers.forEach(e ->
-                results.add(topLevelConstraintBlock(e.getExpr(), joinPredicateStr, context)));
+                results.add(topLevelConstraintBlock(e.getExpr(), joinPredicateStr, constraintType, context)));
         return results;
     }
 
@@ -732,12 +736,13 @@ public class OrToolsSolver implements ISolverBackend {
      * Returns a list of code blocks representing aggregate constraints posted against rows within a view
      */
     private List<CodeBlock> aggregateConstraintBlock(final QualifiersByVarType qualifiersByVarType,
+                                                     final ConstraintType constraintType,
                                                      final TranslationContext context) {
         final List<CodeBlock> results = new ArrayList<>();
         qualifiersByVarType.var.checkQualifiers.forEach(e ->
-                results.add(topLevelConstraintBlock(e.getExpr(), "", context)));
+                results.add(topLevelConstraintBlock(e.getExpr(), "", constraintType, context)));
         qualifiersByVarType.nonVar.checkQualifiers.forEach(e ->
-                results.add(topLevelConstraintBlock(e.getExpr(), "", context)));
+                results.add(topLevelConstraintBlock(e.getExpr(), "", constraintType, context)));
         return results;
     }
 
@@ -745,17 +750,30 @@ public class OrToolsSolver implements ISolverBackend {
      * Creates a string representing a declared constraint
      */
     private CodeBlock topLevelConstraintBlock(final Expr expr, final String joinPredicateStr,
+                                              final ConstraintType constraintType,
                                               final TranslationContext context) {
         final String statement = maybeWrapped(expr, context);
-        if (joinPredicateStr.isEmpty()) {
-            return CodeBlock.builder().addStatement("o.assume($L, $S)",
-                                                    statement, context.currentScope().getName())
+        switch (constraintType) {
+            case HARD_CONSTRAINT:
+                if (joinPredicateStr.isEmpty()) {
+                    return CodeBlock.builder().addStatement("o.assume($L, $S)",
+                            statement, context.currentScope().getName())
                             .build();
-        } else {
-            return CodeBlock.builder().addStatement("o.assumeImplication($L, $L, $S)",
-                                                    joinPredicateStr, statement, context.currentScope().getName())
+                } else {
+                    return CodeBlock.builder().addStatement("o.assumeImplication($L, $L, $S)",
+                            joinPredicateStr, statement, context.currentScope().getName())
                             .build();
+                }
+            case OBJECTIVE:
+                if (joinPredicateStr.isEmpty()) {
+                    return CodeBlock.builder().addStatement("o.maximize($L) /* $S */",
+                            statement, context.currentScope().getName()).build();
+                } else {
+                    throw new IllegalArgumentException("Does not support join predicate strings yet");
+                }
+            default:
         }
+        throw new IllegalArgumentException("Should not be here for non constraint queries");
     }
 
     /**
@@ -1472,7 +1490,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                         final TranslationContext context) {
             // We are in a subquery.
             final String newSubqueryName = context.getNewSubqueryName();
-            final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
+            final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, ConstraintType.NON_CONSTRAINT,
+                                                           context);
             Preconditions.checkArgument(node.getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getHead().getSelectExprs().get(0);
 
@@ -1506,7 +1525,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                            final TranslationContext context) {
             // We are in a subquery.
             final String newSubqueryName = context.getNewSubqueryName();
-            final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, false, context);
+            final OutputIR.Block subQueryBlock = viewBlock(newSubqueryName, node, ConstraintType.NON_CONSTRAINT,
+                                                           context);
             Preconditions.checkArgument(node.getComprehension().getHead().getSelectExprs().size() == 1);
             final Expr headSelectItem = node.getComprehension().getHead().getSelectExprs().get(0);
 
@@ -1723,5 +1743,11 @@ public class OrToolsSolver implements ISolverBackend {
 
     private static CodeBlock statement(final String format, final Object... args) {
         return CodeBlock.builder().addStatement(format, args).build();
+    }
+
+    private enum ConstraintType {
+        NON_CONSTRAINT,
+        HARD_CONSTRAINT,
+        OBJECTIVE
     }
 }
