@@ -207,7 +207,13 @@ $: KUBECONFIG=~/.kube/kind-config-dcm-it ./gradlew :k8s-scheduler:integrationTes
 
 ### Learn more
 
-To learn more about DCM, we suggest going through the following research papers:
+To learn more about DCM, we suggest going through the following references:
+
+Talks:
+
+* [Hydra 2021](https://hydraconf.com/): [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://live.jugru.org/video/?v=Izk2iiM2MzY4ijM)
+
+Research papers:
 
 * [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://lalith.in/papers/dcm-osdi2020.pdf) <br>
   Lalith Suresh, Joao Loff, Faria Kalim, Sangeetha Abdu Jyothi, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Pranshu Jain, Michael Gasch. 
