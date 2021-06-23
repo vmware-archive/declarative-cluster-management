@@ -64,6 +64,9 @@ subprojects {
     test {
         useJUnitPlatform()
         finalizedBy jacocoTestReport // report is always generated after tests run
+        testLogging {
+            exceptionFormat = 'full'
+        }
     }
 
     // Example to configure HTML report

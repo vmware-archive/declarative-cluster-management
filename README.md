@@ -50,14 +50,14 @@ To use DCM from a Maven-based project, use the following dependency:
 <dependency>
     <groupId>com.vmware.dcm</groupId>
     <artifactId>dcm</artifactId>
-    <version>0.9.0</version>
+    <version>0.10.0</version>
 </dependency>
 ```
 
 To use within a Gradle-based project:
 
 ```
-implementation 'com.vmware.dcm:dcm:0.9.0'
+implementation 'com.vmware.dcm:dcm:0.10.0'
 ```
 
 ### Pre-requisites for use
@@ -69,12 +69,12 @@ implementation 'com.vmware.dcm:dcm:0.9.0'
 
 3. We currently support two solver backends. 
 
-   * **Google OR-tools CP-SAT (version 8.2.9025)**. This is available by default when using the maven dependency. 
+   * **Google OR-tools CP-SAT (version 9.0.9048)**. This is available by default when using the maven dependency. 
 
-   * **MiniZinc (version 2.3.2)**. This backend is currently being deprecated. If you still want to use it,
-   you will have to install MiniZinc out-of-band. 
-   
-   To do so, download MiniZinc from [https://www.minizinc.org/software.html](https://www.minizinc.org/software.html)
+   * **MiniZinc (version 2.3.2)**. This backend is currently being deprecated. If you still want to use it
+     in your project, or if you want run all tests in this repository, you will have to install MiniZinc out-of-band. 
+     
+     To do so, download MiniZinc from [https://www.minizinc.org/software.html](https://www.minizinc.org/software.html)
    ... and make sure you are able to invoke the `minizinc` binary from your commandline.
 
 

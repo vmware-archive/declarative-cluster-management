@@ -35,6 +35,7 @@ import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -232,36 +233,6 @@ public class ModelTest {
         assertEquals(3, controllableVars.size());
     }
 
-
-    @Test
-    public void allDifferentInfeasibilityTest() {
-        final DSLContext conn = DSL.using("jdbc:h2:mem:");
-        conn.execute("create table t1(id integer, controllable__var integer)");
-        conn.execute("insert into t1 values (1, null)");
-        conn.execute("insert into t1 values (2, null)");
-        conn.execute("insert into t1 values (3, null)");
-
-        // Unsatisfiable
-        final String allDifferent = "create view constraint_all_different as " +
-                "select * from t1 check all_different(controllable__var) = true";
-
-        // Unsatisfiable
-        final String domain1 = "create view constraint_domain_1 as " +
-                "select * from t1 check controllable__var >= 1 and controllable__var <= 2";
-
-        // Satisfiable
-        final String domain2 = "create view constraint_domain_2 as " +
-                "select * from t1 check id != 1 or controllable__var = 1";
-
-        final Model model = Model.build(conn, List.of(allDifferent, domain1, domain2));
-        model.updateData();
-        try {
-            model.solve("T1");
-            fail();
-        } catch (final SolverException exception) {
-            assertTrue(exception.core().containsAll(List.of("constraint_all_different", "constraint_domain_1")));
-        }
-    }
 
     @Test
     public void whereClauseWithChecks() {
@@ -884,7 +855,44 @@ public class ModelTest {
         assertEquals(3, fetch.get(0).intValue());
     }
 
-
+    @Test
+    public void topLevelUnaryExpressions() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1 (controllable__c1 integer NOT NULL)");
+        conn.execute("CREATE TABLE t2 (c1 integer NOT NULL)");
+        conn.execute("insert into t1 values (1)");
+        conn.execute("insert into t1 values (2)");
+        conn.execute("insert into t2 values (3)");
+        // Test some top-level constraints/functions without the "= true" expression
+        {
+            final List<String> views = List.of("CREATE VIEW constraint_t1 AS " +
+                                               "SELECT * FROM t1 check exists(select c1 from t2 " +
+                                                                              "where t2.c1 = t1.controllable__c1)");
+            final Model model = Model.build(conn, views);
+            model.updateData();
+            final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
+            assertEquals(2, fetch.size());
+            assertTrue(List.of(2, 3).containsAll(fetch));
+        }
+        {
+            final List<String> views = List.of("CREATE VIEW constraint_t1 AS " +
+                                               "SELECT * FROM t1 check all_different(controllable__c1)");
+            final Model model = Model.build(conn, views);
+            model.updateData();
+            final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
+            assertEquals(2, fetch.size());
+            assertNotSame(fetch.get(0), fetch.get(1));
+        }
+        {
+            final List<String> views = List.of("CREATE VIEW constraint_t1 AS " +
+                                               "SELECT * FROM t1 check all_equal(controllable__c1)");
+            final Model model = Model.build(conn, views);
+            model.updateData();
+            final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
+            assertEquals(2, fetch.size());
+            assertEquals(fetch.get(0), fetch.get(1));
+        }
+    }
 
     @ParameterizedTest
     @MethodSource("solvers")
