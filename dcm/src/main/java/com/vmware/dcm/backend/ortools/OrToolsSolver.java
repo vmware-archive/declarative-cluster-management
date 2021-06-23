@@ -36,6 +36,7 @@ import com.vmware.dcm.backend.IGeneratedBackend;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
 import com.vmware.dcm.backend.RewriteContains;
+import com.vmware.dcm.compiler.Program;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.ir.CheckQualifier;
@@ -226,10 +227,7 @@ public class OrToolsSolver implements ISolverBackend {
      * into nested for loops. It re-uses JOOQ tables wherever possible for constants.
      */
     @Override
-    public List<String> generateModelCode(final IRContext context,
-                                          final Map<String, ListComprehension> nonConstraintViews,
-                                          final Map<String, ListComprehension> constraintViews,
-                                          final Map<String, ListComprehension> objectiveFunctions) {
+    public List<String> generateModelCode(final IRContext context, final Program<ListComprehension> program) {
         if (generatedBackend != null) {
             return Collections.emptyList();
         }
@@ -244,44 +242,21 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         final TranslationContext translationContext = new TranslationContext(false);
-        nonConstraintViews
-                .forEach((name, comprehension) -> {
-                    final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                    translationContext.enterScope(outerBlock);
-                    final OutputIR.Block block = viewBlock(name, rewrittenComprehension, false, translationContext);
-                    output.addCode(translationContext.leaveScope().toString());
-                    output.addCode(block.toString());
-                });
-        constraintViews
-                .forEach((name, comprehension) -> {
-                    final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
-                    if (capacityConstraints.isEmpty()) {
-                        final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                        translationContext.enterScope(outerBlock);
-                        final OutputIR.Block block = viewBlock(name, rewrittenComprehension, true, translationContext);
-                        output.addCode(translationContext.leaveScope().toString());
-                        output.addCode(block.toString());
-                    } else {
-                        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                        translationContext.enterScope(outerBlock);
-                        final OutputIR.Block block = createCapacityConstraint(name, comprehension, translationContext,
-                                                                              capacityConstraints);
-                        translationContext.currentScope().addBody(block);
-                        translationContext.leaveScope();
-                        output.addCode(block.toString());
-                    }
-                });
-        objectiveFunctions
-                .forEach((name, comprehension) -> {
-                    final ListComprehension rewrittenComprehension = rewritePipeline(comprehension);
-                    final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-                    translationContext.enterScope(outerBlock);
-                    final JavaExpression expression = toJavaExpression(rewrittenComprehension, translationContext);
-                    output.addCode(outerBlock.toString());
-                    output.addStatement("o.maximize($L)", expression.asString());
-                });
+
+        // Lower the program to a block of Java code.
+        // Start with some passes on Program<ListComprehension>
+        program.map(RewriteArity::apply)
+               .map(RewriteContains::apply)
+               // ... then convert to Program<OutputIR.Block>
+               .map(
+                    (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, translationContext),
+                    (name, comprehension) -> constraintViewCodeGen(name, comprehension, translationContext),
+                    (name, comprehension) -> objectiveViewCodeGen(name, comprehension, translationContext)
+               )
+               // ... then lower to Program<CodeBlock>
+               .map(outputIrBlock -> CodeBlock.builder().add(outputIrBlock.toString()).build())
+               // ... then add the resulting string to the generated method
+               .forEach((name, codeBlock) -> output.addCode(codeBlock));
         addSolvePhase(output, context);
         final MethodSpec solveMethod = output.build();
 
@@ -297,6 +272,37 @@ public class OrToolsSolver implements ISolverBackend {
 
         final TypeSpec spec = backendClassBuilder.build();
         return compile(spec);
+    }
+
+    private OutputIR.Block nonConstraintViewCodeGen(final String name, final ListComprehension comprehension,
+                                               final TranslationContext translationContext) {
+        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+        translationContext.enterScope(outerBlock);
+        final OutputIR.Block block = viewBlock(name, comprehension, false, translationContext);
+        outerBlock.addBody(block);
+        return outerBlock;
+    }
+
+    private OutputIR.Block constraintViewCodeGen(final String name, final ListComprehension comprehension,
+                                                 final TranslationContext translationContext) {
+        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+        translationContext.enterScope(outerBlock);
+        final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
+        final OutputIR.Block block = capacityConstraints.isEmpty() ?
+                        viewBlock(name, comprehension, true, translationContext) :
+                        createCapacityConstraint(name, comprehension, translationContext, capacityConstraints);
+        translationContext.leaveScope();
+        outerBlock.addBody(block);
+        return outerBlock;
+    }
+
+    private OutputIR.Block objectiveViewCodeGen(final String name, final ListComprehension comprehension,
+                                                final TranslationContext translationContext) {
+        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
+        translationContext.enterScope(outerBlock);
+        final JavaExpression expression = toJavaExpression(comprehension, translationContext);
+        outerBlock.addBody(CodeBlock.of("o.maximize($L); /* $L */", expression.asString(), name));
+        return outerBlock;
     }
 
     /**
@@ -740,7 +746,6 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private CodeBlock topLevelConstraintBlock(final Expr expr, final String joinPredicateStr,
                                               final TranslationContext context) {
-        Preconditions.checkArgument(expr instanceof BinaryOperatorPredicate);
         final String statement = maybeWrapped(expr, context);
         if (joinPredicateStr.isEmpty()) {
             return CodeBlock.builder().addStatement("o.assume($L, $S)",
@@ -1088,13 +1093,6 @@ public class OrToolsSolver implements ISolverBackend {
     private JavaExpression toJavaExpression(final Expr expr, final TranslationContext context) {
         final IRToJavaExpression visitor = new IRToJavaExpression();
         return visitor.visit(expr, context);
-    }
-
-    private ListComprehension rewritePipeline(final ListComprehension comprehension) {
-        return Stream.of(comprehension)
-                .map(RewriteArity::apply)
-                .map(RewriteContains::apply)
-                .findFirst().orElseThrow();
     }
 
     private QualifiersByVarType extractQualifiersByVarType(final ListComprehension comprehension,

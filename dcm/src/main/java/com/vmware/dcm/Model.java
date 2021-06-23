@@ -289,7 +289,7 @@ public class Model {
                             "and {} ns to reflect in IRTables",
                      table.getName(), (select - start), recentData.size(), (System.nanoTime() - updateValues));
         }
-        compiler.updateData(irContext, backend);
+        backend.generateDataCode(irContext);
         LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
     }
 

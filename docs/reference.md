@@ -11,7 +11,8 @@ This document lays out all of DCM's APIs to instantiate models and specify const
       * [model.updateData()](#modelupdatedata)    
       * [model.solve()](#modelsolve)
     * [Debugging models](#finding-out-which-constraints-were-unsatisfiable)
-* [Writing constraints](#writing-constraints)  
+* [Writing constraints](#writing-constraints)
+   * [Variable columns](#variable-columns)
    * [Hard constraints](#hard-constraints)  
    * [Soft constraints](#soft-constraints)  
 * [Supported column types for inputs](#supported-column-types-for-inputs)
@@ -149,6 +150,53 @@ try {
 
 ## Writing constraints
 
+### Variable columns
+
+Every DCM model computes values for one or more *variable columns*. A variable column is a column whose name
+is prefixed with the keyword `controllable__`. A variable column can be of integer, bigint or
+varchar types. DCM guarantees that a returned solution will assign values to variable columns such that
+all hard constraints are satisfied, while maximizing  the number of soft constraints that are met.
+
+A variable column can appear in a table or a view.
+
+Example usage in a table:
+<!-- embedme ../examples/src/main/resources/schema.sql#L11-L18 -->
+```sql
+-- controllable__physical_machine represents a variable that the solver will assign values to
+create table virtual_machine (
+    name varchar(30) primary key not null,
+    cpu  integer  not null,
+    memory integer  not null,
+    controllable__physical_machine varchar(30),
+    foreign key (controllable__physical_machine) references physical_machine(name)
+);
+```
+
+Example usage in a view:
+<!-- embedme ../k8s-scheduler/src/main/resources/scheduler_tables.sql#L213-L232 -->
+```sql
+create view pods_to_assign_no_limit as
+select
+  uid,
+  pod_name,
+  status,
+  node_name as controllable__node_name,
+  namespace,
+  cpu_request,
+  memory_request,
+  ephemeral_storage_request,
+  pods_request,
+  owner_name,
+  creation_timestamp,
+  has_node_selector_labels,
+  has_pod_affinity_requirements,
+  has_pod_anti_affinity_requirements,
+  equivalence_class,
+  qos_class
+from pod_info
+where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler';
+```
+
 ### Hard constraints
 
 A hard constraint is structured as a view that specifies a relation followed by a `CHECK` clause. The `CHECK` clause
@@ -190,54 +238,57 @@ column expression (like the second example above) is treated as one objective fu
 #### array
 
 
-### Boolean expressions
+### Expression types
 
-#### and
+A `NumExpr` may be an `integer` column or literal, a `bigint` column or literal,
+or an arithmetic expression. A `BoolExpr` will be automatically cast into an integer value
+if needed (`true = 1` and `false = 0`), and can therefore be used in places expecting a `NumExpr`.
+`Expr` is any expression.  
 
-#### or
+An expression can be of variable type `Var` (i.e, derived from a variable column) or `Const` (constant type). 
+Unless specified otherwise, an argument can be either `Var` or `Const`.
 
-#### =
+### Boolean operators
 
-#### !=
+Binary operators with arguments of type `Expr` require both arguments to have the same type.
 
-#### \>
-
-#### \>=
-
-#### \<
-
-#### \<=
-
-#### in
-
-#### exists
-
-#### contains
+Name | Operator | Arguments | Example
+--- | --- | --- | ---
+Boolean AND | `AND`| `BoolExpr AND BoolExpr`| `CHECK (column_a = 10 AND column_b < 100)` 
+Boolean OR | `OR` | `BoolExpr OR BoolExpr`| `CHECK (column_a = 10 OR column_b < 100)`
+Equals | `=` | `Expr = Expr`| `CHECK (column_a = 10)`
+Not equals | `!=` | `Expr = Expr`| `CHECK (column_a != 10)`
+Greater than | `>` | `NumExpr > NumExpr`| `CHECK (column_a > 10)`
+Greater than or equal to | `>=` | `NumExpr >= NumExpr`| `CHECK (column_a >= 10)`
+Less than | `<` | `NumExpr < NumExpr`| `CHECK (column_a < 10)`
+Less than or equal to | `<=` | `NumExpr <= NumExpr`| `CHECK (column_a <= 10)`
+In | `IN` | `Expr IN (SELECT Expr FROM....)`| `CHECK (column_a IN (SELECT column_b FROM mytable))`
+Exists | `EXISTS` | `EXISTS (SELECT Expr FROM...)`| `CHECK EXISTS (SELECT column_a = 10 FROM...)`
+Array contains | `CONTAINS` | `CONTAINS (ARRAY expr, ARRAY column)`| `CHECK CONTAINS (column_arr, controllable__a)`
 
 ### Arithmetic operators
 
-### +
-### -
-### *
-### /
-### %
+Name | Operator | Arguments | Example
+--- | --- | --- | ---
+Plus | `+`| `NumExpr + NumExpr`| `CHECK (column_a + column_b = 10)`
+Minus | `-`| `NumExpr - NumExpr`| `CHECK (column_a - column_b = 10)`
+Negation | `-`| `- NumExpr`| `CHECK (-column_a = 10)`
+Multiplication | `*`| `NumExpr * NumExpr`| `CHECK (column_a * column_b = 10)`
+Integer division | `/`| `NumExpr / NumExpr`| `CHECK (column_a / column_b = 10)`
+Modulus | `%`| `NumExpr % NumExpr`| `CHECK (column_a % column_b = 10)`
 
 ### Supported aggregates
 
-#### sum
+Some aggregates are *top-level constraints only*. This means that they can only be used on their own in a `CHECK` clause
+as shown below. Their results cannot be used in a larger expression (other than to check for equality to `true`).
 
-#### count
-
-#### min
-
-#### max
-
-#### all_different
-
-#### all_equal
-
-#### increasing
-
-#### capacity_constraint
-
-#### contains
+Operator | Arguments | Top-level only? | Examples | Description 
+--- | --- | --- | --- | ---
+`sum`| `sum(NumExpr)`| No | `SELECT sum(column_a) FROM ...`, `CHECK sum(column_a) = 10` | 
+`count`| `count(NumExpr)`| No |  `SELECT count(column_a) FROM ...`, `CHECK count(column_a) = 10` |
+`min`| `min(NumExpr)`| No | `SELECT min(column_a) FROM ...`, `CHECK min(column_a) = 10` |
+`max`| `max(NumExpr)`| No | `SELECT max(column_a) FROM ...`, `CHECK max(column_a) = 10` |
+`all_different`| `all_different(NumExpr)` | Yes | `CHECK all_different(column_a)` | Enforce all values in the column to be mutually different.
+`all_equal`| `all_equal(Expr)` | Yes | `CHECK all_equal(column_a)` | Enforce all values in the column to be equal.
+`increasing`| `increasing(NumExpr)`| Yes | `CHECK increasing(column_a)` | Enforce ascending order for all values in this column
+`capacity_constraint`| `capacity_constraint(Var NumExpr, Const NumExpr, Const NumExpr, Const NumExpr)`| Yes | `CHECK capacity_constraint(controllable_a, domain, demand, capacity)` | Assign values to `controllable_a` from `domain`, such that the total `demand` does not exceed the `capacity`. The length of the `controllable_a` argument should match that of the `demand` argument. The length of the `domain` argument should match that of the `capacity` argument.

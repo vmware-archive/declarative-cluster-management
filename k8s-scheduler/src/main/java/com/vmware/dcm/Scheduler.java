@@ -95,12 +95,17 @@ public final class Scheduler {
     void handlePodEvent(final PodEvent podEvent) {
         podEventsToDatabase.handle(podEvent);
         if (podEvent.getAction().equals(PodEvent.Action.ADDED)
-            && podEvent.getPod().getStatus().getPhase().equals("Pending")
-            && podEvent.getPod().getSpec().getNodeName() == null
-            && podEvent.getPod().getSpec().getSchedulerName().equals(
-            Scheduler.SCHEDULER_NAME)) {
+                && podEvent.getPod().getStatus().getPhase().equals("Pending")
+                && podEvent.getPod().getSpec().getNodeName() == null
+                && podEvent.getPod().getSpec().getSchedulerName().equals(
+                Scheduler.SCHEDULER_NAME)) {
             notificationQueue.add(true);
         }
+    }
+
+    void handlePodEventNoNotify(final PodEvent podEvent) {
+        podEventsToDatabase.handle(podEvent);
+        // Skip adding pending pod in notification queue
     }
 
     void startScheduler(final IPodToNodeBinder binder, final int batchCount, final long batchTimeMs) {

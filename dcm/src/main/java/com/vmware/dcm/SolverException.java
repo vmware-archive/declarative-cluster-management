@@ -6,7 +6,9 @@
 package com.vmware.dcm;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * An exception thrown when invoking the solver. Typically used to convey infeasibility or some other error.
@@ -33,7 +35,7 @@ public class SolverException extends RuntimeException {
         return reason;
     }
 
-    public List<String> core() {
-        return core;
+    public Set<String> core() {
+        return new HashSet<>(core);
     }
 }

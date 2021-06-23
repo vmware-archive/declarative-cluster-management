@@ -8,6 +8,7 @@ package com.vmware.dcm.backend;
 
 import com.vmware.dcm.IRContext;
 import com.vmware.dcm.IRTable;
+import com.vmware.dcm.compiler.Program;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -20,10 +21,7 @@ public interface ISolverBackend {
     Map<IRTable, Result<? extends Record>> runSolver(final DSLContext dbCtx,
                                                      final Map<String, IRTable> irTables);
 
-    List<String> generateModelCode(final IRContext context,
-                                   final Map<String, ListComprehension> nonConstraintViews,
-                                   final Map<String, ListComprehension> constraintViews,
-                                   final Map<String, ListComprehension> objectiveFunctions);
+    List<String> generateModelCode(final IRContext context, final Program<ListComprehension> irProgram);
 
     List<String> generateDataCode(final IRContext context);
 

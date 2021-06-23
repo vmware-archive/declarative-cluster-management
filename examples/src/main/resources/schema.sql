@@ -17,3 +17,6 @@ create table virtual_machine (
     foreign key (controllable__physical_machine) references physical_machine(name)
 );
 
+-- Constraints can refer to views computed in the database as well
+create view vm_subset as
+select * from virtual_machine where name ='vm1' or name = 'vm2';
