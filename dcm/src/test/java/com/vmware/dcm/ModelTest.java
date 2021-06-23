@@ -1037,6 +1037,40 @@ public class ModelTest {
     }
 
     @Test
+    public void testIntermediateViewWithTypeInference() {
+        final DSLContext conn = setup();
+
+        conn.execute("CREATE TABLE t1 (" +
+                "controllable__c1 integer NOT NULL, " +
+                "c2 integer NOT NULL" +
+                ")"
+        );
+        conn.execute("CREATE TABLE t2 (" +
+                "c1 integer NOT NULL" +
+                ")"
+        );
+        conn.execute("insert into t1 values (1, 1)");
+        conn.execute("insert into t1 values (1, 2)");
+        conn.execute("insert into t1 values (1, 3)");
+        conn.execute("insert into t2 values (1)");
+        conn.execute("insert into t2 values (2)");
+        final String intermediateView = "CREATE VIEW int_view AS " +
+                "SELECT t1.c2, count(*) as total " +
+                "FROM t1 " +
+                "JOIN t2 " +
+                " ON t1.controllable__c1 = t2.c1 " +
+                "GROUP BY t1.c2";
+        final String objective = "CREATE VIEW objective_fn AS " +
+                "SELECT * FROM int_view " +
+                "GROUP BY c2 " +
+                "maximize min(total)";
+
+        final Model model = Model.build(conn, List.of(intermediateView, objective));
+        model.updateData();
+
+    }
+
+    @Test
     public void testSoftConstraintWithGroupBy() {
         // create database
         final DSLContext conn = setup();

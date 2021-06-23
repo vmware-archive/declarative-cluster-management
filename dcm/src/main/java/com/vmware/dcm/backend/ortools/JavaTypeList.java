@@ -18,8 +18,8 @@ class JavaTypeList {
         this.typeList = typeList;
     }
 
-    boolean contains(final JavaType type) {
-        return typeList.contains(type);
+    JavaType get(final int index) {
+        return typeList.get(index);
     }
 
     @Override

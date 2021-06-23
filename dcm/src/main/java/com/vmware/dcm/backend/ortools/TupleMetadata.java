@@ -100,6 +100,6 @@ public class TupleMetadata {
     }
 
     JavaType inferType(final Expr expr) {
-        return InferType.forExpr(expr, viewTupleTypeParameters);
+        return InferType.forExpr(expr, viewTupleTypeParameters, viewToFieldIndex);
     }
 }
