@@ -14,6 +14,7 @@ import com.google.common.base.Splitter;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -25,25 +26,19 @@ public class ViewsWithAnnotations {
     private static final SqlParser PARSER = new SqlParser();
     private static final ParsingOptions OPTIONS = ParsingOptions.builder().build();
     private final CreateView createView;
-    @Nullable private final Expression checkExpression;
     private final boolean isObjective;
+    @Nullable private final Expression constraint;
 
     private ViewsWithAnnotations(final CreateView createView) {
         this.createView = createView;
-        this.checkExpression = null;
+        this.constraint = null;
         this.isObjective = false;
     }
 
-    private ViewsWithAnnotations(final CreateView createView, final Expression checkExpression) {
+    private ViewsWithAnnotations(final CreateView createView, final Expression constraint, final boolean isObjective) {
         this.createView = createView;
-        this.checkExpression = checkExpression;
-        this.isObjective = false;
-    }
-
-    private ViewsWithAnnotations(final CreateView createView, final boolean isObjective) {
-        this.createView = createView;
-        this.checkExpression = null;
         this.isObjective = isObjective;
+        this.constraint = constraint;
     }
 
     public CreateView getCreateView() {
@@ -51,7 +46,11 @@ public class ViewsWithAnnotations {
     }
 
     public Optional<Expression> getCheckExpression() {
-        return Optional.ofNullable(checkExpression);
+        return !isObjective ? Optional.ofNullable(constraint) : Optional.empty();
+    }
+
+    public Optional<Expression> getMaximizeExpression() {
+        return isObjective ? Optional.ofNullable(constraint) : Optional.empty();
     }
 
     public boolean isObjective() {
@@ -69,30 +68,33 @@ public class ViewsWithAnnotations {
         final List<String> splitQueryOnCheck = Splitter.onPattern("(?i)\\scheck\\s")
                                                        .trimResults()
                                                        .omitEmptyStrings().splitToList(view);
-        Preconditions.checkState(splitQueryOnCheck.size() <= 2,
-                "Malformed query (splitting by 'check' yielded an array with more than 2 parts): " + view);
+        final List<String> splitQueryOnMaximize = Splitter.onPattern("(?i)\\smaximize\\s")
+                                                       .trimResults()
+                                                       .omitEmptyStrings().splitToList(view);
         if (splitQueryOnCheck.size() == 2) {
-            Preconditions.checkState(!view.contains("maximize"),
+            Preconditions.checkState(!view.toLowerCase(Locale.ROOT).contains("maximize"),
                     "A query cannot have both a check clause and a maximize annotation: " + view);
             final String relationWithoutConstraint = splitQueryOnCheck.get(0);
             final CreateView createViewStatement = (CreateView) PARSER.createStatement(relationWithoutConstraint,
                                                                                        OPTIONS);
             final String checkExpressionStr = splitQueryOnCheck.get(1);
             final Expression checkExpression = PARSER.createExpression(checkExpressionStr, OPTIONS);
-            return new ViewsWithAnnotations(createViewStatement, checkExpression);
+            return new ViewsWithAnnotations(createViewStatement, checkExpression, false);
         }
-        if (view.contains("maximize")) {
-            final List<String> splitOnMaximize = Splitter.on("maximize")
-                                                         .trimResults()
-                                                         .omitEmptyStrings()
-                                                         .splitToList(view.trim());
-            Preconditions.checkState(splitOnMaximize.size() >= 1,
-                    "Malformed query (splitting by 'maximize' yielded an array with fewer than one part): "
-                            + view);
-            final String expression = splitOnMaximize.get(0);
-            final CreateView createViewStatement = (CreateView) PARSER.createStatement(expression, OPTIONS);
-            return new ViewsWithAnnotations(createViewStatement, true);
+        else if (splitQueryOnMaximize.size() == 2) {
+            Preconditions.checkState(!view.toLowerCase(Locale.ROOT).contains("check"),
+                    "A query cannot have both a check clause and a maximize annotation: " + view);
+            final String relationWithoutConstraint = splitQueryOnMaximize.get(0);
+            final CreateView createViewStatement = (CreateView) PARSER.createStatement(relationWithoutConstraint,
+                    OPTIONS);
+            final String maximizeExpressionStr = splitQueryOnMaximize.get(1);
+            final Expression maximizeExpression = PARSER.createExpression(maximizeExpressionStr, OPTIONS);
+            return new ViewsWithAnnotations(createViewStatement, maximizeExpression, true);
         } else {
+            Preconditions.checkState(!view.toLowerCase(Locale.ROOT).contains("maximize") &&
+                                     !view.toLowerCase(Locale.ROOT).contains("check"),
+                    "Unexpected query: non-constraint view cannot have a check clause or a maximize " +
+                                "annotation: " + view);
             final CreateView createViewStatement = (CreateView) PARSER.createStatement(view, OPTIONS);
             return new ViewsWithAnnotations(createViewStatement);
         }

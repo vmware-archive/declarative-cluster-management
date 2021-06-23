@@ -789,13 +789,8 @@ public class ModelTest {
         model.solve("HOSTS");
     }
 
-
-    @ParameterizedTest
-    @MethodSource("solvers")
-    public void negativeValueOfSelectedItem(final SolverConfig solver) {
-        // model and data files will use this as its name
-        final String modelName = "negativeValueOfSelectedItem";
-
+    @Test
+    public void negativeValueOfSelectedItem() {
         // create database
         final DSLContext conn = setup();
 
@@ -808,14 +803,14 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW objective_v1 AS " +
-                "SELECT -count(host_id) as host_id FROM hosts where controllable__epoch_id = 1 maximize;");
+                "SELECT * FROM hosts where controllable__epoch_id = 1 maximize -count(host_id);");
 
         // insert data
         conn.execute("insert into HOSTS values ('h1', 1)");
         conn.execute("insert into HOSTS values ('h2', 2)");
         conn.execute("insert into HOSTS values ('h3', 3)");
 
-        final Model model = buildModel(conn, solver, views, modelName);
+        final Model model = Model.build(conn, views);
         model.updateData();
         model.solve("HOSTS");
     }
@@ -1027,8 +1022,8 @@ public class ModelTest {
 
         final List<String> views = toListOfViews("" +
                 "CREATE VIEW objective_t1 AS " +
-                "SELECT contains(c2, controllable__c1) from t1" +
-                "maximize;");
+                "SELECT * from t1 " +
+                "maximize contains(c2, controllable__c1);");
 
         // insert data
         conn.execute("insert into t1 values (1, ARRAY[100])");
@@ -1039,6 +1034,67 @@ public class ModelTest {
         final List<Integer> fetch = model.solve("T1").getValues("CONTROLLABLE__C1", Integer.class);
         assertEquals(1, fetch.size());
         assertEquals(100, fetch.get(0).intValue());
+    }
+
+    @Test
+    public void testIntermediateViewWithTypeInference() {
+        final DSLContext conn = setup();
+
+        conn.execute("CREATE TABLE t1 (" +
+                "controllable__c1 integer NOT NULL, " +
+                "c2 integer NOT NULL" +
+                ")"
+        );
+        conn.execute("CREATE TABLE t2 (" +
+                "c1 integer NOT NULL" +
+                ")"
+        );
+        conn.execute("insert into t1 values (1, 1)");
+        conn.execute("insert into t1 values (1, 2)");
+        conn.execute("insert into t1 values (1, 3)");
+        conn.execute("insert into t2 values (1)");
+        conn.execute("insert into t2 values (2)");
+        final String intermediateView = "CREATE VIEW int_view AS " +
+                "SELECT t1.c2, count(*) as total " +
+                "FROM t1 " +
+                "JOIN t2 " +
+                " ON t1.controllable__c1 = t2.c1 " +
+                "GROUP BY t1.c2";
+        final String objective = "CREATE VIEW objective_fn AS " +
+                "SELECT * FROM int_view " +
+                "GROUP BY c2 " +
+                "maximize min(total)";
+
+        final Model model = Model.build(conn, List.of(intermediateView, objective));
+        model.updateData();
+
+    }
+
+    @Test
+    public void testSoftConstraintWithGroupBy() {
+        // create database
+        final DSLContext conn = setup();
+
+        conn.execute("CREATE TABLE t1 (" +
+                "controllable__c1 integer NOT NULL, " +
+                "c2 integer NOT NULL" +
+                ")"
+        );
+
+        final List<String> views = toListOfViews("" +
+                "CREATE VIEW objective_t1 AS " +
+                "SELECT * from t1 " +
+                "GROUP BY c2 " +
+                "MAXIMIZE min(controllable__c1)");
+
+        // insert data
+        conn.execute("insert into t1 values (1, 1)");
+
+        final Model model = Model.build(conn, views);
+        model.updateData();
+
+        final List<Integer> fetch = model.solve("T1").getValues("CONTROLLABLE__C1", Integer.class);
+        assertEquals(1, fetch.size());
     }
 
     @ParameterizedTest
