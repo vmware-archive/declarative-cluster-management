@@ -45,53 +45,64 @@ import java.util.stream.Collectors;
 public class TupleMetadata {
     private static final Logger LOG = LoggerFactory.getLogger(TupleMetadata.class);
     private final Map<String, Map<String, JavaType>> tableToFieldToType = new HashMap<>();
+    private final Map<String, Map<String, JavaType>> viewTupleTypeParameters = new HashMap<>();
     private final Map<String, Map<String, Integer>> tableToFieldIndex = new HashMap<>();
     private final Map<String, Map<String, Integer>> viewToFieldIndex = new HashMap<>();
-    private final Map<String, JavaTypeList> viewTupleTypeParameters = new HashMap<>();
     private final InferType inferType = new InferType();
 
-    String computeTableTupleType(final IRTable table) {
+
+    /**
+     * For tables, compute the tuple types and field indices.
+     *
+     * @param table the IRTable entry for which
+     */
+    JavaTypeList recordTableTupleType(final IRTable table) {
         Preconditions.checkArgument(!tableToFieldToType.containsKey(table.getAliasedName()));
         Preconditions.checkArgument(!tableToFieldIndex.containsKey(table.getAliasedName()));
         final AtomicInteger fieldIndex = new AtomicInteger(0);
-        return table.getIRColumns().entrySet().stream()
+        return new JavaTypeList(table.getIRColumns().entrySet().stream()
                 .map(e -> {
                         final JavaType retVal = inferType.typeFromColumn(e.getValue());
                         tableToFieldToType.computeIfAbsent(table.getAliasedName(), (k) -> new HashMap<>())
                                           .putIfAbsent(e.getKey(), retVal);
                         tableToFieldIndex.computeIfAbsent(table.getAliasedName(),  (k) -> new HashMap<>())
                                           .putIfAbsent(e.getKey(), fieldIndex.getAndIncrement());
-                        return retVal.typeString();
+                        return retVal;
                     }
-                ).collect(Collectors.joining(", "));
-    }
-
-    <T extends Expr> JavaTypeList computeViewTupleType(final String viewName, final List<T> exprs) {
-        final String upperCased = viewName.toUpperCase(Locale.US);
-        Preconditions.checkArgument(!viewTupleTypeParameters.containsKey(upperCased), upperCased + " " + exprs);
-        return viewTupleTypeParameters.compute(upperCased, (k, v) -> computeTupleGenericParameters(exprs));
+                ).collect(Collectors.toList()));
     }
 
     /**
-     * Updates the tracked index for a field within a loop's result set
+     * For intermediate views, compute the tuple types and field indices.
      *
      * @param viewName the view within which this expression is being visited
      * @param exprs The expressions to create a field for
      */
-    <T extends Expr> void recordFieldIndices(final String viewName, final List<T> exprs) {
-        final AtomicInteger counter = new AtomicInteger(0);
-        exprs.forEach(argument -> {
-                final String fieldName = argument.getAlias().orElseGet(() -> {
+    <T extends Expr> JavaTypeList recordViewTupleType(final String viewName, final List<T> exprs) {
+        final String upperCased = viewName.toUpperCase(Locale.US);
+        Preconditions.checkArgument(!viewToFieldIndex.containsKey(upperCased));
+        Preconditions.checkArgument(!viewTupleTypeParameters.containsKey(upperCased));
+        final AtomicInteger fieldIndex = new AtomicInteger(0);
+        final List<JavaType> typeList = exprs.stream().map(argument -> {
+            final String fieldName = argument.getAlias().orElseGet(() -> {
                         if (argument instanceof ColumnIdentifier) {
                             return ((ColumnIdentifier) argument).getField().getName();
                         }
                         throw new ModelException("Non-column fields need an alias: " + argument);
                     }
-                ).toUpperCase(Locale.US);
-                viewToFieldIndex.computeIfAbsent(viewName.toUpperCase(Locale.US), (k) -> new HashMap<>())
-                        .compute(fieldName, (k, v) -> counter.getAndIncrement());
-            }
-        );
+            ).toUpperCase(Locale.US);
+            final JavaType retVal = inferType(argument);
+            viewToFieldIndex.computeIfAbsent(upperCased, (k) -> new HashMap<>())
+                            .compute(fieldName, (k, v) -> fieldIndex.getAndIncrement());
+            viewTupleTypeParameters.computeIfAbsent(upperCased, (k) -> new HashMap<>())
+                            .compute(fieldName, (k, v) -> retVal);
+            return retVal;
+        }).collect(Collectors.toList());
+        return new JavaTypeList(typeList);
+    }
+
+    JavaTypeList computeTupleGenericParameters(final List<Expr> exprs) {
+        return new JavaTypeList(exprs.stream().map(this::inferType).collect(Collectors.toList()));
     }
 
     JavaType getTypeForField(final IRTable table, final IRColumn column) {
@@ -112,10 +123,6 @@ public class TupleMetadata {
 
     boolean canBeAccessedWithViewIndices(final String tableName) {
         return viewToFieldIndex.containsKey(tableName);
-    }
-
-    <T extends Expr> JavaTypeList computeTupleGenericParameters(final List<T> exprs) {
-        return new JavaTypeList(exprs.stream().map(this::inferType).collect(Collectors.toList()));
     }
 
     JavaType inferType(final IRColumn column) {
@@ -246,9 +253,8 @@ public class TupleMetadata {
                 return JavaType.IntVar;
             }
             if (viewTupleTypeParameters.containsKey(node.getTableName())) {
-                final JavaTypeList typeList = viewTupleTypeParameters.get(node.getTableName());
-                final int index = viewToFieldIndex.get(node.getTableName()).get(node.getField().getName());
-                return typeList.get(index);
+                final JavaType type = viewTupleTypeParameters.get(node.getTableName()).get(node.getField().getName());
+                return type;
             }
             return typeFromColumn(node.getField());
         }

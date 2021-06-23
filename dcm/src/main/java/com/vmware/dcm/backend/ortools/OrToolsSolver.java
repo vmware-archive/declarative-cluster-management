@@ -349,7 +349,8 @@ public class OrToolsSolver implements ISolverBackend {
                 final int selectExprSize = inner.getHead().getSelectExprs().size();
                 final TypeSpec typeSpec = tupleGen.getTupleType(selectExprSize);
                 final JavaTypeList viewTupleGenericParameters =
-                        tupleMetadata.computeViewTupleType(viewName, inner.getHead().getSelectExprs());
+                        tupleMetadata.recordViewTupleType(viewName, inner.getHead().getSelectExprs());
+
                 block.addBody(
                     statement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
                                                      viewTupleGenericParameters,
@@ -388,9 +389,6 @@ public class OrToolsSolver implements ISolverBackend {
                                                  .collect(Collectors.joining(", "));
                 forBlock.addBody(statement("final var $L = new $N<>($L)",
                                             groupByContext.getTupleVarName(), typeSpec, tupleResult));
-
-                // Record field name indices for view
-                tupleMetadata.recordFieldIndices(viewName, inner.getHead().getSelectExprs());
                 forBlock.addBody(statement("$L.add($L)", tableNameStr(viewName), groupByContext.getTupleVarName()));
             }
             else  {
@@ -425,8 +423,6 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Extract the set of columns being selected in this view
         final List<ColumnIdentifier> headItemsList = getColumnsAccessed(comprehension, constraintType);
-        tupleMetadata.recordFieldIndices(viewName, headItemsList);
-
         context.enterScope(viewBlock);
 
         // For non-constraints, create a Map<> or a List<> to collect the result-set (depending on
@@ -517,7 +513,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
         final JavaTypeList headItemsListTupleGenericParameters =
-                tupleMetadata.computeViewTupleType(viewName, headItemsList);
+                tupleMetadata.recordViewTupleType(viewName, headItemsList);
 
         final TypeSpec tupleSpec = tupleGen.getTupleType(headItemsList.size());
         final String resultSetNameStr = nonConstraintViewName(viewName);
@@ -803,7 +799,7 @@ public class OrToolsSolver implements ISolverBackend {
 
             // ...1) figure out the jooq record type (e.g., Record3<Integer, String, Boolean>)
             final Class<?> recordType = Class.forName("org.jooq.Record" + table.getIRColumns().size());
-            final String recordTypeParameters = tupleMetadata.computeTableTupleType(table);
+            final JavaTypeList recordTypeParameters = tupleMetadata.recordTableTupleType(table);
 
             if (table.isAliasedTable()) {
                 continue;
