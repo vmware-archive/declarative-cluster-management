@@ -103,6 +103,11 @@ public final class Scheduler {
         }
     }
 
+    void handlePodEventNoNotify(final PodEvent podEvent) {
+        podEventsToDatabase.handle(podEvent);
+        // Skip adding pending pod in notification queue
+    }
+
     void startScheduler(final IPodToNodeBinder binder, final int batchCount, final long batchTimeMs) {
         scheduler.execute(
                 () -> {
