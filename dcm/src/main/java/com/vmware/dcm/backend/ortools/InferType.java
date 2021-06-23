@@ -31,9 +31,12 @@ import java.util.Map;
 class InferType extends IRVisitor<JavaType, VoidType> {
     private static final Logger LOG = LoggerFactory.getLogger(InferType.class);
     private final Map<String, JavaTypeList> viewTupleTypeParameters;
+    private final Map<String, Map<String, Integer>> viewToFieldIndex;
 
-    InferType(final Map<String, JavaTypeList> viewTupleTypeParameters) {
+    InferType(final Map<String, JavaTypeList> viewTupleTypeParameters,
+              final Map<String, Map<String, Integer>> viewToFieldIndex) {
         this.viewTupleTypeParameters = viewTupleTypeParameters;
+        this.viewToFieldIndex = viewToFieldIndex;
     }
 
     public JavaType visit(final Expr expr) {
@@ -155,10 +158,10 @@ class InferType extends IRVisitor<JavaType, VoidType> {
             return JavaType.IntVar;
         }
         final String convertedName = CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, node.getTableName());
-        if (viewTupleTypeParameters.containsKey(convertedName) &&
-                viewTupleTypeParameters.get(convertedName).contains(JavaType.IntVar)) {
-            LOG.warn("Inferring type for column {} as IntVar", node);
-            return JavaType.IntVar;
+        if (viewTupleTypeParameters.containsKey(convertedName)) {
+            final JavaTypeList typeList = viewTupleTypeParameters.get(convertedName);
+            final int index = viewToFieldIndex.get(node.getTableName()).get(node.getField().getName());
+            return typeList.get(index);
         }
         return typeFromColumn(node.getField());
     }
@@ -182,13 +185,10 @@ class InferType extends IRVisitor<JavaType, VoidType> {
         }
     }
 
-    // TODO: passing viewTupleTypeParameters makes this class tightly coupled with TupleMetadata.
-    static JavaType forExpr(final Expr expr, final Map<String, JavaTypeList> viewTupleTypeParameters) {
-        final InferType visitor = new InferType(viewTupleTypeParameters);
+    // TODO: passing viewTupleTypeParameters and viewToFieldIndex makes this class tightly coupled with TupleMetadata.
+    static JavaType forExpr(final Expr expr, final Map<String, JavaTypeList> viewTupleTypeParameters,
+                            final Map<String, Map<String, Integer>> viewToFieldIndex) {
+        final InferType visitor = new InferType(viewTupleTypeParameters, viewToFieldIndex);
         return visitor.visit(expr);
-    }
-
-    static String toTypeString(final JavaType type) {
-        return type.typeString();
     }
 }
