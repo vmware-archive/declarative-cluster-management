@@ -211,17 +211,18 @@ To learn more about DCM, we suggest going through the following references:
 
 Talks:
 
-* [Hydra 2021](https://hydraconf.com/): [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://live.jugru.org/video/?v=Izk2iiM2MzY4ijM)
+* [Hydra 2021](https://live.jugru.org/video/?v=Izk2iiM2MzY4ijM): the most detailed talk given on DCM thus far (~75 minutes)
+* [OSDI 2020](https://www.usenix.org/conference/osdi20/presentation/suresh) (20 minutes) 
 
 Research papers:
 
-* [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://lalith.in/papers/dcm-osdi2020.pdf) <br>
+* [Building Scalable and Flexible Cluster Managers Using Declarative Programming](https://www.usenix.org/system/files/osdi20-suresh.pdf) <br>
   Lalith Suresh, Joao Loff, Faria Kalim, Sangeetha Abdu Jyothi, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Pranshu Jain, Michael Gasch. 
   To appear, 14th USENIX Symposium on Operating Systems Design and Implementation, (OSDI 2020).
 
-* [Automating Cluster Management with Weave](https://arxiv.org/pdf/1909.03130.pdf)<br>
+* [Automating Cluster Management with Weave](https://arxiv.org/pdf/1909.03130.pdf) <br>
   Lalith Suresh, Joao Loff, Faria Kalim, Nina Narodytska, Leonid Ryzhyk, Sahan Gamage, Brian Oki, Zeeshan Lokhandwala, Mukesh Hira, Mooly Sagiv. arXiv preprint arXiv:1909.03130 (2019).
 
-* [Synthesizing Cluster Management Code for Distributed Systems](https://dl.acm.org/citation.cfm?id=3321444)<br>
+* [Synthesizing Cluster Management Code for Distributed Systems](https://dl.acm.org/citation.cfm?id=3321444) <br>
   Lalith Suresh, João Loff, Nina Narodytska, Leonid Ryzhyk, Mooly Sagiv, and Brian Oki. In Proceedings of the Workshop on Hot Topics in Operating Systems (HotOS 2019).
   ACM, New York, NY, USA, 45-50. DOI: https://doi.org/10.1145/3317550.3321444
