@@ -1020,7 +1020,7 @@ public class OrToolsSolver implements ISolverBackend {
         if (fieldName.contains("CONTROLLABLE")) {
             return String.format("%s[%s]", fieldNameStr(tableName, fieldName), iterStr);
         } else {
-            if (tupleMetadata.canBeAccessedWithViewIndices(tableName)) {
+            if (tupleMetadata.isView(tableName)) {
                 final int fieldIndex = tupleMetadata.getFieldIndexInView(tableName, fieldName);
                 return String.format("%s.get(%s).value%s()", tableNameStr(tableName), iterStr, fieldIndex);
             } else {

@@ -121,7 +121,7 @@ public class TupleMetadata {
         return Objects.requireNonNull(viewToFieldIndex.get(tableName).get(columnName));
     }
 
-    boolean canBeAccessedWithViewIndices(final String tableName) {
+    boolean isView(final String tableName) {
         return viewToFieldIndex.containsKey(tableName);
     }
 
