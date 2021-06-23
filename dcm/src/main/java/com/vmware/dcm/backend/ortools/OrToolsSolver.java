@@ -349,7 +349,7 @@ public class OrToolsSolver implements ISolverBackend {
                 final int selectExprSize = inner.getHead().getSelectExprs().size();
                 final TypeSpec typeSpec = tupleGen.getTupleType(selectExprSize);
                 final JavaTypeList viewTupleGenericParameters =
-                        tupleMetadata.computeViewTupleType(tableNameStr(viewName), inner.getHead().getSelectExprs());
+                        tupleMetadata.computeViewTupleType(viewName, inner.getHead().getSelectExprs());
                 block.addBody(
                     statement("final $T<$N<$L>> $L = new $T<>($L.size())", List.class, typeSpec,
                                                      viewTupleGenericParameters,
@@ -915,7 +915,7 @@ public class OrToolsSolver implements ISolverBackend {
                                 "                        .stream()",
                                 "                        .mapToLong(encoder::toLong).toArray()"
                         );
-                        final JavaType parentType = InferType.typeFromColumn(parent);
+                        final JavaType parentType = tupleMetadata.inferType(parent);
                         output.addStatement(snippet,
                                fieldIndex.get(), parent.getIRTable().getName(), parent.getName().toUpperCase(Locale.US),
                                parentType.typeString());
