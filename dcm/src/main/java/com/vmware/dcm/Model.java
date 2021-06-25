@@ -66,7 +66,7 @@ public class Model {
         final List<ViewsWithAnnotations> constraintViews = constraints.stream().map(
                 constraint -> {
                     try {
-                        return ViewsWithAnnotations.fromString(constraint.toLowerCase());
+                        return ViewsWithAnnotations.fromString(constraint);
                     } catch (final ParsingException e) {
                         LOG.error("Could not parse view: {}", constraint, e);
                         throw e;
@@ -261,6 +261,13 @@ public class Model {
             for (final ForeignKey<? extends Record, ?> fk : foreignKeys) {
                 // table referenced by the foreign key
                 final IRTable parentTable = jooqTableToIRTable.get(fk.getKey().getTable());
+
+                // TODO: ideally, we should recurse and find all tables at the expense of bringing in
+                //       more data than we need at runtime
+                // https://github.com/vmware/declarative-cluster-management/issues/108
+                if (parentTable == null) {
+                    continue;
+                }
 
                 // build foreign key based on the fk fields
                 final IRForeignKey irForeignKey = new IRForeignKey(childTable, parentTable, fk);

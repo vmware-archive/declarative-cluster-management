@@ -1669,6 +1669,26 @@ public class ModelTest {
                             podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n2"));
     }
 
+    @Test
+    public void testStringCodeGen() {
+        // create database
+        final DSLContext conn = setup();
+        conn.execute("create table t1 " +
+                "(" +
+                " status varchar(36) not null," +
+                " controllable__id integer not null" +
+                ")"
+        );
+
+        conn.execute("insert into t1 values ('Pending', 1)");
+        final List<String> views = List.of("create view c1 as select * from t1 " +
+                                           "check status != 'Pending' or controllable__id = 42");
+        final Model model = Model.build(conn, views);
+        model.updateData();
+        final Result<? extends Record> t1 = model.solve("T1");
+        System.out.println(t1);
+        assertEquals(42, t1.get(0).get(1));
+    }
 
     @ParameterizedTest
     @MethodSource("solvers")
