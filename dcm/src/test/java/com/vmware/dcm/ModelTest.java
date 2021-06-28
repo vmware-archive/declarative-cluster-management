@@ -1686,7 +1686,6 @@ public class ModelTest {
         final Model model = Model.build(conn, views);
         model.updateData();
         final Result<? extends Record> t1 = model.solve("T1");
-        System.out.println(t1);
         assertEquals(42, t1.get(0).get(1));
     }
 

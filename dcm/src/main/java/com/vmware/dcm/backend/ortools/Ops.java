@@ -252,8 +252,10 @@ public class Ops {
         final Domain domain = left.getDomain();
         final long lDomainMinResult = domain.min() * right;
         final long lDomainMaxResult = domain.max() * right;
-        final long lb = Math.min(lDomainMinResult, lDomainMaxResult);
-        final long ub = Math.max(lDomainMinResult, lDomainMaxResult);
+
+        // Conservative. Should be fixed with: https://github.com/vmware/declarative-cluster-management/issues/112
+        final long lb = Math.max(Math.min(lDomainMinResult, lDomainMaxResult), Integer.MIN_VALUE);
+        final long ub = Math.min(Math.max(lDomainMinResult, lDomainMaxResult), Integer.MAX_VALUE);
         final IntVar ret = model.newIntVar(lb, ub, "");
         model.addEquality(ret, LinearExpr.term(left, right));
         return ret;
@@ -266,8 +268,10 @@ public class Ops {
         final long lDomainMax = lDomain.max();
         final long rDomainMin = rDomain.min();
         final long rDomainMax = rDomain.max();
-        final long lb = Math.min(lDomainMin * rDomainMin, lDomainMax * rDomainMax);
-        final long ub = Math.max(lDomainMin * rDomainMin, lDomainMax * rDomainMax);
+
+        // Conservative. Should be fixed with: https://github.com/vmware/declarative-cluster-management/issues/112
+        final long lb = Math.max(Math.min(lDomainMin * rDomainMin, lDomainMax * rDomainMax), Integer.MIN_VALUE);
+        final long ub = Math.min(Math.max(lDomainMin * rDomainMin, lDomainMax * rDomainMax), Integer.MAX_VALUE);
         final IntVar ret = model.newIntVar(lb, ub, "");
         model.addProductEquality(ret, new IntVar[]{left, right});
         return ret;
