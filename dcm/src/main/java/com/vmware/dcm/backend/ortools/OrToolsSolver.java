@@ -1003,9 +1003,16 @@ public class OrToolsSolver implements ISolverBackend {
         }
         output.addStatement("return result");
         output.endControlFlow();
+
+        output.beginControlFlow("else if (status == CpSolverStatus.INFEASIBLE)");
         output.addStatement("final List<String> failedConstraints = o.findSufficientAssumptions(solver)");
         output.addStatement("throw new $T(status.toString(), failedConstraints)", SolverException.class);
+        output.endControlFlow();
+        output.beginControlFlow("else");
+        output.addStatement("throw new $T(status.toString())", SolverException.class);
+        output.endControlFlow();
     }
+
 
     private static String tableNameStr(final String tableName) {
         return CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName);

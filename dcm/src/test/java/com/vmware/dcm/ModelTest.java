@@ -2202,6 +2202,32 @@ public class ModelTest {
         model.solve(Set.of("HOSTS", "STRIPES"));
     }
 
+    @Test
+    @Disabled("Enable when https://github.com/vmware/declarative-cluster-management/issues/112 is fixed")
+    public void testSolverTimeLimit() {
+        final String modelName = "testSolverTimeLimit";
+
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1(k integer, controllable__p1 integer, controllable__p2 integer, primary key (k))");
+
+        final List<String> views = toListOfViews("CREATE VIEW constraint_product AS " +
+                "SELECT * FROM t1 " +
+                "check (controllable__p1 * controllable__p2) = 12;" +
+                "CREATE VIEW constraint_nontrivial_divisor AS " +
+                "SELECT * FROM t1 " +
+                "check controllable__p1 > 1 and controllable__p2 > 1;"
+        );
+
+        conn.execute("insert into t1 values (1, 2, 6)");
+        conn.execute("insert into t1 values (2, 4, 3)");
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
+
+        model.updateData();
+        final Result<? extends Record> fetch = model.solve("T1");
+        System.out.println(fetch);
+    }
+
     /**
      * Splits the supplied SQL by ';'
      */
