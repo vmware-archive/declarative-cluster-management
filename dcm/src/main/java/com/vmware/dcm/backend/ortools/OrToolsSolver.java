@@ -107,13 +107,6 @@ public class OrToolsSolver implements ISolverBackend {
     private static final String GENERATED_BACKEND_CLASS_FILE_PATH = "/tmp";
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
-    private static final MethodSpec INT_VAR_NO_BOUNDS = MethodSpec.methodBuilder("INT_VAR_NO_BOUNDS")
-                                    .addModifiers(Modifier.PRIVATE)
-                                    .addParameter(CpModel.class, "model", Modifier.FINAL)
-                                    .addParameter(String.class, "name",  Modifier.FINAL)
-                                    .returns(IntVar.class)
-                                    .addStatement("return model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, name)")
-                                    .build();
     private final AtomicInteger intermediateViewCounter = new AtomicInteger(0);
     private final TupleMetadata tupleMetadata = new TupleMetadata();
     private final TupleGen tupleGen = new TupleGen();
@@ -266,8 +259,7 @@ public class OrToolsSolver implements ISolverBackend {
                                  .build())
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .addSuperinterface(IGeneratedBackend.class)
-                .addMethod(solveMethod)
-                .addMethod(INT_VAR_NO_BOUNDS);
+                .addMethod(solveMethod);
         tupleGen.getAllTupleTypes().forEach(backendClassBuilder::addType); // Add tuple types
 
         final TypeSpec spec = backendClassBuilder.build();
@@ -845,7 +837,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                                        tableNumRowsStr(table.getName()))
                             .beginControlFlow("for (int i = 0; i < $L; i++)",
                                               tableNumRowsStr(table.getName()))
-                            .addStatement("$L[i] = $N(model, $S)", variableName, INT_VAR_NO_BOUNDS, fieldName)
+                            .addStatement("$L[i] = o.newIntVar($S)", variableName, fieldName)
                             .endControlFlow();
                 }
             }

@@ -254,8 +254,8 @@ public class Ops {
         final long lDomainMaxResult = domain.max() * right;
 
         // Conservative. Should be fixed with: https://github.com/vmware/declarative-cluster-management/issues/112
-        final long lb = Math.max(Math.min(lDomainMinResult, lDomainMaxResult), Integer.MIN_VALUE);
-        final long ub = Math.min(Math.max(lDomainMinResult, lDomainMaxResult), Integer.MAX_VALUE);
+        final long lb = Math.min(lDomainMinResult, lDomainMaxResult);
+        final long ub = Math.max(lDomainMinResult, lDomainMaxResult);
         final IntVar ret = model.newIntVar(lb, ub, "");
         model.addEquality(ret, LinearExpr.term(left, right));
         return ret;
@@ -268,10 +268,14 @@ public class Ops {
         final long lDomainMax = lDomain.max();
         final long rDomainMin = rDomain.min();
         final long rDomainMax = rDomain.max();
+        final long b1 = lDomainMin * rDomainMin;
+        final long b2 = lDomainMax * rDomainMax;
+        final long b3 = lDomainMax * rDomainMin;
+        final long b4 = lDomainMin * rDomainMax;
 
         // Conservative. Should be fixed with: https://github.com/vmware/declarative-cluster-management/issues/112
-        final long lb = Math.max(Math.min(lDomainMin * rDomainMin, lDomainMax * rDomainMax), Integer.MIN_VALUE);
-        final long ub = Math.min(Math.max(lDomainMin * rDomainMin, lDomainMax * rDomainMax), Integer.MAX_VALUE);
+        final long lb = Math.min(Math.min(b1, b2), Math.min(b3, b4));
+        final long ub = Math.max(Math.max(b1, b2), Math.max(b3, b4));
         final IntVar ret = model.newIntVar(lb, ub, "");
         model.addProductEquality(ret, new IntVar[]{left, right});
         return ret;
@@ -786,6 +790,13 @@ public class Ops {
         list.forEach(model::maximize);
     }
 
+    public IntVar newIntVar(final String name) {
+        return model.newIntVar(Integer.MIN_VALUE, Integer.MAX_VALUE, name);
+    }
+
+    public IntVar newIntVar(final long lb, final long ub, final String name) {
+        return model.newIntVar(lb, ub, name);
+    }
 
     /*
      * Assumes var is true
