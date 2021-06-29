@@ -310,7 +310,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true,
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
@@ -416,7 +416,7 @@ public class SchedulerTest {
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true,
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
         final Result<? extends Record> results = scheduler.runOneLoop();
         assertEquals(numPods, results.size());
@@ -550,7 +550,7 @@ public class SchedulerTest {
 
         // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // but works when using Minizinc 2.3.2
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true,
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
 
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
@@ -1008,7 +1008,7 @@ public class SchedulerTest {
         }
         final List<String> policies = Policies.from(Policies.nodePredicates(),
                                                     Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "MNZ-CHUFFED", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
 
         if (feasible) {
             final Result<? extends Record> result = scheduler.runOneLoop();
