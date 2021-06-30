@@ -23,6 +23,7 @@ import org.apache.commons.cli.ParseException;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.jooq.Table;
 import org.jooq.Update;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,7 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
@@ -167,6 +169,13 @@ public final class Scheduler {
     Result<? extends Record> runOneLoop() {
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated = model.solve("PODS_TO_ASSIGN");
+        solveTimer.stop();
+        return podsToAssignUpdated;
+    }
+
+    Result<? extends Record> runOneLoop(final Function<Table<?>, Result<? extends Record>> fetcher) {
+        final Timer.Context solveTimer = solveTimes.time();
+        final Result<? extends Record> podsToAssignUpdated = model.solve("PODS_TO_ASSIGN", fetcher);
         solveTimer.stop();
         return podsToAssignUpdated;
     }

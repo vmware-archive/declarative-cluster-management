@@ -49,6 +49,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -67,6 +68,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.jooq.impl.DSL.field;
 
 /**
  * Tests for the scheduler
@@ -1195,6 +1197,57 @@ public class SchedulerTest {
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
+    }
+
+    @Test
+    public void testFilterNodes() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final List<String> policies = Policies.getDefaultPolicies();
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+
+        final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);
+
+        // Add nodes
+        for (int i = 0; i < 8; i++) {
+            final String nodeName = "node-" + i;
+            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(100)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(100)));
+
+            nodeHandler.onAddSync(node);
+        }
+
+        // Add pending pods
+        for (int i = 0; i < 10; i++) {
+            final String podName = "pod-" + i;
+            final String status = "Pending";
+            final Pod pod = newPod(podName, status);
+
+            final Map<String, Quantity> resourceRequests = new HashMap<>();
+            resourceRequests.put("cpu", new Quantity(42 + ""));
+            resourceRequests.put("memory", new Quantity(42 + ""));
+            pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+
+            podHandler.onAddSync(pod);
+        }
+
+        // Schedule
+        final Result<? extends Record> results = scheduler.runOneLoop((table) -> {
+            if (table.getName().equalsIgnoreCase("spare_capacity_per_node")) {
+                final String lb = "node-" + 3;
+                final String ub = "none-" + 7;
+                return conn.selectFrom(table).where(field("name").ge(lb).and(field("name").le(ub))).fetch();
+            }
+            return conn.selectFrom(table).fetch();
+        });
+
+        assertEquals(10, results.size());
+        final List<String> allowedNodes = new ArrayList<>(
+                Arrays.asList("node-3", "node-4", "node-5", "node-6", "node-7"));
+        results.forEach(r ->
+                assertTrue(allowedNodes.contains(r.get("CONTROLLABLE__NODE_NAME", String.class))));
     }
 
 
