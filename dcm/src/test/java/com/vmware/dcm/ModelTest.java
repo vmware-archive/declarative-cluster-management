@@ -15,6 +15,7 @@ import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Record2;
 import org.jooq.Result;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -64,7 +66,7 @@ public class ModelTest {
         final Field<Integer> f1 = field("C1", Integer.class);
         final Field<Integer> f2 = field("CONTROLLABLE__C2", Integer.class);
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testWithUpdateData");
-        model.updateData((table) -> {
+        final Function<Table<?>, Result<? extends Record>> fetcher = (table) -> {
             final Result<Record2<Integer, Integer>> result = conn.newResult(f1, f2);
             final Record2<Integer, Integer> record1 = conn.newRecord(f1, f2);
             record1.setValue(f1, 78);
@@ -75,8 +77,8 @@ public class ModelTest {
             record2.setValue(f2, 91); // will get over-written by constraint
             result.add(record2);
             return result;
-        });
-        final Result<? extends Record> result = model.solve("T1");
+        };
+        final Result<? extends Record> result = model.solve("T1", fetcher);
         assertEquals(result.get(0).get(0), 78);
         assertEquals(result.get(0).get(1), 78);
         assertEquals(result.get(1).get(0), 84);
@@ -100,14 +102,13 @@ public class ModelTest {
         conn.execute("insert into pod values (3, null)");
 
         final int minimumPodId = 7;
-        model.updateData((table) -> {
+        final Result<? extends Record> result = model.solve("POD", (table) -> {
             if (table.getName().equalsIgnoreCase("pod")) {
                 // Should only pull in the 2nd record
                 return conn.selectFrom(table).where(field("pod_id").gt(minimumPodId)).fetch();
             }
             return conn.selectFrom(table).fetch();
         });
-        final Result<? extends Record> result = model.solve("POD");
         assertEquals(result.size(), 1);
         assertEquals(result.get(0).get(0), 10);
         assertEquals(result.get(0).get(1), 10);
@@ -136,7 +137,6 @@ public class ModelTest {
         conn.execute("insert into t2 values (1, 10)");
         conn.execute("insert into t2 values (2, 10)");
 
-        model.updateData();
         final Result<? extends Record> fetch = model.solve("T2");
         System.out.println(fetch);
         assertEquals(2, fetch.size());
@@ -165,7 +165,6 @@ public class ModelTest {
         conn.execute("insert into t1 values (1, 123)");
         conn.execute("insert into t1 values (2, 425)");
 
-        model.updateData();
         final Result<? extends Record> fetch = model.solve("T1");
         System.out.println(fetch);
         assertEquals(2, fetch.size());
@@ -199,7 +198,6 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, 3, 19)");
         conn.execute("insert into t1 values (4, 4, 19)");
 
-        model.updateData();
         final Result<? extends Record> fetch = model.solve("T1");
         System.out.println(fetch);
         assertEquals(4, fetch.size());
@@ -225,7 +223,6 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, null)");
 
         final Model model = Model.build(conn, List.of(all_different, domain));
-        model.updateData();
 
         final Result<? extends Record> results = model.solve("T1");
         final Set<Integer> controllableVars = results.stream().map(e -> e.get("CONTROLLABLE__VAR", Integer.class))
@@ -253,7 +250,6 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, null)");
 
         final Model model = Model.build(conn, List.of(constraint_where1, constraint_where2, domain));
-        model.updateData();
 
         final Result<? extends Record> results = model.solve("T1");
         final List<Integer> controllableVars = results.stream().map(e -> e.get("CONTROLLABLE__VAR", Integer.class))
@@ -286,8 +282,6 @@ public class ModelTest {
 
         final Model model = Model.build(conn, List.of(constraintWhere1, constraintAllDifferent,
                                                       constraintWhere2, domain));
-        model.updateData();
-
         final Result<? extends Record> results = model.solve("T1");
         final List<Integer> controllableVars = results.stream().map(e -> e.get("CONTROLLABLE__VAR", Integer.class))
                 .collect(Collectors.toList());
@@ -314,7 +308,6 @@ public class ModelTest {
         conn.execute("insert into placement values (10)");
         conn.execute("insert into placement values (10)");
 
-        model.updateData();
         final Result<? extends Record> placement = model.solve("PLACEMENT");
         assertEquals(4, placement.size());
         placement.forEach(e -> assertEquals(1, e.get(0)));
@@ -383,9 +376,6 @@ public class ModelTest {
         conn.execute("insert into STRIPES values (3,'h1')");
         conn.execute("insert into STRIPES values (3,'h2')");
 
-        // update and solve
-        model.updateData();
-
         final List<String> results = model.solve("STRIPES")
                 .map(e -> e.get("CONTROLLABLE__HOST_ID", String.class));
 
@@ -435,9 +425,6 @@ public class ModelTest {
         conn.execute("insert into STRIPES values (2,'h3')");
         conn.execute("insert into STRIPES values (3,'h1')");
         conn.execute("insert into STRIPES values (3,'h3')");
-
-        // update and solve
-        model.updateData();
 
         final List<String> results = model.solve("STRIPES")
                 .map(e -> e.get("CONTROLLABLE__HOST_ID", String.class));
@@ -490,8 +477,6 @@ public class ModelTest {
         conn.execute("insert into STRIPES values (3,'h1')");
         conn.execute("insert into STRIPES values (3,'h2')");
 
-        // update and solve
-        model.updateData();
         final List<String> results = model.solve("STRIPES")
                 .map(e -> e.get("CONTROLLABLE__HOST_ID", String.class));
 
@@ -567,9 +552,7 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h1', 3)");
         conn.execute("insert into HOSTS values ('h2', 3)");
 
-        // TODO: Strange
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -607,9 +590,7 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h2', 2)");
         conn.execute("insert into HOSTS values ('h3', 3)");
 
-        // TODO: strange
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -640,7 +621,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
 
         final List<Integer> results = model.solve("T1")
                 .map(e -> e.get("CONTROLLABLE__C2", int.class));
@@ -674,7 +654,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         final List<Integer> results = model.solve("T1")
                 .map(e -> e.get("CONTROLLABLE__C2", int.class));
 
@@ -753,7 +732,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
-        model.updateData();
         model.solve("POD_INFO");
     }
 
@@ -785,7 +763,6 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -811,7 +788,6 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         final Model model = Model.build(conn, views);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -843,8 +819,6 @@ public class ModelTest {
         conn.execute("insert into t2 values (3)");
 
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
-
         final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
         assertEquals(1, fetch.size());
         assertEquals(3, fetch.get(0).intValue());
@@ -864,7 +838,6 @@ public class ModelTest {
                                                "SELECT * FROM t1 check exists(select c1 from t2 " +
                                                                               "where t2.c1 = t1.controllable__c1)");
             final Model model = Model.build(conn, views);
-            model.updateData();
             final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
             assertEquals(2, fetch.size());
             assertTrue(List.of(2, 3).containsAll(fetch));
@@ -873,7 +846,6 @@ public class ModelTest {
             final List<String> views = List.of("CREATE VIEW constraint_t1 AS " +
                                                "SELECT * FROM t1 check all_different(controllable__c1)");
             final Model model = Model.build(conn, views);
-            model.updateData();
             final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
             assertEquals(2, fetch.size());
             assertNotSame(fetch.get(0), fetch.get(1));
@@ -882,7 +854,6 @@ public class ModelTest {
             final List<String> views = List.of("CREATE VIEW constraint_t1 AS " +
                                                "SELECT * FROM t1 check all_equal(controllable__c1)");
             final Model model = Model.build(conn, views);
-            model.updateData();
             final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
             assertEquals(2, fetch.size());
             assertEquals(fetch.get(0), fetch.get(1));
@@ -914,7 +885,6 @@ public class ModelTest {
         conn.execute("insert into HOSTS values ('h3', 3)");
 
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -962,7 +932,6 @@ public class ModelTest {
         conn.execute("insert into pod_ports_request values ('p1', '127.0.0.1', 1841, 'tcp')");
 
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("POD_INFO");
     }
 
@@ -1002,7 +971,6 @@ public class ModelTest {
         conn.execute("insert into pod_info values ('p1', 'Pending', 1, 5)");
 
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("POD_INFO");
     }
 
@@ -1029,7 +997,6 @@ public class ModelTest {
         conn.execute("insert into t1 values (1, ARRAY[100])");
 
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
-        model.updateData();
 
         final List<Integer> fetch = model.solve("T1").getValues("CONTROLLABLE__C1", Integer.class);
         assertEquals(1, fetch.size());
@@ -1064,10 +1031,8 @@ public class ModelTest {
                 "SELECT * FROM int_view " +
                 "GROUP BY c2 " +
                 "maximize min(total)";
-
         final Model model = Model.build(conn, List.of(intermediateView, objective));
-        model.updateData();
-
+        assertEquals(model.solve("T1").intoSet(0), Set.of(1, 2));
     }
 
     @Test
@@ -1091,7 +1056,6 @@ public class ModelTest {
         conn.execute("insert into t1 values (1, 1)");
 
         final Model model = Model.build(conn, views);
-        model.updateData();
 
         final List<Integer> fetch = model.solve("T1").getValues("CONTROLLABLE__C1", Integer.class);
         assertEquals(1, fetch.size());
@@ -1144,7 +1108,6 @@ public class ModelTest {
         }
 
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "capacity");
-        model.updateData();
         if (exception != null) {
             assertThrows(exception, () -> model.solve("t2"));
         } else {
@@ -1193,7 +1156,6 @@ public class ModelTest {
         conn.execute("insert into t2 values (1)");
         conn.execute("insert into t2 values (2)");
         final Model model = buildModel(conn, solver, Collections.singletonList(pod_info_constant), modelName);
-        model.updateData();
         final Result<? extends Record> t1 = model.solve("T1");
         assertEquals(1, t1.get(0).get("CONTROLLABLE__C2"));
         assertEquals(2, t1.get(1).get("CONTROLLABLE__C2"));
@@ -1239,7 +1201,6 @@ public class ModelTest {
             conn.execute(String.format("insert into pod_info values ('p%s', 'Pending', 'n1', 5)", i));
         }
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("POD_INFO");
     }
 
@@ -1271,7 +1232,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -1315,7 +1275,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -1359,7 +1318,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -1412,7 +1370,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -1435,7 +1392,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testConstSums");
-        model.updateData();
         model.solve("t1");
     }
 
@@ -1478,7 +1434,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("HOSTS");
     }
 
@@ -1503,7 +1458,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("T1");
     }
 
@@ -1528,7 +1482,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
 
         final List<Integer> fetch = model.solve("T1").map(e -> e.get("CONTROLLABLE__C1", Integer.class));
         assertEquals(1, fetch.size());
@@ -1576,7 +1529,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         final Result<? extends Record> podInfo = model.solve("POD_INFO");
         podInfo.forEach(
                 e -> assertTrue(e.get("CONTROLLABLE__NODE_NAME").equals("n1") ||
@@ -1623,7 +1575,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("POD_INFO");
     }
 
@@ -1661,7 +1612,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
 
         final Result<? extends Record> podInfo = model.solve("POD_INFO");
         assertEquals(1, podInfo.size());
@@ -1684,7 +1634,6 @@ public class ModelTest {
         final List<String> views = List.of("create view c1 as select * from t1 " +
                                            "check status != 'Pending' or controllable__id = 42");
         final Model model = Model.build(conn, views);
-        model.updateData();
         final Result<? extends Record> t1 = model.solve("T1");
         assertEquals(42, t1.get(0).get(1));
     }
@@ -1732,7 +1681,6 @@ public class ModelTest {
         }
 
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         final Result<? extends Record> results = model.solve("LEAST_REQUESTED");
         assertNull(results);
     }
@@ -1786,7 +1734,6 @@ public class ModelTest {
         );
 
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("POD_INFO");
     }
 
@@ -1847,7 +1794,6 @@ public class ModelTest {
             "  sum(pod_info.pods_request) < node_info.pods_allocatable;");
 
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         model.solve("POD_INFO");
     }
 
@@ -2067,7 +2013,6 @@ public class ModelTest {
         );
         final List<String> views = toListOfViews(stringBuilder.toString());
         final Model model = buildModel(conn, solver, views, modelName);
-        model.updateData();
         assertThrows(SolverException.class, () -> model.solve("POD_INFO"));
     }
 
@@ -2198,7 +2143,6 @@ public class ModelTest {
 
         // build model
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
-        model.updateData();
         model.solve(Set.of("HOSTS", "STRIPES"));
     }
 
@@ -2223,7 +2167,6 @@ public class ModelTest {
 
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
 
-        model.updateData();
         final Result<? extends Record> fetch = model.solve("T1");
         System.out.println(fetch);
     }

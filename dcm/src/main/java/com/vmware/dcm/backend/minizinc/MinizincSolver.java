@@ -27,6 +27,7 @@ import freemarker.template.TemplateException;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,7 +77,8 @@ public class MinizincSolver implements ISolverBackend {
     private final Template dataTemplate;
     private final Set<String> stringLiteralsInModel = new HashSet<>();
     private final AtomicInteger batch = new AtomicInteger(0);
-
+    private final DSLContext internalConn = DSL.using("jdbc:h2:mem:");
+    private final Map<String, IRTable> irTables = new LinkedHashMap<>();
 
     public MinizincSolver(final File modelFile, final File dataFile, final Conf conf) {
         this.modelFile = modelFile;
@@ -112,10 +115,10 @@ public class MinizincSolver implements ISolverBackend {
     }
 
     @Override
-    public Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                           final Map<String, IRTable> irTables) {
+    public Map<String, Result<? extends Record>> runSolver(final Map<String, Result<? extends Record>> inputRecords) {
+        generateDataCode(inputRecords);
         final String output = runMnzSolver(solverToUse);
-        return parseMnzOutput(dbCtx, irTables, output);
+        return parseMnzOutput(output);
     }
 
 
@@ -130,6 +133,7 @@ public class MinizincSolver implements ISolverBackend {
     @Override
     public List<String> generateModelCode(final IRContext context,
                                           final Program<ListComprehension> program) {
+        context.getTables().forEach(t -> irTables.put(t.getName(), t));
         findStringLiterals(program);
         final Map<String, List<String>> templateVars = new HashMap<>();
         final MinizincCodeGenerator visitor = new MinizincCodeGenerator();
@@ -187,14 +191,12 @@ public class MinizincSolver implements ISolverBackend {
                                                    constraintViewCode, objectiveFunctionsCode));
     }
 
-    @Override
-    public List<String> generateDataCode(final IRContext context,
-                                         final Map<String, Result<? extends Record>> records) {
+    public List<String> generateDataCode(final Map<String, Result<? extends Record>> records) {
         final List<String> ret = new ArrayList<>();
         final Map<String, List<String>> templateVars = new HashMap<>();
         final Set<String> stringLiterals = new HashSet<>(stringLiteralsInModel);
-        for (final IRTable table: context.getTables()) {
-            if (table.isViewTable() || table.isAliasedTable()) {
+        for (final IRTable table: irTables.values()) {
+            if (table.isViewTable()) {
                 continue;
             }
 
@@ -309,9 +311,7 @@ public class MinizincSolver implements ISolverBackend {
      *
      * @return Map with table to CSVParser
      */
-    private Map<String, Result<? extends Record>> parseMnzOutput(final DSLContext dbCtx,
-                                                                  final Map<String, IRTable> irTables,
-                                                                  final String output) {
+    private Map<String, Result<? extends Record>> parseMnzOutput(final String output) {
         final Map<String, Result<? extends Record>> csvPerTable = new HashMap<>();
         // we split tables by a specific tag
         for (final String tableLine : Splitter.on(MinizincString.MNZ_OUTPUT_TABLENAME_TAG)
@@ -330,7 +330,7 @@ public class MinizincSolver implements ISolverBackend {
                 // - 2nd to nth line: CSV with header
                 // TODO: workaround for single-quoted strings
                 final String csvWithHeader = tableParts.get(1).replace("'", "\"");
-                final Result<? extends Record> records = dbCtx
+                final Result<? extends Record> records = internalConn
                         .fetchFromCSV(csvWithHeader, true, MinizincString.MNZ_OUTPUT_CSV_DELIMITER)
                         .into(irTable.getTable());
                 csvPerTable.put(tableName, records);

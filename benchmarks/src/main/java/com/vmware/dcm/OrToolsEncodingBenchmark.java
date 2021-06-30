@@ -108,7 +108,6 @@ public class OrToolsEncodingBenchmark {
                     .setMaxTimeInSeconds(100)
                     .build();
             model = Model.build(conn, solver, views);
-            model.updateData();
         }
 
         @CanIgnoreReturnValue

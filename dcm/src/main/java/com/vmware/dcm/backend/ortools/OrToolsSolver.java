@@ -56,7 +56,6 @@ import com.vmware.dcm.compiler.ir.Qualifier;
 import com.vmware.dcm.compiler.ir.TableRowGenerator;
 import com.vmware.dcm.compiler.ir.UnaryOperator;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.slf4j.Logger;
@@ -123,7 +122,6 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     @Nullable private IGeneratedBackend generatedBackend;
-    @Nullable private Map<String, Result<? extends Record>> data = null;
 
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
@@ -206,11 +204,9 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     @Override
-    public Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                            final Map<String, IRTable> irTables) {
+    public Map<String, Result<? extends Record>> runSolver(final Map<String, Result<? extends Record>> inputRecords) {
         Preconditions.checkNotNull(generatedBackend);
-        Preconditions.checkNotNull(data);
-        return generatedBackend.solve(data);
+        return generatedBackend.solve(inputRecords);
     }
 
     /**
@@ -1091,12 +1087,6 @@ public class OrToolsSolver implements ISolverBackend {
                       | InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    @Override
-    public List<String> generateDataCode(final IRContext context, final Map<String, Result<? extends Record>> records) {
-        this.data = records;
-        return Collections.emptyList();
     }
 
     @Override

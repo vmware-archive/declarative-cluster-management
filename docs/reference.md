@@ -45,7 +45,7 @@ is a single SQL view. See the section below on [writing constraints](#writing-co
 the solver's properties (such as the timeout to use). If you omit the argument, an instance of the `OrToolsSolver` 
 is used. Here's an example of this API's use in our Kubernetes scheduler:
 
-  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L178-L191 -->
+  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L179-L192 -->
   ```java
   switch (solverToUse) {
       case "ORTOOLS":
@@ -86,17 +86,16 @@ for the solver.
   are fetched from specific tables.
 
   Here is a code sample illustrating how this API could be used:
-  <!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L102-L110 -->
+  <!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L104-L111 -->
   ```java
   final int minimumPodId = 7;
-  model.updateData((table) -> {
+  final Result<? extends Record> result = model.solve("POD", (table) -> {
       if (table.getName().equalsIgnoreCase("pod")) {
           // Should only pull in the 2nd record
           return conn.selectFrom(table).where(field("pod_id").gt(minimumPodId)).fetch();
       }
       return conn.selectFrom(table).fetch();
   });
-  final Result<? extends Record> result = model.solve("POD");
   ``` 
 
 #### Compute a solution
@@ -118,33 +117,34 @@ via the `SolverException.core()` method. For now, `core()` returns only the stri
 views that were unsatisfiable. We are currently working on returning fine-grained information about
 which table-rows contributed to the unsatisfiability. 
 
-<!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L239-L263 -->
+<!-- embedme ../dcm/src/test/java/com/vmware/dcm/backend/ortools/CoreTest.java#L131-L156 -->
 ```java
 final DSLContext conn = DSL.using("jdbc:h2:mem:");
 conn.execute("create table t1(id integer, controllable__var integer)");
-
-final String constraint_where1 = "create view constraint_where1 as " +
-        "select * from t1 where id <= 2 check controllable__var = 7";
-
-final String constraint_where2 = "create view constraint_where2 as " +
-        "select * from t1 where id > 2 check controllable__var = 3";
-
-final String domain = "create view constraint_domain as " +
-        "select * from t1 check controllable__var <= 10 and controllable__var >= 1";
-
 conn.execute("insert into t1 values (1, null)");
 conn.execute("insert into t1 values (2, null)");
 conn.execute("insert into t1 values (3, null)");
 
-final Model model = Model.build(conn, List.of(constraint_where1, constraint_where2, domain));
-model.updateData();
+// Unsatisfiable
+final String allDifferent = "create view constraint_all_different as " +
+        "select * from t1 check all_different(controllable__var) = true";
 
-final Result<? extends Record> results = model.solve("T1");
-final List<Integer> controllableVars = results.stream().map(e -> e.get("CONTROLLABLE__VAR", Integer.class))
-        .collect(Collectors.toList());
-assertEquals(7, controllableVars.get(0));
-assertEquals(7, controllableVars.get(1));
-assertEquals(3, controllableVars.get(2));
+// Unsatisfiable
+final String domain1 = "create view constraint_domain_1 as " +
+        "select * from t1 check controllable__var >= 1 and controllable__var <= 2";
+
+// Satisfiable
+final String domain2 = "create view constraint_domain_2 as " +
+        "select * from t1 check id != 1 or controllable__var = 1";
+
+final Model model = Model.build(conn, List.of(allDifferent, domain1, domain2));
+try {
+    model.solve("T1");
+    fail();
+} catch (final SolverException exception) {
+    assertTrue(exception.core().containsAll(List.of("constraint_all_different", "constraint_domain_1")));
+    assertFalse(exception.core().contains("constraint_domain_2"));
+}
 ```
 
 ## Writing constraints

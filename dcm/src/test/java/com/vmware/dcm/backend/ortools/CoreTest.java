@@ -147,7 +147,6 @@ public class CoreTest {
                 "select * from t1 check id != 1 or controllable__var = 1";
 
         final Model model = Model.build(conn, List.of(allDifferent, domain1, domain2));
-        model.updateData();
         try {
             model.solve("T1");
             fail();
@@ -178,7 +177,6 @@ public class CoreTest {
                 "select * from t1 check id != 1 or controllable__var = 1";
 
         final Model model = Model.build(conn, List.of(sum, domain1, domain2));
-        model.updateData();
         try {
             model.solve("T1");
             fail();

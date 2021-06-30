@@ -76,11 +76,8 @@ class LoadBalance {
      * @return The new virtual machine table after the solver identifies a new placement.
      */
     Result<? extends Record> run() {
-        // Pull the latest state from the DB
-        model.updateData();
-
-        // Run the solver and return the virtual machines table with solver-identified values for the
-        // controllable__physical_machines column
+        // Pull the latest state from the DB, run the solver and return the virtual machines table with
+        // solver-identified values for the controllable__physical_machines column
         return model.solve(VIRTUAL_MACHINES_TABLE);
     }
 

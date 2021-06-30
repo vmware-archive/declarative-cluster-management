@@ -7,10 +7,8 @@
 package com.vmware.dcm.backend;
 
 import com.vmware.dcm.IRContext;
-import com.vmware.dcm.IRTable;
 import com.vmware.dcm.compiler.Program;
 import com.vmware.dcm.compiler.ir.ListComprehension;
-import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 
@@ -18,12 +16,9 @@ import java.util.List;
 import java.util.Map;
 
 public interface ISolverBackend {
-    Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                    final Map<String, IRTable> irTables);
+    Map<String, Result<? extends Record>> runSolver(final Map<String, Result<? extends Record>> inputRecords);
 
     List<String> generateModelCode(final IRContext context, final Program<ListComprehension> irProgram);
-
-    List<String> generateDataCode(final IRContext context, final Map<String, Result<? extends Record>> records);
 
     boolean needsGroupTables();
 }

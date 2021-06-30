@@ -11,6 +11,8 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.backend.minizinc.MinizincSolver;
+import com.vmware.dcm.backend.ortools.OrToolsSolver;
+import com.vmware.dcm.k8s.generated.Tables;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.commons.cli.CommandLine;
@@ -18,8 +20,6 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import com.vmware.dcm.backend.ortools.OrToolsSolver;
-import com.vmware.dcm.k8s.generated.Tables;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -61,7 +61,6 @@ public final class Scheduler {
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
     private final Meter solverInvocations = metrics.meter("solverInvocations");
-    private final Timer updateDataTimes = metrics.timer(name(Scheduler.class, "updateDataTimes"));
     private final Timer solveTimes = metrics.timer(name(Scheduler.class, "solveTimes"));
     private final ThreadFactory namedThreadFactory =
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
@@ -166,9 +165,6 @@ public final class Scheduler {
     }
 
     Result<? extends Record> runOneLoop() {
-        final Timer.Context updateDataTimer = updateDataTimes.time();
-        model.updateData();
-        updateDataTimer.stop();
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated = model.solve("PODS_TO_ASSIGN");
         solveTimer.stop();

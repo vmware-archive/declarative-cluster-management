@@ -144,7 +144,7 @@ public class QuickStartTest {
 ### Documentation
 
 The [Model](dcm/src/main/java/com/vmware/dcm/Model.java) class serves as DCM's public API. It exposes
-three methods: `Model.build()`, `model.updateData()` and `model.solve()`. 
+two methods: `Model.build()` and `model.solve()`. 
 
 * Check out the [tutorial](docs/tutorial.md) to learn how to use DCM by building a simple VM load balancer
 * Check out our [research papers](#learn-more) for the back story behind DCM

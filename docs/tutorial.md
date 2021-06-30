@@ -48,16 +48,13 @@ Start reading from the
    `LoadBalance.addPhysicalMachine()`).
 
 3. To actually run the load balancer, we simply invoke `LoadBalance.run()`, which uses two key methods from the DCM
-   Model API -- `model.updateData()` and `model.solve()`:
+   Model API -- `model.solve()`:
 
-   <!-- embedme ../examples/src/main/java/com/vmware/dcm/examples/LoadBalance.java#L78-L85 -->
+   <!-- embedme ../examples/src/main/java/com/vmware/dcm/examples/LoadBalance.java#L78-L82 -->
    ```java
    Result<? extends Record> run() {
-       // Pull the latest state from the DB
-       model.updateData();
-   
-       // Run the solver and return the virtual machines table with solver-identified values for the
-       // controllable__physical_machines column
+       // Pull the latest state from the DB, run the solver and return the virtual machines table with
+       // solver-identified values for the controllable__physical_machines column
        return model.solve(VIRTUAL_MACHINES_TABLE);
    }
    ```

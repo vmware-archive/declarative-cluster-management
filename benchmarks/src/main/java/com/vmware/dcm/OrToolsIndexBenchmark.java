@@ -77,7 +77,6 @@ public class OrToolsIndexBenchmark {
                     .setUseIndicesForEqualityBasedJoins(useIndex)
                     .build();
             model = Model.build(conn, solver, views);
-            model.updateData();
         }
 
         @CanIgnoreReturnValue
