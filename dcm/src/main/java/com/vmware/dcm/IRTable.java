@@ -9,7 +9,6 @@ package com.vmware.dcm;
 import com.google.common.base.Preconditions;
 import org.jooq.Field;
 import org.jooq.Record;
-import org.jooq.Result;
 import org.jooq.Table;
 
 import javax.annotation.Nullable;
@@ -32,7 +31,6 @@ public class IRTable {
     private final String name;
     private final String alias;
     @Nullable private final Table<? extends Record> jooqTable;
-    @Nullable private Result<? extends Record> recentData = null;
     private final Map<String, IRColumn> irColumns;
     private final Map<Field, IRColumn> fieldToIRColumn;
     private final List<IRForeignKey> foreignKeys;
@@ -84,23 +82,12 @@ public class IRTable {
     }
 
     /**
-     * Returns the number of rows in the table backed by this IRTable
-     * @return the number of rows in the table backed by this IRTable
-     */
-    public int getNumRows() {
-        Preconditions.checkNotNull(jooqTable);
-        // just returns the length of one of the columns
-        return irColumns.values().iterator().next().getFieldValues().size();
-    }
-
-    /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
      * @return the table name corresponding to this IRTable
      */
     public String getName() {
         return name;
     }
-
 
     /**
      * Used in the mnz_data.ftl and mnz_model.ftl template files
@@ -164,28 +151,6 @@ public class IRTable {
     IRColumn getField(final Field field) {
         Preconditions.checkNotNull(jooqTable);
         return fieldToIRColumn.get(field);
-    }
-
-    /**
-     * Updates a table field with a list of values
-     * @param recentData a result set to update this column to
-     */
-    void updateValues(final Result<? extends Record> recentData) {
-        Preconditions.checkNotNull(jooqTable);
-        this.recentData = recentData;
-        // stores all the values per field for later use by backends
-        for (final Field<?> field : jooqTable.fields()) {
-            fieldToIRColumn.get(field).setValues(recentData.getValues(field));
-        }
-    }
-
-    /**
-     * Get the most recently invoked result set for this table.
-     * @return the current result set for this column
-     */
-    public Result<? extends Record> getCurrentData() {
-        Preconditions.checkNotNull(recentData);
-        return recentData;
     }
 
     @Override

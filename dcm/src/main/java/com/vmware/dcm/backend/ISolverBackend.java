@@ -18,12 +18,12 @@ import java.util.List;
 import java.util.Map;
 
 public interface ISolverBackend {
-    Map<IRTable, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                     final Map<String, IRTable> irTables);
+    Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
+                                                    final Map<String, IRTable> irTables);
 
     List<String> generateModelCode(final IRContext context, final Program<ListComprehension> irProgram);
 
-    List<String> generateDataCode(final IRContext context);
+    List<String> generateDataCode(final IRContext context, final Map<String, Result<? extends Record>> records);
 
     boolean needsGroupTables();
 }

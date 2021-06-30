@@ -6,13 +6,11 @@
 
 package com.vmware.dcm.backend;
 
-import com.vmware.dcm.IRContext;
-import com.vmware.dcm.IRTable;
 import org.jooq.Record;
 import org.jooq.Result;
 
 import java.util.Map;
 
 public interface IGeneratedBackend {
-    Map<IRTable, Result<? extends Record>> solve(final IRContext context);
+    Map<String, Result<? extends Record>> solve(final Map<String, Result<? extends Record>> data);
 }

@@ -105,6 +105,7 @@ public class OrToolsSolver implements ISolverBackend {
     private static final int NUM_THREADS_DEFAULT = 4;
     private static final int MAX_TIME_IN_SECONDS = 1;
     private static final String GENERATED_BACKEND_CLASS_FILE_PATH = "/tmp";
+    private static final String INPUT_DATA_VARIABLE = "INPUT_DATA";
     private static final Logger LOG = LoggerFactory.getLogger(OrToolsSolver.class);
     private static final String GENERATED_BACKEND_NAME = "GeneratedBackend";
     private final AtomicInteger intermediateViewCounter = new AtomicInteger(0);
@@ -122,7 +123,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     @Nullable private IGeneratedBackend generatedBackend;
-    @Nullable private IRContext context = null;
+    @Nullable private Map<String, Result<? extends Record>> data = null;
 
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
@@ -205,11 +206,11 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     @Override
-    public Map<IRTable, Result<? extends Record>> runSolver(final DSLContext dbCtx,
+    public Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
                                                             final Map<String, IRTable> irTables) {
         Preconditions.checkNotNull(generatedBackend);
-        Preconditions.checkNotNull(context);
-        return generatedBackend.solve(context);
+        Preconditions.checkNotNull(data);
+        return generatedBackend.solve(data);
     }
 
     /**
@@ -799,9 +800,9 @@ public class OrToolsSolver implements ISolverBackend {
             output.addCode("\n");
             output.addCode("/* Table $S */\n", table.getName());
             // ...2) create a List<[RecordType]> to represent the table
-            output.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) context.getTable($S).getCurrentData()",
+            output.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) $L.get($S)",
                                  List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),
-                                 recordType, recordTypeParameters, table.getName());
+                                 recordType, recordTypeParameters, INPUT_DATA_VARIABLE, table.getName());
 
             // ...3) create an index if configured
             if (configUseIndicesForEqualityBasedJoins) {
@@ -898,15 +899,15 @@ public class OrToolsSolver implements ISolverBackend {
                         final String fkChildStr =
                                 fieldNameStrWithIter(child.getIRTable().getName(), child.getName(), "i");
                         final String snippet = Joiner.on('\n').join(
-                                "final long[] domain$L = context.getTable($S).getCurrentData()",
+                                "final long[] domain$L = $L.get($S)",
                                 "                        .getValues($S, $L.class)",
                                 "                        .stream()",
                                 "                        .mapToLong(encoder::toLong).toArray()"
                         );
                         final JavaType parentType = tupleMetadata.inferType(parent);
                         output.addStatement(snippet,
-                               fieldIndex.get(), parent.getIRTable().getName(), parent.getName().toUpperCase(Locale.US),
-                               parentType.typeString());
+                               fieldIndex.get(), INPUT_DATA_VARIABLE, parent.getIRTable().getName(),
+                               parent.getName().toUpperCase(Locale.US), parentType.typeString());
                         output.addStatement("model.addLinearExpressionInDomain($L, $T.fromValues(domain$L))",
                                 fkChildStr, Domain.class, fieldIndex.get());
                         output.endControlFlow();
@@ -928,13 +929,13 @@ public class OrToolsSolver implements ISolverBackend {
         final WildcardTypeName recordT = WildcardTypeName.subtypeOf(Record.class);
         // Result<? extends Record>
         final ParameterizedTypeName resultT = ParameterizedTypeName.get(ClassName.get(Result.class), recordT);
-        final ClassName irTableT = ClassName.get(IRTable.class);
+        final ClassName stringClass = ClassName.get(String.class);
         final ClassName map = ClassName.get(Map.class);
         // Map<IRTable, Result<? extends Record>>
-        final ParameterizedTypeName returnT = ParameterizedTypeName.get(map, irTableT, resultT);
+        final ParameterizedTypeName returnT = ParameterizedTypeName.get(map, stringClass, resultT);
         output.addModifiers(Modifier.PUBLIC)
                .returns(returnT)
-               .addParameter(IRContext.class, "context", Modifier.FINAL)
+               .addParameter(returnT, INPUT_DATA_VARIABLE, Modifier.FINAL)
                .addComment("Create the model.")
                .addStatement("final long startTime = $T.nanoTime()", System.class)
                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
@@ -957,7 +958,7 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement("solver.getParameters().setMaxTimeInSeconds($L)", configMaxTimeInSeconds)
                .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
                .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
-               .addStatement("final Map<IRTable, Result<? extends Record>> result = new $T<>()", HashMap.class)
+               .addStatement("final Map<String, Result<? extends Record>> result = new $T<>()", HashMap.class)
                .addCode("final Object[] obj = new Object[1]; // Used to update controllable fields;\n");
 
         for (final IRTable table: context.getTables()) {
@@ -969,7 +970,7 @@ public class OrToolsSolver implements ISolverBackend {
             if (table.hasVars()) {
                 final String tempViewName = getTempViewName();
                 output.addStatement("final Result<? extends Record> $L = " +
-                        "context.getTable($S).getCurrentData()", tempViewName, tableName);
+                        "$L.get($S)", tempViewName, INPUT_DATA_VARIABLE, tableName);
 
                 table.getIRColumns().forEach(
                     (name, field) -> {
@@ -990,7 +991,7 @@ public class OrToolsSolver implements ISolverBackend {
                         }
                     }
                 );
-                output.addStatement("result.put(context.getTable($S), $L)", tableName, tempViewName);
+                output.addStatement("result.put($S, $L)", tableName, tempViewName);
             }
         }
         output.addStatement("return result");
@@ -1093,8 +1094,8 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     @Override
-    public List<String> generateDataCode(final IRContext context) {
-        this.context = context;
+    public List<String> generateDataCode(final IRContext context, final Map<String, Result<? extends Record>> records) {
+        this.data = records;
         return Collections.emptyList();
     }
 

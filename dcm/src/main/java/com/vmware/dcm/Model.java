@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -203,11 +204,11 @@ public class Model {
         // run the solver and get a result set per table
         LOG.info("Running the solver");
         final long start = System.nanoTime();
-        final Map<IRTable, Result<? extends Record>> recordsPerTable = backend.runSolver(dbCtx, irTables);
+        final Map<String, Result<? extends Record>> recordsPerTable = backend.runSolver(dbCtx, irTables);
         LOG.info("Solver has run successfully in {}ns. Processing records.", System.nanoTime() - start);
         final Map<String, Result<? extends Record>> recordsToReturn = new HashMap<>();
-        for (final Map.Entry<IRTable, Result<? extends Record>> entry: recordsPerTable.entrySet()) {
-            final String entryName = entry.getKey().getName().toUpperCase();
+        for (final Map.Entry<String, Result<? extends Record>> entry: recordsPerTable.entrySet()) {
+            final String entryName = entry.getKey().toUpperCase();
             if (tablesInUpperCase.contains(entryName)) {
                 recordsToReturn.put(entryName, entry.getValue());
             }
@@ -282,21 +283,21 @@ public class Model {
      * Scans tables to update the data associated with the model
      */
     private void updateDataFields(final Function<Table<?>, Result<? extends Record>> fetcher) {
+        final Map<String, Result<? extends Record>> records = new LinkedHashMap<>();
         final long updateData = System.nanoTime();
         for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
             final Table<? extends Record> table = entry.getKey();
-            final IRTable irTable = entry.getValue();
             final long start = System.nanoTime();
             final Result<? extends Record> recentData = fetcher.apply(table);
             Objects.requireNonNull(recentData, "Table Result<?> was null");
             final long select = System.nanoTime();
-            irTable.updateValues(recentData);
+            records.put(table.getName(), recentData);
             final long updateValues = System.nanoTime();
             LOG.info("updateDataFields for table {} took {} ns to fetch {} rows from DB, " +
                             "and {} ns to reflect in IRTables",
                      table.getName(), (select - start), recentData.size(), (System.nanoTime() - updateValues));
         }
-        backend.generateDataCode(irContext);
+        backend.generateDataCode(irContext, records);
         LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
     }
 

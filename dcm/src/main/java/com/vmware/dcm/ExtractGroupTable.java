@@ -67,7 +67,7 @@ class ExtractGroupTable {
                                                   Optional.empty(),
                                                   Optional.empty(),
                                                   Optional.empty());
-        return Optional.of(new CreateView(QualifiedName.of(GROUP_TABLE_PREFIX + viewName), query, false));
+        return Optional.of(new CreateView(QualifiedName.of(GROUP_TABLE_PREFIX + viewName.toUpperCase()), query, false));
     }
 
     private Relation relelationWithControllablesRemoved(final Relation relation) {

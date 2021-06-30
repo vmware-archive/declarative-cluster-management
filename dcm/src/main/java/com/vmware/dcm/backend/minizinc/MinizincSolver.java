@@ -108,12 +108,12 @@ public class MinizincSolver implements ISolverBackend {
             this.dataTemplate = cfg.getTemplate(DATA_FILENAME);
         } catch (final IOException e) {
             throw new ModelException("Model file not found or has formatting errors", e);
-        }
+        } 
     }
 
     @Override
-    public Map<IRTable, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                            final Map<String, IRTable> irTables) {
+    public Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
+                                                           final Map<String, IRTable> irTables) {
         final String output = runMnzSolver(solverToUse);
         return parseMnzOutput(dbCtx, irTables, output);
     }
@@ -188,7 +188,8 @@ public class MinizincSolver implements ISolverBackend {
     }
 
     @Override
-    public List<String> generateDataCode(final IRContext context) {
+    public List<String> generateDataCode(final IRContext context,
+                                         final Map<String, Result<? extends Record>> records) {
         final List<String> ret = new ArrayList<>();
         final Map<String, List<String>> templateVars = new HashMap<>();
         final Set<String> stringLiterals = new HashSet<>(stringLiteralsInModel);
@@ -198,8 +199,9 @@ public class MinizincSolver implements ISolverBackend {
             }
 
             // adds declaration for the number of rows for that table
+            final Result<? extends Record> recordsForTable = records.get(table.getName().toUpperCase());
             ret.add(String.format("%% %s Table", table.getName()));
-            ret.add(String.format("%s = %s;", MinizincString.tableNumRowsName(table), table.getNumRows()));
+            ret.add(String.format("%s = %s;", MinizincString.tableNumRowsName(table), recordsForTable.size()));
 
             // Fields
             for (final Map.Entry<String, IRColumn> fieldEntrySet: table.getIRColumns().entrySet()) {
@@ -213,7 +215,8 @@ public class MinizincSolver implements ISolverBackend {
                 ret.add(String.format("%s = [ %s ];",
                         MinizincString.qualifiedName(field),
                         // if the field is a string, wraps the values around the INDEX function
-                        field.getValues().stream()
+                        recordsForTable.getValues(fieldName).stream()
+                                .map(v -> "" + v)
                                 .map(v -> {
                                     if (field.isString()) {
                                         final String replacedString =
@@ -221,7 +224,7 @@ public class MinizincSolver implements ISolverBackend {
                                         stringLiterals.add(replacedString);
                                         return replacedString;
                                     } else {
-                                        return v == null || v.equalsIgnoreCase("null") ? "'null'" : v;
+                                        return v.equalsIgnoreCase("null") ? "'null'" : v;
                                     }
                                 })
                                 .collect(Collectors.joining(" , "))
@@ -306,10 +309,10 @@ public class MinizincSolver implements ISolverBackend {
      *
      * @return Map with table to CSVParser
      */
-    private Map<IRTable, Result<? extends Record>> parseMnzOutput(final DSLContext dbCtx,
+    private Map<String, Result<? extends Record>> parseMnzOutput(final DSLContext dbCtx,
                                                                   final Map<String, IRTable> irTables,
                                                                   final String output) {
-        final Map<IRTable, Result<? extends Record>> csvPerTable = new HashMap<>();
+        final Map<String, Result<? extends Record>> csvPerTable = new HashMap<>();
         // we split tables by a specific tag
         for (final String tableLine : Splitter.on(MinizincString.MNZ_OUTPUT_TABLENAME_TAG)
                 .omitEmptyStrings().split(output)) {
@@ -330,7 +333,7 @@ public class MinizincSolver implements ISolverBackend {
                 final Result<? extends Record> records = dbCtx
                         .fetchFromCSV(csvWithHeader, true, MinizincString.MNZ_OUTPUT_CSV_DELIMITER)
                         .into(irTable.getTable());
-                csvPerTable.put(irTable, records);
+                csvPerTable.put(tableName, records);
             } catch (final IndexOutOfBoundsException e) {
                 throw new ModelException("Mal-formed output!", e);
             }

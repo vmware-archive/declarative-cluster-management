@@ -10,10 +10,7 @@ import com.google.common.base.Preconditions;
 import org.jooq.Field;
 
 import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
 import java.sql.Types;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -24,16 +21,12 @@ import java.util.Optional;
  */
 public class IRColumn {
     private static final String FIELD_PREFIX_SEP = "__";
-
     @Nullable private final Field jooqField;
     @Nullable private final FieldType type;
     @Nullable private final IRTable irTable;
     private final String name;
     private final FieldTag tag;
-    @GuardedBy("this") private List<String> values;
-    @GuardedBy("this") private List<?> fieldValues;
     private Optional<IRColumn> foreignKeyParent;
-
 
     /**
      * In generating models, we distinguish between primary key columns,
@@ -151,8 +144,6 @@ public class IRColumn {
         this.name = fieldName;
         this.tag = fieldTag;
         this.type = fieldType;
-        this.values = new ArrayList<>();
-        this.fieldValues = new ArrayList<>();
         this.foreignKeyParent = Optional.empty();
     }
 
@@ -206,62 +197,6 @@ public class IRColumn {
         return tag;
     }
 
-    /**
-     * Returns a list of values (the entire column) corresponding to the IRField
-     */
-    synchronized List<?> getFieldValues() {
-        Preconditions.checkNotNull(type);
-        return fieldValues;
-    }
-
-    /**
-     * This is used to update the IRColumn with the values from its corresponding
-     * column in the SQL database.
-     *
-     * @param values A list of values that will be reflected in the dzn file for
-     *               the corresponding jooqField/column.
-     */
-    synchronized void setValues(final List<?> values) {
-        Preconditions.checkNotNull(type);
-        this.fieldValues = values;
-        this.values = new ArrayList<>();
-        for (final Object v : values) {
-            // we always convert to string
-            String svalue = v == null ? "null" : v.toString();
-
-            /*
-             * The generated model differentiates between primary keys, controllable, and
-             * fixed columns.
-             */
-            switch (tag) {
-                /*
-                 * Both CONTROLLABLE and INPUT have the same rules because current CONTROLLABLE values
-                 * are also part of the data model
-                 */
-                case CONTROLLABLE:
-                case INPUT: {
-                    switch (type) {
-                        // TODO: The following quoting is specific to MiniZinc and need not be done
-                        //       this early in the compiler
-                        case STRING: {
-                            svalue = String.format("\"%s\"", svalue);
-                            break;
-                        }
-                        // bools are lower cased 'true' and 'false'
-                        case BOOL: {
-                            svalue = svalue.toLowerCase(Locale.US);
-                            break;
-                        }
-                        default: { }
-                    }
-                    break;
-                }
-                default: { }
-            }
-            this.values.add(svalue);
-        }
-    }
-
     @Override
     public synchronized String toString() {
         return "IRColumn{" +
@@ -269,8 +204,6 @@ public class IRColumn {
                 ", name='" + this.name + '\'' +
                 ", type=" + this.type +
                 ", tag=" + this.tag +
-                ", values=" + this.values +
-                ", fieldValues=" + this.fieldValues +
                 '}';
     }
 
@@ -293,9 +226,5 @@ public class IRColumn {
     @Override
     public int hashCode() {
         return Objects.hash(jooqField, type, name, tag, foreignKeyParent);
-    }
-
-    public synchronized List<String> getValues() {
-        return values;
     }
 }
