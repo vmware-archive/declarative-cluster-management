@@ -6,7 +6,7 @@
 
 package com.vmware.dcm.backend;
 
-import com.vmware.dcm.IRContext;
+import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.compiler.Program;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import org.jooq.Record;

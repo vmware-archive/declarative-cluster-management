@@ -13,8 +13,6 @@ import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.ModelCompiler;
 import org.jooq.DSLContext;
-import org.jooq.Field;
-import org.jooq.ForeignKey;
 import org.jooq.Meta;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -103,10 +101,8 @@ public class Model {
 
         // parse model from SQL tables
         jooqTables = augmentedTableList;
-        final Map<String, IRTable> irTables = parseModel(augmentedTableList);
-        final IRContext irContext = new IRContext(irTables);
-        final ModelCompiler compiler = new ModelCompiler(irContext);
-        compiler.compile(constraintViews, backend);
+        final ModelCompiler compiler = new ModelCompiler();
+        compiler.compile(augmentedTableList, constraintViews, backend);
     }
 
     /**
@@ -233,59 +229,6 @@ public class Model {
                                           final Function<Table<?>, Result<? extends Record>> fetcher)
             throws ModelException {
         return solve(Set.of(tableName), fetcher).get(tableName);
-    }
-
-    /**
-     * Converts an SQL Table entry to a IR table, parsing and storing a reference to every field
-     *  This includes Parsing foreign keys relationship between fields from different tables
-     */
-    private Map<String, IRTable> parseModel(final List<Table<?>> tables) {
-        final Map<Table<?>, IRTable> tableIRTableMap = new HashMap<>();
-        final Map<String, IRTable> irTableMap = new HashMap<>(tables.size());
-        // parse the model for all the tables and fields
-        for (final Table<?> table : tables) {
-            final IRTable irTable = new IRTable(table);
-
-            // parse all fields
-            for (final Field<?> field : table.fields()) {
-                final IRColumn irColumn = new IRColumn(irTable, field);
-                irTable.addField(irColumn);
-            }
-
-            // After adding all the IRFields to the table, we parse the table UniqueKey
-            // and link the correspondent IRFields as fields that compose the IRTable primary key
-            final IRPrimaryKey pk = new IRPrimaryKey(irTable, table.getPrimaryKey());
-            irTable.setPrimaryKey(pk);
-
-            // add table reference to maps
-            irTableMap.put(irTable.getName(), irTable);
-            tableIRTableMap.put(table, irTable);
-        }
-
-        // parses foreign keys after initiating the tables
-        // because for fks we need to setup relationships between different table fields
-        for (final IRTable childTable : tableIRTableMap.values()) {
-            // read table foreign keys, and init our map with the same size
-            final List<? extends ForeignKey<? extends Record, ?>> foreignKeys = childTable.getTable().getReferences();
-            for (final ForeignKey<? extends Record, ?> fk : foreignKeys) {
-                // table referenced by the foreign key
-                final IRTable parentTable = tableIRTableMap.get(fk.getKey().getTable());
-
-                // TODO: ideally, we should recurse and find all tables at the expense of bringing in
-                //       more data than we need at runtime
-                // https://github.com/vmware/declarative-cluster-management/issues/108
-                if (parentTable == null) {
-                    continue;
-                }
-
-                // build foreign key based on the fk fields
-                final IRForeignKey irForeignKey = new IRForeignKey(childTable, parentTable, fk);
-
-                // adds new foreign key to the table
-                childTable.addForeignKey(irForeignKey);
-            }
-        }
-        return irTableMap;
     }
 
     /**

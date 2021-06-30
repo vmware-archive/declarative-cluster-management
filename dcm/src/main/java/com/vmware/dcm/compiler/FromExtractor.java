@@ -16,10 +16,6 @@ import com.facebook.presto.sql.tree.SubqueryExpression;
 import com.facebook.presto.sql.tree.Table;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import com.vmware.dcm.IRColumn;
-import com.vmware.dcm.IRContext;
-import com.vmware.dcm.IRPrimaryKey;
-import com.vmware.dcm.IRTable;
 import org.jooq.Record;
 
 import java.util.ArrayList;

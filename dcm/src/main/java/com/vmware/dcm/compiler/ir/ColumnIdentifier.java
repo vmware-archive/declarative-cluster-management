@@ -6,7 +6,7 @@
 
 package com.vmware.dcm.compiler.ir;
 
-import com.vmware.dcm.IRColumn;
+import com.vmware.dcm.compiler.IRColumn;
 
 public class ColumnIdentifier extends Expr {
     private final String tableName;

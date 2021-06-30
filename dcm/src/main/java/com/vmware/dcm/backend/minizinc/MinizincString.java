@@ -6,8 +6,8 @@
 
 package com.vmware.dcm.backend.minizinc;
 
-import com.vmware.dcm.IRColumn;
-import com.vmware.dcm.IRTable;
+import com.vmware.dcm.compiler.IRColumn;
+import com.vmware.dcm.compiler.IRTable;
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
 import com.vmware.dcm.compiler.ir.Expr;
 import com.vmware.dcm.compiler.ir.Literal;

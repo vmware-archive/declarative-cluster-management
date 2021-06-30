@@ -10,9 +10,9 @@ import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
 import com.facebook.presto.sql.tree.DereferenceExpression;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.SingleColumn;
-import com.vmware.dcm.IRColumn;
-import com.vmware.dcm.IRContext;
-import com.vmware.dcm.IRTable;
+import com.vmware.dcm.compiler.IRColumn;
+import com.vmware.dcm.compiler.IRContext;
+import com.vmware.dcm.compiler.IRTable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

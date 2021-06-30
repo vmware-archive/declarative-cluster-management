@@ -6,9 +6,9 @@
 package com.vmware.dcm.backend.ortools;
 
 import com.google.common.base.Preconditions;
-import com.vmware.dcm.IRColumn;
-import com.vmware.dcm.IRTable;
 import com.vmware.dcm.ModelException;
+import com.vmware.dcm.compiler.IRColumn;
+import com.vmware.dcm.compiler.IRTable;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
 import com.vmware.dcm.compiler.ir.ExistsPredicate;

@@ -6,9 +6,9 @@
 
 package com.vmware.dcm.compiler.ir;
 
-import com.vmware.dcm.IRColumn;
-import com.vmware.dcm.IRTable;
-import com.vmware.dcm.IRPrimaryKey;
+import com.vmware.dcm.compiler.IRColumn;
+import com.vmware.dcm.compiler.IRPrimaryKey;
+import com.vmware.dcm.compiler.IRTable;
 
 import java.util.Optional;
 

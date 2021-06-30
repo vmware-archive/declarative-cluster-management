@@ -4,8 +4,10 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm;
+package com.vmware.dcm.compiler;
 
+
+import com.vmware.dcm.ModelException;
 
 import java.util.Collection;
 import java.util.HashMap;

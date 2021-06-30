@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm;
+package com.vmware.dcm.compiler;
 
 
 import org.jooq.Field;

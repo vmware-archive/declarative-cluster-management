@@ -4,9 +4,10 @@
  * SPDX-License-Identifier: BSD-2
  */
 
-package com.vmware.dcm;
+package com.vmware.dcm.compiler;
 
 import com.google.common.base.Preconditions;
+import com.vmware.dcm.ModelException;
 import org.jooq.Field;
 
 import javax.annotation.Nullable;
