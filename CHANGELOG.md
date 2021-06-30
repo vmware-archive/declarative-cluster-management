@@ -1,6 +1,9 @@
 # Changelog
 
-## Ongoing: Release 0.11.0
+## Ongoing: Release 0.12.0
+
+
+## June 30, 2021: Release 0.11.0
 * Public API changes:
   * #114: dcm: simplify Model and ISolverBackend APIs
   * #96: Use consistent syntax for hard and soft constraints
