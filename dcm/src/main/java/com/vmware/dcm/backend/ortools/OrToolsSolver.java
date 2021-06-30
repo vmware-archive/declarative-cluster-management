@@ -207,10 +207,10 @@ public class OrToolsSolver implements ISolverBackend {
 
     @Override
     public Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                            final Map<String, IRTable> irTables) {
+                                                           final Map<String, IRTable> irTables,
+                                                           final Map<String, Result<? extends Record>> inputRecords) {
         Preconditions.checkNotNull(generatedBackend);
-        Preconditions.checkNotNull(data);
-        return generatedBackend.solve(data);
+        return generatedBackend.solve(inputRecords);
     }
 
     /**
@@ -1091,12 +1091,6 @@ public class OrToolsSolver implements ISolverBackend {
                       | InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    @Override
-    public List<String> generateDataCode(final IRContext context, final Map<String, Result<? extends Record>> records) {
-        this.data = records;
-        return Collections.emptyList();
     }
 
     @Override

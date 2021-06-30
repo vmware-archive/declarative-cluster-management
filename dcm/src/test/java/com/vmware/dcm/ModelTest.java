@@ -15,6 +15,7 @@ import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Record2;
 import org.jooq.Result;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -64,7 +66,7 @@ public class ModelTest {
         final Field<Integer> f1 = field("C1", Integer.class);
         final Field<Integer> f2 = field("CONTROLLABLE__C2", Integer.class);
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testWithUpdateData");
-        model.updateData((table) -> {
+        Function<Table<?>, Result<? extends Record>> fetcher = (table) -> {
             final Result<Record2<Integer, Integer>> result = conn.newResult(f1, f2);
             final Record2<Integer, Integer> record1 = conn.newRecord(f1, f2);
             record1.setValue(f1, 78);
@@ -75,8 +77,8 @@ public class ModelTest {
             record2.setValue(f2, 91); // will get over-written by constraint
             result.add(record2);
             return result;
-        });
-        final Result<? extends Record> result = model.solve("T1");
+        };
+        final Result<? extends Record> result = model.solve("T1", fetcher);
         assertEquals(result.get(0).get(0), 78);
         assertEquals(result.get(0).get(1), 78);
         assertEquals(result.get(1).get(0), 84);

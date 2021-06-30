@@ -19,11 +19,10 @@ import java.util.Map;
 
 public interface ISolverBackend {
     Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                    final Map<String, IRTable> irTables);
+                                                    final Map<String, IRTable> irTables,
+                                                    final Map<String, Result<? extends Record>> inputRecords);
 
     List<String> generateModelCode(final IRContext context, final Program<ListComprehension> irProgram);
-
-    List<String> generateDataCode(final IRContext context, final Map<String, Result<? extends Record>> records);
 
     boolean needsGroupTables();
 }

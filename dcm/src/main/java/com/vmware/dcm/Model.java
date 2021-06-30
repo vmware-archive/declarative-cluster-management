@@ -174,23 +174,6 @@ public class Model {
     }
 
     /**
-     * Updates the input data for a model by getting the latest data from the required tables.
-     */
-    public synchronized void updateData() {
-        updateDataFields(this::defaultFetcher);
-    }
-
-    /**
-     * Updates the input data for a model by using the supplied callback to retrieve the
-     * result-set for each table or view.
-     *
-     * @param fetcher a function that given a JOOQ Table, fetches the corresponding result set as a JOOQ Result.
-     */
-    public synchronized void updateData(final Function<Table<?>, Result<? extends Record>> fetcher) {
-        updateDataFields(fetcher);
-    }
-
-    /**
      * Solves the current model and returns the records for the specified set of tables. If any of these
      * tables have variable columns, they will reflect the changes made by the solver.
      *
@@ -198,13 +181,28 @@ public class Model {
      * @return A map where keys correspond to the supplied "tables" parameter, and the values are Result objects
      *         representing rows of the corresponding tables, with modifications made by the solver
      */
-    public synchronized Map<String, Result<? extends Record>> solve(final Set<String> tables)
-            throws ModelException {
+    public Map<String, Result<? extends Record>> solve(final Set<String> tables) throws ModelException {
+        return solve(tables, this::defaultFetcher);
+    }
+
+    /**
+     * Solves the current model and returns the records for the specified set of tables. If any of these
+     * tables have variable columns, they will reflect the changes made by the solver.
+     *
+     * @param tables a set of table names
+     * @param fetcher a function that given a JOOQ Table, fetches the corresponding result set as a JOOQ Result.
+     * @return A map where keys correspond to the supplied "tables" parameter, and the values are Result objects
+     *         representing rows of the corresponding tables, with modifications made by the solver
+     */
+    public Map<String, Result<? extends Record>> solve(final Set<String> tables,
+                                                       final Function<Table<?>, Result<? extends Record>> fetcher)
+                                                                                                throws ModelException {
         final Set<String> tablesInUpperCase = tables.stream().map(String::toUpperCase).collect(Collectors.toSet());
         // run the solver and get a result set per table
         LOG.info("Running the solver");
         final long start = System.nanoTime();
-        final Map<String, Result<? extends Record>> recordsPerTable = backend.runSolver(dbCtx, irTables);
+        final Map<String, Result<? extends Record>> inputRecords = fetchRecords(fetcher);
+        final Map<String, Result<? extends Record>> recordsPerTable = backend.runSolver(dbCtx, irTables, inputRecords);
         LOG.info("Solver has run successfully in {}ns. Processing records.", System.nanoTime() - start);
         final Map<String, Result<? extends Record>> recordsToReturn = new HashMap<>();
         for (final Map.Entry<String, Result<? extends Record>> entry: recordsPerTable.entrySet()) {
@@ -216,7 +214,6 @@ public class Model {
         return recordsToReturn;
     }
 
-
     /**
      * Solves the current model and returns the records for the specified table. If the
      * table has variable columns, the returned result will reflect the changes made by the solver.
@@ -224,9 +221,23 @@ public class Model {
      * @param tableName a table name
      * @return A Result object representing rows of the corresponding tables, with modifications made by the solver
      */
-    public synchronized Result<? extends Record> solve(final String tableName)
+    public Result<? extends Record> solve(final String tableName)
             throws ModelException {
         return solve(Set.of(tableName)).get(tableName);
+    }
+
+    /**
+     * Solves the current model and returns the records for the specified table. If the
+     * table has variable columns, the returned result will reflect the changes made by the solver.
+     *
+     * @param tableName a table name
+     * @param fetcher a function that given a JOOQ Table, fetches the corresponding result set as a JOOQ Result.
+     * @return A Result object representing rows of the corresponding tables, with modifications made by the solver
+     */
+    public Result<? extends Record> solve(final String tableName,
+                                          final Function<Table<?>, Result<? extends Record>> fetcher)
+            throws ModelException {
+        return solve(Set.of(tableName), fetcher).get(tableName);
     }
 
     /**
@@ -282,7 +293,8 @@ public class Model {
     /**
      * Scans tables to update the data associated with the model
      */
-    private void updateDataFields(final Function<Table<?>, Result<? extends Record>> fetcher) {
+    private Map<String, Result<? extends Record>> fetchRecords(
+            final Function<Table<?>, Result<? extends Record>> fetcher) {
         final Map<String, Result<? extends Record>> records = new LinkedHashMap<>();
         final long updateData = System.nanoTime();
         for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
@@ -297,8 +309,8 @@ public class Model {
                             "and {} ns to reflect in IRTables",
                      table.getName(), (select - start), recentData.size(), (System.nanoTime() - updateValues));
         }
-        backend.generateDataCode(irContext, records);
         LOG.info("compiler.updateData() took {}ns to complete", (System.nanoTime() - updateData));
+        return records;
     }
 
     Result<? extends Record> defaultFetcher(final Table<?> table) {

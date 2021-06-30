@@ -113,7 +113,9 @@ public class MinizincSolver implements ISolverBackend {
 
     @Override
     public Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                           final Map<String, IRTable> irTables) {
+                                                           final Map<String, IRTable> irTables,
+                                                           final Map<String, Result<? extends Record>> inputRecords) {
+        generateDataCode(irTables, inputRecords);
         final String output = runMnzSolver(solverToUse);
         return parseMnzOutput(dbCtx, irTables, output);
     }
@@ -187,13 +189,12 @@ public class MinizincSolver implements ISolverBackend {
                                                    constraintViewCode, objectiveFunctionsCode));
     }
 
-    @Override
-    public List<String> generateDataCode(final IRContext context,
+    public List<String> generateDataCode(final Map<String, IRTable> irTables,
                                          final Map<String, Result<? extends Record>> records) {
         final List<String> ret = new ArrayList<>();
         final Map<String, List<String>> templateVars = new HashMap<>();
         final Set<String> stringLiterals = new HashSet<>(stringLiteralsInModel);
-        for (final IRTable table: context.getTables()) {
+        for (final IRTable table: irTables.values()) {
             if (table.isViewTable() || table.isAliasedTable()) {
                 continue;
             }
