@@ -42,8 +42,7 @@ import java.util.stream.Collectors;
  * The public API for Model involves three narrow interfaces:
  *
  *   - buildModel() to create Model instances based on a supplied JOOQ DSLContext.
- *   - updateData() to extract the input data for the Model that we can then feed to solvers.
- *   - solveModel() to solve the current model based on the current modelFile and dataFile
+ *   - solve() to solve the current model based on the current modelFile and dataFile
  */
 public class Model {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);

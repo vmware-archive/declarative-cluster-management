@@ -123,7 +123,6 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     @Nullable private IGeneratedBackend generatedBackend;
-    @Nullable private Map<String, Result<? extends Record>> data = null;
 
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
