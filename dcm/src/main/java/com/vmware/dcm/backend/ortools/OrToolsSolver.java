@@ -204,8 +204,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     @Override
-    public Map<String, Result<? extends Record>> runSolver(final Map<String, IRTable> irTables,
-                                                           final Map<String, Result<? extends Record>> inputRecords) {
+    public Map<String, Result<? extends Record>> runSolver(final Map<String, Result<? extends Record>> inputRecords) {
         Preconditions.checkNotNull(generatedBackend);
         return generatedBackend.solve(inputRecords);
     }

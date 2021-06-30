@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -77,6 +78,7 @@ public class MinizincSolver implements ISolverBackend {
     private final Set<String> stringLiteralsInModel = new HashSet<>();
     private final AtomicInteger batch = new AtomicInteger(0);
     private final DSLContext internalConn = DSL.using("jdbc:h2:mem:");
+    private final Map<String, IRTable> irTables = new LinkedHashMap<>();
 
     public MinizincSolver(final File modelFile, final File dataFile, final Conf conf) {
         this.modelFile = modelFile;
@@ -113,11 +115,10 @@ public class MinizincSolver implements ISolverBackend {
     }
 
     @Override
-    public Map<String, Result<? extends Record>> runSolver(final Map<String, IRTable> irTables,
-                                                           final Map<String, Result<? extends Record>> inputRecords) {
-        generateDataCode(irTables, inputRecords);
+    public Map<String, Result<? extends Record>> runSolver(final Map<String, Result<? extends Record>> inputRecords) {
+        generateDataCode(inputRecords);
         final String output = runMnzSolver(solverToUse);
-        return parseMnzOutput(irTables, output);
+        return parseMnzOutput(output);
     }
 
 
@@ -132,6 +133,7 @@ public class MinizincSolver implements ISolverBackend {
     @Override
     public List<String> generateModelCode(final IRContext context,
                                           final Program<ListComprehension> program) {
+        context.getTables().forEach(t -> irTables.put(t.getName(), t));
         findStringLiterals(program);
         final Map<String, List<String>> templateVars = new HashMap<>();
         final MinizincCodeGenerator visitor = new MinizincCodeGenerator();
@@ -189,13 +191,12 @@ public class MinizincSolver implements ISolverBackend {
                                                    constraintViewCode, objectiveFunctionsCode));
     }
 
-    public List<String> generateDataCode(final Map<String, IRTable> irTables,
-                                         final Map<String, Result<? extends Record>> records) {
+    public List<String> generateDataCode(final Map<String, Result<? extends Record>> records) {
         final List<String> ret = new ArrayList<>();
         final Map<String, List<String>> templateVars = new HashMap<>();
         final Set<String> stringLiterals = new HashSet<>(stringLiteralsInModel);
         for (final IRTable table: irTables.values()) {
-            if (table.isViewTable() || table.isAliasedTable()) {
+            if (table.isViewTable()) {
                 continue;
             }
 
@@ -310,8 +311,7 @@ public class MinizincSolver implements ISolverBackend {
      *
      * @return Map with table to CSVParser
      */
-    private Map<String, Result<? extends Record>> parseMnzOutput(final Map<String, IRTable> irTables,
-                                                                 final String output) {
+    private Map<String, Result<? extends Record>> parseMnzOutput(final String output) {
         final Map<String, Result<? extends Record>> csvPerTable = new HashMap<>();
         // we split tables by a specific tag
         for (final String tableLine : Splitter.on(MinizincString.MNZ_OUTPUT_TABLENAME_TAG)

@@ -47,7 +47,6 @@ import java.util.stream.Collectors;
 public class Model {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
     private final DSLContext dbCtx;
-    private final Map<String, IRTable> irTables;
     private final List<Table<? extends Record>> jooqTables;
     private final ISolverBackend backend;
 
@@ -104,7 +103,7 @@ public class Model {
 
         // parse model from SQL tables
         jooqTables = augmentedTableList;
-        irTables = parseModel(augmentedTableList);
+        final Map<String, IRTable> irTables = parseModel(augmentedTableList);
         final IRContext irContext = new IRContext(irTables);
         final ModelCompiler compiler = new ModelCompiler(irContext);
         compiler.compile(constraintViews, backend);
@@ -198,7 +197,7 @@ public class Model {
         LOG.info("Running the solver");
         final long start = System.nanoTime();
         final Map<String, Result<? extends Record>> inputRecords = fetchRecords(fetcher);
-        final Map<String, Result<? extends Record>> recordsPerTable = backend.runSolver(irTables, inputRecords);
+        final Map<String, Result<? extends Record>> recordsPerTable = backend.runSolver(inputRecords);
         LOG.info("Solver has run successfully in {}ns. Processing records.", System.nanoTime() - start);
         final Map<String, Result<? extends Record>> recordsToReturn = new HashMap<>();
         for (final Map.Entry<String, Result<? extends Record>> entry: recordsPerTable.entrySet()) {
