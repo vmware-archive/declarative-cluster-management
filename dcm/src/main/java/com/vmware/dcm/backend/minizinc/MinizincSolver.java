@@ -108,7 +108,7 @@ public class MinizincSolver implements ISolverBackend {
             this.dataTemplate = cfg.getTemplate(DATA_FILENAME);
         } catch (final IOException e) {
             throw new ModelException("Model file not found or has formatting errors", e);
-        } 
+        }
     }
 
     @Override

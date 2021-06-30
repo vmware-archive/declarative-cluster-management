@@ -22,7 +22,6 @@ public class IRContext {
         this.irTables = new HashMap<>(irTables);
     }
 
-
     public Collection<IRTable> getTables() {
         return irTables.values();
     }
@@ -50,17 +49,6 @@ public class IRContext {
      */
     public IRColumn getColumn(final String tableName, final String fieldName) {
         final IRTable irTable = getTable(tableName);
-        return getColumn(irTable, fieldName);
-    }
-
-    /**
-     * Returns the IRColumn corresponding to an IRTable and a field name
-     *
-     * @param irTable an IRTable instance
-     * @param fieldName a fieldName within the IRTable instance
-     * @return the IRColumn based on IRTable.`fieldName`
-     */
-    private IRColumn getColumn(final IRTable irTable, final String fieldName) {
         final String fieldNameCaps = fieldName.toUpperCase(Locale.US);
         if (!irTable.getIRColumns().containsKey(fieldNameCaps)) {
             throw new ModelException(
