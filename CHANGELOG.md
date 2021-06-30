@@ -2,10 +2,17 @@
 
 ## Ongoing: Release 0.11.0
 * Public API changes:
+  * #114: dcm: simplify Model and ISolverBackend APIs
   * #96: Use consistent syntax for hard and soft constraints
 
 * Issues fixed:
-  * #96: Use consistent syntax for hard and soft constraints
+  * #95: k8s-scheduler,benchmarks: eliminate stray running threads
+  * #96: dcm: Use consistent syntax for hard and soft constraints
+  * #101,#102: ortools-backend: improve intermediate view type inferrence
+  * #107: ScaleNodeBenchmark to measure solver's latency
+  * #109: dcm: make sure string literals in generated code preserve the casing from the DB
+  * #110,#113: Don't search for an UNSAT core unless solver status is INFEAS…IBLE
+  * Overhaul of internal APIs from Model -> Backend
   
 ## June 2, 2021: Release 0.10.0
 * Public API changes:  
