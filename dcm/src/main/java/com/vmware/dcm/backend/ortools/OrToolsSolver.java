@@ -56,7 +56,6 @@ import com.vmware.dcm.compiler.ir.Qualifier;
 import com.vmware.dcm.compiler.ir.TableRowGenerator;
 import com.vmware.dcm.compiler.ir.UnaryOperator;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.slf4j.Logger;
@@ -205,8 +204,7 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     @Override
-    public Map<String, Result<? extends Record>> runSolver(final DSLContext dbCtx,
-                                                           final Map<String, IRTable> irTables,
+    public Map<String, Result<? extends Record>> runSolver(final Map<String, IRTable> irTables,
                                                            final Map<String, Result<? extends Record>> inputRecords) {
         Preconditions.checkNotNull(generatedBackend);
         return generatedBackend.solve(inputRecords);

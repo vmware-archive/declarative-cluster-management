@@ -47,10 +47,8 @@ import java.util.stream.Collectors;
 public class Model {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
     private final DSLContext dbCtx;
-    private final Map<Table<? extends Record>, IRTable> jooqTableToIRTable;
     private final Map<String, IRTable> irTables;
-    private final ModelCompiler compiler;
-    private final IRContext irContext;
+    private final List<Table<? extends Record>> jooqTables;
     private final ISolverBackend backend;
 
     private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
@@ -105,11 +103,10 @@ public class Model {
         }
 
         // parse model from SQL tables
-        jooqTableToIRTable = new HashMap<>(augmentedTableList.size());
-        irTables = new HashMap<>(augmentedTableList.size());
-        parseModel(augmentedTableList);
-        irContext = new IRContext(irTables);
-        compiler = new ModelCompiler(irContext);
+        jooqTables = augmentedTableList;
+        irTables = parseModel(augmentedTableList);
+        final IRContext irContext = new IRContext(irTables);
+        final ModelCompiler compiler = new ModelCompiler(irContext);
         compiler.compile(constraintViews, backend);
     }
 
@@ -201,7 +198,7 @@ public class Model {
         LOG.info("Running the solver");
         final long start = System.nanoTime();
         final Map<String, Result<? extends Record>> inputRecords = fetchRecords(fetcher);
-        final Map<String, Result<? extends Record>> recordsPerTable = backend.runSolver(dbCtx, irTables, inputRecords);
+        final Map<String, Result<? extends Record>> recordsPerTable = backend.runSolver(irTables, inputRecords);
         LOG.info("Solver has run successfully in {}ns. Processing records.", System.nanoTime() - start);
         final Map<String, Result<? extends Record>> recordsToReturn = new HashMap<>();
         for (final Map.Entry<String, Result<? extends Record>> entry: recordsPerTable.entrySet()) {
@@ -243,7 +240,9 @@ public class Model {
      * Converts an SQL Table entry to a IR table, parsing and storing a reference to every field
      *  This includes Parsing foreign keys relationship between fields from different tables
      */
-    private void parseModel(final List<Table<?>> tables) {
+    private Map<String, IRTable> parseModel(final List<Table<?>> tables) {
+        final Map<Table<?>, IRTable> tableIRTableMap = new HashMap<>();
+        final Map<String, IRTable> irTableMap = new HashMap<>(tables.size());
         // parse the model for all the tables and fields
         for (final Table<?> table : tables) {
             final IRTable irTable = new IRTable(table);
@@ -260,18 +259,18 @@ public class Model {
             irTable.setPrimaryKey(pk);
 
             // add table reference to maps
-            jooqTableToIRTable.put(table, irTable);
-            irTables.put(irTable.getName(), irTable);
+            irTableMap.put(irTable.getName(), irTable);
+            tableIRTableMap.put(table, irTable);
         }
 
         // parses foreign keys after initiating the tables
         // because for fks we need to setup relationships between different table fields
-        for (final IRTable childTable : jooqTableToIRTable.values()) {
+        for (final IRTable childTable : tableIRTableMap.values()) {
             // read table foreign keys, and init our map with the same size
             final List<? extends ForeignKey<? extends Record, ?>> foreignKeys = childTable.getTable().getReferences();
             for (final ForeignKey<? extends Record, ?> fk : foreignKeys) {
                 // table referenced by the foreign key
-                final IRTable parentTable = jooqTableToIRTable.get(fk.getKey().getTable());
+                final IRTable parentTable = tableIRTableMap.get(fk.getKey().getTable());
 
                 // TODO: ideally, we should recurse and find all tables at the expense of bringing in
                 //       more data than we need at runtime
@@ -287,6 +286,7 @@ public class Model {
                 childTable.addForeignKey(irForeignKey);
             }
         }
+        return irTableMap;
     }
 
     /**
@@ -296,8 +296,7 @@ public class Model {
             final Function<Table<?>, Result<? extends Record>> fetcher) {
         final Map<String, Result<? extends Record>> records = new LinkedHashMap<>();
         final long updateData = System.nanoTime();
-        for (final Map.Entry<Table<? extends Record>, IRTable> entry : jooqTableToIRTable.entrySet()) {
-            final Table<? extends Record> table = entry.getKey();
+        for (final Table<? extends Record> table: jooqTables) {
             final long start = System.nanoTime();
             final Result<? extends Record> recentData = fetcher.apply(table);
             Objects.requireNonNull(recentData, "Table Result<?> was null");
