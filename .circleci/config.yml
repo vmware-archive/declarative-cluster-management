@@ -18,19 +18,30 @@ jobs:
     steps:
       - checkout
 
+      - restore_cache:
+            keys:
+               - gradle-repo-v1-{{ .Branch }}-{{ checksum "build.gradle" }}
+               - gradle-repo-v1-{{ .Branch }}-
+               - gradle-repo-v1-
+
       # run tests!
       - run: ./gradlew build test codeCoverageReport -i
       - run: unset LD_LIBRARY_PATH; bash <(curl -s https://codecov.io/bash) -f build/reports/jacoco/codeCoverageReport/codeCoverageReport.xml
       - run: bash verify_docs.sh
+
+      - save_cache:
+          paths:
+            - ~/.gradle
+          key: gradle-repo-v1-{{ .Branch }}-{{ checksum "build.gradle" }}
 
       # collect test metadata
       - run:
           name: Save test results
           command: |
             mkdir -p ~/test-results/junit/
-            find . -type f -regex ".*/target/surefire-reports/.*xml" -exec cp {} ~/test-results/junit/ \;
+            find . -type f -regex ".*/build/test-results/.*xml" -exec cp {} ~/test-results/junit/ \;
           when: always
       - store_test_results:
           path: ~/test-results
       - store_artifacts:
-          path: ~/test-results/junit 
+          path: ~/test-results/junit
