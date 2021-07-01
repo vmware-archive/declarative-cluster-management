@@ -16,12 +16,26 @@ jobs:
       MAVEN_OPTS: -Xmx3200m
 
     steps:
+
+
+      - restore_cache:
+            keys:
+              # when lock file changes, use increasingly general patterns to restore cache
+              - maven-repo-v1-{{ .Branch }}-{{ checksum "build.gradle" }}
+              - maven-repo-v1-{{ .Branch }}-
+              - maven-repo-v1-
       - checkout
 
       # run tests!
       - run: ./gradlew build test codeCoverageReport -i
       - run: unset LD_LIBRARY_PATH; bash <(curl -s https://codecov.io/bash) -f build/reports/jacoco/codeCoverageReport/codeCoverageReport.xml
       - run: bash verify_docs.sh
+
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: maven-repo-v1-{{ .Branch }}-{{ checksum "build.gradle" }}
+
 
       # collect test metadata
       - run:
