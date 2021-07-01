@@ -34,7 +34,7 @@ public class OrToolsTest {
         final CpModel model = new CpModel();
 
         // Create the variables.
-        final int numVals = 1000;
+        final int numVals = 100;
         final IntVar[] vars = new IntVar[numVals];
         for (int i = 0; i < numVals; i++) {
             vars[i] = model.newIntVar(0, numVals, "blah");
@@ -72,7 +72,7 @@ public class OrToolsTest {
         final CpModel model = new CpModel();
 
         // Create the variables.
-        final int numPods = 1000;
+        final int numPods = 100;
         final int numNodes = 50;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
         final int[] podsDemands = new int[numPods];
@@ -129,7 +129,7 @@ public class OrToolsTest {
         final CpModel model = new CpModel();
 
         // Create the variables.
-        final int numPods = 1000;
+        final int numPods = 100;
         final int numNodes = 50;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
         final int[] podsDemands1 = new int[numPods];
