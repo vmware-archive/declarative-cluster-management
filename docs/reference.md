@@ -67,25 +67,30 @@ is used. Here's an example of this API's use in our Kubernetes scheduler:
 
 ### Solving models
 
-Once a model is instantiated using `Model.build()`, the returned model needs to be synchronized with
-the database using `model.updateData()` to gather inputs and then solved using `model.solve()`. 
+Once a model is instantiated using `Model.build()`, the returned model can be solved using `model.solve()`. 
 
-#### Fetch inputs 
+#### Compute a solution
 
-  There are two methods to retrieve the latest records from the database to be used as inputs
-for the solver.
+There are two methods to solve models based on the current state of the database. That is, the inputs for the
+model are fetched by invoking `select * from <table>` for all tables and views in the constraints that need
+to be fetched from the database. 
 
-  [Model.updateData()](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#updateData())  
-  [Model.updateData(Function\<Table\<?\>, Result\<? extends Record\>\> fetcher)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#updateData(java.util.function.Function))
+[Model.solve(String tableName)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve())  
+[Model.solve(Set\<String\> tableNames)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve(java.util.Set))
 
-  The first method simply invokes `select * from <table>` for all tables and views in the constraints that need
-  to be fetched from the database.
+Both methods return records corresponding to one or more tables (specified by the `tableName/tableNames` argument).
+If the call to `solve()` succeeds, tables with variable columns will have their values updated as per the 
+constraints specified during `Model.build()`. If `solve()` fails, a `SolverException` exception is thrown.
 
-  The second overload allows users to exercise tighter control on how individual tables are fetched. For example,
-  a specific table might be best fetched using a cache or the user might want to dynamically subset which rows
-  are fetched from specific tables.
+In addition, there are two methods to solve models based on a custom `fetcher`. These methods
+allow users to exercise tighter control on how individual tables are fetched.
 
-  Here is a code sample illustrating how this API could be used:
+[Model.solve(String tableName, Function\<Table\<?\>, Result\<? extends Record\>\> fetcher))](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve())  
+[Model.solve(Set\<String\> tableNames, Function\<Table\<?\>, Result\<? extends Record\>\> fetcher))](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve(java.util.Set))
+
+For example,  a specific table might be best fetched using a cache or the user might want to dynamically subset which 
+rows  are fetched from specific tables. Here is a code sample illustrating how this API could be used:
+
   <!-- embedme ../dcm/src/test/java/com/vmware/dcm/ModelTest.java#L104-L111 -->
   ```java
   final int minimumPodId = 7;
@@ -98,16 +103,6 @@ for the solver.
   });
   ``` 
 
-#### Compute a solution
-
-There are two methods to solve models based on the most recent inputs fetched via `model.updateData()`.
-
-[Model.solve(String tableName)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve())  
-[Model.solve(Set\<String\> tableNames)](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/Model.html#solve(java.util.Set))
-
-Both methods return records corresponding to one or more tables (specified by the `tableName/tableNames` argument).
-If the call to `solve()` succeeds, tables with variable columns will have their values updated as per the 
-constraints specified during `Model.build()`. If `solve()` fails, a `SolverException` exception is thrown.
 
 ### Finding out which constraints were unsatisfiable
 
