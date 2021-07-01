@@ -3,6 +3,7 @@
 [![codecov](https://codecov.io/gh/vmware/declarative-cluster-management/branch/master/graph/badge.svg)](https://codecov.io/gh/vmware/declarative-cluster-management)
 [![Maven Central](https://img.shields.io/maven-central/v/com.vmware.dcm/dcm.svg?color=green)](https://search.maven.org/search?q=g:%22com.vmware.dcm%22%20AND%20a:%22dcm%22)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/vmware/declarative-cluster-management)
+[![javadoc](https://javadoc.io/badge2/com.vmware.dcm/dcm/javadoc.svg)](https://javadoc.io/doc/com.vmware.dcm/dcm)
 
 ## Declarative Cluster Management
 
