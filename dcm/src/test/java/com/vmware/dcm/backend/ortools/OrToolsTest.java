@@ -220,8 +220,8 @@ public class OrToolsTest {
         final CpModel model = new CpModel();
 
         // Create the variables.
-        final int numPods = 100;
-        final int numNodes = 1000;
+        final int numPods = 10;
+        final int numNodes = 100;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
         final int[] podsDemands = new int[numPods];
 
