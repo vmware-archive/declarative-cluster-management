@@ -6,6 +6,7 @@
 plugins {
     id 'maven-publish'
     id 'signing'
+    id 'info.solidsoft.pitest' version '1.6.0'
 }
 
 dependencies {
@@ -24,6 +25,12 @@ dependencies {
 // compileJava {
 //   options.compilerArgs = ["--release", "12"]
 // }
+
+pitest {
+    //adds dependency to org.pitest:pitest-junit5-plugin and sets "testPlugin" to "junit5"
+    junit5PluginVersion = '0.14'
+    targetTests = ["*ModelTest*"]
+}
 
 java {
     withJavadocJar()
