@@ -26,16 +26,16 @@ import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.WildcardTypeName;
-import com.vmware.dcm.compiler.IRColumn;
-import com.vmware.dcm.compiler.IRContext;
-import com.vmware.dcm.compiler.IRPrimaryKey;
-import com.vmware.dcm.compiler.IRTable;
 import com.vmware.dcm.SolverException;
 import com.vmware.dcm.backend.GetVarQualifiers;
 import com.vmware.dcm.backend.IGeneratedBackend;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
 import com.vmware.dcm.backend.RewriteContains;
+import com.vmware.dcm.compiler.IRColumn;
+import com.vmware.dcm.compiler.IRContext;
+import com.vmware.dcm.compiler.IRPrimaryKey;
+import com.vmware.dcm.compiler.IRTable;
 import com.vmware.dcm.compiler.Program;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
@@ -1702,7 +1702,7 @@ public class OrToolsSolver implements ISolverBackend {
             } else if (q instanceof TableRowGenerator) {
                 tableRowGenerators.add((TableRowGenerator) q);
             } else if (q instanceof GroupByQualifier) {
-                System.err.println("Ignoring group-by qualifier");
+                LOG.trace("Ignoring group-by qualifier");
             } else {
                 throw new IllegalArgumentException();
             }
