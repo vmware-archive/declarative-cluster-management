@@ -5,7 +5,6 @@
 
 package com.vmware.dcm;
 
-import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
@@ -28,18 +27,33 @@ public class ViewsWithAnnotations {
     private static final ParsingOptions OPTIONS = ParsingOptions.builder().build();
     private final CreateView createView;
     private final boolean isObjective;
+    private final String inputView;
+    @Nullable private final String inputConstraint;
     @Nullable private final Expression constraint;
 
-    private ViewsWithAnnotations(final CreateView createView) {
+    private ViewsWithAnnotations(final CreateView createView, final String inputView) {
         this.createView = createView;
         this.constraint = null;
+        this.inputConstraint = null;
         this.isObjective = false;
+        this.inputView = inputView;
     }
 
-    private ViewsWithAnnotations(final CreateView createView, final Expression constraint, final boolean isObjective) {
+    private ViewsWithAnnotations(final CreateView createView, final Expression constraint, final boolean isObjective,
+                                 final String inputView, final String inputConstraint) {
         this.createView = createView;
         this.isObjective = isObjective;
         this.constraint = constraint;
+        this.inputView = inputView;
+        this.inputConstraint = inputConstraint;
+    }
+
+    public String getInputView() {
+        return inputView;
+    }
+
+    public String getInputConstraint() {
+        return inputConstraint;
     }
 
     public CreateView getCreateView() {
@@ -80,7 +94,8 @@ public class ViewsWithAnnotations {
                                                                                        OPTIONS);
             final String checkExpressionStr = splitQueryOnCheck.get(1);
             final Expression checkExpression = PARSER.createExpression(checkExpressionStr, OPTIONS);
-            return new ViewsWithAnnotations(createViewStatement, checkExpression, false);
+            return new ViewsWithAnnotations(createViewStatement, checkExpression, false,
+                                            relationWithoutConstraint, checkExpressionStr);
         }
         else if (splitQueryOnMaximize.size() == 2) {
             Preconditions.checkState(!view.toLowerCase(Locale.ROOT).contains("check"),
@@ -90,24 +105,15 @@ public class ViewsWithAnnotations {
                     OPTIONS);
             final String maximizeExpressionStr = splitQueryOnMaximize.get(1);
             final Expression maximizeExpression = PARSER.createExpression(maximizeExpressionStr, OPTIONS);
-            return new ViewsWithAnnotations(createViewStatement, maximizeExpression, true);
+            return new ViewsWithAnnotations(createViewStatement, maximizeExpression, true,
+                                            relationWithoutConstraint, maximizeExpressionStr);
         } else {
             Preconditions.checkState(!view.toLowerCase(Locale.ROOT).contains("maximize") &&
                                      !view.toLowerCase(Locale.ROOT).contains("check"),
                     "Unexpected query: non-constraint view cannot have a check clause or a maximize " +
                                 "annotation: " + view);
             final CreateView createViewStatement = (CreateView) PARSER.createStatement(view, OPTIONS);
-            return new ViewsWithAnnotations(createViewStatement);
+            return new ViewsWithAnnotations(createViewStatement, view);
         }
-    }
-
-    @Override
-    public String toString() {
-        final String createViewStr = SqlFormatter.formatSql(createView, Optional.empty());
-        if (constraint != null) {
-            final String constraintStr = SqlFormatter.formatSql(constraint, Optional.empty());
-            return createViewStr + (isObjective ? "MAXIMIZE " + constraintStr : "CHECK " + constraintStr);
-        }
-        return createViewStr;
     }
 }

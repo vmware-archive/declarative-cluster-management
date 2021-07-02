@@ -5,7 +5,6 @@
 
 package com.vmware.dcm.compiler;
 
-import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
@@ -39,13 +38,19 @@ import com.vmware.dcm.ModelException;
 import com.vmware.dcm.ViewsWithAnnotations;
 
 import javax.annotation.Nullable;
-import java.util.Optional;
 
 /*
  * Checks if the parsed AST only uses the supported subset of SQL to specify policies
  */
 public class SyntaxChecking extends AstVisitor<Boolean, Void> {
+    private final ViewsWithAnnotations view;
+    private final String componentType;
     @Nullable Node lastTraversedNode = null;
+
+    SyntaxChecking(final ViewsWithAnnotations view, final String componentType) {
+        this.view = view;
+        this.componentType = componentType;
+    }
 
     @Override
     public Boolean process(final Node node, @Nullable final Void context) {
@@ -53,10 +58,21 @@ public class SyntaxChecking extends AstVisitor<Boolean, Void> {
         final Boolean ret = super.process(node, context);
         if (ret == null || !ret) {
             final NodeLocation nodeLocation = lastTraversedNode.getLocation().get();
-            final String err = String.format("Unexpected AST type %s (%s) at line number %s and column number %s",
-                    lastTraversedNode.getClass(), lastTraversedNode, nodeLocation.getLineNumber(),
-                    nodeLocation.getColumnNumber());
-            throw new ModelException(err);
+            final String[] lines = componentType.equals("CREATE VIEW") ? view.getInputView().split("\n")
+                                                : view.getInputConstraint().split("\n");
+            final int lineNo = nodeLocation.getLineNumber() - 1;
+            final int colNo = nodeLocation.getColumnNumber();
+            final String faultyLine = lines[lineNo];
+            final String error = String.format("---> Unexpected AST type %s (%s)",
+                                               lastTraversedNode.getClass(), lastTraversedNode);
+            final String withUnderline = faultyLine.substring(0, colNo - 1) + "\033[4m" +
+                                      faultyLine.substring(colNo - 1) +
+                                      String.format("%13s", "") + "\033[0m" + String.format("%10s", error);
+            lines[lineNo] = withUnderline;
+            final String inputStringWithUnderlineAndError = String.join("\n", lines);
+            final String full = String.format("Unsupported SQL syntax in view \"%s\":" +
+                                              "%n%s", view.getCreateView().getName(), inputStringWithUnderlineAndError);
+            throw new ModelException(full);
         }
         return ret;
     }
@@ -213,15 +229,7 @@ public class SyntaxChecking extends AstVisitor<Boolean, Void> {
     }
 
     private static void check(final ViewsWithAnnotations view, final Node part, final String partType) {
-        try {
-            final SyntaxChecking validQuery = new SyntaxChecking();
-            validQuery.process(view.getCreateView());
-        } catch (final ModelException inner) {
-            final String err = String.format("Unsupported SQL syntax in view \"%s\"." +
-                    "%nIn %s component %s" +
-                    "%s", view.getCreateView().getName(), partType,
-                    SqlFormatter.formatSql(part, Optional.empty()), inner.getMessage());
-            throw new ModelException(err);
-        }
+        final SyntaxChecking validQuery = new SyntaxChecking(view, partType);
+        validQuery.process(part);
     }
 }
