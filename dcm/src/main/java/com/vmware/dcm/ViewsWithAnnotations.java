@@ -5,6 +5,7 @@
 
 package com.vmware.dcm;
 
+import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
@@ -98,5 +99,15 @@ public class ViewsWithAnnotations {
             final CreateView createViewStatement = (CreateView) PARSER.createStatement(view, OPTIONS);
             return new ViewsWithAnnotations(createViewStatement);
         }
+    }
+
+    @Override
+    public String toString() {
+        final String createViewStr = SqlFormatter.formatSql(createView, Optional.empty());
+        if (constraint != null) {
+            final String constraintStr = SqlFormatter.formatSql(constraint, Optional.empty());
+            return createViewStr + (isObjective ? "MAXIMIZE " + constraintStr : "CHECK " + constraintStr);
+        }
+        return createViewStr;
     }
 }

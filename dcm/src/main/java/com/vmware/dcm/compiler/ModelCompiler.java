@@ -47,6 +47,9 @@ public class ModelCompiler {
         // First, we extract all the necessary views from the input code
         final Program<ViewsWithAnnotations> sqlProgram = toSqlProgram(views);
 
+        // Make sure the supplied views are only using the supported subset of SQL syntax
+        sqlProgram.forEach((name, view) -> SyntaxChecking.apply(view));
+
         // Create IRTable entries for non-constraint views
         sqlProgram.nonConstraintViews()
                   .forEach((name, view) -> createIRTablesForNonConstraintViews(irContext, name,
