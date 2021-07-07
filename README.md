@@ -129,9 +129,6 @@ public class QuickStartTest {
         // Create a DCM model using the database connection and the above constraint
         final Model model = Model.build(conn, List.of(constraint));
 
-        // Sync the model with the current data in the database
-        model.updateData();
-
         // Solve and return the tasks table. The controllable__worker_id column will either be [1, 5] or [5, 1]
         final List<Integer> column = model.solve("TASKS")
                 .map(e -> e.get("CONTROLLABLE__WORKER_ID", Integer.class));

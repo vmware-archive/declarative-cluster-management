@@ -44,7 +44,7 @@ is a single SQL view. See the section below on [writing constraints](#writing-co
 the solver's properties (such as the timeout to use). If you omit the argument, an instance of the `OrToolsSolver` 
 is used. Here's an example of this API's use in our Kubernetes scheduler:
 
-  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L179-L192 -->
+  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L188-L202 -->
   ```java
   switch (solverToUse) {
       case "ORTOOLS":
@@ -60,6 +60,7 @@ is used. Here's an example of this API's use in our Kubernetes scheduler:
           return Model.build(conn, solver, policies);
       default:
           throw new IllegalArgumentException(solverToUse);
+  }
   ```
   To see all the configuration parameters for an `OrToolsSolver` instance, see the 
 [OrToolsSolverBuilder Javadocs](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/backend/ortools/OrToolsSolver.Builder.html). 
