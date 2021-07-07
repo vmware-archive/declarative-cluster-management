@@ -114,36 +114,6 @@ public class ModelTest {
         assertEquals(result.get(0).get(1), 10);
     }
 
-    @ParameterizedTest
-    @MethodSource("solvers")
-    public void testIndexGen(final SolverConfig solver) {
-        final String modelName = "indexAccess";
-
-        final DSLContext conn = setup();
-        conn.execute("create table t1(c1 integer, c2 integer, primary key (c1))");
-        conn.execute("create table t2(c1 integer, controllable__c2 integer, primary key (c1))");
-
-        final List<String> views = toListOfViews("" +
-                "CREATE VIEW constraint_with_join AS " +
-                "SELECT * FROM t1 " +
-                "JOIN t2 on t1.c1 = t2.c1 " +
-                "check c2 = controllable__c2;"
-        );
-
-        final Model model = buildModel(conn, solver, views, modelName);
-
-        conn.execute("insert into t1 values (1, 123)");
-        conn.execute("insert into t1 values (2, 425)");
-        conn.execute("insert into t2 values (1, 10)");
-        conn.execute("insert into t2 values (2, 10)");
-
-        final Result<? extends Record> fetch = model.solve("T2");
-        System.out.println(fetch);
-        assertEquals(2, fetch.size());
-        assertEquals(123, fetch.get(0).get("CONTROLLABLE__C2"));
-        assertEquals(425, fetch.get(1).get("CONTROLLABLE__C2"));
-    }
-
     @Test
     public void testAllEqual() {
         final String modelName = "testAllEqual";
@@ -2145,6 +2115,43 @@ public class ModelTest {
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
         model.solve(Set.of("HOSTS", "STRIPES"));
     }
+
+    @ParameterizedTest
+    @MethodSource("tableNames")
+    public void testIndexGenFollowsFromAndJoinOrder(final String t1, final String t2) {
+        final String modelName = "indexAccess";
+        final DSLContext conn = setup();
+        conn.execute(String.format("create table %s(c1 integer, c2 integer, primary key (c1))", t1));
+        conn.execute(String.format("create table %s(c1 integer, controllable__c2 integer, primary key (c1))", t2));
+
+        final List<String> views = List.of(String.format(
+                    "CREATE VIEW constraint_with_join AS " +
+                    "SELECT * FROM %s " +
+                    "JOIN %s on %s.c1 = %s.c1 " +
+                    "check c2 = controllable__c2", t1, t2, t1, t2));
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, modelName);
+        conn.execute(String.format("insert into %s values (1, 123)", t1));
+        conn.execute(String.format("insert into %s values (2, 425)", t1));
+        conn.execute(String.format("insert into %s values (1, 10)", t2));
+        conn.execute(String.format("insert into %s values (2, 10)", t2));
+
+        final String matchString =
+                String.format("final Integer %sIter = %sIndex.get((Integer) %s.get(%sIter).get(0 /* C1 */))",
+                              t2, t2, t1, t1);
+        final Result<? extends Record> fetch = model.solve(t2.toUpperCase());
+        assertEquals(2, fetch.size());
+        assertEquals(123, fetch.get(0).get("CONTROLLABLE__C2"));
+        assertEquals(425, fetch.get(1).get("CONTROLLABLE__C2"));
+        assertTrue(model.compilationOutput().stream()
+            .map(String::trim)
+            .anyMatch(e -> e.contains(matchString)));
+    }
+
+    static Stream<Arguments> tableNames() {
+        return Stream.of(Arguments.of("t1", "t2"), Arguments.of("t2", "t1"));
+    }
+
 
     @Test
     @Disabled("Enable when https://github.com/vmware/declarative-cluster-management/issues/112 is fixed")

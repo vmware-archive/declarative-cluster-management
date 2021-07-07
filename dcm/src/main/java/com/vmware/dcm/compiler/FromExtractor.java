@@ -19,7 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import org.jooq.Record;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,7 +29,8 @@ import java.util.Set;
  * Extracts IRTables and filtering conditions from a FROM clause
  */
 class FromExtractor extends DefaultTraversalVisitor<Void, Void> {
-    private final Set<IRTable> tables = new HashSet<>();
+    // Using a LinkedHashSet is necessary to have a deterministic order of tables in the IR
+    private final Set<IRTable> tables = new LinkedHashSet<>();
     private final List<Expression> joinConditions = new ArrayList<>();
     private final IRContext irContext;
 

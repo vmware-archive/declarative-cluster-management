@@ -9,6 +9,7 @@ package com.vmware.dcm;
 import com.facebook.presto.sql.SqlFormatter;
 import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.tree.CreateView;
+import com.google.common.annotations.VisibleForTesting;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.ModelCompiler;
@@ -47,6 +48,7 @@ public class Model {
     private final DSLContext dbCtx;
     private final List<Table<? extends Record>> jooqTables;
     private final ISolverBackend backend;
+    private final List<String> generatedCode;
 
     private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
                   final List<String> constraints) {
@@ -102,7 +104,7 @@ public class Model {
         // parse model from SQL tables
         jooqTables = augmentedTableList;
         final ModelCompiler compiler = new ModelCompiler();
-        compiler.compile(augmentedTableList, constraintViews, backend);
+        generatedCode = compiler.compile(augmentedTableList, constraintViews, backend);
     }
 
     /**
@@ -255,5 +257,14 @@ public class Model {
 
     Result<? extends Record> defaultFetcher(final Table<?> table) {
         return dbCtx.selectFrom(table).fetch();
+    }
+
+
+    /*
+     * Used for white box tests
+     */
+    @VisibleForTesting
+    List<String> compilationOutput() {
+        return generatedCode;
     }
 }
