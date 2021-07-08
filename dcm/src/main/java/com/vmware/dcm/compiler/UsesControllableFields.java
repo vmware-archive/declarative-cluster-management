@@ -6,9 +6,10 @@
 
 package com.vmware.dcm.compiler;
 
-import com.vmware.dcm.compiler.ir.VoidType;
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.Expr;
 import com.vmware.dcm.compiler.ir.SimpleVisitor;
+import com.vmware.dcm.compiler.ir.VoidType;
 
 /**
  * If a query does not have any variables in it (say, in a predicate or a join key), then they return arrays
@@ -27,5 +28,11 @@ public class UsesControllableFields extends SimpleVisitor {
 
     public boolean usesControllableFields() {
         return usesControllable;
+    }
+
+    public static boolean apply(final Expr expr) {
+        final UsesControllableFields visitor = new UsesControllableFields();
+        visitor.visit(expr);
+        return visitor.usesControllableFields();
     }
 }

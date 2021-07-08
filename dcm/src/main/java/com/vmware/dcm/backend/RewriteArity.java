@@ -8,15 +8,16 @@ package com.vmware.dcm.backend;
 
 
 import com.google.common.base.Preconditions;
+import com.vmware.dcm.compiler.UsesControllableFields;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.ir.ComprehensionRewriter;
 import com.vmware.dcm.compiler.ir.ExistsPredicate;
 import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.FunctionCall;
 import com.vmware.dcm.compiler.ir.GroupByComprehension;
 import com.vmware.dcm.compiler.ir.Head;
 import com.vmware.dcm.compiler.ir.ListComprehension;
-import com.vmware.dcm.compiler.ir.FunctionCall;
 import com.vmware.dcm.compiler.ir.Literal;
 import com.vmware.dcm.compiler.ir.Qualifier;
 import com.vmware.dcm.compiler.ir.VoidType;
@@ -66,14 +67,11 @@ public class RewriteArity extends ComprehensionRewriter {
      */
     private ListComprehension rewriteComprehension(final ListComprehension input) {
         LOG.debug("Attempting to rewrite: {}", input);
-
-        // Extract var and non-var qualifiers
-        final List<GetVarQualifiers.QualifiersList> collect = input.getQualifiers().stream()
-                .map(GetVarQualifiers::apply)
+        final List<Qualifier> varQualifiers = input.getQualifiers().stream()
+                .filter(UsesControllableFields::apply)
                 .collect(Collectors.toList());
-        final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.getVarQualifiers().stream())
-                .collect(Collectors.toList());
-        final List<Qualifier> nonVarQualifiers = collect.stream().flatMap(ql -> ql.getNonVarQualifiers().stream())
+        final List<Qualifier> nonVarQualifiers = input.getQualifiers().stream()
+                .filter(e -> !UsesControllableFields.apply(e))
                 .collect(Collectors.toList());
         if (varQualifiers.isEmpty()) {
             return input;
@@ -96,16 +94,11 @@ public class RewriteArity extends ComprehensionRewriter {
     private ListComprehension rewriteExistsArgument(final ListComprehension input) {
         LOG.debug("Attempting to rewrite: {}", input);
 
-        final List<Qualifier> qualifiers = input.getQualifiers()
-                .stream().map(q -> (Qualifier) visit(q)).collect(Collectors.toList());
-
-        // Extract var and non-var qualifiers
-        final List<GetVarQualifiers.QualifiersList> collect = qualifiers.stream()
-                .map(GetVarQualifiers::apply)
+        final List<Qualifier> varQualifiers = input.getQualifiers().stream()
+                .filter(UsesControllableFields::apply)
                 .collect(Collectors.toList());
-        final List<Qualifier> varQualifiers = collect.stream().flatMap(ql -> ql.getVarQualifiers().stream())
-                .collect(Collectors.toList());
-        final List<Qualifier> nonVarQualifiers = collect.stream().flatMap(ql -> ql.getNonVarQualifiers().stream())
+        final List<Qualifier> nonVarQualifiers = input.getQualifiers().stream()
+                .filter(e -> !UsesControllableFields.apply(e))
                 .collect(Collectors.toList());
         if (varQualifiers.isEmpty()) {
             return input;
