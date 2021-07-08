@@ -6,37 +6,23 @@
 
 package com.vmware.dcm.compiler;
 
-import com.google.common.base.Preconditions;
-import com.vmware.dcm.ModelException;
 import org.jooq.Field;
 
 import javax.annotation.Nullable;
 import java.sql.Types;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 
 
 /**
- * Represents a jooqField within an SQL table used within MiniZinz models
+ * Represents a jooqField within an SQL table
  */
 public class IRColumn {
-    private static final String FIELD_PREFIX_SEP = "__";
-    @Nullable private final Field jooqField;
+    private static final String VARIABLE_PREFIX = "CONTROLLABLE__";
+    @Nullable private final Field<?> jooqField;
     @Nullable private final FieldType type;
     @Nullable private final IRTable irTable;
     private final String name;
-    private final FieldTag tag;
-    private Optional<IRColumn> foreignKeyParent;
-
-    /**
-     * In generating models, we distinguish between primary key columns,
-     * fixed input columns, and controllable columns. The solver can only vary
-     * the value of the latter.
-     */
-    public enum FieldTag {
-        CONTROLLABLE, INPUT
-    }
 
     /**
      * For now, we coerce SQL types to float, int, string, boolean and arrays.
@@ -78,21 +64,6 @@ public class IRColumn {
         }
     }
 
-
-    /**
-     * We add this convenience method so we avoid comparing enums using the string comparison,
-     * (e.g. fieldTag == 'CONTROLLABLE') which is the only way we can do it in FreeMaker.
-     *
-     * @return Returns true if a jooqField is CONTROLLABLE
-     */
-    public boolean isControllable() {
-        return getTag().equals(FieldTag.CONTROLLABLE);
-    }
-
-    public boolean isString() {
-        return type.equals(FieldType.STRING);
-    }
-
     public IRColumn(final IRTable irTable, final Field jooqField) {
         this(irTable, jooqField, FieldType.fromField(jooqField), jooqField.getName());
     }
@@ -108,44 +79,19 @@ public class IRColumn {
                     final FieldType fieldType, final String fieldNameInitial) {
         this.irTable = irTable;
         this.jooqField = jooqField;
-        final String fieldName = fieldNameInitial.toUpperCase(Locale.US);
-
-        // by default all fields are input fields
-        // but if they have prefixes we find the correct tag after
-        FieldTag fieldTag = FieldTag.INPUT;
-
-        if (fieldName.contains(FIELD_PREFIX_SEP)) {
-            // if we find a prefix_sep we split jooqField name on that
-            final String[] fieldParts = fieldName.split(FIELD_PREFIX_SEP, 2);
-
-            // if the prefix is not one of our own tags, we throw an exception
-            try {
-                fieldTag = FieldTag.valueOf(fieldParts[0]);
-            } catch (final IllegalArgumentException iae) {
-                throw new ModelException(
-                        String.format("Sequence '%s' is reserved for Weave use to define jooqField prefixes.",
-                                FIELD_PREFIX_SEP), iae);
-            }
-
-            // Force FIELD_PREFIX_SEP to only exist once: for the tags
-            // if even after the prefix we have our FIELD_PREFIX_SEP being used we also throw an exception
-            if (fieldParts[1].contains(FIELD_PREFIX_SEP)) {
-                throw new ModelException(
-                        String.format("Sequence '%s' is reserved for Weave to define jooqField prefixes.",
-                                FIELD_PREFIX_SEP));
-            }
-        }
-
-        // NUM_ROWS jooqField should not be used by the model
-        if (fieldName.equals(IRTable.NUM_ROWS_NAME)) {
-            throw new ModelException(
-                    String.format("Field name '%s' is reserved for Weave.", IRTable.NUM_ROWS_NAME));
-        }
-
-        this.name = fieldName;
-        this.tag = fieldTag;
+        this.name = fieldNameInitial.toUpperCase(Locale.US);
         this.type = fieldType;
-        this.foreignKeyParent = Optional.empty();
+    }
+
+    /**
+     * @return Returns true if a jooqField is a variable column
+     */
+    public boolean isControllable() {
+        return name.startsWith(VARIABLE_PREFIX);
+    }
+
+    public boolean isString() {
+        return Objects.requireNonNull(type).equals(FieldType.STRING);
     }
 
     /**
@@ -153,19 +99,18 @@ public class IRColumn {
      * @return the IRTable corresponding to this IRColumn
      */
     public IRTable getIRTable() {
-        return Preconditions.checkNotNull(irTable);
+        return Objects.requireNonNull(irTable);
     }
 
     /**
      * Returns the Jooq Field that backs this IRColumn
      * @return the Jooq Field that backs this IRColumn
      */
-    public Field getJooqField() {
-        return Preconditions.checkNotNull(jooqField);
+    public Field<?> getJooqField() {
+        return Objects.requireNonNull(jooqField);
     }
 
     /**
-     * Used in the mnz_data.ftl and mnz_model.ftl template files
      * @return the column name
      */
     public String getName() {
@@ -173,29 +118,10 @@ public class IRColumn {
     }
 
     /**
-     * Used in the mnz_data.ftl and mnz_model.ftl template files
      * @return the column's FieldType
      */
     public FieldType getType() {
-        return Preconditions.checkNotNull(type);
-    }
-
-    /**
-     * Sets the foreignKeyParent of this jooqField, if this jooqField is a ForeignKey from another table jooqField
-     * @param parent sets the foreign key paraent for this column
-     */
-    void setForeignKeyParent(final IRColumn parent) {
-        Preconditions.checkNotNull(type);
-        this.foreignKeyParent = Optional.of(parent);
-    }
-
-    /**
-     * Used in the mnz_data.ftl and mnz_model.ftl template files
-     *
-     * @return Returns the prefix tag of a jooqField
-     */
-    FieldTag getTag() {
-        return tag;
+        return Objects.requireNonNull(type);
     }
 
     @Override
@@ -204,12 +130,6 @@ public class IRColumn {
                 "jooqField=" + this.jooqField +
                 ", name='" + this.name + '\'' +
                 ", type=" + this.type +
-                ", tag=" + this.tag +
                 '}';
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(jooqField, type, name, tag, foreignKeyParent);
     }
 }

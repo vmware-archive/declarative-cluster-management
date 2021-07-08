@@ -27,7 +27,6 @@ import java.util.Optional;
  * is used by backends when generating models.
  */
 public class IRTable {
-    static final String NUM_ROWS_NAME = "NUM_ROWS";
     private final String name;
     private final String alias;
     @Nullable private final Table<? extends Record> jooqTable;
