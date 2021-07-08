@@ -44,10 +44,6 @@ public class IRForeignKey {
         for (int i = 0; i < childFields.size(); i++) {
             final IRColumn childField = childTable.getField(childFields.get(i));
             final IRColumn parentField = parentTable.getField(parentFields.get(i));
-
-            // set the parent and the children fields
-            childField.setForeignKeyParent(parentField);
-
             // map fields from child table to parent table
             this.fields.put(childField, parentField);
         }
