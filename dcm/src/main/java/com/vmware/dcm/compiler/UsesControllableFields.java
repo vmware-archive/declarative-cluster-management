@@ -18,6 +18,10 @@ import com.vmware.dcm.compiler.ir.VoidType;
 public class UsesControllableFields extends SimpleVisitor {
     private boolean usesControllable = false;
 
+    private UsesControllableFields() {
+        // Don't allow instantiation
+    }
+
     @Override
     protected VoidType visitColumnIdentifier(final ColumnIdentifier node, final VoidType context) {
         if (node.getField().isControllable()) {
