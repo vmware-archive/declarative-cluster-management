@@ -209,22 +209,6 @@ public class IRColumn {
     }
 
     @Override
-    public boolean equals(final Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (!(o instanceof IRColumn)) {
-            return false;
-        }
-        final IRColumn irColumn = (IRColumn) o;
-        return Objects.equals(jooqField, irColumn.jooqField) &&
-                type == irColumn.type &&
-                Objects.equals(name, irColumn.name) &&
-                tag == irColumn.tag &&
-                Objects.equals(foreignKeyParent, irColumn.foreignKeyParent);
-    }
-
-    @Override
     public int hashCode() {
         return Objects.hash(jooqField, type, name, tag, foreignKeyParent);
     }
