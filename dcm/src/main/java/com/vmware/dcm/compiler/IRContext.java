@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 
@@ -36,10 +37,7 @@ public class IRContext {
      */
     public IRTable getTable(final String tableName) {
         final String tableNameCaps = tableName.toUpperCase(Locale.US);
-        if (!irTables.containsKey(tableNameCaps)) {
-            throw new ModelException(String.format("Table '%s' not found!", tableName));
-        }
-        return irTables.get(tableNameCaps);
+        return Objects.requireNonNull(irTables.get(tableNameCaps));
     }
 
     /**
@@ -52,11 +50,7 @@ public class IRContext {
     public IRColumn getColumn(final String tableName, final String fieldName) {
         final IRTable irTable = getTable(tableName);
         final String fieldNameCaps = fieldName.toUpperCase(Locale.US);
-        if (!irTable.getIRColumns().containsKey(fieldNameCaps)) {
-            throw new ModelException(
-                    String.format("Field '%s' not found at table '%s'!", fieldName, irTable.getName()));
-        }
-        return irTable.getIRColumns().get(fieldNameCaps);
+        return Objects.requireNonNull(irTable.getIRColumns().get(fieldNameCaps));
     }
 
     /**

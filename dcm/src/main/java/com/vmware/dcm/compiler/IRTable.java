@@ -164,23 +164,6 @@ public class IRTable {
     }
 
     @Override
-    public boolean equals(final Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (!(o instanceof IRTable)) {
-            return false;
-        }
-        final IRTable table = (IRTable) o;
-        return Objects.equals(name, table.name) &&
-                Objects.equals(alias, table.alias) &&
-                Objects.equals(jooqTable, table.jooqTable) &&
-                Objects.equals(irColumns, table.irColumns) &&
-                Objects.equals(foreignKeys, table.foreignKeys) &&
-                Objects.equals(primaryKey, table.primaryKey);
-    }
-
-    @Override
     public int hashCode() {
         return Objects.hash(name, alias, jooqTable, irColumns, foreignKeys, primaryKey);
     }
