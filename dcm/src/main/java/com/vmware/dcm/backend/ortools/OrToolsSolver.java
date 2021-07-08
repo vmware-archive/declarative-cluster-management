@@ -27,7 +27,6 @@ import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.WildcardTypeName;
 import com.vmware.dcm.SolverException;
-import com.vmware.dcm.backend.GetVarQualifiers;
 import com.vmware.dcm.backend.IGeneratedBackend;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
@@ -37,6 +36,7 @@ import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.compiler.IRPrimaryKey;
 import com.vmware.dcm.compiler.IRTable;
 import com.vmware.dcm.compiler.Program;
+import com.vmware.dcm.compiler.UsesControllableFields;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.ir.CheckQualifier;
@@ -364,7 +364,7 @@ public class OrToolsSolver implements ISolverBackend {
             groupByContext.enterScope(forBlock);
 
             // (3) Filter if necessary
-            final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(inner, false);
+            final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(inner);
             final Optional<OutputIR.IfBlock> nonVarAggregateFiltersBlock = nonVarAggregateFiltersBlock(viewName,
                     qualifiersByVarType.nonVar, groupByContext);
             nonVarAggregateFiltersBlock.ifPresent(forBlock::addBody);
@@ -421,7 +421,7 @@ public class OrToolsSolver implements ISolverBackend {
         viewBlock.addBody(resultSetDeclBlock);
 
         // Separate out qualifiers into variable and non-variable types.
-        final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(comprehension, true);
+        final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(comprehension);
 
         // Start control flows to iterate over tables/views
         final OutputIR.ForBlock iterationBlock = tableIterationBlock(viewName, qualifiersByVarType.nonVar);
@@ -1099,15 +1099,18 @@ public class OrToolsSolver implements ISolverBackend {
         return visitor.visit(expr, context);
     }
 
-    private QualifiersByVarType extractQualifiersByVarType(final ListComprehension comprehension,
-                                                           final boolean skipAggregates) {
+    private QualifiersByVarType extractQualifiersByVarType(final ListComprehension comprehension) {
         final QualifiersByType varQualifiers = new QualifiersByType();
         final QualifiersByType nonVarQualifiers = new QualifiersByType();
         comprehension.getQualifiers().forEach(
             q -> {
-                final GetVarQualifiers.QualifiersList qualifiersList = GetVarQualifiers.apply(q, skipAggregates);
-                qualifiersList.getNonVarQualifiers().forEach(nonVarQualifiers::addQualifierByType);
-                qualifiersList.getVarQualifiers().forEach(varQualifiers::addQualifierByType);
+                final UsesControllableFields visit = new UsesControllableFields();
+                visit.visit(q);
+                if (visit.usesControllableFields()) {
+                    varQualifiers.addQualifierByType(q);
+                } else {
+                    nonVarQualifiers.addQualifierByType(q);
+                }
             }
         );
         Preconditions.checkArgument(varQualifiers.tableRowGenerators.isEmpty());
