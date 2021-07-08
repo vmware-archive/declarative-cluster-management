@@ -830,26 +830,20 @@ public class MinizincCodeGenerator extends SimpleVisitor {
             }
             final ListComprehension inner = comprehension.getComprehension();
             for (final Qualifier qualifer: inner.getQualifiers()) {
-                final UsesControllableFields visitor = new UsesControllableFields();
-                visitor.visit(qualifer);
-                if (visitor.usesControllableFields() && qualifer instanceof BinaryOperatorPredicate) {
+                if (UsesControllableFields.apply(qualifer) && qualifer instanceof BinaryOperatorPredicate) {
                     return VarType.IS_VAR;
                 }
             }
         }
         else if (expr instanceof ColumnIdentifier) {
-            final UsesControllableFields visitor = new UsesControllableFields();
-            visitor.visit(expr);
-            if (visitor.usesControllableFields()) {
+            if (UsesControllableFields.apply(expr)) {
                 return VarType.IS_VAR;
             }
         }
         else if (expr instanceof ListComprehension) {
             final ListComprehension comprehension = (ListComprehension) expr;
             for (final Qualifier qualifer: comprehension.getQualifiers()) {
-                final UsesControllableFields visitor = new UsesControllableFields();
-                visitor.visit(qualifer);
-                if (visitor.usesControllableFields() && qualifer instanceof BinaryOperatorPredicate) {
+                if (UsesControllableFields.apply(qualifer) && qualifer instanceof BinaryOperatorPredicate) {
                     return VarType.IS_OPT;
                 }
             }

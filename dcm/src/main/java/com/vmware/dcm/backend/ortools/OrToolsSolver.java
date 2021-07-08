@@ -1104,9 +1104,7 @@ public class OrToolsSolver implements ISolverBackend {
         final QualifiersByType nonVarQualifiers = new QualifiersByType();
         comprehension.getQualifiers().forEach(
             q -> {
-                final UsesControllableFields visit = new UsesControllableFields();
-                visit.visit(q);
-                if (visit.usesControllableFields()) {
+                if (UsesControllableFields.apply(q)) {
                     varQualifiers.addQualifierByType(q);
                 } else {
                     nonVarQualifiers.addQualifierByType(q);
