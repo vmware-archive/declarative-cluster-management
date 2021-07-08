@@ -18,10 +18,6 @@ class JavaTypeList {
         this.typeList = typeList;
     }
 
-    JavaType get(final int index) {
-        return typeList.get(index);
-    }
-
     @Override
     public String toString() {
         return typeList.stream().map(JavaType::typeString).collect(Collectors.joining(", "));
