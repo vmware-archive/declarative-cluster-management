@@ -10,8 +10,4 @@ public class BinaryOperatorPredicateWithAggregate extends BinaryOperatorPredicat
     public BinaryOperatorPredicateWithAggregate(final Operator operator, final Expr left, final Expr right) {
         super(operator, left, right);
     }
-
-    public BinaryOperatorPredicateWithAggregate(final BinaryOperatorPredicate node) {
-        super(node.getOperator(), node.getLeft(), node.getRight());
-    }
 }
