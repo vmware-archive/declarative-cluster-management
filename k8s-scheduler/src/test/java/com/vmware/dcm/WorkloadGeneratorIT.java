@@ -6,11 +6,11 @@
 
 package com.vmware.dcm;
 
+import com.vmware.dcm.trace.TraceReplayer;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watcher;
-import com.vmware.dcm.trace.TraceReplayer;
+import io.fabric8.kubernetes.client.WatcherException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -166,7 +166,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
 
         @Override
-        public void onClose(final KubernetesClientException cause) {
+        public void onClose(final WatcherException cause) {
             LOG.info("Timestamp: {}, Trace: {}, PodWatcher closed", System.currentTimeMillis(), traceId);
         }
     }
@@ -186,7 +186,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
 
         @Override
-        public void onClose(final KubernetesClientException cause) {
+        public void onClose(final WatcherException cause) {
             LOG.info("Timestamp: {}, Trace: {}, NodeWatcher closed", System.currentTimeMillis(), traceId);
         }
     }

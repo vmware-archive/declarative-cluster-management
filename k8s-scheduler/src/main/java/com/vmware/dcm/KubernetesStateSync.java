@@ -9,15 +9,14 @@ package com.vmware.dcm;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.api.model.Node;
-import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -37,19 +36,23 @@ class KubernetesStateSync {
     void setupInformersAndPodEventStream(final DBConnectionPool dbConnectionPool,
                                          final Consumer<PodEvent> podEventNotification) {
         final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
-                .sharedIndexInformerFor(Node.class, NodeList.class, 30000);
+                .sharedIndexInformerFor(Node.class, 30000);
         nodeSharedIndexInformer.addEventHandler(new NodeResourceEventHandler(dbConnectionPool, service));
 
         // Pod informer
         final SharedIndexInformer<Pod> podInformer = sharedInformerFactory
-                .sharedIndexInformerFor(Pod.class, PodList.class, 30000);
+                .sharedIndexInformerFor(Pod.class, 30000);
         podInformer.addEventHandler(new PodResourceEventHandler(podEventNotification, service));
 
         LOG.info("Instantiated node and pod informers. Starting them all now.");
     }
 
     void startProcessingEvents() {
-        sharedInformerFactory.startAllRegisteredInformers();
+        try {
+            sharedInformerFactory.startAllRegisteredInformers().get();
+        } catch (final InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     void shutdown() {

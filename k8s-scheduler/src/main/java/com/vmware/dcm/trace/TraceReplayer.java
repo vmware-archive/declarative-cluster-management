@@ -19,8 +19,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodAffinityTerm;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
-import io.fabric8.kubernetes.client.DefaultKubernetesClient;
-import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,14 +45,14 @@ public class TraceReplayer {
     private final ListeningScheduledExecutorService scheduledExecutorService =
             MoreExecutors.listeningDecorator(Executors.newScheduledThreadPool(100));
 
-    public void runTrace(final DefaultKubernetesClient client, final String fileName, final IPodDeployer deployer,
+    public void runTrace(final KubernetesClient client, final String fileName, final IPodDeployer deployer,
                   final String schedulerName, final int cpuScaleDown, final int memScaleDown,
                   final int timeScaleDown, final int startTimeCutOff) throws Exception {
         runTrace(client, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
                 startTimeCutOff, 0);
     }
 
-    public void runTrace(final NamespacedKubernetesClient client, final String fileName, final IPodDeployer deployer,
+    public void runTrace(final KubernetesClient client, final String fileName, final IPodDeployer deployer,
                          final String schedulerName, final int cpuScaleDown, final int memScaleDown,
                          final int timeScaleDown, final int startTimeCutOff, final int affinityProportion)
                                                                                                 throws Exception {
@@ -61,7 +60,7 @@ public class TraceReplayer {
                 startTimeCutOff, affinityProportion, 60);
     }
 
-    public void runTrace(final NamespacedKubernetesClient client, final String fileName, final IPodDeployer deployer,
+    public void runTrace(final KubernetesClient client, final String fileName, final IPodDeployer deployer,
                          final String schedulerName, final int cpuScaleDown, final int memScaleDown,
                          final int timeScaleDown, final int startTimeCutOff, final int affinityProportion,
                          final int deletionTime)
@@ -165,7 +164,7 @@ public class TraceReplayer {
         return linesCount;
     }
 
-    private List<Pod> getDeployment(final NamespacedKubernetesClient client, final String schedulerName,
+    private List<Pod> getDeployment(final KubernetesClient client, final String schedulerName,
                                     final float cpu, final float mem, final int count, final int taskCount,
                                     final boolean createAffinityRequirements) {
         // Load the template file and update its contents to generate a new deployment template
