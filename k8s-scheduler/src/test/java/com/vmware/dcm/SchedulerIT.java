@@ -109,7 +109,7 @@ public class SchedulerIT extends ITBase {
 
     @Tag("integration-test")
     @Test()
-    @Timeout(60 /* seconds */)
+    @Timeout(120 /* seconds */)
     public void testSmallTrace() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final Scheduler scheduler = new Scheduler(dbConnectionPool, Policies.getDefaultPolicies(), "ORTOOLS", true, 4);
