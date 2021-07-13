@@ -31,6 +31,9 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Bring up Kind cluster
+      run: kind create cluster --config k8s-scheduler/src/test/resources/kind-test-cluster-configuration.yaml --name dcm-it
+
     - name: Build with Gradle
       run: PATH=$PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/bin" LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/lib" ./gradlew build test codeCoverageReport -i
       
