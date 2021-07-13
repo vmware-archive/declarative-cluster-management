@@ -36,8 +36,8 @@ jobs:
       run: kind create cluster --config k8s-scheduler/src/test/resources/kind-test-cluster-configuration.yaml --name dcm-it
 
     - name: Build with Gradle
-      run: PATH=$PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/bin" LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/lib" ./gradlew build test codeCoverageReport -i
-      
+      run: PATH=$PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/bin" LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/lib" ./gradlew build test integrationTest codeCoverageReport -i
+
     - name: Upload Codecov report
       run: bash <(curl -s https://codecov.io/bash) -f build/reports/jacoco/codeCoverageReport/codeCoverageReport.xml
       
