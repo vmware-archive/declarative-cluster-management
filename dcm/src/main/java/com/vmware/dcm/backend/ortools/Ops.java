@@ -802,7 +802,7 @@ public class Ops {
      * Assumes var is true
      */
     public void assume(final IntVar var, final String assumptionContext) {
-        var.getBuilder().setName(assumptionContext).build();
+        var.getBuilder().setName(assumptionContext);
         model.addAssumption(var);
     }
 
@@ -842,7 +842,7 @@ public class Ops {
         // and there should be only a single search worker.
         // Please see: https://github.com/google/or-tools/issues/2563
         solver.getParameters().setNumSearchWorkers(1);
-        model.getBuilder().getObjective().toBuilder().clear().build();
+        model.getBuilder().getObjective().toBuilder().clear();
 
         // Resolve with updated model
         final CpSolverStatus solve = solver.solve(model);

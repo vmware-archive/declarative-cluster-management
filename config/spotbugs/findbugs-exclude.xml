@@ -14,4 +14,13 @@
     <Match>
         <Package name="com.vmware.dcm.k8s.generated.tables"/>
     </Match>
+    <Match>
+        <Bug code="EI"/>
+    </Match>
+    <Match>
+        <Bug code="EI2"/>
+    </Match>
+    <Match>
+        <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
+    </Match>
 </FindBugsFilter>
