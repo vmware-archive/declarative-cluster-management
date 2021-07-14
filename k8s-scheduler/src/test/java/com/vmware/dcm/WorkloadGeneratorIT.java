@@ -12,7 +12,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.Watcher;
 import io.fabric8.kubernetes.client.WatcherException;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,8 +56,8 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("experiment")
     @Test
-    @Disabled
     public void testAzureV1Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v1-data.txt") != null) {
             System.out.println("Running Azure v1 complete trace");
@@ -73,8 +73,8 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("experiment")
     @Test
-    @Disabled
     public void testAzureV1Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v1-cropped.txt") != null) {
             System.out.println("Running Azure v1 cropped trace");
@@ -90,8 +90,8 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("experiment")
     @Test
-    @Disabled
     public void testAzureV2Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v2-data.txt") != null) {
             System.out.println("Running Azure v2 complete trace");
@@ -107,8 +107,8 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
+    @Tag("experiment")
     @Test
-    @Disabled
     public void testAzureV2Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v2-cropped.txt") != null) {
             System.out.println("Running Azure v2 cropped trace");
