@@ -991,18 +991,17 @@ public class ModelTest {
         conn.execute("insert into t1 values (1, 3)");
         conn.execute("insert into t2 values (1)");
         conn.execute("insert into t2 values (2)");
+        conn.execute("insert into t2 values (3)");
         final String intermediateView = "CREATE VIEW int_view AS " +
-                "SELECT t1.c2, count(*) as total " +
+                "SELECT count(*) as total " +
                 "FROM t1 " +
                 "JOIN t2 " +
                 " ON t1.controllable__c1 = t2.c1 " +
                 "GROUP BY t1.c2";
         final String objective = "CREATE VIEW objective_fn AS " +
                 "SELECT * FROM int_view " +
-                "GROUP BY c2 " +
                 "maximize min(total)";
-        final Model model = Model.build(conn, List.of(intermediateView, objective));
-        assertEquals(model.solve("T1").intoSet(0), Set.of(1, 2));
+        Model.build(conn, List.of(intermediateView, objective));
     }
 
     @Test

@@ -51,7 +51,7 @@ jooq {
 
 def test = tasks.named("test") {
     useJUnitPlatform {
-        excludeTags "integration-test"
+        excludeTags "integration-test", "experiment"
     }
 }
 

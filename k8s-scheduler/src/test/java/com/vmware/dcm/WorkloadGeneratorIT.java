@@ -56,7 +56,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    @Tag("integration-test")
+    @Tag("experiment")
     @Test
     public void testAzureV1Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v1-data.txt") != null) {
@@ -73,7 +73,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    @Tag("integration-test")
+    @Tag("experiment")
     @Test
     public void testAzureV1Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v1-cropped.txt") != null) {
@@ -90,7 +90,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    @Tag("integration-test")
+    @Tag("experiment")
     @Test
     public void testAzureV2Complete() throws Exception {
         if (getClass().getClassLoader().getResource("v2-data.txt") != null) {
@@ -107,7 +107,7 @@ class WorkloadGeneratorIT extends ITBase {
         }
     }
 
-    @Tag("integration-test")
+    @Tag("experiment")
     @Test
     public void testAzureV2Cropped() throws Exception {
         if (getClass().getClassLoader().getResource("v2-cropped.txt") != null) {
