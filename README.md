@@ -63,10 +63,9 @@ implementation 'com.vmware.dcm:dcm:0.11.0'
 
 ### Pre-requisites for use
 
-1. We build the repository using JDK 12. Please file an [issue](https://github.com/vmware/declarative-cluster-management/)
- if you'd like the artifacts to be built for an older JDK.
+1. We test regularly on JDK 11 and 16.
 
-2. We test regularly on OSX and Ubuntu 18.04.
+2. We test regularly on OSX and Ubuntu 20.04.
 
 3. We currently support two solver backends. 
 
