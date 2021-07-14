@@ -997,11 +997,17 @@ public class ModelTest {
                 "FROM t1 " +
                 "JOIN t2 " +
                 " ON t1.controllable__c1 = t2.c1 " +
-                "GROUP BY t1.c2";
+                "GROUP BY t2.c1";
+        final String domainConstraint = "CREATE VIEW domain_constraint AS " +
+                "SELECT * " +
+                "FROM t1 " +
+                "CHECK controllable__c1 IN (select c1 from t2)";
         final String objective = "CREATE VIEW objective_fn AS " +
                 "SELECT * FROM int_view " +
-                "maximize min(total)";
-        Model.build(conn, List.of(intermediateView, objective));
+                "MAXIMIZE min(total)";
+        final Model build = Model.build(conn, List.of(intermediateView, domainConstraint, objective));
+        final Result<? extends Record> t1 = build.solve("T1");
+        assertEquals(Set.of(1, 2, 3), t1.intoSet(0));
     }
 
     @Test
