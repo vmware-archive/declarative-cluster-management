@@ -11,6 +11,7 @@ on:
 
 jobs:
   tests:
+    name: Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -38,6 +39,7 @@ jobs:
       
 
   integration-tests:
+    name: Integration Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -62,6 +64,7 @@ jobs:
 
 
   verify-docs:
+    name: Verify Documentation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
