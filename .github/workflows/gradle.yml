@@ -10,11 +10,9 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
-
+  tests:
     runs-on: ubuntu-latest
 
-    # Todo: Consider splitting build into different jobs
     steps:
     - uses: actions/checkout@v2
     - name: Set up JDK 12
@@ -32,14 +30,47 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Bring up Kind cluster
-      run: kind create cluster --config k8s-scheduler/src/test/resources/kind-test-cluster-configuration.yaml --name dcm-it
-
     - name: Build with Gradle
-      run: PATH=$PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/bin" LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/lib" ./gradlew build test integrationTest codeCoverageReport -i
+      run: PATH=$PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/bin" LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`"/MiniZincIDE-2.3.2-bundle-linux/lib" ./gradlew build test codeCoverageReport -i
 
     - name: Upload Codecov report
       run: bash <(curl -s https://codecov.io/bash) -f build/reports/jacoco/codeCoverageReport/codeCoverageReport.xml
       
-    - name: Verify documentation
-      run: bash verify_docs.sh
+
+  integration-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up JDK 12
+        uses: actions/setup-java@v2
+        with:
+          java-version: '12'
+          distribution: 'adopt'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Bring up Kind cluster
+        run: kind create cluster --config k8s-scheduler/src/test/resources/kind-test-cluster-configuration.yaml --name dcm-it
+
+      - name: Build with Gradle
+        run: ./gradlew integrationTest codeCoverageReport -i
+
+      - name: Upload Codecov report
+        run: bash <(curl -s https://codecov.io/bash) -f build/reports/jacoco/codeCoverageReport/codeCoverageReport.xml
+
+      - name: Verify documentation
+        run: bash verify_docs.sh
+
+  verify-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up JDK 12
+        uses: actions/setup-java@v2
+        with:
+          java-version: '12'
+          distribution: 'adopt'
+      - name: Verify documentation
+        run: bash verify_docs.sh
