@@ -1,7 +1,4 @@
-# This workflow will build a Java project with Gradle
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-gradle
-
-name: Java CI with Gradle
+name: CI
 
 on:
   push:
@@ -11,15 +8,18 @@ on:
 
 jobs:
   tests:
-    name: Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: ['11', '16']
+    name: Tests (Java ${{ matrix.java }})
 
     steps:
     - uses: actions/checkout@v2
-    - name: Set up JDK 12
+    - name: Set up JDK {{ matrix.java }}
       uses: actions/setup-java@v2
       with:
-        java-version: '12'
+        java-version: ${{ matrix.java }}
         distribution: 'adopt'
 
     - uses: actions/cache@v2
@@ -48,15 +48,18 @@ jobs:
       
 
   integration-tests:
-    name: Integration Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: ['11', '16']
+    name: Integration Tests (Java ${{ matrix.java }})
 
     steps:
       - uses: actions/checkout@v2
-      - name: Set up JDK 12
+      - name: Set up JDK {{ matrix.java }}
         uses: actions/setup-java@v2
         with:
-          java-version: '12'
+          java-version: ${{ matrix.java }}
           distribution: 'adopt'
 
       - uses: actions/cache@v2
