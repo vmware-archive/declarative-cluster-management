@@ -8,11 +8,11 @@ on:
 
 jobs:
   tests:
-    name: Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
         java: ['11', '16']
+    name: Tests (Java ${{ matrix.java }})
 
     steps:
     - uses: actions/checkout@v2
@@ -48,11 +48,11 @@ jobs:
       
 
   integration-tests:
-    name: Integration Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
         java: ['11', '16']
+    name: Integration Tests (Java ${{ matrix.java }})
 
     steps:
       - uses: actions/checkout@v2
