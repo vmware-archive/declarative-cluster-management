@@ -378,6 +378,15 @@ public class OpsTests {
     }
 
     @Test
+    public void multVarsWithConstantIdentities() {
+        final IntVar v1 = model.newIntVar(50, 100, "v1");
+        assertEquals("v1", ops.mult(v1, 1).getName());
+        assertEquals("v1", ops.mult(1, v1).getName());
+        assertEquals(model.newConstant(0).displayBounds(), ops.mult(v1, 0).displayBounds());
+        assertEquals(model.newConstant(0).displayBounds(), ops.mult(0, v1).displayBounds());
+    }
+
+    @Test
     public void eqPrimitives() {
         assertTrue(ops.eq(1, 1));
         assertTrue(ops.eq(1L, 1L));
