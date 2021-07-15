@@ -249,6 +249,12 @@ public class Ops {
     }
 
     public IntVar mult(final IntVar left, final int right) {
+        if (right == 1) {
+            return left;
+        }
+        if (right == 0) {
+            return model.newConstant(0);
+        }
         final Domain domain = left.getDomain();
         final long lDomainMinResult = domain.min() * right;
         final long lDomainMaxResult = domain.max() * right;
