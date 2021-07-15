@@ -834,7 +834,7 @@ public class OrToolsSolver implements ISolverBackend {
                                                                        tableNumRowsStr(table.getName()))
                             .beginControlFlow("for (int i = 0; i < $L; i++)",
                                               tableNumRowsStr(table.getName()))
-                            .addStatement("$L[i] = o.newIntVar($S)", variableName, fieldName)
+                            .addStatement("$L[i] = o.newIntVar($S + \"[\" + i + \"]\")", variableName, fieldName)
                             .endControlFlow();
                 }
             }
