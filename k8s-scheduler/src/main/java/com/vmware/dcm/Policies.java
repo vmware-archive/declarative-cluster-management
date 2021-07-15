@@ -20,6 +20,7 @@ class Policies {
     private static final List<Policy> ALL_POLICIES = new ArrayList<>();
 
     static {
+        ALL_POLICIES.add(disallowNullNodeSoft());
         ALL_POLICIES.add(nodePredicates());
         ALL_POLICIES.add(nodeSelectorPredicate());
         ALL_POLICIES.add(podAffinityPredicate());
@@ -30,6 +31,16 @@ class Policies {
     }
 
     /**
+     * Prefer to avoid NULL_NODE assignments
+     */
+    static Policy disallowNullNodeSoft() {
+        final String constraint = "create view constraint_disallow_null_node as " +
+                                  "select * from pods_to_assign " +
+                                  "maximize controllable__node_name != 'NULL_NODE'";
+        return new Policy("DisallowNullNode", constraint);
+    }
+
+    /**
      * Ensures that the pods_to_assign.constraint_controllable__node_name column is assigned to nodes
      * that satisfy some predicates corresponding to availability and resource utilization
      */
@@ -37,7 +48,8 @@ class Policies {
         final String constraint = "create constraint constraint_controllable_node_name_domain as " +
                                   "select * from pods_to_assign " +
                                   "check controllable__node_name in " +
-                                        "(select name from spare_capacity_per_node)";
+                                        "(select name from spare_capacity_per_node) " +
+                                        "or controllable__node_name = 'NULL_NODE'";
         return new Policy("NodePredicates", constraint);
     }
 
@@ -54,7 +66,8 @@ class Policies {
                                   "      pods_to_assign.controllable__node_name in " +
                                   "         (select node_name " +
                                   "          from pod_node_selector_matches " +
-                                  "          where pods_to_assign.uid = pod_node_selector_matches.pod_uid)";
+                                  "          where pods_to_assign.uid = pod_node_selector_matches.pod_uid) " +
+                                  "or controllable__node_name = 'NULL_NODE'";
         return new Policy("NodeSelectorPredicate", constraint);
     }
 
@@ -84,7 +97,10 @@ class Policies {
             "   or pods_to_assign.controllable__node_name in " +
             "         (select inter_pod_affinity_matches_scheduled.node_name " +
             "          from inter_pod_affinity_matches_scheduled " +
-            "          where pods_to_assign.uid = inter_pod_affinity_matches_scheduled.pod_uid)"; // running pods
+            "          where pods_to_assign.uid = inter_pod_affinity_matches_scheduled.pod_uid) " +  // running pods
+
+            // Or infeasible
+            "   or controllable__node_name = 'NULL_NODE'";
         return new Policy("InterPodAffinity", constraint);
     }
 
@@ -106,7 +122,10 @@ class Policies {
             "          from pods_to_assign as b" +
             "          join inter_pod_anti_affinity_matches_pending" +
             "           on inter_pod_anti_affinity_matches_pending.pod_uid = pods_to_assign.uid" +
-            "           and contains(inter_pod_anti_affinity_matches_pending.matches, b.uid)))";
+            "           and contains(inter_pod_anti_affinity_matches_pending.matches, b.uid))) " +
+
+            // Or infeasible
+            "   or controllable__node_name = 'NULL_NODE'";
 
         final String constraintScheduled =
                 "create constraint constraint_pod_anti_affinity_scheduled as " +
@@ -116,7 +135,9 @@ class Policies {
                 "     pods_to_assign.uid = inter_pod_anti_affinity_matches_scheduled.pod_uid " +
                 "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
                 "      not(contains(inter_pod_anti_affinity_matches_scheduled.matches, " +
-                "                   pods_to_assign.controllable__node_name))";
+                "                   pods_to_assign.controllable__node_name)) " +
+                // Or infeasible
+                "   or controllable__node_name = 'NULL_NODE'";
         return new Policy("InterPodAntiAffinity", List.of(constraintPending, constraintScheduled));
     }
 

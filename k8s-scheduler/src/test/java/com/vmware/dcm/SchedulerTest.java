@@ -63,12 +63,13 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import static org.jooq.impl.DSL.field;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
-import static org.jooq.impl.DSL.field;
 
 /**
  * Tests for the scheduler
@@ -283,7 +284,7 @@ public class SchedulerTest {
     public void testSchedulerNodePredicates(final String type, final String status) {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.from(Policies.nodePredicates());
+        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.disallowNullNodeSoft());
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final int numNodes = 5;
         final int numPods = 10;
@@ -414,7 +415,8 @@ public class SchedulerTest {
             }
         }
         // Now test the solver itself
-        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
+        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.disallowNullNodeSoft(),
+                                                    Policies.nodeSelectorPredicate());
 
         // Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
         // Works when using Minizinc 2.3.2
@@ -548,18 +550,23 @@ public class SchedulerTest {
                                 .fetch("UID")));
 
         // Now test the solver itself
-        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.nodeSelectorPredicate());
-
-        // Note: Chuffed does not work on Minizinc 2.3.0: https://github.com/MiniZinc/libminizinc/issues/321
-        // but works when using Minizinc 2.3.2
+        final List<String> policies = Policies.from(Policies.nodePredicates(),  Policies.disallowNullNodeSoft(),
+                                                    Policies.nodeSelectorPredicate());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
 
+        final Result<? extends Record> results = scheduler.runOneLoop();
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
-            // Should be unsat
-            assertThrows(SolverException.class, scheduler::runOneLoop);
+            results.forEach(
+                    r -> {
+                        if (podsToAssign.contains(r.get("POD_NAME", String.class))) {
+                            assertEquals("NULL_NODE", r.get("CONTROLLABLE__NODE_NAME", String.class));
+                        } else {
+                            assertNotEquals("NULL_NODE", r.get("CONTROLLABLE__NODE_NAME", String.class));
+                        }
+                    }
+            );
         } else {
-            final Result<? extends Record> results = scheduler.runOneLoop();
             assertEquals(numPods, results.size());
         }
     }
@@ -683,65 +690,67 @@ public class SchedulerTest {
             handler.onAddSync(pod);
         }
 
-        final List<String> policies = Policies.from(Policies.nodePredicates(),
+        final List<String> policies = Policies.from(Policies.nodePredicates(),  Policies.disallowNullNodeSoft(),
                                                     Policies.podAffinityPredicate(),
                                                     Policies.podAntiAffinityPredicate());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
-        if (cannotBePlacedAnywhere) {
-            assertThrows(SolverException.class, scheduler::runOneLoop);
-        } else {
-            final Result<? extends Record> result = scheduler.runOneLoop();
-            for (final Record record: result) {
-                final String podName = record.getValue("POD_NAME", String.class);
-                final String assignedNode = record.getValue("CONTROLLABLE__NODE_NAME", String.class);
-                final Set<String> nodesAssignedToPodsWithAffinityRequirements = result.stream()
-                        .filter(e -> podsToAssign.contains(e.getValue("POD_NAME", String.class)))
-                        .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
-                        .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                        .collect(Collectors.toSet());
-                final Set<String> nodesAssignedToPodsWithoutAffinityRequirements = result.stream()
-                        .filter(e -> !podsToAssign.contains(e.getValue("POD_NAME", String.class)))
-                        .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
-                        .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                        .collect(Collectors.toSet());
+        final Result<? extends Record> result = scheduler.runOneLoop();
 
-                // nodes without pods that have affinity requirements or without pods that are unlabelled
-                final Set<String> remainingNodes = new HashSet<>(nodes);
-                remainingNodes.removeAll(nodesAssignedToPodsWithAffinityRequirements);
-                remainingNodes.removeAll(nodesAssignedToPodsWithoutAffinityRequirements);
+        for (final Record record : result) {
+            final String podName = record.getValue("POD_NAME", String.class);
+            final String assignedNode = record.getValue("CONTROLLABLE__NODE_NAME", String.class);
+            final Set<String> nodesAssignedToPodsWithAffinityRequirements = result.stream()
+                    .filter(e -> podsToAssign.contains(e.getValue("POD_NAME", String.class)))
+                    .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
+                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                    .collect(Collectors.toSet());
+            final Set<String> nodesAssignedToPodsWithoutAffinityRequirements = result.stream()
+                    .filter(e -> !podsToAssign.contains(e.getValue("POD_NAME", String.class)))
+                    .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
+                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                    .collect(Collectors.toSet());
 
-                if (condition.equals("Affinity")) {
-                    // conditionToLabelledPods => affineToLabelledPods
-                    // conditionToRemainingPods => affineToRemainingPods
-                    if (podsToAssign.contains(podName) && conditionToLabelledPods && conditionToRemainingPods) {
-                        assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode) ||
-                                nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                    } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
-                        assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
-                    } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
-                        // the pod is alone or with an unlabelled pod
-                        assertTrue(remainingNodes.contains(assignedNode) ||
-                                nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                    }
-                } else if (condition.equals("AntiAffinity")) {
-                    // conditionToLabelledPods => antiAffineToLabelledPods
-                    // conditionToRemainingPods => antiAffineToRemainingPods
-                    if (podsToAssign.contains(podName) && conditionToLabelledPods && conditionToRemainingPods) {
-                        fail();
-                    } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
-                        assertFalse(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
-                    } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
-                        assertFalse(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                    } else if (podsToAssign.contains(podName)
-                            && !conditionToRemainingPods
-                            && !conditionToLabelledPods) {
-                        // all pods can be with the unlabelled pod
-                        assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode)
-                                    // All pods with anti-affinities are assigned to the same node
-                                    || (nodesAssignedToPodsWithAffinityRequirements.size() == 1 &&
-                                        nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode)));
-                    }
+            if (cannotBePlacedAnywhere) {
+                assertEquals(Set.of("NULL_NODE"), nodesAssignedToPodsWithAffinityRequirements);
+                continue;
+            }
+
+            // nodes without pods that have affinity requirements or without pods that are unlabelled
+            final Set<String> remainingNodes = new HashSet<>(nodes);
+            remainingNodes.removeAll(nodesAssignedToPodsWithAffinityRequirements);
+            remainingNodes.removeAll(nodesAssignedToPodsWithoutAffinityRequirements);
+
+            if (condition.equals("Affinity")) {
+                // conditionToLabelledPods => affineToLabelledPods
+                // conditionToRemainingPods => affineToRemainingPods
+                if (podsToAssign.contains(podName) && conditionToLabelledPods && conditionToRemainingPods) {
+                    assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode) ||
+                            nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
+                    assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
+                } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
+                    // the pod is alone or with an unlabelled pod
+                    assertTrue(remainingNodes.contains(assignedNode) ||
+                            nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                }
+            } else if (condition.equals("AntiAffinity")) {
+                // conditionToLabelledPods => antiAffineToLabelledPods
+                // conditionToRemainingPods => antiAffineToRemainingPods
+                if (podsToAssign.contains(podName) && conditionToLabelledPods && conditionToRemainingPods) {
+                    fail();
+                } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
+                    assertFalse(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
+                } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
+                    assertFalse(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
+                } else if (podsToAssign.contains(podName)
+                        && !conditionToRemainingPods
+                        && !conditionToLabelledPods) {
+                    // all pods can be with the unlabelled pod
+                    assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode)
+                            // All pods with anti-affinities are assigned to the same node
+                            || (nodesAssignedToPodsWithAffinityRequirements.size() == 1 &&
+                            nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode)));
                 }
             }
         }
@@ -921,7 +930,7 @@ public class SchedulerTest {
             handler.onAddSync(pod);
         }
 
-        final List<String> policies = Policies.from(Policies.nodePredicates(),
+        final List<String> policies = Policies.from(Policies.nodePredicates(),  Policies.disallowNullNodeSoft(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
         if (feasible) {
@@ -1008,19 +1017,18 @@ public class SchedulerTest {
             pod.getSpec().setNodeName("n" + i);
             handler.onAddSync(pod);
         }
-        final List<String> policies = Policies.from(Policies.nodePredicates(),
+        final List<String> policies = Policies.from(Policies.nodePredicates(),  Policies.disallowNullNodeSoft(),
                                                     Policies.taintsAndTolerations());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
-
+        final Result<? extends Record> result = scheduler.runOneLoop();
+        assertEquals(numPods, result.size());
+        final List<String> nodes = result.stream()
+                .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
+                .collect(Collectors.toList());
         if (feasible) {
-            final Result<? extends Record> result = scheduler.runOneLoop();
-            assertEquals(numPods, result.size());
-            final List<String> nodes = result.stream()
-                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                    .collect(Collectors.toList());
             assertTrue(assertOn.test(nodes));
         } else {
-            assertThrows(SolverException.class, scheduler::runOneLoop);
+            assertEquals(Set.of("NULL_NODE"), new HashSet<>(nodes));
         }
     }
 
