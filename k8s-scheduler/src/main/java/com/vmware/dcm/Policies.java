@@ -17,26 +17,56 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 class Policies {
-    private static final List<Policy> ALL_POLICIES = new ArrayList<>();
+    private static final List<Policy> INITIAL_PLACEMENT_POLICIES = new ArrayList<>();
+    private static final List<Policy> PREEMPTION_POLICIES = new ArrayList<>();
 
     static {
-        ALL_POLICIES.add(disallowNullNodeSoft());
-        ALL_POLICIES.add(nodePredicates());
-        ALL_POLICIES.add(nodeSelectorPredicate());
-        ALL_POLICIES.add(podAffinityPredicate());
-        ALL_POLICIES.add(podAntiAffinityPredicate());
-        ALL_POLICIES.add(capacityConstraint(true, true));
-        ALL_POLICIES.add(taintsAndTolerations());
-        ALL_POLICIES.add(symmetryBreaking());
+        INITIAL_PLACEMENT_POLICIES.add(disallowNullNodeSoft());
+        INITIAL_PLACEMENT_POLICIES.add(nodePredicates());
+        INITIAL_PLACEMENT_POLICIES.add(nodeSelectorPredicate());
+        INITIAL_PLACEMENT_POLICIES.add(podAffinityPredicate());
+        INITIAL_PLACEMENT_POLICIES.add(podAntiAffinityPredicate());
+        INITIAL_PLACEMENT_POLICIES.add(capacityConstraint(true, true));
+        INITIAL_PLACEMENT_POLICIES.add(taintsAndTolerations());
+        INITIAL_PLACEMENT_POLICIES.add(symmetryBreaking());
+
+        PREEMPTION_POLICIES.add(preemption());
+        PREEMPTION_POLICIES.add(disallowNullNodeSoft());
+        PREEMPTION_POLICIES.add(nodePredicates());
+        PREEMPTION_POLICIES.add(nodeSelectorPredicate());
+        PREEMPTION_POLICIES.add(podAffinityPredicate());
+        PREEMPTION_POLICIES.add(podAntiAffinityPredicate());
+        PREEMPTION_POLICIES.add(capacityConstraint(true, true));
+        PREEMPTION_POLICIES.add(taintsAndTolerations());
+        PREEMPTION_POLICIES.add(symmetryBreaking());
+    }
+
+    /**
+     * Only allow pods with current assignments to be marked NULL_NODE
+     */
+    static Policy preemption() {
+        final String constraint = "create constraint preemption_requirement as " +
+                                  "select * from pods_to_assign " +
+                                  "where node_name is not null " +
+                                  "check controllable__node_name = 'NULL_NODE' " +
+                                  "   or controllable__node_name = node_name";
+        final String constraint1 = "create constraint preemption_requirement_1 as " +
+                "select * from pods_to_assign " +
+                "where pod_name = 'pod-0' " +
+                "check controllable__node_name != 'NULL_NODE'";
+        final String maximize = "create constraint preemption_objective as " +
+                                "select * from pods_to_assign " +
+                                "maximize priority * (controllable__node_name != 'NULL_NODE')";
+        return new Policy("Preemption", List.of(constraint, constraint1, maximize));
     }
 
     /**
      * Prefer to avoid NULL_NODE assignments
      */
     static Policy disallowNullNodeSoft() {
-        final String constraint = "create view constraint_disallow_null_node as " +
-                                  "select * from pods_to_assign " +
-                                  "maximize controllable__node_name != 'NULL_NODE'";
+        final String constraint = "create constraint constraint_disallow_null_node as " +
+                "select * from pods_to_assign " +
+                "maximize controllable__node_name != 'NULL_NODE'";
         return new Policy("DisallowNullNode", constraint);
     }
 
@@ -196,16 +226,16 @@ class Policies {
     }
 
 
-    static List<String> getAllPolicies() {
-        return from(ALL_POLICIES);
+    static List<String> getInitialPlacementPolicies() {
+        return from(INITIAL_PLACEMENT_POLICIES);
     }
 
     static List<String> getDefaultPolicies() {
-        return from(ALL_POLICIES);
+        return from(INITIAL_PLACEMENT_POLICIES);
     }
 
     static List<String> getDefaultPoliciesWithPodsToAssignReplaced(final String podsToAssignReplacement) {
-        return ALL_POLICIES.stream()
+        return INITIAL_PLACEMENT_POLICIES.stream()
                     .map(policy -> policy.views)
                     .flatMap(Collection::stream)
                     .map(view -> view.replaceAll("pods_to_assign", podsToAssignReplacement))

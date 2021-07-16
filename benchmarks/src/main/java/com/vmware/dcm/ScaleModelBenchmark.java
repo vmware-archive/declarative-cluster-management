@@ -258,7 +258,7 @@ public class ScaleModelBenchmark {
 
         // Scheduler's runOneLoop calls solver's updateData and solve.
         final DSLContext conn = state.dbConnectionPool.getConnectionToDb();
-        final Result<? extends Record> solverOutput = state.scheduler.runOneLoop((table) -> {
+        final Result<? extends Record> solverOutput = state.scheduler.initialPlacement((table) -> {
             if (table.getName().equalsIgnoreCase("spare_capacity_per_node")) {
                 return conn.selectFrom(table).where(field("name").lt("node")).fetch();
             }
