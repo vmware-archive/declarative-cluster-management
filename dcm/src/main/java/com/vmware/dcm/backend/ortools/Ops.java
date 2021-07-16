@@ -648,6 +648,9 @@ public class Ops {
     }
 
     public IntVar anyIntVar(final List<IntVar> array) {
+        if (array.size() == 0) {
+            throw new SolverException("Empty list for aggregate function any()");
+        }
         final IntVar res = model.newBoolVar("");
         final Literal[] literals = new Literal[array.size()];
         final Literal[] negatedLiterals = new Literal[array.size()];
@@ -669,6 +672,9 @@ public class Ops {
     }
 
     public IntVar allIntVar(final List<IntVar> array) {
+        if (array.size() == 0) {
+            throw new SolverException("Empty list for aggregate function all()");
+        }
         final IntVar res = model.newBoolVar("");
         final Literal[] literals = new Literal[array.size()];
         final Literal[] negatedLiterals = new Literal[array.size()];

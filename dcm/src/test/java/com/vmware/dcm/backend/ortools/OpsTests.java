@@ -10,6 +10,7 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
+import com.vmware.dcm.SolverException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -25,6 +26,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("ConstantConditions")
@@ -789,5 +791,13 @@ public class OpsTests {
         final CpSolverStatus solve = solver.solve(model);
         assertEquals(CpSolverStatus.OPTIMAL, solve);
         assertEquals(100, solver.value(var));
+    }
+
+    @Test
+    public void emptyArgsToAggregateFunctions() {
+        assertThrows(SolverException.class, () -> ops.anyBoolean(List.of()));
+        assertThrows(SolverException.class, () -> ops.anyIntVar(List.of()));
+        assertThrows(SolverException.class, () -> ops.allBoolean(List.of()));
+        assertThrows(SolverException.class, () -> ops.allIntVar(List.of()));
     }
 }
