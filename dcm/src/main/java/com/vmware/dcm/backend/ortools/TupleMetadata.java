@@ -197,11 +197,7 @@ public class TupleMetadata {
 
         @Override
         protected JavaType visitFunctionCall(final FunctionCall node, final VoidType context) {
-            if (node.getFunction().equals(FunctionCall.Function.CAPACITY_CONSTRAINT)) {
-                return JavaType.IntVar;
-            }
-            Preconditions.checkArgument(node.getArgument().size() == 1);
-            return visit(node.getArgument().get(0), context);
+            return functionType(node);
         }
 
         @Override
@@ -276,6 +272,43 @@ public class TupleMetadata {
                 default:
                     throw new IllegalArgumentException(column.toString());
             }
+        }
+
+        private JavaType functionType(final FunctionCall node) {
+            if (node.getArgument().size() == 1) {
+                final JavaType argumentType = visit(node.getArgument().get(0));
+                switch (node.getFunction()) {
+                    case SUM:
+                    case COUNT:
+                        return argumentType == JavaType.IntVar ? JavaType.IntVar : JavaType.Long;
+                    case MAX:
+                    case MIN:
+                        return argumentType;
+                    case ANY:
+                    case ALL:
+                    case ALL_EQUAL:
+                    case ALL_DIFFERENT:
+                    case INCREASING:
+                        return argumentType == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
+                    default:
+                        throw new IllegalArgumentException(node + " " + argumentType);
+                }
+            } else if (node.getArgument().size() == 2) {
+                switch (node.getFunction()) {
+                    case SCALAR_PRODUCT:
+                        return JavaType.IntVar;
+                    default:
+                        throw new IllegalArgumentException(node.toString());
+                }
+            } else if (node.getArgument().size() == 4) {
+                switch (node.getFunction()) {
+                    case CAPACITY_CONSTRAINT:
+                        return JavaType.IntVar;
+                    default:
+                        throw new IllegalArgumentException(node.toString());
+                }
+            }
+            throw new IllegalArgumentException("Unexpected function type " + node);
         }
     }
 }
