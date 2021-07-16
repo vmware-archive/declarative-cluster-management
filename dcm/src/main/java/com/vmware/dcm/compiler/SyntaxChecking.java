@@ -36,6 +36,7 @@ import com.facebook.presto.sql.tree.SubqueryExpression;
 import com.facebook.presto.sql.tree.Table;
 import com.vmware.dcm.ModelException;
 import com.vmware.dcm.ViewsWithAnnotations;
+import com.vmware.dcm.compiler.ir.FunctionCall;
 
 import javax.annotation.Nullable;
 
@@ -160,6 +161,11 @@ public class SyntaxChecking extends AstVisitor<Boolean, Void> {
     @Override
     protected Boolean visitFunctionCall(final com.facebook.presto.sql.tree.FunctionCall node,
                                      final Void context) {
+        try {
+            FunctionCall.Function.valueOf(node.getName().toString().toUpperCase());
+        } catch (final IllegalArgumentException e) {
+            return false;
+        }
         return processChildren(node);
     }
 

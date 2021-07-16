@@ -56,4 +56,22 @@ public class SyntaxCheckTest {
                            "(Join{type=LEFT, left=Table{t1}, right=Table{t2}, criteria=Optional[JoinOn{(c1 = c2)}]})"));
         }
     }
+
+    @Test
+    public void testUnsupportedAggregate() {
+        final DSLContext conn = DSL.using("jdbc:h2:mem:");
+        conn.execute("create table t1(c1 varchar(100), controllable__dummy integer)");
+        final List<String> views = List.of("CREATE VIEW constraint_with_like AS " +
+                "SELECT * FROM t1 " +
+                "CHECK XYZ(c1) = true");
+        try {
+            Model.build(conn, views);
+            fail();
+        } catch (final ModelException err) {
+            assertTrue(err.getMessage()
+                    .contains("---> Unexpected AST type class "));
+            assertTrue(err.getMessage()
+                    .contains("com.facebook.presto.sql.tree.FunctionCall (\"xyz\"(c1))"));
+        }
+    }
 }

@@ -14,17 +14,19 @@ public class UsesAggregateFunctions extends DefaultTraversalVisitor<Void, Void> 
 
     @Override
     protected Void visitFunctionCall(final FunctionCall node, final Void context) {
-        switch (node.getName().toString().toUpperCase()) {
-            case "COUNT":
-            case "SUM":
-            case "MIN":
-            case "MAX":
-            case "ANY":
-            case "ALL":
-            case "ALL_DIFFERENT":
-            case "ALL_EQUAL":
-            case "INCREASING":
-            case "CAPACITY_CONSTRAINT":
+        final com.vmware.dcm.compiler.ir.FunctionCall.Function function =
+                com.vmware.dcm.compiler.ir.FunctionCall.Function.valueOf(node.getName().toString().toUpperCase());
+        switch (function) {
+            case COUNT:
+            case SUM:
+            case MIN:
+            case MAX:
+            case ANY:
+            case ALL:
+            case ALL_DIFFERENT:
+            case ALL_EQUAL:
+            case INCREASING:
+            case CAPACITY_CONSTRAINT:
                 found = true;
                 break;
             default:
