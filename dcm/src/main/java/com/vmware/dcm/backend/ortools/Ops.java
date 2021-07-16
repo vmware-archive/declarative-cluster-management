@@ -640,6 +640,13 @@ public class Ops {
         return !var;
     }
 
+    public boolean anyBoolean(final List<Boolean> array) {
+        if (array.size() == 0) {
+            throw new SolverException("Empty list for aggregate function any()");
+        }
+        return array.stream().reduce((a, b) -> a || b).get();
+    }
+
     public IntVar anyIntVar(final List<IntVar> array) {
         final IntVar res = model.newBoolVar("");
         final Literal[] literals = new Literal[array.size()];
@@ -652,6 +659,13 @@ public class Ops {
         model.addBoolOr(literals).onlyEnforceIf(res);
         model.addBoolAnd(negatedLiterals).onlyEnforceIf(res.not());
         return res;
+    }
+
+    public boolean allBoolean(final List<Boolean> array) {
+        if (array.size() == 0) {
+            throw new SolverException("Empty list for aggregate function all()");
+        }
+        return array.stream().reduce((a, b) -> a && b).get();
     }
 
     public IntVar allIntVar(final List<IntVar> array) {

@@ -2164,7 +2164,10 @@ public class ModelTest {
 
         final List<String> views = List.of("CREATE VIEW constraint_with_all AS " +
                                            "SELECT * FROM t1 " +
-                                           "CHECK all(controllable__c2 = 10)");
+                                           "CHECK ALL(controllable__c2 = 10)",
+                                           "CREATE VIEW constraint_with_all_negated AS " +
+                                           "SELECT * FROM t1 " +
+                                           "CHECK NOT(ALL(controllable__c2 = 11))");
 
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testAll");
 
@@ -2178,13 +2181,37 @@ public class ModelTest {
     }
 
     @Test
+    public void testAllConst() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1(c1 integer, controllable__c2 integer)");
+
+        final List<String> views = List.of("CREATE VIEW constraint_with_all AS " +
+                                           "SELECT * FROM t1 " +
+                                           "CHECK ALL(c1 = 10)",
+                                           "CREATE VIEW constraint_with_all_negated AS " +
+                                           "SELECT * FROM t1 " +
+                                           "CHECK NOT(ALL(c1 = 11))");
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testAll");
+
+        conn.execute("insert into t1 values (10, 1)");
+        conn.execute("insert into t1 values (10, 2)");
+
+        final Result<? extends Record> fetch = model.solve("T1");
+        assertEquals(2, fetch.size());
+    }
+
+    @Test
     public void testAny() {
         final DSLContext conn = setup();
         conn.execute("CREATE TABLE t1(controllable__c2 integer)");
 
-        final List<String> views = List.of("CREATE VIEW constraint_with_all AS " +
+        final List<String> views = List.of("CREATE VIEW constraint_with_any AS " +
                                            "SELECT * FROM t1 " +
-                                           "CHECK ALL(controllable__c2 = 10)");
+                                           "CHECK ANY(controllable__c2 = 10)",
+                                           "CREATE VIEW constraint_with_any_negated AS " +
+                                           "SELECT * FROM t1 " +
+                                           "CHECK NOT(ANY(controllable__c2 = 11))");
 
         final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testAll");
 
@@ -2195,6 +2222,27 @@ public class ModelTest {
         assertEquals(2, fetch.size());
         assertTrue((fetch.get(0).get("CONTROLLABLE__C2", Integer.class) == 10)
                 || (fetch.get(1).get("CONTROLLABLE__C2", Integer.class) == 10));
+    }
+
+    @Test
+    public void testAnyConst() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1(c1 integer, controllable__c2 integer)");
+
+        final List<String> views = List.of("CREATE VIEW constraint_with_any AS " +
+                                           "SELECT * FROM t1 " +
+                                           "CHECK ANY(c1 = 10)",
+                                           "CREATE VIEW constraint_with_any_negated AS " +
+                                           "SELECT * FROM t1 " +
+                                           "CHECK NOT(ANY(c1 = 11))");
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testAll");
+
+        conn.execute("insert into t1 values (10, 1)");
+        conn.execute("insert into t1 values (10, 2)");
+
+        final Result<? extends Record> fetch = model.solve("T1");
+        assertEquals(2, fetch.size());
     }
 
     @Test

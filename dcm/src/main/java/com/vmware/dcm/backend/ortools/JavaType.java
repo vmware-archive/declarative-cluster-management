@@ -20,6 +20,7 @@ enum JavaType {
     ListOfIntVar("List", IntVar),
     ListOfInteger("List", Integer),
     ListOfLong("List", Long),
+    ListOfBool("List", Boolean),
     ListOfString("List", String);
 
     private final String typeString;
@@ -52,6 +53,8 @@ enum JavaType {
                 return ListOfLong;
             case String:
                 return ListOfString;
+            case Boolean:
+                return ListOfBool;
             default:
                 throw new IllegalArgumentException(innerType.toString());
         }
