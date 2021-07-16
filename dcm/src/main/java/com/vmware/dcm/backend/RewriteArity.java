@@ -164,7 +164,7 @@ public class RewriteArity extends ComprehensionRewriter {
             if (node.getFunction().equals(FunctionCall.Function.SUM) ||
                     node.getFunction().equals(FunctionCall.Function.COUNT)) {
                 final Expr oldSumArg = node.getFunction().equals(FunctionCall.Function.COUNT)
-                        ? new Literal<>(1, Integer.class) : node.getArgument().get(0);
+                        ? new Literal<>(1L, Long.class) : node.getArgument().get(0);
                 final BinaryOperatorPredicateWithAggregate newArgument
                         = new BinaryOperatorPredicateWithAggregate(BinaryOperatorPredicate.Operator.MULTIPLY,
                                                                    oldSumArg, qualifier);

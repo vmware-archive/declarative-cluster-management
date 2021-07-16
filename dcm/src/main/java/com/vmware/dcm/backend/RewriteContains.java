@@ -16,6 +16,9 @@ import com.vmware.dcm.compiler.ir.ListComprehension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Rewrites the CONTAINS(a, b) function call into the binary operation (A CONTAINS B)
+ */
 public class RewriteContains extends ComprehensionRewriter {
     private static final Logger LOG = LoggerFactory.getLogger(RewriteContains.class);
 

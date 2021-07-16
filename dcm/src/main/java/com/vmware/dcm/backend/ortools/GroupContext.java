@@ -5,8 +5,9 @@
 
 package com.vmware.dcm.backend.ortools;
 
-import com.google.common.base.CaseFormat;
 import com.vmware.dcm.compiler.ir.GroupByQualifier;
+
+import static com.vmware.dcm.backend.ortools.OrToolsSolver.camelCase;
 
 class GroupContext {
     private final GroupByQualifier qualifier;
@@ -41,9 +42,5 @@ class GroupContext {
 
     public String getGroupDataTupleName() {
         return getGroupDataName() + "Tuple";
-    }
-
-    private String camelCase(final String name) {
-        return CaseFormat.LOWER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, name.toUpperCase());
     }
 }

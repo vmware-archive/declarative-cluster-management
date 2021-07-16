@@ -7,6 +7,7 @@
 package com.vmware.dcm.backend.ortools;
 
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.Expr;
 import com.vmware.dcm.compiler.ir.GroupByComprehension;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import com.vmware.dcm.compiler.ir.SimpleVisitor;
@@ -20,7 +21,7 @@ import java.util.LinkedHashSet;
  * sub-queries.
  */
 class GetColumnIdentifiers extends SimpleVisitor {
-    private final LinkedHashSet<ColumnIdentifier> columnIdentifiers = new LinkedHashSet<>();
+    private final LinkedHashSet<Expr> columnIdentifiers = new LinkedHashSet<>();
     private final boolean visitInnerComprehensions;
 
     GetColumnIdentifiers(final boolean visitInnerComprehensions) {
@@ -49,7 +50,7 @@ class GetColumnIdentifiers extends SimpleVisitor {
         return defaultReturn();
     }
 
-    LinkedHashSet<ColumnIdentifier> getColumnIdentifiers() {
+    LinkedHashSet<Expr> getColumnIdentifiers() {
         return columnIdentifiers;
     }
 }

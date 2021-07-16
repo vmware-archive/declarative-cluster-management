@@ -21,4 +21,11 @@ public class CheckQualifier extends Qualifier {
     <T, C> T acceptVisitor(final IRVisitor<T, C> visitor, final C context) {
         return visitor.visitCheckExpression(this, context);
     }
+
+    @Override
+    public String toString() {
+        return "CheckQualifier{" +
+                "expr=" + expr +
+                '}';
+    }
 }
