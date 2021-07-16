@@ -12,6 +12,7 @@ import com.facebook.presto.sql.tree.QuerySpecification;
 import com.facebook.presto.sql.tree.SelectItem;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.vmware.dcm.Model;
+import com.vmware.dcm.ModelException;
 import com.vmware.dcm.ViewsWithAnnotations;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.compiler.ir.ListComprehension;
@@ -23,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,7 +46,18 @@ public class ModelCompiler {
         final IRContext irContext = new IRContext(irTables);
 
         LOG.debug("Compiling the following views\n{}", views);
-        // First, we extract all the necessary views from the input code
+
+        // Assert that all views are uniquely named
+        final Set<String> names = new HashSet<>();
+        views.forEach(view -> {
+            final String name = view.getCreateView().getName().toString();
+            if (names.contains(name)) {
+                throw new ModelException("Duplicate name " + name);
+            }
+            names.add(name);
+        });
+
+        // Extract all the necessary views from the input code
         final Program<ViewsWithAnnotations> sqlProgram = toSqlProgram(views);
 
         // Make sure the supplied views are only using the supported subset of SQL syntax

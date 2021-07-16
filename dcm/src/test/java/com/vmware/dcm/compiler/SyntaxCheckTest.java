@@ -74,4 +74,23 @@ public class SyntaxCheckTest {
                     .contains("com.facebook.presto.sql.tree.FunctionCall (\"xyz\"(c1))"));
         }
     }
+
+    @Test
+    public void testDuplicateViewName() {
+        final DSLContext conn = DSL.using("jdbc:h2:mem:");
+        conn.execute("create table t1(c1 varchar(100), controllable__dummy integer)");
+        final List<String> views = List.of("CREATE VIEW some_constraint AS " +
+                                            "SELECT * FROM t1 " +
+                                            "CHECK controllable__dummy = 1",
+                                            "CREATE VIEW some_constraint AS " +
+                                            "SELECT * FROM t1 " +
+                                            "CHECK controllable__dummy = 2");
+        try {
+            Model.build(conn, views);
+            fail();
+        } catch (final ModelException err) {
+            assertTrue(err.getMessage()
+                    .contains("Duplicate name some_constraint"));
+        }
+    }
 }
