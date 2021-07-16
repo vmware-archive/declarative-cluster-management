@@ -254,8 +254,8 @@ public class TranslateViewToIR extends SqlBasicVisitor<Optional<Expr>> {
 
         final List<Qualifier> qualifiers = new ArrayList<>();
         tables.forEach(t -> qualifiers.add(new TableRowGenerator(t)));
-        where.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, false)));
-        having.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, true)));
+        where.ifPresent(e -> qualifiers.add(toQualifier(translateExpression(e, irContext, tables, false))));
+        having.ifPresent(e -> qualifiers.add(toQualifier(translateExpression(e, irContext, tables, true))));
         final UsesAggregateFunctions usesAggregateFunctions = new UsesAggregateFunctions();
         constraint.ifPresent(e -> {
             e.accept(usesAggregateFunctions);
@@ -265,7 +265,7 @@ public class TranslateViewToIR extends SqlBasicVisitor<Optional<Expr>> {
         });
 
         joinConditions.forEach(e -> {
-            final Qualifier joinQualifier = (Qualifier) translateExpression(e, irContext, tables, false);
+            final Qualifier joinQualifier = toQualifier(translateExpression(e, irContext, tables, false));
             assert joinQualifier instanceof BinaryOperatorPredicate;
             qualifiers.add(new JoinPredicate((BinaryOperatorPredicate) joinQualifier));
         });
@@ -282,6 +282,12 @@ public class TranslateViewToIR extends SqlBasicVisitor<Optional<Expr>> {
             return new GroupByComprehension(comprehension, groupByQualifier);
         }
         return new ListComprehension(head, qualifiers);
+    }
+
+    private static Qualifier toQualifier(final Expr expr) {
+        return expr instanceof Qualifier ? (Qualifier) expr :
+                new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.EQUAL, expr,
+                        new Literal<>(true, Boolean.class));
     }
 
     /**

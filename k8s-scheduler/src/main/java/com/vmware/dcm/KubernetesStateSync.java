@@ -10,6 +10,7 @@ package com.vmware.dcm;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.policy.v1.PodDisruptionBudget;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
@@ -43,6 +44,11 @@ class KubernetesStateSync {
         final SharedIndexInformer<Pod> podInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Pod.class, 30000);
         podInformer.addEventHandler(new PodResourceEventHandler(podEventNotification, service));
+
+        // Pod disruption budget listener
+        final SharedIndexInformer<PodDisruptionBudget> pdbInformer = sharedInformerFactory
+                .sharedIndexInformerFor(PodDisruptionBudget.class, 30000);
+        pdbInformer.addEventHandler(new PdbResourceEventHandler(dbConnectionPool));
 
         LOG.info("Instantiated node and pod informers. Starting them all now.");
     }

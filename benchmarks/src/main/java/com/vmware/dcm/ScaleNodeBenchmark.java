@@ -249,7 +249,7 @@ public class ScaleNodeBenchmark {
         System.out.println("Running Benchmark...");
 
         // Scheduler's runOneLoop calls solver's updateData and solve.
-        final Result<? extends Record> solverOutput = state.scheduler.runOneLoop();
+        final Result<? extends Record> solverOutput = state.scheduler.initialPlacement();
         if (solverOutput.size() != newPods) {
             throw new SolverException("Could not execute solver with all " + newPods + " pods.");
         }
