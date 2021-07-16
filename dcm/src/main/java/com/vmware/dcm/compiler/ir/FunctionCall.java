@@ -54,6 +54,8 @@ public class FunctionCall extends Expr {
         SUM,
         MIN,
         MAX,
+        ANY,
+        ALL,
         ALL_DIFFERENT,
         ALL_EQUAL,
         INCREASING,

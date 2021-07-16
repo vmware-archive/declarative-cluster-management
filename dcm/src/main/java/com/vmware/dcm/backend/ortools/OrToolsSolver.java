@@ -1267,6 +1267,14 @@ public class OrToolsSolver implements ISolverBackend {
                     function = String.format("minV%s", argumentType);
                     outType = argumentType;
                     break;
+                case ANY:
+                    function = String.format("any%s", argumentType);
+                    outType = argumentType;
+                    break;
+                case ALL:
+                    function = String.format("all%s", argumentType);
+                    outType = argumentType;
+                    break;
                 case ALL_EQUAL:
                     if (argumentIsIntVar) {
                         context.currentScope().addBody(statement("o.allEqualVar($L)", listOfProcessedItem.asString()));

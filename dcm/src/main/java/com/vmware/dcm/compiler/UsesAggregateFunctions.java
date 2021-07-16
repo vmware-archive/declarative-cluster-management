@@ -19,6 +19,8 @@ public class UsesAggregateFunctions extends DefaultTraversalVisitor<Void, Void> 
             case "SUM":
             case "MIN":
             case "MAX":
+            case "ANY":
+            case "ALL":
             case "ALL_DIFFERENT":
             case "ALL_EQUAL":
             case "INCREASING":

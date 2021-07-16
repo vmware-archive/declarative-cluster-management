@@ -640,6 +640,34 @@ public class Ops {
         return !var;
     }
 
+    public IntVar anyIntVar(final List<IntVar> array) {
+        final IntVar res = model.newBoolVar("");
+        final Literal[] literals = new Literal[array.size()];
+        final Literal[] negatedLiterals = new Literal[array.size()];
+        for (int i = 0; i < array.size(); i++) {
+            final IntVar var = array.get(i);
+            literals[i] = var;
+            negatedLiterals[i] = var.not();
+        }
+        model.addBoolOr(literals).onlyEnforceIf(res);
+        model.addBoolAnd(negatedLiterals).onlyEnforceIf(res.not());
+        return res;
+    }
+
+    public IntVar allIntVar(final List<IntVar> array) {
+        final IntVar res = model.newBoolVar("");
+        final Literal[] literals = new Literal[array.size()];
+        final Literal[] negatedLiterals = new Literal[array.size()];
+        for (int i = 0; i < array.size(); i++) {
+            final IntVar var = array.get(i);
+            literals[i] = var;
+            negatedLiterals[i] = var.not();
+        }
+        model.addBoolAnd(literals).onlyEnforceIf(res);
+        model.addBoolOr(negatedLiterals).onlyEnforceIf(res.not());
+        return res;
+    }
+
     public <T> boolean allEqualPrimitive(final List<T> array) {
         for (int i = 0; i < array.size() - 1; i++) {
             if (array.get(i) != array.get(i + 1)) {

@@ -2157,6 +2157,45 @@ public class ModelTest {
         return Stream.of(Arguments.of("t1", "t2"), Arguments.of("t2", "t1"));
     }
 
+    @Test
+    public void testAll() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1(controllable__c2 integer)");
+
+        final List<String> views = List.of("CREATE VIEW constraint_with_all AS " +
+                                           "SELECT * FROM t1 " +
+                                           "CHECK all(controllable__c2 = 10)");
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testAll");
+
+        conn.execute("insert into t1 values (1)");
+        conn.execute("insert into t1 values (2)");
+
+        final Result<? extends Record> fetch = model.solve("T1");
+        assertEquals(2, fetch.size());
+        assertEquals(fetch.get(0).get("CONTROLLABLE__C2"), 10);
+        assertEquals(fetch.get(1).get("CONTROLLABLE__C2"), 10);
+    }
+
+    @Test
+    public void testAny() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1(controllable__c2 integer)");
+
+        final List<String> views = List.of("CREATE VIEW constraint_with_all AS " +
+                                           "SELECT * FROM t1 " +
+                                           "CHECK ALL(controllable__c2 = 10)");
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testAll");
+
+        conn.execute("insert into t1 values (1)");
+        conn.execute("insert into t1 values (2)");
+
+        final Result<? extends Record> fetch = model.solve("T1");
+        assertEquals(2, fetch.size());
+        assertTrue((fetch.get(0).get("CONTROLLABLE__C2", Integer.class) == 10)
+                || (fetch.get(1).get("CONTROLLABLE__C2", Integer.class) == 10));
+    }
 
     @Test
     @Disabled("Enable when https://github.com/vmware/declarative-cluster-management/issues/112 is fixed")
