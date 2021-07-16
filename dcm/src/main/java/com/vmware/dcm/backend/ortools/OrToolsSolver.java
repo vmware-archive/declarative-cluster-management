@@ -238,6 +238,7 @@ public class OrToolsSolver implements ISolverBackend {
         program
                .map(RewriteArity::apply)
                .map(RewriteContains::apply)
+               .map(l -> configTryScalarProductEncoding ? ScalarProductOptimization.apply(l, tupleMetadata) : l)
                // ... then convert to Program<OutputIR.Block>
                .map(
                     (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, translationContext),
@@ -1237,13 +1238,6 @@ public class OrToolsSolver implements ISolverBackend {
             // add declarations to the corresponding for-loop that extracts the relevant columns/expressions from views.
             final OutputIR.Block forLoop = context.currentScope().getForLoopByName(vectorName);
 
-            // We have a special case for sums, because of an optimization where a sum of products can be better
-            // represented as a scalar product in or-tools
-            if (node.getFunction().equals(FunctionCall.Function.SUM)) {
-                return attemptSumAsScalarProductOptimization(node.getArgument().get(0), context.currentScope(),
-                                                         forLoop, context);
-            }
-
             if (node.getArgument().size() == 1) {
                 context.enterScope(forLoop);
                 final JavaExpression processedArgument = visit(node.getArgument().get(0),
@@ -1263,7 +1257,7 @@ public class OrToolsSolver implements ISolverBackend {
                     case INCREASING:
                         final boolean supportsAssumptions = supportsAssumptions(node);
                         final JavaType argType = processedArgument.type();
-                        final JavaType outType = unaryFunctionType(node, argType);
+                        final JavaType outType = tupleMetadata.inferType(node);
                         final String functionName = String.format("%s%s", camelCase(node.getFunction().toString()),
                                                                   argType);
                         final String argumentString = listOfProcessedItem.asString();
@@ -1277,27 +1271,27 @@ public class OrToolsSolver implements ISolverBackend {
                         throw new UnsupportedOperationException("Unsupported unary aggregate function "
                                                                  + node.getFunction());
                 }
+            } else if (node.getArgument().size() == 2) {
+                switch (node.getFunction()) {
+                    case SCALAR_PRODUCT:
+                        context.enterScope(forLoop);
+                        final JavaExpression arg1 = visit(node.getArgument().get(0),
+                                                                       context.withEnterFunctionContext());
+                        final JavaExpression arg2 = visit(node.getArgument().get(1),
+                                                                       context.withEnterFunctionContext());
+                        context.leaveScope();
+                        final JavaExpression listOfArg1 = extractListFromLoop(arg1, context.currentScope(), forLoop);
+                        final JavaExpression listOfArg2 = extractListFromLoop(arg2, context.currentScope(), forLoop);
+                        final JavaType arg2Type = arg2.type();
+                        return new JavaExpression(CodeBlock.of("o.scalProd$L($L, $L)", arg2Type.toString(),
+                                                  listOfArg1.asString(), listOfArg2.asString()).toString(),
+                                                  JavaType.IntVar);
+                    default:
+                        throw new UnsupportedOperationException("Unsupported binary aggregate function "
+                                                                + node.getFunction());
+                }
             }
             throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
-        }
-
-        private JavaType unaryFunctionType(final FunctionCall node, final JavaType argumentType) {
-            switch (node.getFunction()) {
-                case SUM:
-                case COUNT:
-                    return argumentType == JavaType.IntVar ? JavaType.IntVar : JavaType.Long;
-                case MAX:
-                case MIN:
-                    return argumentType;
-                case ANY:
-                case ALL:
-                case ALL_EQUAL:
-                case ALL_DIFFERENT:
-                case INCREASING:
-                    return argumentType == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
-                default:
-                    throw new IllegalArgumentException(node + " " + argumentType);
-            }
         }
 
         private boolean supportsAssumptions(final FunctionCall node) {
@@ -1573,82 +1567,6 @@ public class OrToolsSolver implements ISolverBackend {
         protected JavaExpression declare(final JavaExpression expression, final OutputIR.Block block,
                                          final TranslationContext context) {
             return new JavaExpression(context.declareVariable(expression.asString(), block), expression.type());
-        }
-
-        /**
-         * A sum of an expression of the form (X * Y), where X is a variable and Y is a constant, is best
-         * expressed as a scalar product which takes a list of variables, and a corresponding list of coefficients.
-         * This is common in bin-packing problems where a list of variables corresponding to whether a task is
-         * assigned to a bin, is weighted by the demands of each task, and the resulting weighted sum of variables
-         * is used in capacity constraints.
-         *
-         * This optimization saves the CP-SAT solver a lot of effort in the pre-solving and solving phases,
-         * leading to significant performance improvements.
-         *
-         * If we cannot perform this optimization, we revert to computing a sum just like any other function.
-         * See visitMonoidFunction().
-         *
-         * @param node the argument of a sum() function
-         * @param outerBlock the block within which the sum is being computed
-         * @param forLoop the for loop block within which the arguments for the sum are extracted
-         * @param context the current translation context
-         * @return A variable that yields the result of the sum
-         */
-        private JavaExpression attemptSumAsScalarProductOptimization(final Expr node, final OutputIR.Block outerBlock,
-                                                                     final OutputIR.Block forLoop,
-                                                                     final TranslationContext context) {
-            if (configTryScalarProductEncoding && node instanceof BinaryOperatorPredicate) {
-                final BinaryOperatorPredicate operation = (BinaryOperatorPredicate) node;
-                final BinaryOperatorPredicate.Operator op = operation.getOperator();
-                final Expr left = operation.getLeft();
-                final Expr right = operation.getRight();
-                final JavaType leftType = tupleMetadata.inferType(left);
-                final JavaType rightType = tupleMetadata.inferType(right);
-                // TODO: The multiply may not necessarily be the top level operation.
-                if (op.equals(BinaryOperatorPredicate.Operator.MULTIPLY)) {
-                    if (leftType == JavaType.IntVar && rightType != JavaType.IntVar) {
-                        return createTermsForScalarProduct(left, right, context, outerBlock, forLoop, rightType);
-                    }
-                    if (rightType == JavaType.IntVar && leftType != JavaType.IntVar) {
-                        return createTermsForScalarProduct(right, left, context, outerBlock, forLoop, leftType);
-                    }
-                }
-            }
-            // regular sum
-            context.enterScope(forLoop);
-            final JavaExpression processedArgument = visit(node, context.withEnterFunctionContext());
-            context.leaveScope();
-            final String function = processedArgument.type() == JavaType.IntVar ? "sumIntVar" :
-                                    processedArgument.type()  == JavaType.Long ? "sumLong" :
-                                     "sumInteger";
-            final JavaExpression listOfProcessedItem = extractListFromLoop(processedArgument, context.currentScope(),
-                                                                           forLoop);
-            return context.declare(CodeBlock.of("o.$L($L)", function, listOfProcessedItem.asString()).toString(),
-                                   processedArgument.type());
-        }
-
-        /**
-         * Given two expressions representing a variable and coefficients, generate a scalar product term. To do so,
-         * we extract the necessary lists from the for loop where these variables and coefficients are collected.
-         */
-        private JavaExpression createTermsForScalarProduct(final Expr variables, final Expr coefficients,
-                                                           final TranslationContext context,
-                                                           final OutputIR.Block outerBlock,
-                                                           final OutputIR.Block forLoop,
-                                                           final JavaType coefficientsType) {
-            context.enterScope(forLoop);
-            final JavaExpression variablesItem = visit(variables, context.withEnterFunctionContext());
-            final JavaExpression coefficientsItem = visit(coefficients, context.withEnterFunctionContext());
-            context.leaveScope();
-            Preconditions.checkArgument(variablesItem.type() == JavaType.IntVar);
-            Preconditions.checkArgument(coefficientsItem.type() == coefficientsType);
-            final JavaExpression listOfVariablesItem =
-                    extractListFromLoop(variablesItem, outerBlock, forLoop);
-            final JavaExpression listOfCoefficientsItem =
-                    extractListFromLoop(coefficientsItem, outerBlock, forLoop);
-            return context.declare(CodeBlock.of("o.scalProd$L($L, $L)", coefficientsType,
-                                   listOfVariablesItem.asString(), listOfCoefficientsItem.asString()).toString(),
-                                   JavaType.IntVar);
         }
 
         /**

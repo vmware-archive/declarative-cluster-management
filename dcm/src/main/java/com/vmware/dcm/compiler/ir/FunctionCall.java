@@ -7,6 +7,7 @@
 package com.vmware.dcm.compiler.ir;
 
 import java.util.List;
+import java.util.Optional;
 
 public class FunctionCall extends Expr {
     private final Function function;
@@ -20,6 +21,12 @@ public class FunctionCall extends Expr {
     public FunctionCall(final Function function, final List<Expr> argument) {
         this.function = function;
         this.argument = argument;
+    }
+
+    public FunctionCall(final Function function, final List<Expr> argument, final Optional<String> alias) {
+        this.function = function;
+        this.argument = argument;
+        alias.ifPresent(this::setAlias);
     }
 
     public FunctionCall(final Function function, final Expr argument, final String alias) {
@@ -60,6 +67,7 @@ public class FunctionCall extends Expr {
         ALL_EQUAL,
         INCREASING,
         CAPACITY_CONSTRAINT,
-        CONTAINS
+        CONTAINS,
+        SCALAR_PRODUCT
     }
 }
