@@ -1269,11 +1269,11 @@ public class OrToolsSolver implements ISolverBackend {
                     break;
                 case ANY:
                     function = String.format("any%s", argumentType);
-                    outType = argumentType;
+                    outType = argumentIsIntVar ? JavaType.IntVar : JavaType.Boolean;
                     break;
                 case ALL:
                     function = String.format("all%s", argumentType);
-                    outType = argumentType;
+                    outType = argumentIsIntVar ? JavaType.IntVar : JavaType.Boolean;
                     break;
                 case ALL_EQUAL:
                     if (argumentIsIntVar) {
