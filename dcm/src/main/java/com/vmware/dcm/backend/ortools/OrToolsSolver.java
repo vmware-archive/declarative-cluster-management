@@ -352,16 +352,24 @@ public class OrToolsSolver implements ISolverBackend {
             final OutputIR.ForBlock forBlock = outputIR.newForBlock(viewName,
                     CodeBlock.of("for (final var entry: $L.entrySet())", intermediateView)
             );
-            forBlock.addHeader(CodeBlock.builder().addStatement("final var group = entry.getKey()")
-                                                  .addStatement("final var data = entry.getValue()").build());
-
-            final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName,
-                        CodeBlock.of("for (final var dataTuple: data)"), "data.size()");
-            forBlock.addBody(dataForBlock);
 
             final TranslationContext groupByContext = context.withEnterGroupContext(groupByQualifier, intermediateView,
-                                                                                  viewName);
+                    viewName);
             groupByContext.enterScope(forBlock);
+
+            final String groupName = groupByContext.getGroupContext().getGroupName();
+            final String groupDataName = groupByContext.getGroupContext().getGroupDataName();
+            final String groupDataTupleName = groupByContext.getGroupContext().getGroupDataTupleName();
+
+            forBlock.addHeader(CodeBlock.builder().addStatement("final var $L = entry.getKey()", groupName)
+                                                  .addStatement("final var $L = entry.getValue()", groupDataName)
+                                                  .build());
+
+            final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName,
+                                            CodeBlock.of("for (final var $L: $L)", groupDataTupleName, groupDataName),
+                                            groupDataName + ".size()");
+            forBlock.addBody(dataForBlock);
+
 
             // (3) Filter if necessary
             final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(inner);
@@ -1247,10 +1255,9 @@ public class OrToolsSolver implements ISolverBackend {
                     // In these cases, it is safe to replace count(argument) with sum(1)
                     if ((node.getArgument().get(0) instanceof Literal ||
                          node.getArgument().get(0) instanceof ColumnIdentifier)) {
-                        // TODO: another sign that groupContext/subQueryContext should be handled by ExprContext
-                        //  and scopes
                         final String scanOver = context.isSubQueryContext() ?
-                                context.getSubQueryContext().getSubQueryName() : "data" ;
+                                context.getSubQueryContext().getSubQueryName() :
+                                context.getGroupContext().getGroupDataName();
                         return context.declare(argumentIsIntVar
                                                   ? CodeBlock.of("o.toConst($L.size())", scanOver).toString()
                                                   : CodeBlock.of("$L.size()", scanOver).toString(),
@@ -1445,10 +1452,11 @@ public class OrToolsSolver implements ISolverBackend {
                 final String fieldName = node.getField().getName();
                 int columnNumber = 0;
                 final GroupContext groupContext = context.getGroupContext();
+                final String groupName = groupContext.getGroupName();
                 for (final ColumnIdentifier ci: groupContext.getQualifier().getGroupByColumnIdentifiers()) {
                     if (ci.getTableName().equalsIgnoreCase(tableName)
                             && ci.getField().getName().equalsIgnoreCase(fieldName)) {
-                        return context.declare(String.format("group.value%s()", columnNumber), type);
+                        return context.declare(String.format("%s.value%s()", groupName, columnNumber), type);
                     }
                     columnNumber++;
                 }
@@ -1460,7 +1468,8 @@ public class OrToolsSolver implements ISolverBackend {
             if (context.isFunctionContext() && context.isGroupContext()) {
                 final String tempTableName = context.getGroupContext().getTempTableName().toUpperCase(Locale.US);
                 final int fieldIndex = tupleMetadata.getFieldIndexInView(tempTableName, node.getField().getName());
-                return context.declare(String.format("dataTuple.value%s()", fieldIndex), type);
+                final String groupDataTupleName = context.getGroupContext().getGroupDataTupleName();
+                return context.declare(String.format("%s.value%s()", groupDataTupleName, fieldIndex), type);
             }
 
             // Simple field access
@@ -1664,8 +1673,7 @@ public class OrToolsSolver implements ISolverBackend {
     private JavaExpression extractListFromLoop(final JavaExpression variableToExtract, final OutputIR.Block outerBlock,
                                                final OutputIR.Block innerBlock) {
         final String listName = "listOf" + variableToExtract.asString();
-        // For computing aggregates, the list being scanned is always named "data", and
-        // those loop blocks have a valid size. Use this for pre-allocating lists.
+        // For computing aggregates, the loop blocks have a valid size. Use this for pre-allocating lists.
         final String maybeGuessSize = innerBlock instanceof OutputIR.ForBlock ?
                 ((OutputIR.ForBlock) innerBlock).getSize() : "";
         final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>($L)",

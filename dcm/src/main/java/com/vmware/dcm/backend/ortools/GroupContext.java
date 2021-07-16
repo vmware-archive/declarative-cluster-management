@@ -5,6 +5,7 @@
 
 package com.vmware.dcm.backend.ortools;
 
+import com.google.common.base.CaseFormat;
 import com.vmware.dcm.compiler.ir.GroupByQualifier;
 
 class GroupContext {
@@ -28,5 +29,21 @@ class GroupContext {
 
     public String getGroupViewName() {
         return groupViewName;
+    }
+
+    public String getGroupName() {
+        return camelCase(groupViewName) + "Group";
+    }
+
+    public String getGroupDataName() {
+        return camelCase(groupViewName) + "Data";
+    }
+
+    public String getGroupDataTupleName() {
+        return getGroupDataName() + "Tuple";
+    }
+
+    private String camelCase(final String name) {
+        return CaseFormat.LOWER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, name.toUpperCase());
     }
 }
