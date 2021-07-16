@@ -232,11 +232,47 @@ public class OpsTests {
         assertEquals(1L, ops.minLong(entriesLong));
     }
 
-//    @Test
-//    public void countV() {
-//        final long[] entries = {1L, 2L};
-//        assertEquals(2, ops.count(entries));
-//    }
+    @Test
+    public void countPrimitive() {
+        assertEquals(2, ops.countLong(List.of(1L, 2L)));
+        assertEquals(2, ops.countInteger(List.of(1, 2)));
+        assertEquals(2, ops.countBoolean(List.of(true, false)));
+        assertEquals(2, ops.countString(List.of("1", "4")));
+    }
+
+    @Test
+    public void countIntVar() {
+        {
+            final IntVar v1 = model.newIntVar(0, 10, "");
+            final IntVar v2 = model.newIntVar(0, 10, "");
+            ops.eq(v1, 0);
+            ops.eq(v2, 0);
+            ops.eq(ops.countIntVar(List.of(v1, v2)), 0);
+            final CpSolver solver = new CpSolver();
+            final CpSolverStatus solve = solver.solve(model);
+            assertEquals(CpSolverStatus.OPTIMAL, solve);
+        }
+        {
+            final IntVar v1 = model.newIntVar(0, 10, "");
+            final IntVar v2 = model.newIntVar(0, 10, "");
+            ops.eq(v1, 10);
+            ops.eq(v2, -10);
+            ops.eq(ops.countIntVar(List.of(v1, v2)), 2);
+            final CpSolver solver = new CpSolver();
+            final CpSolverStatus solve = solver.solve(model);
+            assertEquals(CpSolverStatus.OPTIMAL, solve);
+        }
+        {
+            final IntVar v1 = model.newIntVar(0, 10, "");
+            final IntVar v2 = model.newIntVar(0, 10, "");
+            ops.eq(v1, 0);
+            ops.eq(v2, -1340);
+            ops.eq(ops.countIntVar(List.of(v1, v2)), 1);
+            final CpSolver solver = new CpSolver();
+            final CpSolverStatus solve = solver.solve(model);
+            assertEquals(CpSolverStatus.OPTIMAL, solve);
+        }
+    }
 
     @Test
     public void minusVars() {
@@ -353,29 +389,37 @@ public class OpsTests {
 
     @Test
     public void multVarsWithConstantLeft() {
-        final int left = 10;
+        final int leftInt = 10;
+        final long leftLong = 10L;
         final IntVar right = model.newIntVar(50, 100, "");
-        final IntVar mult = ops.mult(left, right);
+        final IntVar multInt = ops.mult(leftInt, right);
+        final IntVar multLong = ops.mult(leftLong, right);
 
-        model.addEquality(mult, 700L);
+        model.addEquality(multInt, 700L);
+        model.addEquality(multLong, 700L);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
         assertEquals(CpSolverStatus.OPTIMAL, solve);
-        assertEquals(solver.value(mult), left * solver.value(right));
+        assertEquals(solver.value(multInt), leftInt * solver.value(right));
+        assertEquals(solver.value(multLong), leftLong * solver.value(right));
         assertEquals(70L, solver.value(right));
     }
 
     @Test
     public void multVarsWithConstantRight() {
         final IntVar left = model.newIntVar(50, 100, "");
-        final int right = 10;
-        final IntVar mult = ops.mult(left, right);
+        final int rightInt = 10;
+        final long rightLong = 10;
+        final IntVar multInt = ops.mult(left, rightInt);
+        final IntVar multLong = ops.mult(left, rightLong);
 
-        model.addEquality(mult, 700L);
+        model.addEquality(multInt, 700L);
+        model.addEquality(multLong, 700L);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
         assertEquals(CpSolverStatus.OPTIMAL, solve);
-        assertEquals(solver.value(mult), solver.value(left) * right);
+        assertEquals(solver.value(multInt), solver.value(left) * rightInt);
+        assertEquals(solver.value(multLong), solver.value(left) * rightLong);
         assertEquals(70L, solver.value(left));
     }
 
@@ -406,6 +450,18 @@ public class OpsTests {
         assertTrue(ops.ne(1L, 2L));
         assertTrue(ops.ne(true, false));
         assertTrue(ops.ne("1", "2"));
+    }
+
+    @Test
+    public void allEqualPrimitives() {
+        assertTrue(ops.allEqualInteger(List.of(1, 1)));
+        assertTrue(ops.allEqualLong(List.of(1L, 1L)));
+        assertTrue(ops.allEqualBoolean(List.of(true, true)));
+        assertTrue(ops.allEqualString(List.of("1", "1")));
+        assertFalse(ops.allEqualInteger(List.of(1, 2)));
+        assertFalse(ops.allEqualLong(List.of(1L, 2L)));
+        assertFalse(ops.allEqualBoolean(List.of(true, false)));
+        assertFalse(ops.allEqualString(List.of("1", "2")));
     }
 
     @Test

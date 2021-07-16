@@ -718,7 +718,7 @@ public class Ops {
         return res;
     }
 
-    public boolean allEqualInteger(final List<Boolean> array) {
+    public boolean allEqualInteger(final List<Integer> array) {
         return allEqualPrimitive(array);
     }
 
