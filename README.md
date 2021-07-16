@@ -208,7 +208,7 @@ To learn more about DCM, we suggest going through the following references:
 
 Talks:
 
-* [Hydra 2021](https://hydraconf.com/2021/msk/talks/6a3lyeuirucbj0jxglvgfu/): the most detailed talk given on DCM thus far (~75 minutes)
+* [Hydra 2021](https://hydraconf.com/2021/msk/talks/6a3lyeuirucbj0jxglvgfu/) (~75 minutes)
 * [OSDI 2020](https://www.usenix.org/conference/osdi20/presentation/suresh) (20 minutes) 
 
 Research papers:
