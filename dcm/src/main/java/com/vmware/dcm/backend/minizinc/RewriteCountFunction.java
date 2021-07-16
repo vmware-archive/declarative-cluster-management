@@ -6,19 +6,18 @@
 
 package com.vmware.dcm.backend.minizinc;
 
-import com.vmware.dcm.compiler.ir.FunctionCall;
-import com.vmware.dcm.compiler.ir.VoidType;
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
 import com.vmware.dcm.compiler.ir.ComprehensionRewriter;
 import com.vmware.dcm.compiler.ir.Expr;
+import com.vmware.dcm.compiler.ir.FunctionCall;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import com.vmware.dcm.compiler.ir.Literal;
+import com.vmware.dcm.compiler.ir.VoidType;
 
 /**
- * Minizinc has no "count()" function. We rewrite all instances of
- * count([i | qualifiers..]) to sum([1 | qualifiers...]).
+ * Rewrite instances of count([i | qualifiers..]) to sum([1 | qualifiers...]).
  */
-class RewriteCountFunction extends ComprehensionRewriter {
+public class RewriteCountFunction extends ComprehensionRewriter {
 
     @Override
     protected Expr visitFunctionCall(final FunctionCall function, final VoidType context) {
@@ -34,7 +33,7 @@ class RewriteCountFunction extends ComprehensionRewriter {
         return super.visitFunctionCall(function, context);
     }
 
-    static ListComprehension apply(final ListComprehension comprehension) {
+    public static ListComprehension apply(final ListComprehension comprehension) {
         final RewriteCountFunction rewriter = new RewriteCountFunction();
         return (ListComprehension) rewriter.visit(comprehension);
     }

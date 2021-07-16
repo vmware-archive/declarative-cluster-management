@@ -18,6 +18,7 @@ import com.google.ortools.sat.Literal;
 import com.google.ortools.util.Domain;
 import com.vmware.dcm.SolverException;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -36,6 +37,30 @@ public class Ops {
         this.falseVar = model.newConstant(0);
     }
 
+    public int countBoolean(final List<Boolean> data) {
+        return data.size();
+    }
+
+    public int countInteger(final List<Integer> data) {
+        return data.size();
+    }
+
+    public int countLong(final List<Long> data) {
+        return data.size();
+    }
+
+    public int countString(final List<String> data) {
+        return data.size();
+    }
+
+    public IntVar countIntVar(final List<IntVar> data) {
+        final List<IntVar> isZero = new ArrayList<>(data.size());
+        for (final IntVar v: data) {
+            isZero.add(ne(v, 0));
+        }
+        return sumIntVar(isZero);
+    }
+
     public int sumInteger(final List<Integer> data) {
         int ret = 0;
         for (final Integer d: data) {
@@ -52,7 +77,7 @@ public class Ops {
         return ret;
     }
 
-    public IntVar sumV(final List<IntVar> data) {
+    public IntVar sumIntVar(final List<IntVar> data) {
         long domainMin = 0;
         long domainMax = 0;
         final IntVar[] arr = new IntVar[data.size()];
@@ -108,7 +133,7 @@ public class Ops {
         return ret;
     }
 
-    public void increasing(final List<IntVar> data) {
+    public IntVar increasingIntVar(final List<IntVar> data) {
         for (int i = 0; i < data.size() - 1; i++) {
             model.addLessOrEqual(data.get(i), data.get(i + 1));
 
@@ -116,6 +141,7 @@ public class Ops {
             model.addLessThan(data.get(i), data.get(i + 1)).onlyEnforceIf(bool); // soft constraint to maximize
             model.maximize(LinearExpr.term(bool, 100));
         }
+        return model.newConstant(1);
     }
 
     public IntVar exists(final List<IntVar> data) {
@@ -132,15 +158,15 @@ public class Ops {
         return bool;
     }
 
-    public int maxVInteger(final List<Integer> data) {
+    public int maxInteger(final List<Integer> data) {
         return Collections.max(data);
     }
 
-    public long maxVLong(final List<Long> data) {
+    public long maxLong(final List<Long> data) {
         return Collections.max(data);
     }
 
-    public IntVar maxVIntVar(final List<IntVar> data) {
+    public IntVar maxIntVar(final List<IntVar> data) {
         long domainMin = Long.MIN_VALUE;
         long domainMax = Long.MIN_VALUE;
         final IntVar[] arr = new IntVar[data.size()];
@@ -154,15 +180,15 @@ public class Ops {
         return ret;
     }
 
-    public int minVInteger(final List<Integer> data) {
+    public int minInteger(final List<Integer> data) {
         return Collections.min(data);
     }
 
-    public long minVLong(final List<Long> data) {
+    public long minLong(final List<Long> data) {
         return Collections.min(data);
     }
 
-    public IntVar minVIntVar(final List<IntVar> data) {
+    public IntVar minIntVar(final List<IntVar> data) {
         long domainMin = Long.MAX_VALUE;
         long domainMax = Long.MAX_VALUE;
         final IntVar[] arr = new IntVar[data.size()];
@@ -174,10 +200,6 @@ public class Ops {
         final IntVar ret = model.newIntVar(domainMin, domainMax, "");
         model.addMinEquality(ret, arr);
         return ret;
-    }
-
-    public int countV(final long[] data) {
-        return data.length;
     }
 
     public IntVar div(final IntVar left, final int right) {
@@ -240,6 +262,14 @@ public class Ops {
         return ret;
     }
 
+    public long mult(final long left, final long right) {
+        return left * right;
+    }
+
+    public IntVar mult(final long left, final IntVar right) {
+        return mult(right, left);
+    }
+
     public int mult(final int left, final int right) {
         return left * right;
     }
@@ -248,7 +278,7 @@ public class Ops {
         return mult(right, left);
     }
 
-    public IntVar mult(final IntVar left, final int right) {
+    public IntVar mult(final IntVar left, final long right) {
         if (right == 1) {
             return left;
         }
@@ -688,30 +718,43 @@ public class Ops {
         return res;
     }
 
-    public <T> boolean allEqualPrimitive(final List<T> array) {
+    public boolean allEqualInteger(final List<Boolean> array) {
+        return allEqualPrimitive(array);
+    }
+
+    public boolean allEqualString(final List<String> array) {
+        return allEqualPrimitive(array);
+    }
+
+    public boolean allEqualLong(final List<Long> array) {
+        return allEqualPrimitive(array);
+    }
+
+    public boolean allEqualBoolean(final List<Boolean> array) {
+        return allEqualPrimitive(array);
+    }
+
+    private  <T> boolean allEqualPrimitive(final List<T> array) {
         for (int i = 0; i < array.size() - 1; i++) {
-            if (array.get(i) != array.get(i + 1)) {
+            if (!array.get(i).equals(array.get(i + 1))) {
                 return false;
             }
         }
         return true;
     }
 
-    public void allEqualVar(final List<IntVar> array) {
+    public IntVar allEqualIntVar(final List<IntVar> array) {
         for (int i = 0; i < array.size() - 1; i++) {
             model.addEquality(array.get(i), array.get(i + 1));
         }
+        return model.newConstant(1);
     }
 
-    public <T> void allDifferent(final List<IntVar> array) {
-        final IntVar[] intVars = array.toArray(new IntVar[0]);
-        model.addAllDifferent(intVars);
-    }
-
-    public <T> void allDifferent(final List<IntVar> array, final String assumptionContext) {
+    public <T> IntVar allDifferentIntVar(final List<IntVar> array, final String assumptionContext) {
         final IntVar[] intVars = array.toArray(new IntVar[0]);
         final IntVar[] assumptionVars = assumptionLinkedVars(intVars, assumptionContext);
         model.addAllDifferent(assumptionVars);
+        return model.newConstant(1);
     }
 
     public IntVar toConst(final boolean expr) {

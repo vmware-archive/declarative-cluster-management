@@ -235,7 +235,8 @@ public class OrToolsSolver implements ISolverBackend {
 
         // Lower the program to a block of Java code.
         // Start with some passes on Program<ListComprehension>
-        program.map(RewriteArity::apply)
+        program
+               .map(RewriteArity::apply)
                .map(RewriteContains::apply)
                // ... then convert to Program<OutputIR.Block>
                .map(
@@ -419,7 +420,7 @@ public class OrToolsSolver implements ISolverBackend {
         );
 
         // Extract the set of columns being selected in this view
-        final List<ColumnIdentifier> headItemsList = getColumnsAccessed(comprehension, constraintType);
+        final List<Expr> headItemsList = getColumnsAccessed(comprehension, constraintType);
         context.enterScope(viewBlock);
 
         // For non-constraints, create a Map<> or a List<> to collect the result-set (depending on
@@ -467,10 +468,10 @@ public class OrToolsSolver implements ISolverBackend {
      * @param isConstraint whether the comprehension represents a constraint or not
      * @return a list of ColumnIdentifiers corresponding to columns within the comprehension
      */
-    private List<ColumnIdentifier> getColumnsAccessed(final ListComprehension comprehension,
-                                                      final ConstraintType isConstraint) {
+    private List<Expr> getColumnsAccessed(final ListComprehension comprehension,
+                                          final ConstraintType isConstraint) {
         if (isConstraint != ConstraintType.NON_CONSTRAINT) {
-            final List<ColumnIdentifier> columnsAccessed = getColumnsAccessed(comprehension.getQualifiers());
+            final List<Expr> columnsAccessed = getColumnsAccessed(comprehension.getQualifiers());
             if (columnsAccessed.isEmpty()) {
                 // There are constraints that are trivially true or false, wherein the predicate does not depend on
                 // on any columns from the relations in the query. See the ModelTest.innerSubqueryCountTest
@@ -479,13 +480,13 @@ public class OrToolsSolver implements ISolverBackend {
             }
             return columnsAccessed;
         } else {
-            final List<ColumnIdentifier> columnsFromQualifiers = getColumnsAccessed(comprehension.getQualifiers());
-            final List<ColumnIdentifier> columnsFromHead = getColumnsAccessed(comprehension.getHead().getSelectExprs());
+            final List<Expr> columnsFromQualifiers = getColumnsAccessed(comprehension.getQualifiers());
+            final List<Expr> columnsFromHead = getColumnsAccessed(comprehension.getHead().getSelectExprs());
             return Lists.newArrayList(Iterables.concat(columnsFromHead, columnsFromQualifiers));
         }
     }
 
-    private List<ColumnIdentifier> getColumnsAccessed(final List<? extends Expr> exprs) {
+    private List<Expr> getColumnsAccessed(final List<? extends Expr> exprs) {
         return exprs.stream()
                 .map(this::getColumnsAccessed)
                 .flatMap(Collection::stream)
@@ -493,7 +494,7 @@ public class OrToolsSolver implements ISolverBackend {
                 .collect(Collectors.toList());
     }
 
-    private LinkedHashSet<ColumnIdentifier> getColumnsAccessed(final Expr expr) {
+    private LinkedHashSet<Expr> getColumnsAccessed(final Expr expr) {
         final GetColumnIdentifiers visitor = new GetColumnIdentifiers(false);
         visitor.visit(expr);
         return visitor.getColumnIdentifiers();
@@ -503,7 +504,7 @@ public class OrToolsSolver implements ISolverBackend {
      * If required, returns a block of code representing maps or lists created to host the result-sets returned
      * by a view.
      */
-    private OutputIR.Block mapOrListForResultSetBlock(final String viewName, final List<ColumnIdentifier> headItemsList,
+    private OutputIR.Block mapOrListForResultSetBlock(final String viewName, final List<Expr> headItemsList,
                                                       @Nullable final GroupByQualifier groupByQualifier,
                                                       final ConstraintType isConstraint) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "CreateResultSet");
@@ -665,12 +666,16 @@ public class OrToolsSolver implements ISolverBackend {
      * TODO: this overlaps with newly added logic to extract vectors from tuples. They currently perform redundant
      *  work that results in additional lists and passes over the data being created.
      */
-    private OutputIR.Block resultSetAddBlock(final String viewName, final List<ColumnIdentifier> headItems,
+    private OutputIR.Block resultSetAddBlock(final String viewName, final List<Expr> headItems,
                                              @Nullable final GroupByQualifier groupByQualifier,
                                              final TranslationContext context) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
         final String headItemsStr = headItems.stream()
-                .map(expr -> toJavaExpression(expr, context).asString() + " /* " + expr.getField().getName() + " */")
+                .map(expr -> {
+                    final String fieldNameComment = expr instanceof ColumnIdentifier ?
+                             " /* " + ((ColumnIdentifier) expr).getField().getName() + " */" : "";
+                    return toJavaExpression(expr, context).asString() + fieldNameComment;
+                })
                 .collect(Collectors.joining(",\n    "));
         // Create a tuple for the result set
         block.addBody(statement("final var $L = new Tuple$L<>(\n    $L\n    )",
@@ -1010,6 +1015,9 @@ public class OrToolsSolver implements ISolverBackend {
         output.endControlFlow();
     }
 
+    static String camelCase(final String name) {
+        return CaseFormat.LOWER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, name.toUpperCase());
+    }
 
     private static String tableNameStr(final String tableName) {
         return CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, tableName);
@@ -1236,74 +1244,69 @@ public class OrToolsSolver implements ISolverBackend {
                                                          forLoop, context);
             }
 
-            context.enterScope(forLoop);
-            final JavaExpression processedArgument = visit(node.getArgument().get(0),
-                                                           context.withEnterFunctionContext());
-            context.leaveScope();
+            if (node.getArgument().size() == 1) {
+                context.enterScope(forLoop);
+                final JavaExpression processedArgument = visit(node.getArgument().get(0),
+                                                               context.withEnterFunctionContext());
+                context.leaveScope();
+                final JavaExpression listOfProcessedItem = extractListFromLoop(processedArgument,
+                                                                               context.currentScope(), forLoop);
+                switch (node.getFunction()) {
+                    case SUM:
+                    case COUNT:
+                    case MAX:
+                    case MIN:
+                    case ANY:
+                    case ALL:
+                    case ALL_EQUAL:
+                    case ALL_DIFFERENT:
+                    case INCREASING:
+                        final boolean supportsAssumptions = supportsAssumptions(node);
+                        final JavaType argType = processedArgument.type();
+                        final JavaType outType = unaryFunctionType(node, argType);
+                        final String functionName = String.format("%s%s", camelCase(node.getFunction().toString()),
+                                                                  argType);
+                        final String argumentString = listOfProcessedItem.asString();
+                        return supportsAssumptions ?
+                                // Use the current scope as the assumption context
+                               new JavaExpression(CodeBlock.of("o.$L($L, $S)", functionName, argumentString,
+                                                               context.currentScope().getName()).toString(), outType)
+                               : new JavaExpression(CodeBlock.of("o.$L($L)", functionName, argumentString).toString(),
+                                                    outType);
+                    default:
+                        throw new UnsupportedOperationException("Unsupported unary aggregate function "
+                                                                 + node.getFunction());
+                }
+            }
+            throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
+        }
 
-            final JavaType argumentType = processedArgument.type();
-            final boolean argumentIsIntVar = argumentType == JavaType.IntVar;
-
-            final JavaExpression listOfProcessedItem =
-                    extractListFromLoop(processedArgument, context.currentScope(), forLoop);
-            final String function;
-            final JavaType outType;
+        private JavaType unaryFunctionType(final FunctionCall node, final JavaType argumentType) {
             switch (node.getFunction()) {
                 case SUM:
-                    throw new IllegalStateException("Unreachable");
                 case COUNT:
-                    // In these cases, it is safe to replace count(argument) with sum(1)
-                    if ((node.getArgument().get(0) instanceof Literal ||
-                         node.getArgument().get(0) instanceof ColumnIdentifier)) {
-                        final String scanOver = context.isSubQueryContext() ?
-                                context.getSubQueryContext().getSubQueryName() :
-                                context.getGroupContext().getGroupDataName();
-                        return context.declare(argumentIsIntVar
-                                                  ? CodeBlock.of("o.toConst($L.size())", scanOver).toString()
-                                                  : CodeBlock.of("$L.size()", scanOver).toString(),
-                                                 argumentIsIntVar ? JavaType.IntVar : JavaType.Long);
-                    }
-                    function = argumentIsIntVar ? "sumV" : "sum";
-                    outType = argumentIsIntVar ? JavaType.IntVar : argumentType;
-                    break;
+                    return argumentType == JavaType.IntVar ? JavaType.IntVar : JavaType.Long;
                 case MAX:
-                    function = String.format("maxV%s", argumentType);
-                    outType = argumentType;
-                    break;
                 case MIN:
-                    function = String.format("minV%s", argumentType);
-                    outType = argumentType;
-                    break;
+                    return argumentType;
                 case ANY:
-                    function = String.format("any%s", argumentType);
-                    outType = argumentIsIntVar ? JavaType.IntVar : JavaType.Boolean;
-                    break;
                 case ALL:
-                    function = String.format("all%s", argumentType);
-                    outType = argumentIsIntVar ? JavaType.IntVar : JavaType.Boolean;
-                    break;
                 case ALL_EQUAL:
-                    if (argumentIsIntVar) {
-                        context.currentScope().addBody(statement("o.allEqualVar($L)", listOfProcessedItem.asString()));
-                        return context.declare("model.newConstant(1)", JavaType.IntVar);
-                    } else {
-                        function = "allEqualPrimitive";
-                        outType = JavaType.Boolean;
-                        break;
-                    }
                 case ALL_DIFFERENT:
-                    context.currentScope().addBody(
-                            statement("o.allDifferent($L, $S)", listOfProcessedItem.asString(),
-                                                                 context.currentScope().getName()));
-                    return context.declare("model.newConstant(1)",  JavaType.IntVar);
                 case INCREASING:
-                    context.currentScope().addBody(statement("o.increasing($L)", listOfProcessedItem.asString()));
-                    return context.declare("model.newConstant(1)",  JavaType.IntVar);
+                    return argumentType == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
                 default:
-                    throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
+                    throw new IllegalArgumentException(node + " " + argumentType);
             }
-            return new JavaExpression(CodeBlock.of("o.$L($L)", function, listOfProcessedItem.asString()).toString(),
-                                      outType);
+        }
+
+        private boolean supportsAssumptions(final FunctionCall node) {
+            switch (node.getFunction()) {
+                case ALL_DIFFERENT:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         @Override
@@ -1484,6 +1487,8 @@ public class OrToolsSolver implements ISolverBackend {
             final JavaType type = tupleMetadata.inferType(node);
             if (node.getValue() instanceof String) {
                 return new JavaExpression(node.getValue().toString().replace("'", "\""), type);
+            } else if (node.getValue() instanceof Long) {
+                return new JavaExpression(node.getValue() + "L", type);
             } else {
                 return new JavaExpression(node.getValue().toString(), type);
             }
@@ -1613,7 +1618,7 @@ public class OrToolsSolver implements ISolverBackend {
             context.enterScope(forLoop);
             final JavaExpression processedArgument = visit(node, context.withEnterFunctionContext());
             context.leaveScope();
-            final String function = processedArgument.type() == JavaType.IntVar ? "sumV" :
+            final String function = processedArgument.type() == JavaType.IntVar ? "sumIntVar" :
                                     processedArgument.type()  == JavaType.Long ? "sumLong" :
                                      "sumInteger";
             final JavaExpression listOfProcessedItem = extractListFromLoop(processedArgument, context.currentScope(),

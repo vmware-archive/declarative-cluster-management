@@ -10,7 +10,7 @@ import com.vmware.dcm.compiler.ir.GroupByComprehension;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import com.vmware.dcm.compiler.ir.TableRowGenerator;
 
-import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -29,7 +29,11 @@ public class IsConstantSubquery {
             expr.getHead().getSelectExprs().forEach(visitor::visit);
             expr.getQualifiers().forEach(visitor::visit);
         }
-        final LinkedHashSet<ColumnIdentifier> columnIdentifiers = visitor.getColumnIdentifiers();
+        final List<ColumnIdentifier> columnIdentifiers = visitor.getColumnIdentifiers()
+                .stream()
+                .filter(e -> e instanceof ColumnIdentifier)
+                .map(e -> (ColumnIdentifier) e)
+                .collect(Collectors.toList());
 
         final Set<String> accessedTables = expr.getQualifiers()
                 .stream().filter(q -> q instanceof TableRowGenerator)

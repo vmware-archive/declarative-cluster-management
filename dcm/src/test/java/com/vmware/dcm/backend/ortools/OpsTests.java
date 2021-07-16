@@ -84,7 +84,7 @@ public class OpsTests {
                                              model.newIntVar(1, 2, ""),
                                              model.newIntVar(2, 3, ""),
                                              model.newIntVar(3, 4, ""));
-        final IntVar sum = ops.sumV(entries);
+        final IntVar sum = ops.sumIntVar(entries);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
         assertEquals(CpSolverStatus.OPTIMAL, solve);
@@ -99,7 +99,7 @@ public class OpsTests {
                                              model.newIntVar(1, 2, ""),
                                              model.newIntVar(2, 3, ""),
                                              model.newIntVar(3, 4, ""));
-        final IntVar sum = ops.sumV(entries);
+        final IntVar sum = ops.sumIntVar(entries);
         model.addGreaterOrEqual(sum, 8L);
 
         final CpSolver solver = new CpSolver();
@@ -117,7 +117,7 @@ public class OpsTests {
                                              model.newIntVar(0, 100, ""),
                                              model.newIntVar(0, 100, ""),
                                              model.newIntVar(0, 100, ""));
-        ops.increasing(entries);
+        ops.increasingIntVar(entries);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
         assertEquals(CpSolverStatus.OPTIMAL, solve);
@@ -155,7 +155,7 @@ public class OpsTests {
                                              model.newIntVar(0, 10, ""),
                                              model.newIntVar(0, 10, ""),
                                              model.newIntVar(0, 10, ""));
-        final IntVar maxV = ops.maxVIntVar(entries);
+        final IntVar maxV = ops.maxIntVar(entries);
         model.addEquality(maxV, 9);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
@@ -171,7 +171,7 @@ public class OpsTests {
                                              model.newIntVar(0, 1, ""),
                                              model.newIntVar(0, 1, ""),
                                              model.newIntVar(0, 1, ""));
-        final IntVar maxV = ops.maxVIntVar(entries);
+        final IntVar maxV = ops.maxIntVar(entries);
         model.addDifferent(maxV, 1);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
@@ -185,10 +185,10 @@ public class OpsTests {
     @Test
     public void maxVPrimitives() {
         final List<Integer> entries = List.of(1, 2, 4, 3);
-        assertEquals(4, ops.maxVInteger(entries));
+        assertEquals(4, ops.maxInteger(entries));
 
         final List<Long> entriesLong = List.of(1L, 2L, 4L, 3L);
-        assertEquals(4L, ops.maxVLong(entriesLong));
+        assertEquals(4L, ops.maxLong(entriesLong));
     }
 
     @Test
@@ -197,7 +197,7 @@ public class OpsTests {
                                              model.newIntVar(0, 10, ""),
                                              model.newIntVar(0, 10, ""),
                                              model.newIntVar(0, 10, ""));
-        final IntVar minV = ops.minVIntVar(entries);
+        final IntVar minV = ops.minIntVar(entries);
         model.addEquality(minV, 9);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
@@ -213,7 +213,7 @@ public class OpsTests {
                                              model.newIntVar(0, 1, ""),
                                              model.newIntVar(0, 1, ""),
                                              model.newIntVar(0, 1, ""));
-        final IntVar minV = ops.minVIntVar(entries);
+        final IntVar minV = ops.minIntVar(entries);
         model.addDifferent(minV, 0);
         final CpSolver solver = new CpSolver();
         final CpSolverStatus solve = solver.solve(model);
@@ -226,17 +226,17 @@ public class OpsTests {
     @Test
     public void minVPrimitives() {
         final List<Integer> entries = List.of(1, 2, 4, 3);
-        assertEquals(1, ops.minVInteger(entries));
+        assertEquals(1, ops.minInteger(entries));
 
         final List<Long> entriesLong = List.of(1L, 2L, 4L, 3L);
-        assertEquals(1L, ops.minVLong(entriesLong));
+        assertEquals(1L, ops.minLong(entriesLong));
     }
 
-    @Test
-    public void countV() {
-        final long[] entries = {1L, 2L};
-        assertEquals(2, ops.countV(entries));
-    }
+//    @Test
+//    public void countV() {
+//        final long[] entries = {1L, 2L};
+//        assertEquals(2, ops.count(entries));
+//    }
 
     @Test
     public void minusVars() {
