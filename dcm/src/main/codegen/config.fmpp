@@ -1,0 +1,32 @@
+#
+# Copyright 2018-2021 VMware, Inc. All Rights Reserved.
+# SPDX-License-Identifier: BSD-2
+#
+
+data: {
+  parser: {
+    package: "com.vmware.dcm.generated.parser",
+    class: "DcmSqlParserImpl",
+
+    imports: [
+      "org.apache.calcite.sql.SqlCreate"
+      "com.vmware.dcm.parser.SqlCreateConstraint"
+    ]
+
+    keywords: [
+        "MAXIMIZE"
+    ]
+
+    createStatementParserMethods: [
+      "SqlCreateConstraint"
+    ]
+
+    implementationFiles: [
+      "parserImpls.ftl"
+    ]
+  }
+}
+
+freemarkerLinks: {
+  includes: includes/
+}

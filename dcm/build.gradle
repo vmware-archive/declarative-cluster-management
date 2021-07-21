@@ -6,10 +6,21 @@
 plugins {
     id 'maven-publish'
     id 'signing'
-    id 'info.solidsoft.pitest' version '1.6.0'
+    id 'info.solidsoft.pitest' version "${pitestPluginVersion}"
+    id "ca.coglinc.javacc" version "${caCoglincJavaccPluginVersion}"
+}
+
+configurations {
+   calciteParserTemplate { transitive = false }
+   fmpp
 }
 
 dependencies {
+    javacc "net.java.dev.javacc:javacc:${javaCCVersion}"
+    calciteParserTemplate "org.apache.calcite:calcite-core:${calciteCoreVersion}"
+    fmpp "com.googlecode.fmpp-maven-plugin:fmpp-maven-plugin:${fmppMavenPluginVersion}"
+    fmpp "org.freemarker:freemarker:${freemarkerVersion}"
+    implementation "org.apache.calcite:calcite-core:${calciteCoreVersion}"
     implementation "org.freemarker:freemarker:${freemarkerVersion}"
     implementation "org.apache.commons:commons-csv:${commonsCsvVersion}"
     implementation "org.apache.commons:commons-text:${commonsTextVersion}"
@@ -35,6 +46,11 @@ pitest {
 java {
     withJavadocJar()
     withSourcesJar()
+}
+
+javadoc {
+    exclude '**/com/vmware/dcm/generated/parser/ParseException**'
+    exclude '**/com/vmware/dcm/generated/parser/DcmSqlParserImpl**'
 }
 
 publishing {
@@ -93,3 +109,73 @@ publishing {
 signing {
     sign publishing.publications.maven
 }
+
+//
+// The rest of this file is used for the Calcite parser extensions' codegen
+//
+// The workflow is:
+//  1) extract Calcite fmpp templates into a folder
+//  2) extract DCM's fmpp templates into that folder
+//  3) Run FMPP ant task to turn fmpp templates into JavaCC source files
+//  4) Run JavaCC
+//
+def fmppTemplatesFolder = "${buildDir}/templates-fmpp"
+def generatedFmppFolder = "${buildDir}/generated/fmpp"
+def generatedFmppJavaccFolder = "${generatedFmppFolder}/javacc"
+def generatedJavaccFolder = "${buildDir}/generated/javacc"
+def javaccOutputDir = "${generatedJavaccFolder}/com/vmware/dcm/generated/parser"
+
+//  1) extract Calcite fmpp templates into a folder
+task extractCalciteParserTemplate(type: Copy) {
+    dependsOn configurations.calciteParserTemplate
+    from {
+        configurations.calciteParserTemplate.collect {
+            zipTree(it)
+        }
+    }
+    into(fmppTemplatesFolder)
+    eachFile { fcp ->
+        if (!fcp.path.toString().startsWith("codegen")) {
+            fcp.exclude()
+        }
+    }
+    includeEmptyDirs false
+}
+
+//  2) extract DCM's fmpp templates into that folder
+task extractDcmFmppTemplates(type: Copy) {
+    from "$projectDir/src/main/codegen"
+    into "$fmppTemplatesFolder/codegen/"
+}
+
+//  3) Run FMPP to generate javacc source files from the fmpp templates
+task generateFmppSources {
+    dependsOn configurations.fmpp
+    dependsOn extractDcmFmppTemplates
+    dependsOn extractCalciteParserTemplate
+    doLast {
+        ant.taskdef(name: "fmpp", classname: "fmpp.tools.AntTask", classpath: configurations.fmpp.asPath)
+        // Configuration info from http://fmpp.sourceforge.net/ant.html
+        ant.fmpp(configuration: "$fmppTemplatesFolder/codegen/config.fmpp",
+                 sourceRoot: "$fmppTemplatesFolder/codegen/templates",
+                 // It's crucial to add the default_config.fmpp here. Otherwise, we'll need to duplicate
+                 // everything that is in the Calcite FMPP file
+                 data: "tdd($fmppTemplatesFolder/codegen/config.fmpp), " +
+                       "default: tdd($fmppTemplatesFolder/codegen/default_config.fmpp)",
+                 outputRoot: generatedFmppFolder)
+    }
+}
+
+compileJava.dependsOn(generateFmppSources)
+
+//  4) Run JavaCC
+compileJavacc {
+    dependsOn generateFmppSources
+    inputDirectory = file(generatedFmppJavaccFolder)
+    outputDirectory = file(javaccOutputDir)
+    arguments = [static: "false", lookahead: "2"]
+}
+
+// Add the generated files to source sets so IDEA doesn't complain
+sourceSets.main.java.srcDirs += generatedJavaccFolder
+sourcesJar.dependsOn(compileJavacc)

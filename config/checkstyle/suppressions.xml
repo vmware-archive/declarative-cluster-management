@@ -16,4 +16,5 @@
             />
 
     <suppress checks=".*" files="[\\/]generated-sources[\\/]"/>
+    <suppress checks=".*" files="[\\/]generated[\\/]"/>
 </suppressions>

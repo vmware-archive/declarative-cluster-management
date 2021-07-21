@@ -1,0 +1,7 @@
+*.mzn
+*.csv
+build/*
+*/build/*
+.gradle/*
+.idea/*
+.java-version*
