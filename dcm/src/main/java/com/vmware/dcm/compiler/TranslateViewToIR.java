@@ -5,95 +5,69 @@
 
 package com.vmware.dcm.compiler;
 
-import com.facebook.presto.sql.tree.AllColumns;
-import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
-import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
-import com.facebook.presto.sql.tree.BooleanLiteral;
-import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
-import com.facebook.presto.sql.tree.DereferenceExpression;
-import com.facebook.presto.sql.tree.ExistsPredicate;
-import com.facebook.presto.sql.tree.Expression;
-import com.facebook.presto.sql.tree.GroupBy;
-import com.facebook.presto.sql.tree.GroupingElement;
-import com.facebook.presto.sql.tree.Identifier;
-import com.facebook.presto.sql.tree.InPredicate;
-import com.facebook.presto.sql.tree.IsNotNullPredicate;
-import com.facebook.presto.sql.tree.IsNullPredicate;
-import com.facebook.presto.sql.tree.LogicalBinaryExpression;
-import com.facebook.presto.sql.tree.LongLiteral;
-import com.facebook.presto.sql.tree.NotExpression;
-import com.facebook.presto.sql.tree.Query;
-import com.facebook.presto.sql.tree.QuerySpecification;
-import com.facebook.presto.sql.tree.SelectItem;
-import com.facebook.presto.sql.tree.SingleColumn;
-import com.facebook.presto.sql.tree.StringLiteral;
-import com.facebook.presto.sql.tree.SubqueryExpression;
-import com.google.common.base.Splitter;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicate;
 import com.vmware.dcm.compiler.ir.BinaryOperatorPredicateWithAggregate;
 import com.vmware.dcm.compiler.ir.CheckQualifier;
 import com.vmware.dcm.compiler.ir.ColumnIdentifier;
+import com.vmware.dcm.compiler.ir.ExistsPredicate;
 import com.vmware.dcm.compiler.ir.Expr;
 import com.vmware.dcm.compiler.ir.FunctionCall;
 import com.vmware.dcm.compiler.ir.GroupByComprehension;
 import com.vmware.dcm.compiler.ir.GroupByQualifier;
 import com.vmware.dcm.compiler.ir.Head;
+import com.vmware.dcm.compiler.ir.IsNotNullPredicate;
+import com.vmware.dcm.compiler.ir.IsNullPredicate;
 import com.vmware.dcm.compiler.ir.JoinPredicate;
 import com.vmware.dcm.compiler.ir.ListComprehension;
 import com.vmware.dcm.compiler.ir.Literal;
 import com.vmware.dcm.compiler.ir.Qualifier;
 import com.vmware.dcm.compiler.ir.TableRowGenerator;
 import com.vmware.dcm.compiler.ir.UnaryOperator;
+import org.apache.calcite.sql.SqlAsOperator;
+import org.apache.calcite.sql.SqlBinaryOperator;
+import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlPostfixOperator;
+import org.apache.calcite.sql.SqlPrefixOperator;
+import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.SqlUnresolvedFunction;
+import org.apache.calcite.sql.util.SqlBasicVisitor;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, Void> {
-    private static final Map<ArithmeticBinaryExpression.Operator,
-            BinaryOperatorPredicate.Operator> ARITHMETIC_OP_TABLE =
-            new EnumMap<>(ArithmeticBinaryExpression.Operator.class);
-    private static final Map<ComparisonExpression.Operator,
-            BinaryOperatorPredicate.Operator> COMPARISON_OP_TABLE =
-            new EnumMap<>(ComparisonExpression.Operator.class);
-    private static final Map<LogicalBinaryExpression.Operator,
-            BinaryOperatorPredicate.Operator> LOGICAL_OP_TABLE =
-            new EnumMap<>(LogicalBinaryExpression.Operator.class);
+public class TranslateViewToIR extends SqlBasicVisitor<Optional<Expr>> {
+    private static final Map<SqlKind, BinaryOperatorPredicate.Operator> OP_TABLE = new EnumMap<>(SqlKind.class);
 
     static {
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.ADD,
-                BinaryOperatorPredicate.Operator.ADD);
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.SUBTRACT,
-                BinaryOperatorPredicate.Operator.SUBTRACT);
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.MULTIPLY,
-                BinaryOperatorPredicate.Operator.MULTIPLY);
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.DIVIDE,
-                BinaryOperatorPredicate.Operator.DIVIDE);
-        ARITHMETIC_OP_TABLE.put(ArithmeticBinaryExpression.Operator.MODULUS,
-                BinaryOperatorPredicate.Operator.MODULUS);
+        OP_TABLE.put(SqlKind.PLUS, BinaryOperatorPredicate.Operator.ADD);
+        OP_TABLE.put(SqlKind.MINUS, BinaryOperatorPredicate.Operator.SUBTRACT);
+        OP_TABLE.put(SqlKind.TIMES, BinaryOperatorPredicate.Operator.MULTIPLY);
+        OP_TABLE.put(SqlKind.DIVIDE, BinaryOperatorPredicate.Operator.DIVIDE);
+        OP_TABLE.put(SqlKind.MOD, BinaryOperatorPredicate.Operator.MODULUS);
 
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.EQUAL,
-                BinaryOperatorPredicate.Operator.EQUAL);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.LESS_THAN,
-                BinaryOperatorPredicate.Operator.LESS_THAN);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.GREATER_THAN,
-                BinaryOperatorPredicate.Operator.GREATER_THAN);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.LESS_THAN_OR_EQUAL,
-                BinaryOperatorPredicate.Operator.LESS_THAN_OR_EQUAL);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL,
-                BinaryOperatorPredicate.Operator.GREATER_THAN_OR_EQUAL);
-        COMPARISON_OP_TABLE.put(ComparisonExpression.Operator.NOT_EQUAL,
-                BinaryOperatorPredicate.Operator.NOT_EQUAL);
+        OP_TABLE.put(SqlKind.EQUALS, BinaryOperatorPredicate.Operator.EQUAL);
+        OP_TABLE.put(SqlKind.LESS_THAN, BinaryOperatorPredicate.Operator.LESS_THAN);
+        OP_TABLE.put(SqlKind.GREATER_THAN, BinaryOperatorPredicate.Operator.GREATER_THAN);
+        OP_TABLE.put(SqlKind.LESS_THAN_OR_EQUAL, BinaryOperatorPredicate.Operator.LESS_THAN_OR_EQUAL);
+        OP_TABLE.put(SqlKind.GREATER_THAN_OR_EQUAL, BinaryOperatorPredicate.Operator.GREATER_THAN_OR_EQUAL);
+        OP_TABLE.put(SqlKind.NOT_EQUALS, BinaryOperatorPredicate.Operator.NOT_EQUAL);
 
-        LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.AND, BinaryOperatorPredicate.Operator.AND);
-        LOGICAL_OP_TABLE.put(LogicalBinaryExpression.Operator.OR, BinaryOperatorPredicate.Operator.OR);
+        OP_TABLE.put(SqlKind.IN, BinaryOperatorPredicate.Operator.IN);
+
+        OP_TABLE.put(SqlKind.AND, BinaryOperatorPredicate.Operator.AND);
+        OP_TABLE.put(SqlKind.OR, BinaryOperatorPredicate.Operator.OR);
     }
 
     private final IRContext irContext;
@@ -106,138 +80,127 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         this.isAggregate = isAggregate;
     }
 
-    private Expr translateExpression(final Expression expression) {
+    private Expr translateExpression(final SqlNode expression) {
         return translateExpression(expression, irContext, tablesReferencedInView, isAggregate);
     }
 
     @Override
-    protected Optional<Expr> visitLogicalBinaryExpression(final LogicalBinaryExpression node, final Void context) {
-        final Expr left = translateExpression(node.getLeft());
-        final Expr right = translateExpression(node.getRight());
-        final BinaryOperatorPredicate.Operator operator = operatorTranslator(node.getOperator());
-        return Optional.of(createOperatorPredicate(operator, left, right, isAggregate));
-    }
-
-    @Override
-    protected Optional<Expr> visitComparisonExpression(final ComparisonExpression node, final Void context) {
-        final Expr left = translateExpression(node.getLeft());
-        final Expr right = translateExpression(node.getRight());
-        final BinaryOperatorPredicate.Operator operator = operatorTranslator(node.getOperator());
-        return Optional.of(createOperatorPredicate(operator, left, right, isAggregate));
-    }
-
-    @Override
-    protected Optional<Expr> visitArithmeticBinary(final ArithmeticBinaryExpression node, final Void context) {
-        final Expr left = translateExpression(node.getLeft());
-        final Expr right = translateExpression(node.getRight());
-        final BinaryOperatorPredicate.Operator operator = operatorTranslator(node.getOperator());
-        return Optional.of(createOperatorPredicate(operator, left, right, isAggregate));
-    }
-
-    @Override
-    protected Optional<Expr> visitArithmeticUnary(final ArithmeticUnaryExpression node, final Void context) {
-        final Expr innerExpr = translateExpression(node.getValue());
-        final ArithmeticUnaryExpression.Sign sign = node.getSign();
-        final UnaryOperator.Operator signStr = sign.equals(ArithmeticUnaryExpression.Sign.MINUS) ?
-                UnaryOperator.Operator.MINUS : UnaryOperator.Operator.PLUS;
-        final UnaryOperator operatorPredicate = new UnaryOperator(signStr, innerExpr);
-        return Optional.of(operatorPredicate);
-    }
-
-    @Override
-    protected Optional<Expr> visitExists(final ExistsPredicate node, final Void context) {
-        final Expr innerExpr = translateExpression(node.getSubquery());
-        final com.vmware.dcm.compiler.ir.ExistsPredicate operatorPredicate =
-                new com.vmware.dcm.compiler.ir.ExistsPredicate(innerExpr);
-        return Optional.of(operatorPredicate);
-    }
-
-    @Override
-    protected Optional<Expr> visitInPredicate(final InPredicate node, final Void context) {
-        final Expr left = translateExpression(node.getValue());
-        final Expr right = translateExpression(node.getValueList());
-        final BinaryOperatorPredicate operatorPredicate =
-                new BinaryOperatorPredicate(BinaryOperatorPredicate.Operator.IN, left, right);
-        return Optional.of(operatorPredicate);
-    }
-
-    @Override
-    protected Optional<Expr> visitFunctionCall(final com.facebook.presto.sql.tree.FunctionCall node,
-                                               final Void context) {
-        if (node.getArguments().size() == 1
-                || (node.getArguments().isEmpty() && "count".equalsIgnoreCase(node.getName().getSuffix()))
-                || (node.getArguments().size() == 4 && node.getName().getSuffix().equals("capacity_constraint"))
-                || (node.getArguments().size() == 2 && node.getName().getSuffix().equals("contains"))) {
-            // Only having clauses will have function calls in the expression.
-            final Expr function;
-            final String functionNameStr = node.getName().toString().toUpperCase(Locale.US);
-            final FunctionCall.Function functionType = FunctionCall.Function.valueOf(functionNameStr);
-            if (node.getArguments().size() >= 1) {
-                final List<Expr> arguments = node.getArguments().stream()
-                        .map(e -> translateExpression(e, irContext, tablesReferencedInView, isAggregate))
-                        .collect(Collectors.toList());
-                function = new FunctionCall(functionType, arguments);
-            } else if (node.getArguments().isEmpty() &&
-                    "count".equalsIgnoreCase(node.getName().getSuffix())) {
-                // The presto parser does not consider count(*) as a function with a single
-                // argument "*", but instead treats it as a function without any arguments.
-                // The parser code therefore has this special case behavior when it
-                // comes to the count function. See Presto's ExpressionFormatter.visitFunctionCall() for how
-                // this is handled externally from the FunctionCall code.
-                //
-                // We therefore replace the argument for count with the first column of one of the tables.
-                final IRTable table = tablesReferencedInView.iterator().next();
-                final IRColumn field = table.getIRColumns().entrySet().iterator().next().getValue();
-                final ColumnIdentifier column = new ColumnIdentifier(table.getName(), field, false);
-                function = new FunctionCall(functionType, column);
-            } else {
-                throw new RuntimeException("I don't know what to do with this function call type: " + node);
-            }
-            return Optional.of(function);
-        } else {
-            throw new RuntimeException("I don't know what do with the following node: " + node);
+    public Optional<Expr> visit(final SqlCall call) {
+        if (call.getOperator() instanceof SqlBinaryOperator) {
+            return visitBinaryExpression(call);
+        } else if (call.getOperator() instanceof SqlPrefixOperator) {
+            return visitPrefixOperator(call);
+        } else if (call.getOperator() instanceof SqlPostfixOperator) {
+            return visitPostfixOperator(call);
+        } else if (call.getOperator() instanceof SqlUnresolvedFunction) {
+            return visitFunctionCall(call);
+        } else if (call.getOperator() instanceof SqlAsOperator) {
+            final SqlNode operand = call.operand(0);
+            final String alias = call.operand(1).toString();
+            final Expr inner = translateExpression(operand);
+            inner.setAlias(alias);
+            return Optional.of(inner);
+        } else if (call instanceof SqlSelect) {
+            return visitSubqueryExpression(call);
         }
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<Expr> visit(final SqlIdentifier id) {
+        if (id.names.size() == 1) {
+            return visitIdentifier(id);
+        } else if (id.names.size() == 2) {
+            return visitDereferenceExpression(id);
+        } else {
+            throw new IllegalArgumentException(id.toString());
+        }
+    }
+
+    @Override
+    public Optional<Expr> visit(final SqlLiteral literal) {
+        switch (literal.getTypeName()) {
+            case DECIMAL:
+                return Optional.of(new Literal<>(Long.valueOf(literal.toString()), Long.class));
+            case CHAR:
+                final Object value = literal.getValue();
+                assert value != null;
+                return Optional.of(new Literal<>(value.toString(), String.class));
+            case BOOLEAN:
+                return Optional.of(new Literal<>(Boolean.valueOf(literal.toString()), Boolean.class));
+            default:
+                throw new IllegalArgumentException(literal.toString());
+        }
+    }
+
+    protected Optional<Expr> visitBinaryExpression(final SqlCall node) {
+        assert node.operandCount() == 2;
+        final Expr left = translateExpression(node.operand(0));
+        final Expr right = translateExpression(node.operand(1));
+        final BinaryOperatorPredicate.Operator operator = operatorTranslator(node.getOperator().getKind());
+        return Optional.of(createOperatorPredicate(operator, left, right, isAggregate));
+    }
+
+    protected Optional<Expr> visitPrefixOperator(final SqlCall node) {
+        final Expr innerExpr = translateExpression(node.operand(0));
+        switch (node.getOperator().getKind()) {
+            case MINUS_PREFIX:
+                return Optional.of(new UnaryOperator(UnaryOperator.Operator.MINUS, innerExpr));
+            case PLUS_PREFIX:
+                return Optional.of(new UnaryOperator(UnaryOperator.Operator.PLUS, innerExpr));
+            case NOT:
+                return Optional.of(new UnaryOperator(UnaryOperator.Operator.NOT, innerExpr));
+            case EXISTS:
+                return visitExists(node);
+            default:
+                throw new IllegalArgumentException(node.toString());
+        }
+    }
+
+    protected Optional<Expr> visitExists(final SqlCall node) {
+        final Expr innerExpr = translateExpression(node.operand(0));
+        final ExistsPredicate operatorPredicate = new ExistsPredicate(innerExpr);
+        return Optional.of(operatorPredicate);
+    }
+
+    protected Optional<Expr> visitFunctionCall(final SqlCall node) {
+        // Only having clauses will have function calls in the expression.
+        final Expr function;
+        final String functionNameStr = node.getOperator().getName().toUpperCase(Locale.US);
+        final FunctionCall.Function functionType = FunctionCall.Function.valueOf(functionNameStr);
+        if (node.getOperator().getName().equalsIgnoreCase("count")
+            && ((SqlIdentifier) node.operand(0)).isStar()) {
+            // Replace the argument for count with the first column of one of the tables.
+            final IRTable table = tablesReferencedInView.iterator().next();
+            final IRColumn field = table.getIRColumns().entrySet().iterator().next().getValue();
+            final ColumnIdentifier column = new ColumnIdentifier(table.getName(), field, false);
+            function = new FunctionCall(functionType, column);
+        } else if (node.operandCount() >= 1) {
+            final List<Expr> arguments = node.getOperandList().stream()
+                    .map(e -> translateExpression(e, irContext, tablesReferencedInView, isAggregate))
+                    .collect(Collectors.toList());
+            function = new FunctionCall(functionType, arguments);
+        } else {
+            throw new RuntimeException("I don't know what to do with this function call type: " + node);
+        }
+        return Optional.of(function);
     }
 
     /**
      * Parse columns like 'reference.field'
      */
-    @Override
-    protected Optional<Expr> visitDereferenceExpression(final DereferenceExpression node, final Void context) {
+    protected Optional<Expr> visitDereferenceExpression(final SqlIdentifier node) {
         final IRColumn irColumn = getIRColumnFromDereferencedExpression(node, irContext);
         final ColumnIdentifier columnIdentifier = new ColumnIdentifier(irColumn.getIRTable().getName(), irColumn,
                                                 true);
         return Optional.of(columnIdentifier);
     }
 
-    @Override
-    protected Optional<Expr> visitSubqueryExpression(final SubqueryExpression node, final Void context) {
-        final Query subQuery = node.getQuery();
-        return Optional.of(apply(subQuery, Optional.empty(), irContext));
+    protected Optional<Expr> visitSubqueryExpression(final SqlCall node) {
+        return Optional.of(apply((SqlSelect) node, Optional.empty(), irContext));
     }
 
-    @Override
-    protected Optional<Expr> visitLiteral(final com.facebook.presto.sql.tree.Literal node, final Void context) {
-        return super.visitLiteral(node, context);
-    }
-
-    @Override
-    protected Optional<Expr> visitStringLiteral(final StringLiteral node, final Void context) {
-        return Optional.of(new Literal<>("'" + node.getValue() + "'", String.class));
-    }
-
-    @Override
-    protected Optional<Expr> visitLongLiteral(final LongLiteral node, final Void context) {
-        return Optional.of(new Literal<>(Long.valueOf(node.toString()), Long.class));
-    }
-
-    @Override
-    protected Optional<Expr> visitBooleanLiteral(final BooleanLiteral node, final Void context) {
-        return Optional.of(new Literal<>(Boolean.valueOf(node.toString()), Boolean.class));
-    }
-
-    @Override
-    protected Optional<Expr> visitIdentifier(final Identifier node, final Void context) {
+    protected Optional<Expr> visitIdentifier(final SqlIdentifier node) {
         final IRColumn irColumn = irContext.getColumnIfUnique(node.toString(), tablesReferencedInView);
         assert tablesReferencedInView.stream().map(IRTable::getName)
                 .collect(Collectors.toSet())
@@ -246,49 +209,38 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         return Optional.of(identifier);
     }
 
-    @Override
-    protected Optional<Expr> visitNotExpression(final NotExpression node, final Void context) {
-        final Expr innerExpr = translateExpression(node.getValue());
-        final UnaryOperator operatorPredicate = new UnaryOperator(UnaryOperator.Operator.NOT, innerExpr);
-        return Optional.of(operatorPredicate);
+    protected Optional<Expr> visitPostfixOperator(final SqlCall node) {
+        final Expr innerExpr = translateExpression(node.operand(0));
+        switch (node.getOperator().getKind()) {
+            case IS_NOT_NULL:
+                return Optional.of(new IsNotNullPredicate(innerExpr));
+            case IS_NULL:
+                return Optional.of(new IsNullPredicate(innerExpr));
+            default:
+                throw new IllegalArgumentException(node.toString());
+        }
     }
-
-    @Override
-    protected Optional<Expr> visitIsNullPredicate(final IsNullPredicate node, final Void context) {
-        final Expr innerExpr = translateExpression(node.getValue());
-        final com.vmware.dcm.compiler.ir.IsNullPredicate isNullPredicate =
-                new com.vmware.dcm.compiler.ir.IsNullPredicate(innerExpr);
-        return Optional.of(isNullPredicate);
-    }
-
-    @Override
-    protected Optional<Expr> visitIsNotNullPredicate(final IsNotNullPredicate node, final Void context) {
-        final Expr innerExpr = translateExpression(node.getValue());
-        final com.vmware.dcm.compiler.ir.IsNotNullPredicate isNotNullPredicate =
-                new com.vmware.dcm.compiler.ir.IsNotNullPredicate(innerExpr);
-        return Optional.of(isNotNullPredicate);
-    }
-
 
     /**
      * Converts an SQL view into an IR list comprehension.
      *
-     * @param view the AST corresponding to an SQL view statement
+     * @param select the AST corresponding to an SQL view statement
      * @param irContext an IRContext instance
      * @return A list comprehension corresponding to the view parameter
      */
-    static ListComprehension apply(final Query view, final Optional<Expression> check, final IRContext irContext) {
+    static ListComprehension apply(final SqlSelect select, final Optional<SqlNode> constraint,
+                                   final IRContext irContext) {
         final FromExtractor fromParser = new FromExtractor(irContext);
-        fromParser.process(view.getQueryBody());
+        select.accept(fromParser);
 
         final Set<IRTable> tables = fromParser.getTables();
-        final Optional<Expression> where = ((QuerySpecification) view.getQueryBody()).getWhere();
-        final List<Expression> joinConditions = fromParser.getJoinConditions();
-        final Optional<Expression> having = ((QuerySpecification) view.getQueryBody()).getHaving();
-        final Optional<GroupBy> groupBy = ((QuerySpecification) view.getQueryBody()).getGroupBy();
+        final Optional<SqlNode> where = Optional.ofNullable(select.getWhere());
+        final List<SqlNode> joinConditions = fromParser.getJoinConditions();
+        final Optional<SqlNode> having = Optional.ofNullable(select.getHaving());
+        final Optional<SqlNodeList> groupBy = Optional.ofNullable(select.getGroup());
 
         // Construct Monoid Comprehension
-        final List<SelectItem> selectItems = ((QuerySpecification) view.getQueryBody()).getSelect().getSelectItems();
+        final SqlNodeList selectItems = select.getSelectList();
         final List<Expr> selectItemExpr = translateSelectItems(selectItems, irContext, tables);
         final Head head = new Head(selectItemExpr);
 
@@ -297,8 +249,8 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         where.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, false)));
         having.ifPresent(e -> qualifiers.add((Qualifier) translateExpression(e, irContext, tables, true)));
         final UsesAggregateFunctions usesAggregateFunctions = new UsesAggregateFunctions();
-        check.ifPresent(e -> {
-            usesAggregateFunctions.process(e);
+        constraint.ifPresent(e -> {
+            e.accept(usesAggregateFunctions);
             final Expr expr = translateExpression(e, irContext, tables, usesAggregateFunctions.isFound()
                                                       || groupBy.isPresent() || having.isPresent());
             qualifiers.add(new CheckQualifier(expr));
@@ -311,8 +263,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         });
 
         if (groupBy.isPresent()) {
-            final List<GroupingElement> groupingElement = groupBy.get().getGroupingElements();
-            final List<Expr> columnIdentifiers = columnListFromGroupBy(groupingElement, irContext, tables);
+            final List<Expr> columnIdentifiers = columnListFromGroupBy(groupBy.get(), irContext, tables);
             final GroupByQualifier groupByQualifier = new GroupByQualifier(columnIdentifiers);
             final ListComprehension comprehension = new ListComprehension(head, qualifiers);
             return new GroupByComprehension(comprehension, groupByQualifier);
@@ -328,23 +279,19 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
     /**
      * Translates a list of SQL SelectItems into a corresponding list of IR Expr
      */
-    private static List<Expr> translateSelectItems(final List<SelectItem> selectItems,
+    private static List<Expr> translateSelectItems(final SqlNodeList selectItems,
                                                    final IRContext irContext,
                                                    final Set<IRTable> tables) {
         final List<Expr> exprs = new ArrayList<>();
-        for (final SelectItem selectItem: selectItems) {
-            if (selectItem instanceof SingleColumn) {
-                final SingleColumn singleColumn = (SingleColumn) selectItem;
-                final Expression expression = singleColumn.getExpression();
-                final Expr expr = translateExpression(expression, irContext, tables, false);
-                singleColumn.getAlias().ifPresent(v -> expr.setAlias(v.toString()));
-                exprs.add(expr);
-            } else if (selectItem instanceof AllColumns) {
+        for (final SqlNode selectItem: selectItems) {
+            if (selectItem instanceof SqlIdentifier && ((SqlIdentifier) selectItem).isStar()) {
                 tables.forEach(
-                        table ->
-                            table.getIRColumns().forEach((fieldName, irColumn) ->
+                        table -> table.getIRColumns().forEach((fieldName, irColumn) ->
                                 exprs.add(new ColumnIdentifier(table.getName(), irColumn, false)))
                 );
+            } else {
+                final Expr expr = translateExpression(selectItem, irContext, tables, false);
+                exprs.add(expr);
             }
         }
         return exprs;
@@ -354,11 +301,9 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
      * Translates a list of SQL GroupingElements into a corresponding list of ColumnIdentifiers. This method does
      * not work for GroupBy expressions that are not over columns or constant expressions.
      */
-    private static List<Expr> columnListFromGroupBy(final List<GroupingElement> groupingElements,
-                                                                final IRContext irContext, final Set<IRTable> tables) {
+    private static List<Expr> columnListFromGroupBy(final SqlNodeList groupingElements,
+                                                    final IRContext irContext, final Set<IRTable> tables) {
         return groupingElements.stream()
-                .map(GroupingElement::getExpressions) // We only support SimpleGroupBy
-                .flatMap(Collection::stream)
                 .map(expr -> translateExpression(expr, irContext, tables, false))
                 .collect(Collectors.toList());
     }
@@ -366,10 +311,11 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
     /**
      * Translates an SQL AST expression into an IR Expr type.
      */
-    private static Expr translateExpression(final Expression expression, final IRContext irContext,
+    private static Expr translateExpression(final SqlNode expression, final IRContext irContext,
                                            final Set<IRTable> tablesReferencedInView, final boolean isAggregate) {
         final TranslateViewToIR traverser = new TranslateViewToIR(irContext, tablesReferencedInView, isAggregate);
-        return traverser.process(expression).orElseThrow();
+        final Optional<Expr> expr = expression.accept(traverser);
+        return expr.orElseThrow();
     }
 
     private static BinaryOperatorPredicate createOperatorPredicate(final BinaryOperatorPredicate.Operator operator,
@@ -380,14 +326,12 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
                 : new BinaryOperatorPredicate(operator, left, right);
     }
 
+
     /**
      * Retrieve an IRColumn from a given IRContext that corresponds to a DerefenceExpression node from the SQL AST
      */
-    static IRColumn getIRColumnFromDereferencedExpression(final DereferenceExpression node, final IRContext irContext) {
-        final List<String> identifier = Splitter.on(".")
-                .trimResults()
-                .omitEmptyStrings()
-                .splitToList(node.toString());
+    static IRColumn getIRColumnFromDereferencedExpression(final SqlIdentifier node, final IRContext irContext) {
+        final List<String> identifier = node.names;
 
         // Only supports dereference expressions that have exactly 1 dot.
         // At the moment we don't support, e.g. schema.reference.field - that is we only support queries
@@ -400,15 +344,7 @@ public class TranslateViewToIR extends DefaultTraversalVisitor<Optional<Expr>, V
         return irContext.getColumn(tableName, fieldName);
     }
 
-    private static BinaryOperatorPredicate.Operator operatorTranslator(final ArithmeticBinaryExpression.Operator op) {
-        return ARITHMETIC_OP_TABLE.get(op);
-    }
-
-    private static BinaryOperatorPredicate.Operator operatorTranslator(final LogicalBinaryExpression.Operator op) {
-        return LOGICAL_OP_TABLE.get(op);
-    }
-
-    private static BinaryOperatorPredicate.Operator operatorTranslator(final ComparisonExpression.Operator op) {
-        return COMPARISON_OP_TABLE.get(op);
+    private static BinaryOperatorPredicate.Operator operatorTranslator(final SqlKind op) {
+        return Objects.requireNonNull(OP_TABLE.get(op));
     }
 }

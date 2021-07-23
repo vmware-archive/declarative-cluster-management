@@ -31,7 +31,7 @@ public class ScalarProductOptimizationTest {
         conn.execute("insert into t1 values(1, 1)");
         conn.execute("insert into t1 values(1, 1)");
 
-        final List<String> constraints = List.of("CREATE VIEW c1 AS " +
+        final List<String> constraints = List.of("CREATE CONSTRAINT c1 AS " +
                                                  "SELECT * FROM t1 " +
                                                  "CHECK " + checkClause);
         final OrToolsSolver solver = new OrToolsSolver.Builder().setTryScalarProductEncoding(true).build();

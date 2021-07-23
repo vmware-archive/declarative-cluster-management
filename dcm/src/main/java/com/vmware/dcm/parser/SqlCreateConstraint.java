@@ -5,22 +5,25 @@
 
 package com.vmware.dcm.parser;
 
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlCreate;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlSpecialOperator;
 import org.apache.calcite.sql.SqlWriter;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
+import java.util.Optional;
 
 public class SqlCreateConstraint extends SqlCreate {
     public static final SqlOperator OPERATOR =
             new SqlSpecialOperator("CREATE CONSTRAINT", SqlKind.OTHER_DDL);
     private final SqlIdentifier name;
-    private final SqlNode query;
+    private final SqlSelect query;
     private final SqlNode constraint;
     private final Type type;
 
@@ -29,7 +32,7 @@ public class SqlCreateConstraint extends SqlCreate {
                                final String type, final SqlNode constraint) {
         super(OPERATOR, pos, false, false);
         this.name = name;
-        this.query = query;
+        this.query = (SqlSelect) query;
         this.constraint = constraint;
         this.type = Type.valueOf(type);
     }
@@ -43,12 +46,12 @@ public class SqlCreateConstraint extends SqlCreate {
         return name;
     }
 
-    public SqlNode getQuery() {
+    public SqlSelect getQuery() {
         return query;
     }
 
-    public SqlNode getConstraint() {
-        return constraint;
+    public Optional<SqlNode> getConstraint() {
+        return Optional.ofNullable(constraint);
     }
 
     public Type getType() {
@@ -57,7 +60,7 @@ public class SqlCreateConstraint extends SqlCreate {
 
     @Override
     public List<SqlNode> getOperandList() {
-        return null;
+        return constraint == null ? ImmutableList.of(name, query) : ImmutableList.of(name, query, constraint);
     }
 
     @Override
@@ -73,7 +76,7 @@ public class SqlCreateConstraint extends SqlCreate {
         writer.keyword("CONSTRAINT");
         getName().unparse(writer, leftPrec, rightPrec);
         getQuery().unparse(writer, leftPrec, rightPrec);
-        getConstraint().unparse(writer, leftPrec, rightPrec);
+        getConstraint().ifPresent(e -> e.unparse(writer, leftPrec, rightPrec));
         super.unparse(writer, leftPrec, rightPrec);
     }
 

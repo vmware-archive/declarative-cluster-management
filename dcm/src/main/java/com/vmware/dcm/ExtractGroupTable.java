@@ -37,9 +37,8 @@ import java.util.Optional;
 class ExtractGroupTable {
     private static final String GROUP_TABLE_PREFIX = "GROUP_TABLE__";
 
-    Optional<CreateView> process(final CreateView view) {
-        final String viewName = view.getName().toString();
-        final QuerySpecification queryBody = (QuerySpecification) view.getQuery().getQueryBody();
+    Optional<CreateView> process(final String viewName, final Query query) {
+        final QuerySpecification queryBody = (QuerySpecification) query.getQueryBody();
         final List<SelectItem> selectList = new ArrayList<>();
         if (queryBody.getGroupBy().isPresent()) {
             final GroupBy groupBy = queryBody.getGroupBy().get();
@@ -60,14 +59,15 @@ class ExtractGroupTable {
         assert queryBody.getFrom().isPresent();
         // Next, we make sure that join criteria does not have controllables in them
         final Relation relation = relelationWithControllablesRemoved(queryBody.getFrom().get());
-        final Query query = QueryUtil.simpleQuery(QueryUtil.selectList(selectList.toArray(new SelectItem[0])),
+        final Query newQuery = QueryUtil.simpleQuery(QueryUtil.selectList(selectList.toArray(new SelectItem[0])),
                                                   relation,
                                                   queryBody.getWhere(),
                                                   queryBody.getGroupBy(),
                                                   Optional.empty(),
                                                   Optional.empty(),
                                                   Optional.empty());
-        return Optional.of(new CreateView(QualifiedName.of(GROUP_TABLE_PREFIX + viewName.toUpperCase()), query, false));
+        return Optional.of(new CreateView(QualifiedName.of(GROUP_TABLE_PREFIX + viewName.toUpperCase()), newQuery,
+                            false));
     }
 
     private Relation relelationWithControllablesRemoved(final Relation relation) {

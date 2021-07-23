@@ -5,39 +5,42 @@
 
 package com.vmware.dcm.compiler;
 
-import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
-import com.facebook.presto.sql.tree.FunctionCall;
-import com.facebook.presto.sql.tree.SubqueryExpression;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.util.SqlBasicVisitor;
 
-public class UsesAggregateFunctions extends DefaultTraversalVisitor<Void, Void> {
+import static org.apache.calcite.sql.SqlKind.OTHER_FUNCTION;
+
+public class UsesAggregateFunctions extends SqlBasicVisitor<Void> {
     private boolean found = false;
 
     @Override
-    protected Void visitFunctionCall(final FunctionCall node, final Void context) {
-        final com.vmware.dcm.compiler.ir.FunctionCall.Function function =
-                com.vmware.dcm.compiler.ir.FunctionCall.Function.valueOf(node.getName().toString().toUpperCase());
-        switch (function) {
-            case COUNT:
-            case SUM:
-            case MIN:
-            case MAX:
-            case ANY:
-            case ALL:
-            case ALL_DIFFERENT:
-            case ALL_EQUAL:
-            case INCREASING:
-            case CAPACITY_CONSTRAINT:
-                found = true;
-                break;
-            default:
-                found = false;
+    public Void visit(final SqlCall call) {
+        if (call.getKind() == OTHER_FUNCTION) {
+            final FunctionCall.Function function =
+                    FunctionCall.Function.valueOf(call.getOperator().getName().toUpperCase());
+            switch (function) {
+                case COUNT:
+                case SUM:
+                case MIN:
+                case MAX:
+                case ANY:
+                case ALL:
+                case ALL_DIFFERENT:
+                case ALL_EQUAL:
+                case INCREASING:
+                case CAPACITY_CONSTRAINT:
+                    found = true;
+                    break;
+                default:
+                    found = false;
+            }
         }
-        return super.visitFunctionCall(node, context);
-    }
-
-    @Override
-    protected Void visitSubqueryExpression(final SubqueryExpression node, final Void context) {
-        return null;
+        if (call instanceof SqlSelect) {
+            return null;
+        }
+        return super.visit(call);
     }
 
     public boolean isFound() {

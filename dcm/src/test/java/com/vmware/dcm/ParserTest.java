@@ -29,7 +29,7 @@ public class ParserTest {
         assertEquals("XYZ", constraint.getName().getSimple());
         assertEquals(OTHER_DDL, constraint.getOperator().getKind());
         assertEquals(SELECT, constraint.getQuery().getKind());
-        assertEquals(EQUALS, constraint.getConstraint().getKind());
+        assertEquals(EQUALS, constraint.getConstraint().get().getKind());
         assertEquals(SqlCreateConstraint.Type.OBJECTIVE, constraint.getType());
     }
 
@@ -43,7 +43,7 @@ public class ParserTest {
         assertEquals("XYZ", constraint.getName().getSimple());
         assertEquals(OTHER_DDL, constraint.getOperator().getKind());
         assertEquals(SELECT, constraint.getQuery().getKind());
-        assertEquals(EQUALS, constraint.getConstraint().getKind());
+        assertEquals(EQUALS, constraint.getConstraint().get().getKind());
         assertEquals(SqlCreateConstraint.Type.HARD_CONSTRAINT, constraint.getType());
     }
 

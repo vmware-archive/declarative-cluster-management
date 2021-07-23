@@ -7,12 +7,18 @@
 package com.vmware.dcm;
 
 import com.facebook.presto.sql.SqlFormatter;
-import com.facebook.presto.sql.parser.ParsingException;
+import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.tree.CreateView;
+import com.facebook.presto.sql.tree.Query;
 import com.google.common.annotations.VisibleForTesting;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.ModelCompiler;
+import com.vmware.dcm.generated.parser.DcmSqlParserImpl;
+import com.vmware.dcm.parser.SqlCreateConstraint;
+import org.apache.calcite.sql.parser.SqlParseException;
+import org.apache.calcite.sql.parser.SqlParser;
+import org.apache.calcite.sql.validate.SqlConformanceEnum;
 import org.jooq.DSLContext;
 import org.jooq.Meta;
 import org.jooq.Record;
@@ -60,13 +66,17 @@ public class Model {
         // for pretty-print query - useful for debugging
         this.dbCtx.settings().withRenderFormatted(true);
         this.backend = backend;
-        final List<ViewsWithAnnotations> constraintViews = constraints.stream().map(
+        final List<SqlCreateConstraint> constraintViews = constraints.stream().map(
                 constraint -> {
                     try {
-                        return ViewsWithAnnotations.fromString(constraint);
-                    } catch (final ParsingException e) {
+                        final SqlParser.Config config = SqlParser.config()
+                                .withParserFactory(DcmSqlParserImpl.FACTORY)
+                                .withConformance(SqlConformanceEnum.LENIENT);
+                        final SqlParser parser = SqlParser.create(constraint, config);
+                        return (SqlCreateConstraint) parser.parseStmt();
+                    } catch (final SqlParseException e) {
                         LOG.error("Could not parse view: {}", constraint, e);
-                        throw e;
+                        throw new ModelException(e);
                     }
                 }
         ).collect(Collectors.toList());
@@ -74,12 +84,17 @@ public class Model {
         /*
          * Identify additional views to create in the database for group bys. These views will be added to
          * the DB, and we augment the list of tables to pass to the compiler with these views.
+         *
+         * We retain the use of the Presto parser here given that this codepath is only used for the MiniZinc solver.
          */
         final Set<String> createdViewNames = new HashSet<>();
         if (backend.needsGroupTables()) {
             final List<CreateView> groupByViewsToCreate = constraintViews.stream().map(view -> {
+                final com.facebook.presto.sql.parser.SqlParser parser = new com.facebook.presto.sql.parser.SqlParser();
+                final String s = view.getQuery().toString().replace("`", "");
+                final Query statement = (Query) parser.createStatement(s, ParsingOptions.builder().build());
                 final ExtractGroupTable groupTable = new ExtractGroupTable();
-                return groupTable.process(view.getCreateView());
+                return groupTable.process(view.getName().toString(), statement);
             }).filter(Optional::isPresent)
                     .map(Optional::get)
                     .collect(Collectors.toList());
@@ -144,10 +159,16 @@ public class Model {
     private static List<Table<?>> getTablesFromContext(final DSLContext dslContext, final List<String> constraints) {
         final Set<String> accessedTableNames = new HashSet<>();
         constraints.forEach(constraint -> {
-            final ViewsWithAnnotations viewsWithAnnotations = ViewsWithAnnotations.fromString(constraint);
-            final ExtractAccessedTables visitor = new ExtractAccessedTables(accessedTableNames);
-            visitor.process(viewsWithAnnotations.getCreateView());
-            viewsWithAnnotations.getCheckExpression().ifPresent(visitor::process);
+            final SqlParser.Config config = SqlParser.config().withParserFactory(DcmSqlParserImpl.FACTORY)
+                                                              .withConformance(SqlConformanceEnum.LENIENT);
+            final SqlParser parser = SqlParser.create(constraint, config);
+            try {
+                final SqlCreateConstraint ddl = (SqlCreateConstraint) parser.parseStmt();
+                final ExtractAccessedTables visitor = new ExtractAccessedTables(accessedTableNames);
+                visitor.visit(ddl);
+            } catch (final SqlParseException e) {
+                throw new ModelException(e);
+            }
         });
 
         final Meta dslMeta = dslContext.meta();

@@ -5,45 +5,13 @@
 
 package com.vmware.dcm.compiler;
 
-import com.facebook.presto.sql.tree.AliasedRelation;
-import com.facebook.presto.sql.tree.AllColumns;
-import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
-import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
 import com.facebook.presto.sql.tree.AstVisitor;
-import com.facebook.presto.sql.tree.BooleanLiteral;
-import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.CreateView;
-import com.facebook.presto.sql.tree.DereferenceExpression;
-import com.facebook.presto.sql.tree.ExistsPredicate;
-import com.facebook.presto.sql.tree.GroupBy;
-import com.facebook.presto.sql.tree.Identifier;
-import com.facebook.presto.sql.tree.InPredicate;
-import com.facebook.presto.sql.tree.IsNotNullPredicate;
-import com.facebook.presto.sql.tree.IsNullPredicate;
-import com.facebook.presto.sql.tree.Join;
-import com.facebook.presto.sql.tree.LogicalBinaryExpression;
-import com.facebook.presto.sql.tree.LongLiteral;
-import com.facebook.presto.sql.tree.Node;
-import com.facebook.presto.sql.tree.NodeLocation;
-import com.facebook.presto.sql.tree.NotExpression;
-import com.facebook.presto.sql.tree.Query;
-import com.facebook.presto.sql.tree.QuerySpecification;
-import com.facebook.presto.sql.tree.Select;
-import com.facebook.presto.sql.tree.SimpleGroupBy;
-import com.facebook.presto.sql.tree.SingleColumn;
-import com.facebook.presto.sql.tree.StringLiteral;
-import com.facebook.presto.sql.tree.SubqueryExpression;
-import com.facebook.presto.sql.tree.Table;
-import com.vmware.dcm.ModelException;
-import com.vmware.dcm.ViewsWithAnnotations;
-import com.vmware.dcm.compiler.ir.FunctionCall;
-
-import javax.annotation.Nullable;
 
 /*
  * Checks if the parsed AST only uses the supported subset of SQL to specify policies
  */
 public class SyntaxChecking extends AstVisitor<Boolean, Void> {
+    /*
     private final ViewsWithAnnotations view;
     private final String componentType;
     @Nullable Node lastTraversedNode = null;
@@ -238,4 +206,5 @@ public class SyntaxChecking extends AstVisitor<Boolean, Void> {
         final SyntaxChecking validQuery = new SyntaxChecking(view, partType);
         validQuery.process(part);
     }
+     */
 }

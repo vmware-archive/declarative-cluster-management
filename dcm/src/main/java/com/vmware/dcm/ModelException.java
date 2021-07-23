@@ -11,6 +11,10 @@ public class ModelException extends RuntimeException {
         super(message, cause);
     }
 
+    public ModelException(final Exception e) {
+        super(e);
+    }
+
     public ModelException(final String message) {
         super(message);
     }

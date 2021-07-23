@@ -17,6 +17,13 @@ data: {
         "MAXIMIZE"
     ]
 
+    nonReservedKeywordsToAdd: [
+        "ALL"
+        "ANY"
+        "CONTAINS"
+        "MATCHES"
+    ]
+
     createStatementParserMethods: [
       "SqlCreateConstraint"
     ]

@@ -22,7 +22,7 @@ SqlCreate SqlCreateConstraint(Span s, boolean replace): {
             |
          <EOF> {return new SqlCreateConstraint(s.pos(), constraintName, query, "INTERMEDIATE_VIEW", null);}
         )
-        constraint = OrderedQueryOrExpr(ExprContext.ACCEPT_NON_QUERY)
+        constraint = OrderedQueryOrExpr(ExprContext.ACCEPT_ALL)
         {
             return new SqlCreateConstraint(s.pos(), constraintName, query, type, constraint);
         }
