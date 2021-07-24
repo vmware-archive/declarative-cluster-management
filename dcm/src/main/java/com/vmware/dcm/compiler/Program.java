@@ -127,6 +127,8 @@ public class Program<T> {
     private <R> Function<Map<String, T>, Map<String, R>> toMapFunction(final BiFunction<String, T, R> function) {
         return (inputMap) -> inputMap.entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey,
-                        entry -> function.apply(entry.getKey(), entry.getValue())));
+                                          entry -> function.apply(entry.getKey(), entry.getValue()),
+                                          (val1, val2) -> val2,
+                                          LinkedHashMap::new));
     }
 }
