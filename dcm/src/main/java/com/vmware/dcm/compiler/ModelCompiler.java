@@ -59,12 +59,12 @@ public class ModelCompiler {
         final Program<SqlCreateConstraint> sqlProgram = toSqlProgram(views);
 
         // Make sure the supplied views are only using the supported subset of SQL syntax
-//        sqlProgram.forEach((name, view) -> SyntaxChecking.apply(view));
+        sqlProgram.forEach((name, view) -> SyntaxChecking.apply(view));
 
         // Create IRTable entries for non-constraint views
         sqlProgram.nonConstraintViews()
                   .forEach((name, constraint) -> createIRTablesForNonConstraintViews(irContext, name,
-                          (SqlSelect) constraint.getQuery()));
+                          constraint.getQuery()));
 
         // Convert from SQL to list comprehension syntax
         final Program<ListComprehension> irProgram = sqlProgram.map(view -> toListComprehension(irContext, view))

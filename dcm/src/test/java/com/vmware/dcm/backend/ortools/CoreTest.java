@@ -151,8 +151,9 @@ public class CoreTest {
             model.solve("T1");
             fail();
         } catch (final SolverException exception) {
-            assertTrue(exception.core().containsAll(List.of("constraint_all_different", "constraint_domain_1")));
-            assertFalse(exception.core().contains("constraint_domain_2"));
+            System.out.println(exception.core());
+            assertTrue(exception.core().containsAll(List.of("CONSTRAINT_ALL_DIFFERENT", "CONSTRAINT_DOMAIN_1")));
+            assertFalse(exception.core().contains("CONSTRAINT_DOMAIN_2"));
         }
     }
 
@@ -181,8 +182,9 @@ public class CoreTest {
             model.solve("T1");
             fail();
         } catch (final SolverException exception) {
-            assertTrue(exception.core().containsAll(List.of("constraint_sum", "constraint_domain_1")));
-            assertFalse(exception.core().contains("constraint_domain_2"));
+            System.out.println(exception.core());
+            assertTrue(exception.core().containsAll(List.of("CONSTRAINT_SUM", "CONSTRAINT_DOMAIN_1")));
+            assertFalse(exception.core().contains("CONSTRAINT_DOMAIN_2"));
         }
     }
 }

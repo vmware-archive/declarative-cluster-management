@@ -22,17 +22,14 @@ public class SyntaxCheckTest {
     public void testUnsupportedCheckSyntax() {
         final DSLContext conn = DSL.using("jdbc:h2:mem:");
         conn.execute("create table t1(c1 varchar(100), controllable__dummy integer)");
-        final List<String> views = List.of("CREATE VIEW constraint_with_like AS " +
+        final List<String> views = List.of("CREATE CONSTRAINT constraint_with_like AS " +
                                            "SELECT * FROM t1 " +
                                            "CHECK c1 LIKE 'node'");
         try {
             Model.build(conn, views);
             fail();
         } catch (final ModelException err) {
-            assertTrue(err.getMessage()
-                    .contains("---> Unexpected AST type class "));
-            assertTrue(err.getMessage()
-                    .contains("com.facebook.presto.sql.tree.LikePredicate ((c1 LIKE 'node'))"));
+            assertTrue(err.getMessage().contains("Unexpected AST type `C1` LIKE 'node'"));
         }
     }
 
@@ -42,18 +39,14 @@ public class SyntaxCheckTest {
         conn.execute("create table t1(c1 varchar(100), controllable__dummy integer)");
         conn.execute("create table t2(c2 varchar(100))");
 
-        final List<String> views = List.of("CREATE VIEW constraint_with_left_join AS\n" +
+        final List<String> views = List.of("CREATE CONSTRAINT constraint_with_left_join AS\n" +
                 "SELECT * FROM t1 LEFT JOIN t2 on c1 = c2 " +
-                "CHECK c1 LIKE 'node'");
+                "CHECK c1 = 'node'");
         try {
             Model.build(conn, views);
             fail();
         } catch (final ModelException err) {
-            assertTrue(err.getMessage()
-                    .contains("---> Unexpected AST type class "));
-            assertTrue(err.getMessage()
-                    .contains("com.facebook.presto.sql.tree.Join " +
-                           "(Join{type=LEFT, left=Table{t1}, right=Table{t2}, criteria=Optional[JoinOn{(c1 = c2)}]})"));
+            assertTrue(err.getMessage().contains("Unexpected AST type T1 LEFT JOIN T2 ON (`C1` = `C2`)"));
         }
     }
 
@@ -61,17 +54,14 @@ public class SyntaxCheckTest {
     public void testUnsupportedAggregate() {
         final DSLContext conn = DSL.using("jdbc:h2:mem:");
         conn.execute("create table t1(c1 varchar(100), controllable__dummy integer)");
-        final List<String> views = List.of("CREATE VIEW constraint_with_like AS " +
+        final List<String> views = List.of("CREATE CONSTRAINT constraint_with_like AS " +
                 "SELECT * FROM t1 " +
                 "CHECK XYZ(c1) = true");
         try {
             Model.build(conn, views);
             fail();
         } catch (final ModelException err) {
-            assertTrue(err.getMessage()
-                    .contains("---> Unexpected AST type class "));
-            assertTrue(err.getMessage()
-                    .contains("com.facebook.presto.sql.tree.FunctionCall (\"xyz\"(c1))"));
+            assertTrue(err.getMessage().contains("Unexpected AST type `XYZ`(`C1`)"));
         }
     }
 
@@ -79,18 +69,17 @@ public class SyntaxCheckTest {
     public void testDuplicateViewName() {
         final DSLContext conn = DSL.using("jdbc:h2:mem:");
         conn.execute("create table t1(c1 varchar(100), controllable__dummy integer)");
-        final List<String> views = List.of("CREATE VIEW some_constraint AS " +
+        final List<String> views = List.of("CREATE CONSTRAINT some_constraint AS " +
                                             "SELECT * FROM t1 " +
                                             "CHECK controllable__dummy = 1",
-                                            "CREATE VIEW some_constraint AS " +
+                                            "CREATE CONSTRAINT some_constraint AS " +
                                             "SELECT * FROM t1 " +
                                             "CHECK controllable__dummy = 2");
         try {
             Model.build(conn, views);
             fail();
         } catch (final ModelException err) {
-            assertTrue(err.getMessage()
-                    .contains("Duplicate name some_constraint"));
+            assertTrue(err.getMessage().contains("Duplicate name SOME_CONSTRAINT"));
         }
     }
 }

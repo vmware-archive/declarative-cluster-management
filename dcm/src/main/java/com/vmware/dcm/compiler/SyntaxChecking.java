@@ -5,206 +5,92 @@
 
 package com.vmware.dcm.compiler;
 
-import com.facebook.presto.sql.tree.AstVisitor;
+import com.vmware.dcm.ModelException;
+import com.vmware.dcm.compiler.ir.FunctionCall;
+import com.vmware.dcm.parser.SqlCreateConstraint;
+import org.apache.calcite.sql.JoinType;
+import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlJoin;
+import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.util.SqlBasicVisitor;
 
 /*
  * Checks if the parsed AST only uses the supported subset of SQL to specify policies
  */
-public class SyntaxChecking extends AstVisitor<Boolean, Void> {
-    /*
-    private final ViewsWithAnnotations view;
-    private final String componentType;
-    @Nullable Node lastTraversedNode = null;
-
-    SyntaxChecking(final ViewsWithAnnotations view, final String componentType) {
-        this.view = view;
-        this.componentType = componentType;
-    }
+public class SyntaxChecking extends SqlBasicVisitor<Boolean> {
 
     @Override
-    public Boolean process(final Node node, @Nullable final Void context) {
-        this.lastTraversedNode = node;
-        final Boolean ret = super.process(node, context);
-        if (ret == null || !ret) {
-            final NodeLocation nodeLocation = lastTraversedNode.getLocation().get();
-            final String[] lines = componentType.equals("CREATE VIEW") ? view.getInputView().split("\n")
-                                                : view.getInputConstraint().split("\n");
-            final int lineNo = nodeLocation.getLineNumber() - 1;
-            final int colNo = nodeLocation.getColumnNumber();
-            final String faultyLine = lines[lineNo];
-            final String error = String.format("---> Unexpected AST type %s (%s)",
-                                               lastTraversedNode.getClass(), lastTraversedNode);
-            final String withUnderline = faultyLine.substring(0, colNo - 1) + "\033[4m" +
-                                      faultyLine.substring(colNo - 1) +
-                                      String.format("%13s", "") + "\033[0m" + String.format("%10s", error);
-            lines[lineNo] = withUnderline;
-            final String inputStringWithUnderlineAndError = String.join("\n", lines);
-            final String full = String.format("Unsupported SQL syntax in view \"%s\":" +
-                                              "%n%s", view.getCreateView().getName(), inputStringWithUnderlineAndError);
-            throw new ModelException(full);
+    public Boolean visit(final SqlCall call) {
+        if (isAllowedKind(call)) {
+            return super.visit(call);
         }
-        return ret;
+        throw new ModelException("Unexpected AST type " + call);
     }
 
     @Override
-    protected Boolean visitCreateView(final CreateView node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitAliasedRelation(final AliasedRelation node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitAllColumns(final AllColumns node, final Void context) {
-        return true;
-    }
-
-    @Override
-    protected Boolean visitGroupBy(final GroupBy node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitSimpleGroupBy(final SimpleGroupBy node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitTable(final Table node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitJoin(final Join node, final Void context) {
-        return node.getType().equals(Join.Type.INNER) && processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitQuery(final Query node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitQuerySpecification(final QuerySpecification node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitSelect(final Select node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitLogicalBinaryExpression(final LogicalBinaryExpression node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitComparisonExpression(final ComparisonExpression node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitArithmeticBinary(final ArithmeticBinaryExpression node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitArithmeticUnary(final ArithmeticUnaryExpression node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitExists(final ExistsPredicate node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitInPredicate(final InPredicate node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitFunctionCall(final com.facebook.presto.sql.tree.FunctionCall node,
-                                     final Void context) {
-        try {
-            FunctionCall.Function.valueOf(node.getName().toString().toUpperCase());
-        } catch (final IllegalArgumentException e) {
-            return false;
+    public Boolean visit(final SqlIdentifier id) {
+        if (id.isStar() || id.isSimple() || id.names.size() == 2) {
+            return super.visit(id);
         }
-        return processChildren(node);
+        throw new ModelException("Unexpected AST type " + id);
     }
 
     @Override
-    protected Boolean visitDereferenceExpression(final DereferenceExpression node, final Void context) {
+    public Boolean visit(final SqlLiteral literal) {
         return true;
     }
 
-    @Override
-    protected Boolean visitSubqueryExpression(final SubqueryExpression node, final Void context) {
-        return processChildren(node);
+    private boolean isAllowedKind(final SqlCall call) {
+        switch (call.getOperator().getKind()) {
+            case OTHER_FUNCTION:
+                try {
+                    FunctionCall.Function.valueOf(call.getOperator().getName().toUpperCase());
+                    return true;
+                } catch (final IllegalArgumentException e) {
+                    return false;
+                }
+            case JOIN:
+                final SqlJoin join = (SqlJoin) call;
+                if (join.getJoinType() == JoinType.INNER) {
+                    return true;
+                } else {
+                    // We throw an exception here because SqlJoin.toString() is buggy
+                    // https://issues.apache.org/jira/browse/CALCITE-4401
+                    throw new ModelException("Unexpected AST type " + join.getLeft() + " " + join.getJoinType()
+                            + " JOIN " + join.getRight() + " ON (" + join.getCondition() + ")");
+                }
+            case SELECT:
+            case IN:
+            case EXISTS:
+            case NOT:
+            case PLUS:
+            case MINUS:
+            case TIMES:
+            case DIVIDE:
+            case MOD:
+            case EQUALS:
+            case LESS_THAN:
+            case GREATER_THAN:
+            case LESS_THAN_OR_EQUAL:
+            case GREATER_THAN_OR_EQUAL:
+            case NOT_EQUALS:
+            case AND:
+            case OR:
+            case MINUS_PREFIX:
+            case PLUS_PREFIX:
+            case IS_NULL:
+            case IS_NOT_NULL:
+            case AS:
+                return true;
+            default:
+                return false;
+        }
     }
 
-    @Override
-    protected Boolean visitSingleColumn(final SingleColumn node, final Void context) {
-        return processChildren(node);
+    public static void apply(final SqlCreateConstraint ddl) {
+        final SyntaxChecking validQuery = new SyntaxChecking();
+        ddl.getQuery().accept(validQuery);
+        ddl.getConstraint().ifPresent(e -> e.accept(validQuery));
     }
-
-    @Override
-    protected Boolean visitNotExpression(final NotExpression node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitIsNullPredicate(final IsNullPredicate node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitIsNotNullPredicate(final IsNotNullPredicate node, final Void context) {
-        return processChildren(node);
-    }
-
-    @Override
-    protected Boolean visitLiteral(final com.facebook.presto.sql.tree.Literal node, final Void context) {
-        return true;
-    }
-
-    @Override
-    protected Boolean visitStringLiteral(final StringLiteral node, final Void context) {
-        return true;
-    }
-
-    @Override
-    protected Boolean visitLongLiteral(final LongLiteral node, final Void context) {
-        return true;
-    }
-
-    @Override
-    protected Boolean visitBooleanLiteral(final BooleanLiteral node, final Void context) {
-        return true;
-    }
-
-    @Override
-    protected Boolean visitIdentifier(final Identifier node, final Void context) {
-        return true;
-    }
-
-    private Boolean processChildren(final Node node) {
-        return node.getChildren().stream().map(this::process).reduce(true, (a, b) -> a && b);
-    }
-
-    public static void apply(final ViewsWithAnnotations view) {
-        check(view, view.getCreateView(), "CREATE VIEW");
-        view.getCheckExpression().ifPresent(expr -> check(view, expr, "CHECK"));
-        view.getMaximizeExpression().ifPresent(expr -> check(view, expr, "MAXIMIZE"));
-    }
-
-    private static void check(final ViewsWithAnnotations view, final Node part, final String partType) {
-        final SyntaxChecking validQuery = new SyntaxChecking(view, partType);
-        validQuery.process(part);
-    }
-     */
 }
