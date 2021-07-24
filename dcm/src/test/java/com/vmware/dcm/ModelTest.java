@@ -2244,6 +2244,28 @@ public class ModelTest {
         assertEquals(2, fetch.size());
     }
 
+
+    @Test
+    public void testNonConstraintViews() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1(c1 integer, controllable__c2 integer)");
+
+        final List<String> views = List.of("CREATE CONSTRAINT intermediate_view AS " +
+                        "SELECT c1, controllable__c2 as c2 FROM t1",
+                "CREATE CONSTRAINT c_on_intermediate_view AS " +
+                        "SELECT * FROM intermediate_view " +
+                        "CHECK c1 = 10 and c2 = 11");
+
+        final Model model = buildModel(conn, SolverConfig.OrToolsSolver, views, "testAll");
+
+        conn.execute("insert into t1 values (10, 1)");
+        conn.execute("insert into t1 values (10, 2)");
+
+        final Result<? extends Record> fetch = model.solve("T1");
+        assertEquals(Set.of(10), fetch.intoSet(0));
+        assertEquals(Set.of(11), fetch.intoSet(1));
+    }
+
     @Test
     @Disabled("Enable when https://github.com/vmware/declarative-cluster-management/issues/112 is fixed")
     public void testSolverTimeLimit() {
