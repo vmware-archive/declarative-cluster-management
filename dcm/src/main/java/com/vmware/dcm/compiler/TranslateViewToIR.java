@@ -137,6 +137,12 @@ public class TranslateViewToIR extends SqlBasicVisitor<Optional<Expr>> {
         assert node.operandCount() == 2;
         final Expr left = translateExpression(node.operand(0));
         final Expr right = translateExpression(node.operand(1));
+        if (node.getOperator().getKind() == SqlKind.NOT_IN) {
+            final BinaryOperatorPredicate.Operator inOperator = operatorTranslator(SqlKind.IN);
+            final BinaryOperatorPredicate inOperation = createOperatorPredicate(inOperator, left, right, isAggregate);
+            final UnaryOperator notInOperation = new UnaryOperator(UnaryOperator.Operator.NOT, inOperation);
+            return Optional.of(notInOperation);
+        }
         final BinaryOperatorPredicate.Operator operator = operatorTranslator(node.getOperator().getKind());
         return Optional.of(createOperatorPredicate(operator, left, right, isAggregate));
     }
