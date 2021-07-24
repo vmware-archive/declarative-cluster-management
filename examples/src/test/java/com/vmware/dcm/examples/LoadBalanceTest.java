@@ -151,8 +151,8 @@ public class LoadBalanceTest {
             fail();
         } catch (final SolverException e) {
             System.out.println(e.core());
-            assertTrue(e.core().containsAll(List.of("constraint_rest_to_pm3", "constraint_capacity")));
-            assertFalse(e.core().contains("constraint_some_avoid_pm3"));
+            assertTrue(e.core().containsAll(List.of("CONSTRAINT_REST_TO_PM3", "CONSTRAINT_CAPACITY")));
+            assertFalse(e.core().contains("CONSTRAINT_SOME_AVOID_PM3"));
         }
     }
 

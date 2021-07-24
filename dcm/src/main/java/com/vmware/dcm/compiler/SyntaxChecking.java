@@ -62,6 +62,7 @@ public class SyntaxChecking extends SqlBasicVisitor<Boolean> {
                 }
             case SELECT:
             case IN:
+            case NOT_IN:
             case EXISTS:
             case NOT:
             case PLUS:
