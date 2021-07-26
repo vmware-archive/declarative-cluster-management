@@ -6,16 +6,14 @@
 
 package com.vmware.dcm.compiler;
 
-import com.facebook.presto.sql.tree.CreateView;
-import com.facebook.presto.sql.tree.Query;
-import com.facebook.presto.sql.tree.QuerySpecification;
-import com.facebook.presto.sql.tree.SelectItem;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.vmware.dcm.Model;
 import com.vmware.dcm.ModelException;
-import com.vmware.dcm.ViewsWithAnnotations;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.compiler.ir.ListComprehension;
+import com.vmware.dcm.parser.SqlCreateConstraint;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlSelect;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Record;
@@ -40,7 +38,7 @@ public class ModelCompiler {
      * @return A list of strings representing the output program that was compiled
      */
     @CanIgnoreReturnValue
-    public List<String> compile(final List<Table<?>> tables, final List<ViewsWithAnnotations> views,
+    public List<String> compile(final List<Table<?>> tables, final List<SqlCreateConstraint> views,
                                 final ISolverBackend backend) {
         final Map<String, IRTable> irTables = parseModel(tables);
         final IRContext irContext = new IRContext(irTables);
@@ -50,7 +48,7 @@ public class ModelCompiler {
         // Assert that all views are uniquely named
         final Set<String> names = new HashSet<>();
         views.forEach(view -> {
-            final String name = view.getCreateView().getName().toString();
+            final String name = view.getName().getSimple();
             if (names.contains(name)) {
                 throw new ModelException("Duplicate name " + name);
             }
@@ -58,15 +56,15 @@ public class ModelCompiler {
         });
 
         // Extract all the necessary views from the input code
-        final Program<ViewsWithAnnotations> sqlProgram = toSqlProgram(views);
+        final Program<SqlCreateConstraint> sqlProgram = toSqlProgram(views);
 
         // Make sure the supplied views are only using the supported subset of SQL syntax
         sqlProgram.forEach((name, view) -> SyntaxChecking.apply(view));
 
         // Create IRTable entries for non-constraint views
         sqlProgram.nonConstraintViews()
-                  .forEach((name, view) -> createIRTablesForNonConstraintViews(irContext, name,
-                                                                               view.getCreateView().getQuery()));
+                  .forEach((name, constraint) -> createIRTablesForNonConstraintViews(irContext, name,
+                          constraint.getQuery()));
 
         // Convert from SQL to list comprehension syntax
         final Program<ListComprehension> irProgram = sqlProgram.map(view -> toListComprehension(irContext, view))
@@ -76,17 +74,22 @@ public class ModelCompiler {
         return backend.generateModelCode(irContext, irProgram);
     }
 
-    private Program<ViewsWithAnnotations> toSqlProgram(final List<ViewsWithAnnotations> viewsWithChecks) {
-        final Program<ViewsWithAnnotations> program = new Program<>();
-        viewsWithChecks.forEach(view -> {
-                final CreateView createView = view.getCreateView();
-                final String viewName = createView.getName().toString();
-                if (view.getCheckExpression().isPresent()) {
-                    program.constraintViews().put(viewName, view);
-                } else if (view.isObjective()) {
-                    program.objectiveFunctionViews().put(viewName, view);
-                } else {
-                    program.nonConstraintViews().put(viewName, view);
+    private Program<SqlCreateConstraint> toSqlProgram(final List<SqlCreateConstraint> viewsWithChecks) {
+        final Program<SqlCreateConstraint> program = new Program<>();
+        viewsWithChecks.forEach(constraint -> {
+                final String viewName = constraint.getName().toString();
+                switch (constraint.getType()) {
+                    case HARD_CONSTRAINT:
+                        program.constraintViews().put(viewName, constraint);
+                        break;
+                    case OBJECTIVE:
+                        program.objectiveFunctionViews().put(viewName, constraint);
+                        break;
+                    case INTERMEDIATE_VIEW:
+                        program.nonConstraintViews().put(viewName, constraint);
+                        break;
+                    default:
+                        throw new IllegalArgumentException(constraint.getType().name());
                 }
             }
         );
@@ -99,32 +102,30 @@ public class ModelCompiler {
      * to track relevant metadata (like column type information).
      */
     private void createIRTablesForNonConstraintViews(final IRContext irContext,
-                                                     final String viewName, final Query view) {
+                                                     final String viewName, final SqlSelect query) {
         final FromExtractor fromParser = new FromExtractor(irContext);
-        fromParser.process(view.getQueryBody());
-
+        query.accept(fromParser);
         final Set<IRTable> tables = fromParser.getTables();
-        final List<SelectItem> selectItems = ((QuerySpecification) view.getQueryBody()).getSelect().getSelectItems();
-        createIRTablesFromSelectItems(irContext, selectItems, tables, viewName);
+        final SqlNodeList selectList = query.getSelectList();
+        createIRTablesFromSelectItems(irContext, selectList, tables, viewName);
     }
 
     /*
      * Given a list of select items, constructs IRColumns and IRTable entries for them.
      */
-    private void createIRTablesFromSelectItems(final IRContext irContext, final List<SelectItem> selectItems,
+    private void createIRTablesFromSelectItems(final IRContext irContext, final SqlNodeList selectItems,
                                                final Set<IRTable> tablesReferencedInView, final String viewName) {
         final IRTable viewTable = new IRTable(null, viewName, viewName);
         selectItems.forEach(selectItem -> {
             final IRColumnsFromSelectItems visitor = new IRColumnsFromSelectItems(irContext, viewTable,
                                                                                   tablesReferencedInView);
-            visitor.process(selectItem); // updates viewTable with new columns
+            selectItem.accept(visitor);
         });
         irContext.addAliasedOrViewTable(viewTable);
     }
 
-    private ListComprehension toListComprehension(final IRContext irContext, final ViewsWithAnnotations view) {
-        return TranslateViewToIR.apply(view.getCreateView().getQuery(),
-                view.getCheckExpression().or(view::getMaximizeExpression), irContext);
+    private ListComprehension toListComprehension(final IRContext irContext, final SqlCreateConstraint view) {
+        return TranslateViewToIR.apply(view.getQuery(), view.getConstraint(), irContext);
     }
 
     /**

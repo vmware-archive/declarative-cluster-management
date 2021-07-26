@@ -104,7 +104,7 @@ Start reading from the
     */
    @Test
    public void testSimpleConstraint() {
-       final String allVmsGoToPm3 = "create view constraint_simple as " +
+       final String allVmsGoToPm3 = "create constraint constraint_simple as " +
                                     "select * from virtual_machine " +
                                     "check controllable__physical_machine = 'pm3'";
        final LoadBalance lb = new LoadBalance(Collections.singletonList(allVmsGoToPm3));
@@ -114,7 +114,8 @@ Start reading from the
        results.forEach(e -> assertEquals("pm3", e.get("CONTROLLABLE__PHYSICAL_MACHINE")));
    }
    ```
-   To specify a hard constraint, we create a view with a `check` clause. The `check` clause
+   To specify a hard constraint, we use the CREATE CONSTRAINT statement which specifies a SELECT statement
+   that fetches some records along with a `check` clause. The `check` clause
    specifies a predicate that should hold true for all records returned by the relation being selected (in this case,
    the table `virtual_machine`). This particular constraint requires all VMs to be assigned to `pm3`, which yields
    the following result when `model.solve` is invoked:
@@ -150,7 +151,7 @@ Start reading from the
    @Test
    public void testCapacityConstraints() {
        final String capacityConstraint =
-               "create view constraint_capacity as " +
+               "create constraint constraint_capacity as " +
                "select * from virtual_machine " +
                "join physical_machine " +
                "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
@@ -198,7 +199,7 @@ Start reading from the
    @Test
    public void testDistributeLoad() {
        final String capacityConstraint =
-               "create view constraint_capacity as " +
+               "create constraint constraint_capacity as " +
                "select * from virtual_machine " +
                "join physical_machine " +
                "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
@@ -206,7 +207,7 @@ Start reading from the
                "check sum(virtual_machine.cpu) <= physical_machine.cpu_capacity and " +
                "      sum(virtual_machine.memory) <= physical_machine.memory_capacity";
    
-       final String spareCpu = "create view spare_cpu as " +
+       final String spareCpu = "create constraint spare_cpu as " +
                "select physical_machine.cpu_capacity - sum(virtual_machine.cpu) as cpu_spare " +
                "from virtual_machine " +
                "join physical_machine " +
@@ -214,7 +215,7 @@ Start reading from the
                "group by physical_machine.name, physical_machine.cpu_capacity";
    
        // Queries presented as objectives, will have their values maximized.
-       final String distributeLoadCpu = "create view objective_load_cpu as " +
+       final String distributeLoadCpu = "create constraint objective_load_cpu as " +
                                         "select * from spare_cpu " +
                                         "maximize min(cpu_spare)";
    
@@ -276,7 +277,7 @@ Start reading from the
     */
    @Test
    public void testDatabaseViews() {
-       final String someVmsGoToPm3 = "create view constraint_simple as " +
+       final String someVmsGoToPm3 = "create constraint constraint_simple as " +
                "select * from virtual_machine " +
                "check name not in (select name from vm_subset) or controllable__physical_machine = 'pm3'";
    
@@ -299,18 +300,18 @@ Start reading from the
    @Test
    public void testUnsat() {
        // Satisfiable
-       final String someVmsAvoidPm3 = "create view constraint_some_avoid_pm3 as " +
+       final String someVmsAvoidPm3 = "create constraint constraint_some_avoid_pm3 as " +
                "select * from virtual_machine " +
                "check name not in (select name from vm_subset) or controllable__physical_machine != 'pm3'";
    
        // The next two constraints are mutually unsatisfiable. The first constraint forces too many VMs
        // to go the same physical machine, but that violates the capacity constraint
-       final String restGoToPm3 = "create view constraint_rest_to_pm3 as " +
+       final String restGoToPm3 = "create constraint constraint_rest_to_pm3 as " +
                "select * from virtual_machine " +
                "check name in (select name from vm_subset) or controllable__physical_machine = 'pm3'";
    
        final String capacityConstraint =
-               "create view constraint_capacity as " +
+               "create constraint constraint_capacity as " +
                "select * from virtual_machine " +
                "join physical_machine " +
                "  on physical_machine.name = virtual_machine.controllable__physical_machine " +
@@ -325,8 +326,8 @@ Start reading from the
            fail();
        } catch (final SolverException e) {
            System.out.println(e.core());
-           assertTrue(e.core().containsAll(List.of("constraint_rest_to_pm3", "constraint_capacity")));
-           assertFalse(e.core().contains("constraint_some_avoid_pm3"));
+           assertTrue(e.core().containsAll(List.of("CONSTRAINT_REST_TO_PM3", "CONSTRAINT_CAPACITY")));
+           assertFalse(e.core().contains("CONSTRAINT_SOME_AVOID_PM3"));
        }
    }
    ```

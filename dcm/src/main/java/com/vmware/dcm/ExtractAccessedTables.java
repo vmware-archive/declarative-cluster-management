@@ -6,16 +6,20 @@
 
 package com.vmware.dcm;
 
-import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
-import com.facebook.presto.sql.tree.Table;
+import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlJoin;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.util.SqlBasicVisitor;
 
-import java.util.Locale;
 import java.util.Set;
 
 /**
  * Collects table names for every table referenced within a query.
  */
-public class ExtractAccessedTables extends DefaultTraversalVisitor<Void, Void> {
+public class ExtractAccessedTables extends SqlBasicVisitor<Void> {
     final Set<String> tableNames;
 
     ExtractAccessedTables(final Set<String> tableNames) {
@@ -23,8 +27,35 @@ public class ExtractAccessedTables extends DefaultTraversalVisitor<Void, Void> {
     }
 
     @Override
-    protected Void visitTable(final Table node, final Void context) {
-        tableNames.add(node.getName().getSuffix().toUpperCase(Locale.getDefault()));
-        return super.visitTable(node, context);
+    public Void visit(final SqlCall call) {
+        if (call instanceof SqlSelect) {
+            final SqlSelect select = (SqlSelect) call;
+            final SqlNode node = select.getFrom();
+            assert node != null;
+            visitInner(node);
+        }
+        return super.visit(call);
+    }
+
+    private void visitInner(final SqlNode node) {
+        switch (node.getKind()) {
+            case IDENTIFIER:
+                tableNames.add(((SqlIdentifier) node).getSimple());
+                break;
+            case AS:
+                final SqlNode[] operands = ((SqlBasicCall) node).getOperands();
+                assert operands != null;
+                final SqlIdentifier relation = (SqlIdentifier) operands[0];
+                assert relation != null;
+                tableNames.add(relation.getSimple());
+                break;
+            case JOIN:
+                final SqlJoin join = (SqlJoin) node;
+                visitInner(join.getLeft());
+                visitInner(join.getRight());
+                break;
+            default:
+                break;
+        }
     }
 }

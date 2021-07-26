@@ -34,7 +34,7 @@ class Policies {
      * that satisfy some predicates corresponding to availability and resource utilization
      */
     static Policy nodePredicates() {
-        final String constraint = "create view constraint_controllable_node_name_domain as " +
+        final String constraint = "create constraint constraint_controllable_node_name_domain as " +
                                   "select * from pods_to_assign " +
                                   "check controllable__node_name in " +
                                         "(select name from spare_capacity_per_node)";
@@ -47,7 +47,7 @@ class Policies {
      * the nodeAffinity policies in k8s.
      */
     static Policy nodeSelectorPredicate() {
-        final String constraint = "create view constraint_node_selector as " +
+        final String constraint = "create constraint constraint_node_selector as " +
                                   "select * " +
                                   "from pods_to_assign " +
                                   "check pods_to_assign.has_node_selector_labels = false or " +
@@ -63,7 +63,7 @@ class Policies {
      * that satisfy pod affinity requirements.
      */
     static Policy podAffinityPredicate() {
-        final String constraint = "create view constraint_pod_affinity as " +
+        final String constraint = "create constraint constraint_pod_affinity as " +
                                   "select * " +
                                   "from pods_to_assign " +
                                   "check pods_to_assign.has_pod_affinity_requirements = false or " +
@@ -94,7 +94,7 @@ class Policies {
      * that satisfy pod anti0affinity requirements.
      */
     static Policy podAntiAffinityPredicate() {
-        final String constraintPending = "create view constraint_pod_anti_affinity_pending as " +
+        final String constraintPending = "create constraint constraint_pod_anti_affinity_pending as " +
             "select * " +
             "from pods_to_assign " +
             "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
@@ -109,7 +109,7 @@ class Policies {
             "           and contains(inter_pod_anti_affinity_matches_pending.matches, b.uid)))";
 
         final String constraintScheduled =
-                "create view constraint_pod_anti_affinity_scheduled as " +
+                "create constraint constraint_pod_anti_affinity_scheduled as " +
                 "select * " +
                 "from pods_to_assign " +
                 "join inter_pod_anti_affinity_matches_scheduled on  " +
@@ -131,7 +131,7 @@ class Policies {
         // pod per node. If not, those nodes will lack a row in the spare_capacity_per_node view. This is fine for
         // Kubernetes, because there always some system pods running on each node.
         final List<String> views = new ArrayList<>();
-        final String hardConstraint = "create view constraint_pods_slack_per_node as " +
+        final String hardConstraint = "create constraint constraint_pods_slack_per_node as " +
             "select * " +
             "from spare_capacity_per_node " +
             "join pods_to_assign " +
@@ -151,7 +151,7 @@ class Policies {
      * All pods belonging to the same owner are symmetric with respect to one another.
      */
     static Policy symmetryBreaking() {
-        final String constraint = "create view constraint_symmetry_breaking as " +
+        final String constraint = "create constraint constraint_symmetry_breaking as " +
                 "select * " +
                 "from pods_to_assign " +
                 "group by equivalence_class " +
@@ -163,7 +163,7 @@ class Policies {
      * Node taints and tolerations
      */
     static Policy taintsAndTolerations() {
-        final String constraint = "create view constraint_node_taints as " +
+        final String constraint = "create constraint constraint_node_taints as " +
                 "select * " +
                 "from pods_to_assign " +
                 "join nodes_that_have_tolerations" +

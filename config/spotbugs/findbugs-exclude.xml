@@ -9,6 +9,9 @@
         <Package name="com.vmware.dcm.generated"/>
     </Match>
     <Match>
+        <Package name="com.vmware.dcm.generated.parser"/>
+    </Match>
+    <Match>
         <Package name="com.vmware.dcm.k8s.generated"/>
     </Match>
     <Match>

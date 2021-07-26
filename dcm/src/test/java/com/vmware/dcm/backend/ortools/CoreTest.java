@@ -135,15 +135,15 @@ public class CoreTest {
         conn.execute("insert into t1 values (3, null)");
 
         // Unsatisfiable
-        final String allDifferent = "create view constraint_all_different as " +
+        final String allDifferent = "create constraint constraint_all_different as " +
                 "select * from t1 check all_different(controllable__var) = true";
 
         // Unsatisfiable
-        final String domain1 = "create view constraint_domain_1 as " +
+        final String domain1 = "create constraint constraint_domain_1 as " +
                 "select * from t1 check controllable__var >= 1 and controllable__var <= 2";
 
         // Satisfiable
-        final String domain2 = "create view constraint_domain_2 as " +
+        final String domain2 = "create constraint constraint_domain_2 as " +
                 "select * from t1 check id != 1 or controllable__var = 1";
 
         final Model model = Model.build(conn, List.of(allDifferent, domain1, domain2));
@@ -151,8 +151,9 @@ public class CoreTest {
             model.solve("T1");
             fail();
         } catch (final SolverException exception) {
-            assertTrue(exception.core().containsAll(List.of("constraint_all_different", "constraint_domain_1")));
-            assertFalse(exception.core().contains("constraint_domain_2"));
+            System.out.println(exception.core());
+            assertTrue(exception.core().containsAll(List.of("CONSTRAINT_ALL_DIFFERENT", "CONSTRAINT_DOMAIN_1")));
+            assertFalse(exception.core().contains("CONSTRAINT_DOMAIN_2"));
         }
     }
 
@@ -165,15 +166,15 @@ public class CoreTest {
         conn.execute("insert into t1 values (3, null)");
 
         // Unsatisfiable
-        final String sum = "create view constraint_sum as " +
+        final String sum = "create constraint constraint_sum as " +
                 "select * from t1 check sum(controllable__var) = 7";
 
         // Unsatisfiable
-        final String domain1 = "create view constraint_domain_1 as " +
+        final String domain1 = "create constraint constraint_domain_1 as " +
                 "select * from t1 check controllable__var >= 1 and controllable__var <= 2";
 
         // Satisfiable
-        final String domain2 = "create view constraint_domain_2 as " +
+        final String domain2 = "create constraint constraint_domain_2 as " +
                 "select * from t1 check id != 1 or controllable__var = 1";
 
         final Model model = Model.build(conn, List.of(sum, domain1, domain2));
@@ -181,8 +182,9 @@ public class CoreTest {
             model.solve("T1");
             fail();
         } catch (final SolverException exception) {
-            assertTrue(exception.core().containsAll(List.of("constraint_sum", "constraint_domain_1")));
-            assertFalse(exception.core().contains("constraint_domain_2"));
+            System.out.println(exception.core());
+            assertTrue(exception.core().containsAll(List.of("CONSTRAINT_SUM", "CONSTRAINT_DOMAIN_1")));
+            assertFalse(exception.core().contains("CONSTRAINT_DOMAIN_2"));
         }
     }
 }
