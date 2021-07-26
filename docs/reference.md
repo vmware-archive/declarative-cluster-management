@@ -193,23 +193,24 @@ where status = 'Pending' and node_name is null and schedulerName = 'dcm-schedule
 
 ### Hard constraints
 
-A hard constraint is structured as a view that specifies a relation followed by a `CHECK` clause. The `CHECK` clause
-specifies a predicate that must hold true for every record produced by the relation. For example,
+A hard constraint is structured as a `CREATE CONSTRAINT` statement that specifies a relation followed by a `CHECK` 
+clause.  The `CHECK` clause  specifies a predicate that must hold true for every record produced by the relation. 
+For example,
 
 ```sql
-create view constraint_simple as
+create constraint simple as
 select * from virtual_machine
 check controllable__physical_machine = 'pm3';
 ```
 
 ### Objective functions
 
-An objective function is structured as a view that specifies a relation followed by a `MAXIMIZE` clause. 
-The `MAXIMIZE` clause computes a single column of integers (booleans are automatically cast into integers), 
-whose value DCM will try to maximize. For example,
+An objective function is structured as a `CREATE CONSTRAINT` statement that specifies a relation followed by a 
+`MAXIMIZE` clause.  The `MAXIMIZE` clause computes a single column of integers (booleans are automatically
+cast into integers),  whose value DCM will try to maximize. For example,
 
 ```sql
-create view objective_load_cpu as 
+create constraint objective_load_cpu as 
 select * from spare_cpu
 maximize min(cpu_spare);
 ```
@@ -217,7 +218,7 @@ maximize min(cpu_spare);
 or
 
 ```sql
-create view objective_load_cpu as 
+create constraint objective_load_cpu as 
 select * from spare_cpu
 maximize cpu_spare;
 ```
