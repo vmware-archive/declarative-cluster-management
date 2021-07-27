@@ -2,6 +2,19 @@
 
 ## Ongoing: Release 0.12.0
 
+* Public API changes:
+  * #123: Breaking changes to constraint syntax. We now declare constraints 
+    using a `CREATE CONSTRAINT` DDL statement instead of the `CREATE VIEW` syntax. 
+    Please see the documentation for more information.
+  * New aggregate functions `ANY` and `ALL`.
+
+* Issues fixed:
+  * #99: dcm: Index usage in ortools backend is sensitive to TableRowGenerator ordering in IR
+  * #117: dcm: Check for supported subset of SQL syntax
+  * #119: k8s-scheduler: Update Kubernetes client version to 5.5.0
+  * #121: build: test for both Java 11 and 16
+  * #123, #124: dcm, build: migrate to the Apache Calcite parser
+  * Numerous improvements in the compiler
 
 ## June 30, 2021: Release 0.11.0
 * Public API changes:
