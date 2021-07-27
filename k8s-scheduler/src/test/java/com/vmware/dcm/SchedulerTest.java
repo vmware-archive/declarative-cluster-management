@@ -1283,7 +1283,7 @@ public class SchedulerTest {
             nodeHandler.onAddSync(node);
 
             // Add one system pod per node
-            final String podName = "system-pod-" + nodeName;
+            final String podName = "running-pod-" + nodeName;
             final Pod pod;
             final String status = "Running";
             pod = newPod(podName, status);
@@ -1307,25 +1307,29 @@ public class SchedulerTest {
             podHandler.onAddSync(pod);
         }
 
-        // Schedule
-        try {
-            final Result<? extends Record> results = scheduler.initialPlacement();
-            assertEquals(Set.of("NULL_NODE"), results.intoSet(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME));
-            conn.execute("create or replace view pods_to_assign as " +
-                             "(select * from pods_to_assign_no_limit limit 50) " +
-                             "union all (select * from node_name_not_null_pods)");
-            conn.execute("create or replace view assigned_pods as " +
-                            "(select * from node_name_not_null_pods limit 0)");
-            System.out.println(conn.fetch("select * from pods_to_assign"));
-            System.out.println(conn.fetch("select * from inter_pod_anti_affinity_matches_pending"));
-            System.out.println(conn.fetch("select * from inter_pod_anti_affinity_matches_scheduled"));
-            final Result<? extends Record> preemption = scheduler.preempt();
-            System.out.println(preemption);
-        } catch (final SolverException e) {
-            System.out.println(e);
-            System.out.println(e.core());
-            fail("Problem should not be UNSAT");
-        }
+        final Result<? extends Record> results = scheduler.initialPlacement();
+        // No pods get assignments
+        assertEquals(Set.of("NULL_NODE"), results.intoSet(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME));
+        conn.execute("create or replace view pods_to_assign as " +
+                         "(select * from pods_to_assign_no_limit limit 50) " +
+                         "union all (select * from node_name_not_null_pods)");
+        conn.execute("create or replace view assigned_pods as " +
+                        "(select * from node_name_not_null_pods limit 0)");
+
+        // Preemption must succeed for new pods
+        final Result<? extends Record> preemption = scheduler.preempt();
+        final Set<String> runningPodAssignments = new HashSet<>();
+        preemption.forEach(
+                r -> {
+                    final String assignment = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                    if (r.get(Tables.PODS_TO_ASSIGN.POD_NAME).startsWith("pod-")) {
+                        assertNotEquals("NULL_NODE", assignment);
+                    } else {
+                        runningPodAssignments.add(assignment);
+                    }
+                }
+        );
+        assertTrue(runningPodAssignments.contains("NULL_NODE"));
     }
 
 

@@ -70,26 +70,26 @@ public class OrToolsEncodingBenchmark {
             );
 
             final List<String> views = useCumulative ? List.of(
-                    "create view constraint_c1 as " +
+                    "create constraint constraint_c1 as " +
                             "select * from t2 " +
                             "join t1 " +
                             "     on t2.controllable__c1 = t1.c1 " +
                             "check capacity_constraint(t2.controllable__c1, t1.c1, " +
                             "                           t2.d1, t1.c2) = true",
-                    "create view constraint_symmetry as " +
+                    "create constraint constraint_symmetry as " +
                             "select * from t2 check increasing(controllable__c1) = true"
             ) : List.of(
-                    "create view load_view as " +
+                    "create constraint load_view as " +
                             "select t1.c2 as capacity, sum(t2.d1) as load from t2 " +
                             "join t1 " +
                             "     on t2.controllable__c1 = t1.c1 " +
                             "group by t1.c1, t1.c2",
-                    "create view constraint_c1 as " +
+                    "create constraint constraint_c1 as " +
                             "select * from load_view " +
                             "check load <= capacity",
-                    "create view objective_c2 as " +
+                    "create constraint objective_c2 as " +
                             "select min(load) from load_view maximize",
-                    "create view constraint_symmetry as " +
+                    "create constraint constraint_symmetry as " +
                             "select * from t2 check increasing(controllable__c1) = true"
             );
 
