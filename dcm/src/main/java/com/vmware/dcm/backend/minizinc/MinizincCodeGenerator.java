@@ -32,7 +32,6 @@ import com.vmware.dcm.compiler.ir.SimpleVisitor;
 import com.vmware.dcm.compiler.ir.TableRowGenerator;
 import com.vmware.dcm.compiler.ir.UnaryOperator;
 import com.vmware.dcm.compiler.ir.VoidType;
-import org.apache.commons.text.StringEscapeUtils;
 
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
@@ -231,10 +230,11 @@ public class MinizincCodeGenerator extends SimpleVisitor {
             }
         }
 
+        final String escapedTag = MinizincString.MNZ_OUTPUT_TABLENAME_TAG.replace("\n", "\\n");
         return String.format("output [ \"%s%s\" ++ \"\\n\" ++ \"%s\" ++ \"\\n\" ] ++ " +
                         "[ %s ++ \"\\n\" | k in 1..%s ] ++ [ \"\\n\" ];",
                 // tag that separates tables and the name of the new table
-                StringEscapeUtils.escapeJava(MinizincString.MNZ_OUTPUT_TABLENAME_TAG), table.getName(),
+                escapedTag, table.getName(),
                 // header of the CSV-like output with all the table fields
                 table.getIRColumns().values().stream().map(IRColumn::getName)
                                              .collect(Collectors.joining(csvDelimiter)),

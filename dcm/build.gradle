@@ -20,12 +20,20 @@ dependencies {
     calciteParserTemplate "org.apache.calcite:calcite-core:${calciteCoreVersion}"
     fmpp "com.googlecode.fmpp-maven-plugin:fmpp-maven-plugin:${fmppMavenPluginVersion}"
     fmpp "org.freemarker:freemarker:${freemarkerVersion}"
-    implementation "org.apache.calcite:calcite-core:${calciteCoreVersion}"
+    implementation ("org.apache.calcite:calcite-core:${calciteCoreVersion}") {
+        exclude group: "org.apache.httpcomponents"
+        exclude group: "org.apache.logging"
+        exclude group: "org.yaml"
+        exclude group: "com.fasterxml.jackson.core"
+        exclude group: "net.minidev"
+        exclude group: "com.yahoo.datasketches"
+        exclude group: "org.codehaus.janino"
+        exclude group: "com.google.guava"
+    }
     implementation "org.freemarker:freemarker:${freemarkerVersion}"
-    implementation "org.apache.commons:commons-csv:${commonsCsvVersion}"
-    implementation "org.apache.commons:commons-text:${commonsTextVersion}"
-    implementation "commons-io:commons-io:${commonsIoVersion}"
-    implementation "com.facebook.presto:presto-parser:${prestoParserVersion}"
+    implementation ("com.facebook.presto:presto-parser:${prestoParserVersion}") {
+        exclude group: "com.google.guava"
+    }
     implementation "com.squareup:javapoet:${javapoetVersion}"
     implementation "com.google.ortools:ortools-java:${orToolsVersion}"
     implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
