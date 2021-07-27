@@ -1,6 +1,8 @@
 # Changelog
 
-## Ongoing: Release 0.12.0
+## Ongoing: Release 0.13.0
+
+## July 26, 2021: Release 0.12.0
 
 * Public API changes:
   * #123: Breaking changes to constraint syntax. We now declare constraints 
