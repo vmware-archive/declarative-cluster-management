@@ -1591,7 +1591,7 @@ public class OrToolsSolver implements ISolverBackend {
         final String maybeGuessSize = innerBlock instanceof OutputIR.ForBlock ?
                 ((OutputIR.ForBlock) innerBlock).getSize() : "";
         final boolean wasAdded = outerBlock.addHeader(statement("final List<$L> listOf$L = new $T<>($L)",
-                variableToExtract.type(), variableToExtract.asString(), ArrayList.class, maybeGuessSize));
+                variableToExtract.type().typeString(), variableToExtract.asString(), ArrayList.class, maybeGuessSize));
         if (wasAdded) {
             innerBlock.addBody(statement("$L.add($L)", listName, variableToExtract.asString()));
         }

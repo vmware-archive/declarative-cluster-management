@@ -59,10 +59,10 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
         ForkJoinPool.commonPool().execute(
             () -> {
                 final List<Update<PodInfoRecord>> updates = records.stream().map(record -> {
-                            final String podUid = record.get(Tables.PODS_TO_ASSIGN.UID);
-                            final String podName = record.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                            final String namespace = record.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
-                            final String nodeName = record.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                            final String podUid = record.get("UID", String.class);
+                            final String podName = record.get("POD_NAME", String.class);
+                            final String namespace = record.get("NAMESPACE", String.class);
+                            final String nodeName = record.get("CONTROLLABLE__NODE_NAME", String.class);
                             LOG.info("Attempting to bind {}:{} to {} ", namespace, podName, nodeName);
                             return bindOne(namespace, podName, podUid, nodeName);
                         }
@@ -71,7 +71,7 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
                     conn.batch(updates).execute();
                 }
                 records.forEach(record -> {
-                    final String podUid = record.get(Tables.PODS_TO_ASSIGN.UID);
+                    final String podUid = record.get("UID", String.class);
                     if (waitForPodBinding.containsKey(podUid)) {
                         waitForPodBinding.get(podUid).set(true);
                     }

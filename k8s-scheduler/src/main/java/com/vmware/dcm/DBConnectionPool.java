@@ -37,7 +37,7 @@ class DBConnectionPool {
 
     DBConnectionPool() {
         this.databaseName = UUID.randomUUID().toString();
-        setupDb();
+        setupBaseTables();
         final HikariConfig config = new HikariConfig();
         config.setJdbcUrl(String.format("jdbc:h2:mem:%s;LOG=0;UNDO_LOG=0", databaseName));
         config.addDataSourceProperty("cachePrepStmts", "true");
@@ -50,8 +50,7 @@ class DBConnectionPool {
     /**
      * Sets up a private, in-memory database.
      */
-    private void setupDb() {
-
+    void setupBaseTables() {
         final Properties properties = new Properties();
         properties.setProperty("foreign_keys", "true");
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/scheduler_tables.sql");
