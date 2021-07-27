@@ -119,13 +119,13 @@ class Policies {
             "          from pods_to_assign as b" +
             "          join inter_pod_affinity_matches_pending" +
             "           on inter_pod_affinity_matches_pending.pod_uid = pods_to_assign.uid" +
-            "           and contains(inter_pod_affinity_matches_pending.matches, b.uid)" +
+            "           and contains(inter_pod_affinity_matches_pending.pod_matches, b.uid)" +
             "       ))" +
                 // pending pods
 
                 // Affinity to running pods...
             "   or pods_to_assign.controllable__node_name in " +
-            "         (select inter_pod_affinity_matches_scheduled.node_name " +
+            "         (select inter_pod_affinity_matches_scheduled.node_matches " +
             "          from inter_pod_affinity_matches_scheduled " +
             "          where pods_to_assign.uid = inter_pod_affinity_matches_scheduled.pod_uid) " +  // running pods
 
@@ -152,7 +152,7 @@ class Policies {
             "          from pods_to_assign as b" +
             "          join inter_pod_anti_affinity_matches_pending" +
             "           on inter_pod_anti_affinity_matches_pending.pod_uid = pods_to_assign.uid" +
-            "           and contains(inter_pod_anti_affinity_matches_pending.matches, b.uid))) " +
+            "           and contains(inter_pod_anti_affinity_matches_pending.pod_matches, b.uid))) " +
 
             // Or infeasible
             "   or controllable__node_name = 'NULL_NODE'";
@@ -164,7 +164,7 @@ class Policies {
                 "join inter_pod_anti_affinity_matches_scheduled on  " +
                 "     pods_to_assign.uid = inter_pod_anti_affinity_matches_scheduled.pod_uid " +
                 "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
-                "      not(contains(inter_pod_anti_affinity_matches_scheduled.matches, " +
+                "      not(contains(inter_pod_anti_affinity_matches_scheduled.node_matches, " +
                 "                   pods_to_assign.controllable__node_name)) " +
                 // Or infeasible
                 "   or controllable__node_name = 'NULL_NODE'";

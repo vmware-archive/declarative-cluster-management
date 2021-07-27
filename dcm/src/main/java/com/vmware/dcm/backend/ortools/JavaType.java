@@ -21,7 +21,8 @@ enum JavaType {
     ListOfInteger("List", Integer),
     ListOfLong("List", Long),
     ListOfBool("List", Boolean),
-    ListOfString("List", String);
+    ListOfString("List", String),
+    ListOfObjectArray("List", ObjectArray);
 
     private final String typeString;
     @Nullable private final JavaType innerType;
@@ -55,6 +56,8 @@ enum JavaType {
                 return ListOfString;
             case Boolean:
                 return ListOfBool;
+            case ObjectArray:
+                return ListOfObjectArray;
             default:
                 throw new IllegalArgumentException(innerType.toString());
         }

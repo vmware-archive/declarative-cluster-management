@@ -6,8 +6,8 @@
 
 package com.vmware.dcm;
 
-import org.apache.commons.io.FileUtils;
 import com.vmware.dcm.k8s.generated.Tables;
+import org.apache.commons.io.FileUtils;
 import org.jooq.CSVFormat;
 import org.jooq.DSLContext;
 import org.jooq.impl.TableImpl;
@@ -41,8 +41,7 @@ class DebugUtils {
                                                         Tables.NODE_TAINTS,
                                                         Tables.POD_TOLERATIONS,
                                                         Tables.NODE_IMAGES,
-                                                        Tables.POD_IMAGES,
-                                                        Tables.BATCH_SIZE);
+                                                        Tables.POD_IMAGES);
 
     // TODO: add folder path as argument
     static void dbDump(final DSLContext conn) {

@@ -12,7 +12,6 @@ import com.codahale.metrics.Timer;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.records.PodsToAssignRecord;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.commons.cli.CommandLine;
@@ -24,7 +23,6 @@ import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.Table;
-import org.jooq.TableField;
 import org.jooq.Update;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +45,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
+import static org.jooq.impl.DSL.field;
+import static org.jooq.impl.DSL.table;
 
 /**
  * A Kubernetes scheduler that assigns pods to nodes. To use this, make sure to indicate
@@ -90,6 +90,8 @@ public final class Scheduler {
             throw new RuntimeException(e);
         }
         this.dbConnectionPool = dbConnectionPool;
+        final DBViews views = new DBViews(dbConnectionPool.getConnectionToDb());
+        views.initializeViews();
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
                 .setNumThreads(numThreads)
@@ -146,16 +148,15 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
+        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(table("PODS_TO_ASSIGN_NO_LIMIT"));
         while (fetchCount > 0) {
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
 
             final long now = System.nanoTime();
-            final TableField<PodsToAssignRecord, String> nodeNameField = Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME;
             final Result<? extends Record> podsToAssignUpdated = initialPlacement();
             final Map<Boolean, ? extends Result<? extends Record>> byType = podsToAssignUpdated
-                                        .intoGroups(r -> !r.get(nodeNameField).equals("NULL_NODE"));
+                                        .intoGroups(r -> !r.get(field("CONTROLLABLE__NODE_NAME")).equals("NULL_NODE"));
             final long totalTime = System.nanoTime() - now;
             solverInvocations.mark();
 
@@ -167,8 +168,8 @@ public final class Scheduler {
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
                     final List<Update<?>> updates = new ArrayList<>();
                     byType.get(true).forEach(r -> {
-                        final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                        final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                        final String podName = r.get("POD_NAME", String.class);
+                        final String nodeName = r.get("CONTROLLABLE__NODE_NAME", String.class);
                         updates.add(
                                 conn.update(Tables.POD_INFO)
                                         .set(Tables.POD_INFO.NODE_NAME, nodeName)
@@ -188,8 +189,7 @@ public final class Scheduler {
             // Initiate preemption for assignments that failed
             if (byType.containsKey(false)) {
                 byType.get(false).forEach(
-                        e -> LOG.info("pod:{} could not be assigned a node in this iteration",
-                                ((PodsToAssignRecord) e).getPodName())
+                        e -> LOG.info("pod:{} could not be assigned a node in this iteration", e.get("POD_NAME"))
                 );
             }
         }

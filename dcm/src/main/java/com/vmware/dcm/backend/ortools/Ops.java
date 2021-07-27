@@ -594,6 +594,27 @@ public class Ops {
         return bool;
     }
 
+    public IntVar inObjectArray(final IntVar left, final List<Object[]> right) {
+        if (right.size() == 0) {
+            return falseVar;
+        }
+        if (right.size() == 1) {
+            return inObjectArr(left, right.get(0));
+        }
+        final IntVar bool = model.newBoolVar("");
+        final Literal[] literals = new Literal[right.size()];
+        for (int i = 0; i < right.size(); i++) {
+            literals[i] = inObjectArr(left, right.get(i));
+        }
+        model.addBoolOr(literals).onlyEnforceIf(bool);
+
+        for (int i = 0; i < right.size(); i++) {
+            literals[i] = literals[i].not();
+        }
+        model.addBoolAnd(literals).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
     public IntVar or(final boolean left, final boolean right) {
         return left || right ? trueVar : falseVar;
     }

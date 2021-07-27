@@ -11,7 +11,6 @@ import io.fabric8.kubernetes.api.model.Binding;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import com.vmware.dcm.k8s.generated.Tables;
 import org.jooq.Record;
 import org.jooq.Result;
 
@@ -51,9 +50,9 @@ class KubernetesBinder implements IPodToNodeBinder {
     public void bindManyAsnc(final Result<? extends Record> records) {
         ForkJoinPool.commonPool().execute(() -> records.forEach(
                 r -> service.execute(() -> {
-                    final String podName = r.get(Tables.PODS_TO_ASSIGN.POD_NAME);
-                    final String namespace = r.get(Tables.PODS_TO_ASSIGN.NAMESPACE);
-                    final String nodeName = r.get(Tables.PODS_TO_ASSIGN.CONTROLLABLE__NODE_NAME);
+                    final String podName = r.get("POD_NAME", String.class);
+                    final String namespace = r.get("NAMESPACE", String.class);
+                    final String nodeName = r.get("CONTROLLABLE__NODE_NAME", String.class);
                     bindOne(namespace, podName, nodeName);
                 }
             )
