@@ -54,7 +54,6 @@ import static com.codahale.metrics.MetricRegistry.name;
  */
 public final class Scheduler {
     private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
-    private static final String MINIZINC_MODEL_PATH = "/tmp";
     private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
 
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
@@ -147,8 +146,7 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-//        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
-        int fetchCount = 50;
+        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
         while (fetchCount > 0) {
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();

@@ -58,7 +58,7 @@ public class OrToolsIndexBenchmark {
             conn.execute("create table t2(c1 integer, controllable__c2 integer, primary key (c1))");
 
             final List<String> views = List.of(
-                    "CREATE VIEW constraint_with_join AS " +
+                    "CREATE CONSTRAINT constraint_with_join AS " +
                     "SELECT * FROM t1 " +
                     "JOIN t2 on t1.c1 = t2.c1 " +
                     "check c2 = controllable__c2"
