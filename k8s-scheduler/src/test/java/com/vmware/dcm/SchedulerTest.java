@@ -1250,6 +1250,50 @@ public class SchedulerTest {
                 assertTrue(allowedNodes.contains(r.get("CONTROLLABLE__NODE_NAME", String.class))));
     }
 
+    @Test
+    public void testSievedScheduler() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final List<String> policies = Policies.getDefaultPolicies();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final int numNodes = 100;
+        final int numPods = 60;
+        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        for (int i = 0; i < numNodes; i++) {
+            final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + 1000 * i/numNodes)));
+            node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
+            nodeResourceEventHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running");
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
+        }
+
+        for (int i = 0; i < numPods; i++) {
+            handler.onAddSync(newPod("p" + i));
+        }
+
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        scheduler.setSieveOn();
+        scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
+
+        // Check that all pods have been scheduled to a node eligible by the sieve filtering
+        final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
+        System.out.println(fetch);
+        fetch.forEach(e -> assertTrue(e.getNodeName() != null
+                && e.getNodeName().startsWith("n")
+                && (Integer.parseInt(e.getNodeName().substring(1)) >= numNodes - numPods
+                  || !e.getPodName().startsWith("p"))));
+    }
+
 
     private static Map<String, String> map(final String k1, final String v1) {
         return Collections.singletonMap(k1, v1);
