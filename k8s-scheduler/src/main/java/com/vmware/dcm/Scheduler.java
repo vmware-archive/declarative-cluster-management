@@ -59,8 +59,8 @@ public final class Scheduler {
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
-    private final SievedModel sievedModel;
-    private boolean sieveOn = false;
+    private final ScopedModel scopedModel;
+    private boolean scopeOn = false;
 
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
@@ -92,7 +92,7 @@ public final class Scheduler {
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         this.model = createDcmModel(dbConnectionPool.getConnectionToDb(), solverToUse, policies, numThreads,
                                     solverMaxTimeInSeconds, debugMode);
-        this.sievedModel = new SievedModel(dbConnectionPool.getConnectionToDb(), model);
+        this.scopedModel = new ScopedModel(dbConnectionPool.getConnectionToDb(), model);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
@@ -172,8 +172,8 @@ public final class Scheduler {
     Result<? extends Record> runOneLoop() {
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated;
-        if (sieveOn)
-             podsToAssignUpdated = sievedModel.solve("PODS_TO_ASSIGN");
+        if (scopeOn)
+             podsToAssignUpdated = scopedModel.solve("PODS_TO_ASSIGN");
         else
             podsToAssignUpdated = model.solve("PODS_TO_ASSIGN");
         solveTimer.stop();
@@ -187,8 +187,8 @@ public final class Scheduler {
         return podsToAssignUpdated;
     }
 
-    public void setSieveOn() {
-        sieveOn = true;
+    public void setScopeOn() {
+        scopeOn = true;
     }
 
 

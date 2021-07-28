@@ -1251,7 +1251,7 @@ public class SchedulerTest {
     }
 
     @Test
-    public void testSievedScheduler() {
+    public void testScopedScheduler() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
@@ -1282,10 +1282,10 @@ public class SchedulerTest {
         }
 
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
-        scheduler.setSieveOn();
+        scheduler.setScopeOn();
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
 
-        // Check that all pods have been scheduled to a node eligible by the sieve filtering
+        // Check that all pods have been scheduled to a node eligible by the scope filtering
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         System.out.println(fetch);
         fetch.forEach(e -> assertTrue(e.getNodeName() != null

@@ -16,15 +16,16 @@ import java.util.function.Function;
 import static org.jooq.impl.DSL.field;
 
 /**
- * A Sieve to reduce the Model's input.
+ * A Scope to reduce the Model's input.
  * TODO: expand description
  */
 
-public class SievedModel {
-    // TODO: add extra limitPriority (provided as a hint)
-    // TODO: divide limitTune to three categories according to affinity
-    // TODO: actually tune limitTune
+public class ScopedModel {
+    // limitTune is used to adjust the number of scoped nodes
     private double limitTune = 1.0;
+    // TODO: add extra limitPriority (provided as a hint)
+    //       divide limitTune to three categories according to affinity
+    //       actually tune limitTune
 
     // TODO: add tunable sorting weights
 //    private double sortWeightCpu = 0.8;
@@ -35,7 +36,7 @@ public class SievedModel {
     private final DSLContext conn;
     private final Model model;
 
-    SievedModel(final DSLContext conn, final Model model) {
+    ScopedModel(final DSLContext conn, final Model model) {
         this.conn = conn;
         this.model = model;
     }
@@ -45,7 +46,7 @@ public class SievedModel {
         return Tables.SPARE_CAPACITY_PER_NODE.PODS_REMAINING.gt(0L);
     }
 
-// TODO: choose one of the two options
+// choose the commented option to tune node selection between spare cpu and memory capacity
 //    private SortField<?> getSorting() {
 //        return field(sortWeightCpu + " * cpu_remaining + "
 //                + sortWeightMemory + " * memory_remaining").desc();
@@ -59,18 +60,14 @@ public class SievedModel {
     }
 
     private int getLimit() {
-        // int podsCount = podsToAssignResult.size(); // TODO: Is this much faster? Is it worth it?
         int podsCount = conn.fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
         return (int) Math.ceil(limitTune * podsCount);
     }
 
-    private Function<Table<?>, Result<? extends Record>> sieve() {
-        System.out.println("Sieve method...");
+    private Function<Table<?>, Result<? extends Record>> scope() {
+        System.out.println("scope method...");
 
         return (table) -> {
-            // TODO: worth the opt?
-//            if (table.getName().equalsIgnoreCase("pods_to_assign_no_limit"))
-//                return podsToAssignResult;
             if (table.getName().equalsIgnoreCase("spare_capacity_per_node")) {
 
                 System.out.println(conn.selectFrom(table).fetch().size());
@@ -92,6 +89,6 @@ public class SievedModel {
     }
 
     public Result<? extends Record> solve(final String tableName) {
-        return model.solve(tableName, sieve());
+        return model.solve(tableName, scope());
     }
 }
