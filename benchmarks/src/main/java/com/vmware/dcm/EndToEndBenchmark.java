@@ -30,8 +30,8 @@ import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
-import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 
 import javax.annotation.Nullable;
@@ -72,9 +72,7 @@ public class EndToEndBenchmark {
 
             // Add all nodes
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-
-            final List<String> policies = Policies.getDefaultPolicies();
-            scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, true, numThreads);
+            scheduler = new Scheduler(dbConnectionPool, solverToUse, true, numThreads);
             handler = new PodResourceEventHandler(scheduler::handlePodEvent);
             scheduler.startScheduler(binder, 100, 500);
             for (int i = 0; i < numNodes; i++) {

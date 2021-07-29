@@ -283,7 +283,8 @@ public class SchedulerTest {
     @MethodSource("conditions")
     public void testSchedulerNodePredicates(final String type, final String status) {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.disallowNullNodeSoft());
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                                                                           Policies.disallowNullNodeSoft());
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final int numNodes = 5;
         final int numPods = 10;
@@ -338,7 +339,8 @@ public class SchedulerTest {
                                     final Set<String> nodesToMatch, final Set<String> nodesPartialMatch) {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.from(Policies.nodePredicates(), Policies.disallowNullNodeSoft(),
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                                                                           Policies.disallowNullNodeSoft(),
                 Policies.nodeSelectorPredicate());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
@@ -450,8 +452,9 @@ public class SchedulerTest {
                                       final boolean shouldBeAffineToRemainingNodes) {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.from(Policies.nodePredicates(),  Policies.disallowNullNodeSoft(),
-                Policies.nodeSelectorPredicate());
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                                                                           Policies.disallowNullNodeSoft(),
+                                                                           Policies.nodeSelectorPredicate());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
 
@@ -681,9 +684,10 @@ public class SchedulerTest {
         }
 
 
-        final List<String> policies = Policies.from(Policies.nodePredicates(),  Policies.disallowNullNodeSoft(),
-                                                    Policies.podAffinityPredicate(),
-                                                    Policies.podAntiAffinityPredicate());
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                                                                           Policies.disallowNullNodeSoft(),
+                                                                           Policies.podAffinityPredicate(),
+                                                                           Policies.podAntiAffinityPredicate());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
                 NUM_THREADS);
 
@@ -922,7 +926,8 @@ public class SchedulerTest {
             handler.onAddSync(pod);
         }
 
-        final List<String> policies = Policies.from(Policies.nodePredicates(),  Policies.disallowNullNodeSoft(),
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                                                    Policies.disallowNullNodeSoft(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
         if (feasible) {
@@ -1009,8 +1014,9 @@ public class SchedulerTest {
             pod.getSpec().setNodeName("n" + i);
             handler.onAddSync(pod);
         }
-        final List<String> policies = Policies.from(Policies.nodePredicates(),  Policies.disallowNullNodeSoft(),
-                                                    Policies.taintsAndTolerations());
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                                                                           Policies.disallowNullNodeSoft(),
+                                                                           Policies.taintsAndTolerations());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
         final Result<? extends Record> result = scheduler.initialPlacement();
         assertEquals(numPods, result.size());
@@ -1149,10 +1155,9 @@ public class SchedulerTest {
     public void testNoConstraintPods() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.getDefaultPolicies();
         DebugUtils.dbLoad(conn);
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, NUM_THREADS);
         for (int i = 0; i < 100; i++) {
             final Result<? extends Record> results = scheduler.initialPlacement();
             System.out.println(results);
@@ -1168,7 +1173,6 @@ public class SchedulerTest {
     public void testPlaceAllPendingPodsRegardlessOfBatchSize() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.getDefaultPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final int numNodes = 50;
         final int numPods = 102;
@@ -1192,7 +1196,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, NUM_THREADS);
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
@@ -1202,8 +1206,7 @@ public class SchedulerTest {
     public void testFilterNodes() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.getDefaultPolicies();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, NUM_THREADS);
 
         final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);
@@ -1254,14 +1257,17 @@ public class SchedulerTest {
      * Test preemption code path
      */
     @Test
-    @Disabled
     public void testPreemption() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.from(Policies.nodePredicates(),
+        final List<String> policiesInitial = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                     Policies.disallowNullNodeSoft(),
                                                     Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        final List<String> policiesPreemption = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                Policies.disallowNullNodeSoft(),
+                Policies.podAntiAffinityPredicate(),
+                Policies.preemption());
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policiesInitial, policiesPreemption,
+                                                  "ORTOOLS", true, NUM_THREADS, 1);
 
         final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);
@@ -1286,7 +1292,7 @@ public class SchedulerTest {
         }
 
         // add high priority pods
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 1; i++) {
             final String podName = "pod-" + i;
             final String status = "Pending";
             final Pod pod = newPod(podName, status);
@@ -1298,16 +1304,9 @@ public class SchedulerTest {
             pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
             podHandler.onAddSync(pod);
         }
-        final DBViews views = new DBViews(conn);
-        System.out.println(views.runQuery("PODS_TO_ASSIGN_NO_LIMIT"));
         final Result<? extends Record> results = scheduler.initialPlacement();
         // No pods get assignments
         assertEquals(Set.of("NULL_NODE"), results.intoSet(field("CONTROLLABLE__NODE_NAME", String.class)));
-        conn.execute("create or replace view pods_to_assign as " +
-                         "(select * from pods_to_assign_no_limit limit 50) " +
-                         "union all (select * from node_name_not_null_pods)");
-        conn.execute("create or replace view assigned_pods as " +
-                        "(select * from node_name_not_null_pods limit 0)");
         // Preemption must succeed for new pods
         final Result<? extends Record> preemption = scheduler.preempt();
         final Set<String> runningPodAssignments = new HashSet<>();

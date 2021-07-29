@@ -87,11 +87,10 @@ public class ScaleModelBenchmark {
 
             dbConnectionPool = new DBConnectionPool();
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-            final List<String> policies = Policies.getDefaultPolicies();
             final String solverToUse = "ORTOOLS";
             final boolean debugMode = true;
             final int numThreads = 1;
-            scheduler = new Scheduler(dbConnectionPool, policies, solverToUse, debugMode, numThreads);
+            scheduler = new Scheduler(dbConnectionPool, solverToUse, debugMode, numThreads);
             handler = new PodResourceEventHandler(scheduler::handlePodEventNoNotify);
             addedPods = new HashSet<Pod>();
 

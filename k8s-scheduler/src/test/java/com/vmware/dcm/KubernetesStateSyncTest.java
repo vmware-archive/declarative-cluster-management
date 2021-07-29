@@ -94,8 +94,7 @@ public class KubernetesStateSyncTest {
         nodeHandler.onAddSync(node);
         podHandler.onAddSync(pod);
 
-        final Scheduler scheduler = new Scheduler(conn,
-                Policies.getDefaultPolicies(), "ORTOOLS", false, 4);
+        final Scheduler scheduler = new Scheduler(conn, "ORTOOLS", false, 4);
 
         final KubernetesBinder binder = new KubernetesBinder(client);
         scheduler.startScheduler(binder, 50, 100);
