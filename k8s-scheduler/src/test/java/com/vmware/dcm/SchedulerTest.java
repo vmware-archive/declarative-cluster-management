@@ -8,6 +8,11 @@ package com.vmware.dcm;
 
 import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
+import com.vmware.ddlog.DDlogJooqProvider;
+import com.vmware.ddlog.ir.DDlogProgram;
+import com.vmware.ddlog.translator.Translator;
+import ddlogapi.DDlogAPI;
+import ddlogapi.DDlogException;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
@@ -40,6 +45,8 @@ import io.fabric8.kubernetes.api.model.TopologySpreadConstraint;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.jooq.impl.DSL;
+import org.jooq.tools.jdbc.MockConnection;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +56,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junitpioneer.jupiter.CartesianProductTest;
 import org.junitpioneer.jupiter.CartesianValueSource;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -79,6 +90,7 @@ import static org.jooq.impl.DSL.field;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -99,6 +111,49 @@ public class SchedulerTest {
         public String toString() {
             return (String) args.get(0);
         }
+    }
+
+    /*
+     * Test if ddlog is set up correctly
+     */
+    @Test
+    public void testDdlog() throws DDlogException, IOException {
+        String s1 = "create table hosts (id varchar(36) with (primary_key = true), capacity integer, up boolean)";
+        String v2 = "create view hostsv as select distinct * from hosts";
+        String v1 = "create view good_hosts as select distinct * from hosts where capacity < 10";
+        List<String> ddl = new ArrayList<>();
+        ddl.add(s1);
+        ddl.add(v2);
+        ddl.add(v1);
+        compileAndLoad(ddl);
+
+        final DDlogAPI dDlogAPI = new DDlogAPI(1, false);
+
+        // Initialise the data provider
+        final DDlogJooqProvider provider = new DDlogJooqProvider(dDlogAPI, ddl);
+        MockConnection connection = new MockConnection(provider);
+
+        // Pass the mock connection to a jOOQ DSLContext
+        final DSLContext conn = DSL.using(connection);
+    }
+
+
+    public static void compileAndLoad(final List<String> ddl) throws IOException, DDlogException {
+        final Translator t = new Translator(null);
+        ddl.forEach(t::translateSqlStatement);
+        final DDlogProgram dDlogProgram = t.getDDlogProgram();
+        final String fileName = "/tmp/program.dl";
+        File tmp = new File(fileName);
+        BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
+        bw.write(dDlogProgram.toString());
+        bw.close();
+        DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
+        final String ddlogHome = System.getenv("DDLOG_HOME");
+        assertNotNull(ddlogHome);
+        DDlogAPI.compileDDlogProgram(fileName, result, ddlogHome + "/lib", ddlogHome + "/sql/lib");
+        if (!result.isSuccess())
+            throw new RuntimeException("Failed to compile ddlog program");
+        DDlogAPI.loadDDlog();
     }
 
     /*
