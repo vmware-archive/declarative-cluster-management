@@ -14,7 +14,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 class Policies {
     private static final List<Policy> INITIAL_PLACEMENT_POLICIES = new ArrayList<>();
@@ -50,14 +49,10 @@ class Policies {
                                   "where node_name is not null " +
                                   "check controllable__node_name = 'NULL_NODE' " +
                                   "   or controllable__node_name = node_name";
-        final String constraint1 = "create constraint preemption_requirement_1 as " +
-                "select * from pods_to_assign " +
-                "where pod_name = 'pod-0' " +
-                "check controllable__node_name != 'NULL_NODE'";
         final String maximize = "create constraint preemption_objective as " +
                                 "select * from pods_to_assign " +
                                 "maximize priority * (controllable__node_name != 'NULL_NODE')";
-        return new Policy("Preemption", List.of(constraint, constraint1, maximize));
+        return new Policy("Preemption", List.of(constraint, maximize));
     }
 
     /**
@@ -227,29 +222,22 @@ class Policies {
 
 
     static List<String> getInitialPlacementPolicies() {
-        return from(INITIAL_PLACEMENT_POLICIES);
+        return getDefaultPoliciesWithPodsToAssignReplaced(from(INITIAL_PLACEMENT_POLICIES),
+                                    "pods_to_assign_limit");
     }
 
-    static List<String> getDefaultPolicies() {
-        return from(INITIAL_PLACEMENT_POLICIES);
+    static List<String> getInitialPlacementPolicies(final Policy... policies) {
+        return getDefaultPoliciesWithPodsToAssignReplaced(from(List.of(policies)), "pods_to_assign_limit");
     }
 
-    static List<String> getDefaultPoliciesWithPodsToAssignReplaced(final String podsToAssignReplacement) {
-        return INITIAL_PLACEMENT_POLICIES.stream()
-                    .map(policy -> policy.views)
-                    .flatMap(Collection::stream)
-                    .map(view -> view.replaceAll("pods_to_assign", podsToAssignReplacement))
-                    .collect(Collectors.toList());
+    static List<String> getPreemptionPlacementPolicies() {
+        return getDefaultPoliciesWithPodsToAssignReplaced(from(PREEMPTION_POLICIES),
+                "pods_to_assign_preempt");
     }
 
-    static List<String> from(final Policy policy) {
-        return from(Collections.singletonList(policy));
-    }
-
-    static List<String> from(final Policy... policies) {
-        return Stream.of(policies).map(e -> e.views)
-                .flatMap(Collection::stream)
-                .collect(Collectors.toList());
+    private static List<String> getDefaultPoliciesWithPodsToAssignReplaced(final List<String> policies,
+                                                                   final String podsToAssignReplacement) {
+        return new ArrayList<>(policies);
     }
 
     static List<String> from(final List<Policy> policies) {

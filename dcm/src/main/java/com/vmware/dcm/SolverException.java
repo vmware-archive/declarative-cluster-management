@@ -26,7 +26,7 @@ public class SolverException extends RuntimeException {
     }
 
     public SolverException(final String reason, final List<String> core) {
-        super(reason);
+        super(reason + " " + new HashSet<>(core));
         this.reason = reason;
         this.core = core;
     }

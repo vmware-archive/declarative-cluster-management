@@ -62,6 +62,7 @@ public final class Scheduler {
     private final ScopedModel scopedModel;
     private boolean scopeOn = false;
     private final Model preemption;
+    private final DBViews views;
 
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
@@ -74,12 +75,27 @@ public final class Scheduler {
     private final ExecutorService scheduler = Executors.newSingleThreadExecutor(namedThreadFactory);
     private final LinkedBlockingDeque<Boolean> notificationQueue = new LinkedBlockingDeque<>();
 
-    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> policies, final String solverToUse,
-              final boolean debugMode, final int numThreads) {
-        this(dbConnectionPool, policies, solverToUse, debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
+    Scheduler(final DBConnectionPool dbConnectionPool, final String solverToUse, final boolean debugMode,
+              final int numThreads) {
+        this(dbConnectionPool, Policies.getInitialPlacementPolicies(), Policies.getPreemptionPlacementPolicies(),
+                solverToUse, debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
     }
 
-    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> policies, final String solverToUse,
+    Scheduler(final DBConnectionPool dbConnectionPool, final String solverToUse, final boolean debugMode,
+              final int numThreads, final int solverMaxTimeInSeconds) {
+        this(dbConnectionPool, Policies.getInitialPlacementPolicies(), Policies.getPreemptionPlacementPolicies(),
+             solverToUse, debugMode, numThreads, solverMaxTimeInSeconds);
+    }
+
+
+    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> initialPlacementPolicies,
+              final String solverToUse, final boolean debugMode, final int numThreads) {
+        this(dbConnectionPool, initialPlacementPolicies, Policies.getPreemptionPlacementPolicies(),
+                solverToUse, debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
+    }
+
+    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> initialPlacementPolicies,
+              final List<String> preemptionPolicies, final String solverToUse,
               final boolean debugMode, final int numThreads, final int solverMaxTimeInSeconds) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
@@ -90,21 +106,20 @@ public final class Scheduler {
             throw new RuntimeException(e);
         }
         this.dbConnectionPool = dbConnectionPool;
-        final DBViews views = new DBViews(dbConnectionPool.getConnectionToDb());
+        views = new DBViews(dbConnectionPool.getConnectionToDb());
         views.initializeViews();
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
                 .setNumThreads(numThreads)
                 .setPrintDiagnostics(debugMode)
                 .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
-        this.initialPlacement = Model.build(dbConnectionPool.getConnectionToDb(), orToolsSolver, policies);
+        this.initialPlacement = Model.build(dbConnectionPool.getConnectionToDb(), orToolsSolver,
+                initialPlacementPolicies);
         this.scopedModel = new ScopedModel(dbConnectionPool.getConnectionToDb(), initialPlacement);
         final OrToolsSolver orToolsSolverPreemption = new OrToolsSolver.Builder()
                 .setNumThreads(numThreads)
                 .setPrintDiagnostics(debugMode)
                 .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
-        final List<String> preemptionPolicies = new ArrayList<>(policies);
-        preemptionPolicies.addAll(Policies.from(Policies.preemption()));
         this.preemption = Model.build(dbConnectionPool.getConnectionToDb(), orToolsSolverPreemption,
                                       preemptionPolicies);
         LOG.info("Initialized scheduler:: model:{}", initialPlacement);
@@ -224,7 +239,15 @@ public final class Scheduler {
 
     Result<? extends Record> preempt() {
         final Timer.Context solveTimer = solveTimes.time();
-        final Result<? extends Record> podsToAssignUpdated = preemption.solve("PODS_TO_ASSIGN");
+        final Result<? extends Record> podsToAssignUpdated = preemption.solve("PODS_TO_ASSIGN",
+                table -> {
+            final String tableNameTweak = table.getName().equalsIgnoreCase("PODS_TO_ASSIGN") ||
+                                          table.getName().equalsIgnoreCase("ASSIGNED_PODS") ?
+                                            "_PREEMPT" : "";
+                    // We control the set of pods that appear in the fixed/unfixed sets here.
+                    return dbConnectionPool.getConnectionToDb()
+                            .fetch(views.preemption.getQuery(table.getName() + tableNameTweak));
+                });
         solveTimer.stop();
         return podsToAssignUpdated;
     }
@@ -249,12 +272,9 @@ public final class Scheduler {
         final CommandLine cmd = parser.parse(options, args);
 
         final DBConnectionPool conn = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(conn,
-                Policies.getDefaultPolicies(),
-                cmd.getOptionValue("solver"),
-                Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
-                Integer.parseInt(cmd.getOptionValue("num-threads")));
-
+        final Scheduler scheduler = new Scheduler(conn, cmd.getOptionValue("solver"),
+                                                  Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
+                                                  Integer.parseInt(cmd.getOptionValue("num-threads")));
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",
                  kubernetesClient.getConfiguration().getMasterUrl());

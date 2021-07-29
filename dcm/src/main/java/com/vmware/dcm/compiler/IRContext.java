@@ -37,7 +37,7 @@ public class IRContext {
      */
     public IRTable getTable(final String tableName) {
         final String tableNameCaps = tableName.toUpperCase(Locale.US);
-        return Objects.requireNonNull(irTables.get(tableNameCaps));
+        return Objects.requireNonNull(irTables.get(tableNameCaps), tableNameCaps + " not found");
     }
 
     /**
