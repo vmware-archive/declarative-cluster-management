@@ -58,6 +58,7 @@ import org.junitpioneer.jupiter.CartesianValueSource;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
@@ -121,10 +122,10 @@ public class SchedulerTest {
      */
     @Test
     public void testDdlog() throws DDlogException, IOException {
-        final String s1 = "create table hosts (id varchar(36) with (primary_key = true), capacity integer, up boolean)";
-        final String v2 = "create view hostsv as select distinct * from hosts";
-        final String v1 = "create view good_hosts as select distinct * from hosts where capacity < 10";
-        final List<String> ddl = new ArrayList<>();
+        String s1 = "create table hosts (id varchar(36) with (primary_key = true), capacity integer, up boolean)";
+        String v2 = "create view hostsv as select distinct * from hosts";
+        String v1 = "create view good_hosts as select distinct * from hosts where capacity < 10";
+        List<String> ddl = new ArrayList<>();
         ddl.add(s1);
         ddl.add(v2);
         ddl.add(v1);
@@ -134,16 +135,10 @@ public class SchedulerTest {
 
         // Initialise the data provider
         final DDlogJooqProvider provider = new DDlogJooqProvider(dDlogAPI, ddl);
-        final MockConnection connection = new MockConnection(provider);
+        MockConnection connection = new MockConnection(provider);
 
         // Pass the mock connection to a jOOQ DSLContext
         final DSLContext conn = DSL.using(connection);
-        conn.insertInto(table("hosts")).values("1", 1, true).execute();
-        conn.insertInto(table("hosts")).values("2", 100, true).execute();
-        final Result<Record> hostsv = conn.selectFrom(table("hostsv")).fetch();
-        assertEquals(2, hostsv.size());
-        final Result<Record> goodHosts = conn.selectFrom(table("good_hosts")).fetch();
-        assertEquals(1, goodHosts.size());
     }
 
 
@@ -152,19 +147,16 @@ public class SchedulerTest {
         ddl.forEach(t::translateSqlStatement);
         final DDlogProgram dDlogProgram = t.getDDlogProgram();
         final String fileName = "/tmp/program.dl";
-        final File tmp = new File(fileName);
-        final BufferedWriter bw = Files.newBufferedWriter(tmp.toPath(), Charset.defaultCharset());
+        File tmp = new File(fileName);
+        BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
         bw.write(dDlogProgram.toString());
         bw.close();
-        final DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
+        DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
         final String ddlogHome = System.getenv("DDLOG_HOME");
         assertNotNull(ddlogHome);
-        DDlogAPI.compileDDlogProgram(fileName, result,
-                                     Path.of(ddlogHome, "lib").toString(),
-                                     Path.of(ddlogHome, "sql", "lib").toString());
-        if (!result.isSuccess()) {
+        DDlogAPI.compileDDlogProgram(fileName, result, ddlogHome + "/lib", ddlogHome + "/sql/lib");
+        if (!result.isSuccess())
             throw new RuntimeException("Failed to compile ddlog program");
-        }
         DDlogAPI.loadDDlog();
     }
 
