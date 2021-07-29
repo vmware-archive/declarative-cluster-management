@@ -60,6 +60,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -87,6 +88,7 @@ import static com.vmware.dcm.TestScenario.podGroup;
 import static java.util.stream.Collectors.counting;
 import static java.util.stream.Collectors.groupingBy;
 import static org.jooq.impl.DSL.field;
+import static org.jooq.impl.DSL.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -135,6 +137,12 @@ public class SchedulerTest {
 
         // Pass the mock connection to a jOOQ DSLContext
         final DSLContext conn = DSL.using(connection);
+        conn.insertInto(table("hosts")).values("1", 1, true).execute();
+        conn.insertInto(table("hosts")).values("2", 100, true).execute();
+        final Result<Record> hostsv = conn.selectFrom(table("hostsv")).fetch();
+        assertEquals(2, hostsv.size());
+        final Result<Record> goodHosts = conn.selectFrom(table("good_hosts")).fetch();
+        assertEquals(1, goodHosts.size());
     }
 
 
@@ -143,14 +151,16 @@ public class SchedulerTest {
         ddl.forEach(t::translateSqlStatement);
         final DDlogProgram dDlogProgram = t.getDDlogProgram();
         final String fileName = "/tmp/program.dl";
-        File tmp = new File(fileName);
-        BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
+        final File tmp = new File(fileName);
+        final BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
         bw.write(dDlogProgram.toString());
         bw.close();
-        DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
+        final DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
         final String ddlogHome = System.getenv("DDLOG_HOME");
         assertNotNull(ddlogHome);
-        DDlogAPI.compileDDlogProgram(fileName, result, ddlogHome + "/lib", ddlogHome + "/sql/lib");
+        DDlogAPI.compileDDlogProgram(fileName, result,
+                                     Path.of(ddlogHome, "lib").toString(),
+                                     Path.of(ddlogHome, "sql", "lib").toString());
         if (!result.isSuccess())
             throw new RuntimeException("Failed to compile ddlog program");
         DDlogAPI.loadDDlog();
