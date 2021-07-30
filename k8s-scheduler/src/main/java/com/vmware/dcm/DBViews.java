@@ -15,6 +15,19 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
+
+/**
+ * This represents views/queries executed in the database that supply inputs to constraints in DCM models
+ * (see {@link Policies}). We have two sets of queries, one for initial placement and one for preemption.
+ * Both of these views consider different groups of a) Unfixed pods: pods that can be assigned/reassigned,
+ * b) Fixed pods: pods that cannot be reassigned.
+ *
+ * SQL does allow parameterizing the tables being queried. We therefore resort to dynamic SQL to create two
+ * sets of views, each parameterized by a different pair of "fixed" and "unfixed" pods.
+ *
+ * The {@link Scheduler} uses an instance of this class to get the parameterized query, corresponding to the views
+ * required for the respective DCM models.
+ */
 public class DBViews {
     private final DSLContext conn;
     private final ViewSet initialPlacement = new ViewSet("pods_to_assign", "assigned_pods");
@@ -39,11 +52,7 @@ public class DBViews {
     }
 
     /*
-     * Select all pods that need to be scheduled.
-     * We also indicate boolean values to check whether
-     * a pod has node selector or pod affinity labels,
-     * and whether pod affinity rules already yields some subset of
-     * nodes that we can assign pods to.
+     * Select all pods that are pending placement.
      */
     private void allPendingPods(final ViewSet viewSet) {
         final String name = "PODS_TO_ASSIGN_NO_LIMIT";
@@ -53,11 +62,7 @@ public class DBViews {
     }
 
     /*
-     * Select all pods that need to be scheduled.
-     * We also indicate boolean values to check whether
-     * a pod has node selector or pod affinity labels,
-     * and whether pod affinity rules already yields some subset of
-     * nodes that we can assign pods to.
+     * Select 50 pods that need to be considered for initial placement.
      */
     private void initialPlacementInputPods(final ViewSet viewSet) {
         final String name = "PODS_TO_ASSIGN";
@@ -66,7 +71,7 @@ public class DBViews {
     }
 
     /*
-     * Assigned pods
+     * Pods that are already assigned to nodes
      */
     private void initialPlacementFixedPods(final ViewSet viewSet) {
         final String name = "ASSIGNED_PODS";
@@ -75,11 +80,8 @@ public class DBViews {
     }
 
     /*
-     * Select all pods that need to be scheduled.
-     * We also indicate boolean values to check whether
-     * a pod has node selector or pod affinity labels,
-     * and whether pod affinity rules already yields some subset of
-     * nodes that we can assign pods to.
+     * Select all pods that need to be scheduled, as well as ones that can be reassigned.
+     * TODO: filter by priority
      */
     private void preemptionInputPods(final ViewSet viewSet) {
         final String name = "PODS_TO_ASSIGN_PREEMPT";
@@ -92,7 +94,8 @@ public class DBViews {
     }
 
     /*
-     * Assigned pods
+     * For preemption, we consider all pods are potentially reassignable. Therefore, the set of fixed pods is empty.
+     * TODO: filter by priority
      */
     private void preemptionFixedPods(final ViewSet viewSet) {
         final String name = "ASSIGNED_PODS_PREEMPT";
@@ -117,7 +120,7 @@ public class DBViews {
     }
 
     /*
-     * Pod node selectors
+     * For each pod, get the nodes that match its node selector labels.
      */
     private void podNodeSelectorMatches(final ViewSet viewSet) {
         final String name = "POD_NODE_SELECTOR_MATCHES";
@@ -174,7 +177,7 @@ public class DBViews {
     }
 
     /*
-     * Spare capacity per node
+     * For each pod, extract nodes that match according to taints/tolerations.
      */
     private void podsThatTolerateNodeTaints(final ViewSet viewSet) {
         final String name = "PODS_THAT_TOLERATE_NODE_TAINTS";
@@ -197,7 +200,7 @@ public class DBViews {
     }
 
     /*
-     * Spare capacity per node
+     * The set of nodes that have any tolerations configured
      */
     private void nodesThatHaveTolerations(final ViewSet viewSet) {
         final String name = "NODES_THAT_HAVE_TOLERATIONS";
@@ -272,7 +275,11 @@ public class DBViews {
     void initializeViews() {
         final BiFunction<String, String, Integer> createView =
                 (name, query) -> conn.createView(name).as(query).execute();
+
+        // By default, all views refer to their initial placement versions
         initialPlacement.asQuery.forEach(createView::apply);
+
+        // Create views for the preemption version of fixed/unfixed pods
         preemption.asQuery.forEach(
                 (name, query) -> {
                     if (name.equals("PODS_TO_ASSIGN_PREEMPT") || name.equals("ASSIGNED_PODS_PREEMPT")) {
