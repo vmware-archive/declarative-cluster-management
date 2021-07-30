@@ -52,9 +52,6 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Benchmark)
 public class EndToEndBenchmark {
 
-    @Param("ORTOOLS")
-    static String solverToUse;
-
     @Param({"1", "2", "4"})
     static int numThreads;
 
@@ -72,7 +69,7 @@ public class EndToEndBenchmark {
 
             // Add all nodes
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-            scheduler = new Scheduler(dbConnectionPool, solverToUse, true, numThreads);
+            scheduler = new Scheduler(dbConnectionPool, true, numThreads);
             handler = new PodResourceEventHandler(scheduler::handlePodEvent);
             scheduler.startScheduler(binder, 100, 500);
             for (int i = 0; i < numNodes; i++) {

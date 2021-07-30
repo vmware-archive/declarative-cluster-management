@@ -36,16 +36,16 @@ import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
-import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 
 import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.HashSet;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -82,10 +82,9 @@ public class ScaleNodeBenchmark {
 
             final DBConnectionPool dbConnectionPool = new DBConnectionPool();
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-            final String solverToUse = "ORTOOLS";
             final boolean debugMode = true;
             final int numThreads = 1;
-            scheduler = new Scheduler(dbConnectionPool, solverToUse, debugMode, numThreads);
+            scheduler = new Scheduler(dbConnectionPool, debugMode, numThreads);
             handler = new PodResourceEventHandler(scheduler::handlePodEventNoNotify);
             addedPods = new HashSet<Pod>();
 
