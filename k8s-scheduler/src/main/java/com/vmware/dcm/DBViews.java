@@ -84,7 +84,7 @@ public class DBViews {
      */
     private void preemptionInputPods(final ViewSet viewSet) {
         final String name = "PODS_TO_ASSIGN_PREEMPT";
-        final String query = "(SELECT * FROM PODS_TO_ASSIGN LIMIT 50) " +
+        final String query = "(SELECT * FROM PODS_TO_ASSIGN) " +
                              "UNION ALL " +
                              "(SELECT *, node_name AS controllable__node_name FROM pod_info " +
                              " WHERE node_name IS NOT NULL AND priority < (SELECT MAX(priority) FROM PODS_TO_ASSIGN))";
