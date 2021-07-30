@@ -80,26 +80,24 @@ public class DBViews {
     }
 
     /*
-     * Select all pods that need to be scheduled, as well as ones that can be reassigned.
-     * TODO: filter by priority
+     * Select all pods that need to be scheduled and pods of comparatively lower priority that could be reassigned.
      */
     private void preemptionInputPods(final ViewSet viewSet) {
         final String name = "PODS_TO_ASSIGN_PREEMPT";
-        final String query = "(SELECT pod_info.*, node_name AS controllable__node_name FROM pod_info " +
-                         "WHERE status = 'Pending' AND node_name IS NULL AND schedulerName = 'dcm-scheduler' " +
-                         "LIMIT 50) " +
-                         "UNION ALL " +
-                         "(SELECT *, node_name AS controllable__node_name FROM pod_info WHERE node_name IS NOT NULL)";
+        final String query = "(SELECT * FROM PODS_TO_ASSIGN LIMIT 50) " +
+                             "UNION ALL " +
+                             "(SELECT *, node_name AS controllable__node_name FROM pod_info " +
+                             " WHERE node_name IS NOT NULL AND priority < (SELECT MAX(priority) FROM PODS_TO_ASSIGN))";
         viewSet.addQuery(name, query);
     }
 
     /*
-     * For preemption, we consider all pods are potentially reassignable. Therefore, the set of fixed pods is empty.
-     * TODO: filter by priority
+     * Fix all pods that have higher priority than the set of pods pending pods.
      */
     private void preemptionFixedPods(final ViewSet viewSet) {
         final String name = "ASSIGNED_PODS_PREEMPT";
-        final String query = "SELECT * FROM pod_info LIMIT 0";
+        final String query = "SELECT *, node_name AS controllable__node_name FROM pod_info " +
+                             " WHERE node_name IS NOT NULL AND priority >= (SELECT MAX(priority) FROM PODS_TO_ASSIGN)";
         viewSet.addQuery(name, query);
     }
 
