@@ -1251,7 +1251,7 @@ public class SchedulerTest {
     }
 
     @Test
-    public void testScopedScheduler() {
+    public void testScopedSchedulerSimple() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
@@ -1287,11 +1287,70 @@ public class SchedulerTest {
 
         // Check that all pods have been scheduled to a node eligible by the scope filtering
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
-        System.out.println(fetch);
         fetch.forEach(e -> assertTrue(e.getNodeName() != null
                 && e.getNodeName().startsWith("n")
                 && (Integer.parseInt(e.getNodeName().substring(1)) >= numNodes - numPods
                   || !e.getPodName().startsWith("p"))));
+    }
+
+    @Test
+    public void testScopedSchedulerAffinity() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final List<String> policies = Policies.getDefaultPolicies();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final int numNodes = 10;
+        final int numPods = 8;
+        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
+
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        for (int i = 0; i < numNodes; i++) {
+            final String nodeName = "n" + i;
+            final Map<String, String> nodeLabels = new HashMap<>();
+            if (i == 2 || i == 3)
+                nodeLabels.put("gpu", "true");
+            if (i == 3 || i == 4)
+                nodeLabels.put("ssd", "true");
+            final Node node = newNode(nodeName, nodeLabels, Collections.emptyList());
+            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + 1000 * i/numNodes)));
+            node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
+            nodeResourceEventHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running");
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
+        }
+
+        for (int i = 0; i < numPods; i++) {
+            final String podName = "p" + i;
+            final Map<String, String> selectorLabels = new HashMap<>();
+            if (i < 4)
+                selectorLabels.put("gpu", "true");
+            if (i > 1 && i < 6)
+                selectorLabels.put("ssd", "true");
+            final Pod newPod = newPod(podName, UUID.randomUUID(), "Pending", selectorLabels, Collections.emptyMap());
+            handler.onAddSync(newPod);
+        }
+
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        scheduler.setScopeOn();
+        scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
+
+        // Check that all pods have been scheduled to a node eligible by the scope filtering
+        final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
+
+        // TODO: remove print
+        System.out.println(fetch);
+
+//        fetch.forEach(e -> assertTrue(e.getNodeName() != null
+//                && e.getNodeName().startsWith("n")
+//                && (Integer.parseInt(e.getNodeName().substring(1)) >= numNodes - numPods
+//                  || !e.getPodName().startsWith("p"))));
     }
 
 
