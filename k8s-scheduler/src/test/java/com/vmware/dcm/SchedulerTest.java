@@ -312,8 +312,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
-                NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true, NUM_THREADS);
         final Result<? extends Record> results = scheduler.initialPlacement();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo,
@@ -342,7 +341,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                 Policies.nodeSelectorPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true,
                 NUM_THREADS);
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
@@ -455,7 +454,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true,
                 NUM_THREADS);
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
@@ -688,7 +687,7 @@ public class SchedulerTest {
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.podAffinityPredicate(),
                                                                            Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true,
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true,
                 NUM_THREADS);
 
         final Result<? extends Record> result = scheduler.initialPlacement();
@@ -929,7 +928,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                     Policies.disallowNullNodeSoft(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true, NUM_THREADS);
         if (feasible) {
             final Result<? extends Record> result = scheduler.initialPlacement();
             assertEquals(numPods, result.size());
@@ -1017,7 +1016,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true, NUM_THREADS);
         final Result<? extends Record> result = scheduler.initialPlacement();
         assertEquals(numPods, result.size());
         final List<String> nodes = result.stream()
@@ -1157,7 +1156,7 @@ public class SchedulerTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         DebugUtils.dbLoad(conn);
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, NUM_THREADS);
         for (int i = 0; i < 100; i++) {
             final Result<? extends Record> results = scheduler.initialPlacement();
             System.out.println(results);
@@ -1196,7 +1195,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, NUM_THREADS);
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
@@ -1206,7 +1205,7 @@ public class SchedulerTest {
     public void testFilterNodes() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, NUM_THREADS);
 
         final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);
@@ -1267,7 +1266,7 @@ public class SchedulerTest {
                 Policies.podAntiAffinityPredicate(),
                 Policies.preemption());
         final Scheduler scheduler = new Scheduler(dbConnectionPool, policiesInitial, policiesPreemption,
-                                                  "ORTOOLS", true, NUM_THREADS, 1);
+                                                  true, NUM_THREADS, 1);
 
         final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);

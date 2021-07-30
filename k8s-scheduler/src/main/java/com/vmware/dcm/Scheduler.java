@@ -75,28 +75,27 @@ public final class Scheduler {
     private final ExecutorService scheduler = Executors.newSingleThreadExecutor(namedThreadFactory);
     private final LinkedBlockingDeque<Boolean> notificationQueue = new LinkedBlockingDeque<>();
 
-    Scheduler(final DBConnectionPool dbConnectionPool, final String solverToUse, final boolean debugMode,
+    Scheduler(final DBConnectionPool dbConnectionPool, final boolean debugMode,
               final int numThreads) {
         this(dbConnectionPool, Policies.getInitialPlacementPolicies(), Policies.getPreemptionPlacementPolicies(),
-                solverToUse, debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
+             debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
     }
 
-    Scheduler(final DBConnectionPool dbConnectionPool, final String solverToUse, final boolean debugMode,
+    Scheduler(final DBConnectionPool dbConnectionPool,  final boolean debugMode,
               final int numThreads, final int solverMaxTimeInSeconds) {
         this(dbConnectionPool, Policies.getInitialPlacementPolicies(), Policies.getPreemptionPlacementPolicies(),
-             solverToUse, debugMode, numThreads, solverMaxTimeInSeconds);
+             debugMode, numThreads, solverMaxTimeInSeconds);
     }
 
-
     Scheduler(final DBConnectionPool dbConnectionPool, final List<String> initialPlacementPolicies,
-              final String solverToUse, final boolean debugMode, final int numThreads) {
+              final boolean debugMode, final int numThreads) {
         this(dbConnectionPool, initialPlacementPolicies, Policies.getPreemptionPlacementPolicies(),
-                solverToUse, debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
+             debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
     }
 
     Scheduler(final DBConnectionPool dbConnectionPool, final List<String> initialPlacementPolicies,
-              final List<String> preemptionPolicies, final String solverToUse,
-              final boolean debugMode, final int numThreads, final int solverMaxTimeInSeconds) {
+              final List<String> preemptionPolicies, final boolean debugMode, final int numThreads,
+              final int solverMaxTimeInSeconds) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
                 StandardCharsets.UTF_8))) {
@@ -264,16 +263,13 @@ public final class Scheduler {
                 "Scheduler batch size count");
         options.addRequiredOption("bi", "batch-interval-ms", true,
                 "Scheduler batch interval");
-        options.addRequiredOption("m", "solver", true,
-                "Solver to use: MNZ-CHUFFED, ORTOOLS");
         options.addRequiredOption("t", "num-threads", true,
                 "Number of threads to use for or-tools");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
 
         final DBConnectionPool conn = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(conn, cmd.getOptionValue("solver"),
-                                                  Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
+        final Scheduler scheduler = new Scheduler(conn, Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
                                                   Integer.parseInt(cmd.getOptionValue("num-threads")));
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",

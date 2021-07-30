@@ -41,7 +41,7 @@ public class SchedulerIT extends ITBase {
     @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, 4);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);
@@ -71,7 +71,7 @@ public class SchedulerIT extends ITBase {
     @Timeout(60 /* seconds */)
     public void testAffinityAntiAffinity() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, 4);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);
@@ -111,7 +111,7 @@ public class SchedulerIT extends ITBase {
     @Timeout(120 /* seconds */)
     public void testSmallTrace() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, "ORTOOLS", true, 4);
+        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, 4);
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);

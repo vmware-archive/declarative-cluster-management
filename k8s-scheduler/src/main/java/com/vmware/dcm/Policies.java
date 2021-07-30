@@ -30,14 +30,7 @@ class Policies {
         INITIAL_PLACEMENT_POLICIES.add(symmetryBreaking());
 
         PREEMPTION_POLICIES.add(preemption());
-        PREEMPTION_POLICIES.add(disallowNullNodeSoft());
-        PREEMPTION_POLICIES.add(nodePredicates());
-        PREEMPTION_POLICIES.add(nodeSelectorPredicate());
-        PREEMPTION_POLICIES.add(podAffinityPredicate());
-        PREEMPTION_POLICIES.add(podAntiAffinityPredicate());
-        PREEMPTION_POLICIES.add(capacityConstraint(true, true));
-        PREEMPTION_POLICIES.add(taintsAndTolerations());
-        PREEMPTION_POLICIES.add(symmetryBreaking());
+        PREEMPTION_POLICIES.addAll(new ArrayList<>(INITIAL_PLACEMENT_POLICIES));
     }
 
     /**
