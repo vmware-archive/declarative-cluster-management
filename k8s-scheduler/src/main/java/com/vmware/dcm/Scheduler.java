@@ -236,13 +236,28 @@ public final class Scheduler {
         scopeOn = true;
     }
 
+    /**
+     * We use two sets of views to fetch data required for the DCM models. These views correspond to different kinds
+     * of problems, like initial placement and preemption. See {@link DBViews}.
+     *
+     * All constraints operate on two groups of pods: "pods to assign" and "assigned pods". The former represents
+     * pods that can be assigned or reassigned by a model, whereas the latter represents pods that have fixed
+     * assignments.
+     *
+     * For simplicity, we keep the policy specification fixed but change the group of pods considered within
+     * each of these sets dynamically, depending on the "scope" of the problem. By default, the views are
+     * created assuming initial placement. When performing preemption, we dynamically change the contents
+     * of the pods_to_assign and assigned_pods views by querying the pods_to_assign_preempt and assigned_pods_preempt
+     * views instead, using DCM's fetcher API below. The remaining views in views.preemption already reflect
+     * this switch.
+     */
     Result<? extends Record> preempt() {
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated = preemption.solve("PODS_TO_ASSIGN",
                 table -> {
-            final String tableNameTweak = table.getName().equalsIgnoreCase("PODS_TO_ASSIGN") ||
-                                          table.getName().equalsIgnoreCase("ASSIGNED_PODS") ?
-                                            "_PREEMPT" : "";
+                     final String tableNameTweak = table.getName().equalsIgnoreCase("PODS_TO_ASSIGN") ||
+                                                   table.getName().equalsIgnoreCase("ASSIGNED_PODS") ?
+                                                   "_PREEMPT" : "";
                     // We control the set of pods that appear in the fixed/unfixed sets here.
                     return dbConnectionPool.getConnectionToDb()
                             .fetch(views.preemption.getQuery(table.getName() + tableNameTweak));
