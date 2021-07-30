@@ -1271,8 +1271,8 @@ public class SchedulerTest {
         final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);
 
-        // Add nodes
-        for (int i = 0; i < 5; i++) {
+        // Add nodes with low or high priority pods
+        for (int i = 0; i < 10; i++) {
             final String nodeName = "node-" + i;
             final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
             node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(100)));
@@ -1284,7 +1284,7 @@ public class SchedulerTest {
             final Pod pod;
             final String status = "Running";
             pod = newPod(podName, status);
-            pod.getSpec().setPriority(20);
+            pod.getSpec().setPriority(i < 5 ? 20 : 150);
             pod.getSpec().setNodeName(nodeName);
             pod.getMetadata().setLabels(Map.of("k1", "l1"));
             podHandler.onAddSync(pod);
@@ -1315,6 +1315,8 @@ public class SchedulerTest {
                     if (r.get(field("POD_NAME", String.class)).startsWith("pod-")) {
                         assertNotEquals("NULL_NODE", assignment);
                     } else {
+                        // We should only consider nodes with lower priority pods
+                        assertEquals(20, r.get("PRIORITY", Integer.class));
                         runningPodAssignments.add(assignment);
                     }
                 }
