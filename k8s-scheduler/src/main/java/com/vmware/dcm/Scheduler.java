@@ -60,7 +60,7 @@ public final class Scheduler {
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
     private final ScopedModel scopedModel;
-    private boolean scopeOn = false;
+    private boolean scopeOn = true;
 
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
