@@ -11,8 +11,8 @@ import com.google.common.util.concurrent.SettableFuture;
 import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
+import org.jooq.Delete;
 import org.jooq.Record;
-import org.jooq.Result;
 import org.jooq.Update;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +48,16 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
         }
     }
 
+    public Delete<PodInfoRecord> unbindOne(final String namespace, final String podName, final String podUid) {
+        LOG.info("Delete {}/pod:{} (uid: {})", namespace, podName, podUid);
+
+        // Mimic a binding notification
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            return conn.delete(Tables.POD_INFO)
+                       .where(Tables.POD_INFO.UID.eq(podUid));
+        }
+    }
+
     public ListenableFuture<Boolean> waitForPodBinding(final String podUid) {
         final SettableFuture<Boolean> settableFuture = SettableFuture.create();
         waitForPodBinding.put(podUid, settableFuture);
@@ -55,7 +65,7 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
     }
 
     @Override
-    public void bindManyAsnc(final Result<? extends Record> records) {
+    public void bindManyAsnc(final List<? extends Record> records) {
         ForkJoinPool.commonPool().execute(
             () -> {
                 final List<Update<PodInfoRecord>> updates = records.stream().map(record -> {
@@ -76,6 +86,25 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
                         waitForPodBinding.get(podUid).set(true);
                     }
                 });
+            }
+        );
+    }
+
+    @Override
+    public void unbindManyAsnc(final List<? extends Record> records) {
+        ForkJoinPool.commonPool().execute(
+            () -> {
+                final List<Delete<PodInfoRecord>> updates = records.stream().map(record -> {
+                            final String podUid = record.get("UID", String.class);
+                            final String podName = record.get("POD_NAME", String.class);
+                            final String namespace = record.get("NAMESPACE", String.class);
+                            LOG.info("Attempting to delete {}:{}", namespace, podName);
+                            return unbindOne(namespace, podName, podUid);
+                        }
+                ).collect(Collectors.toList());
+                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+                    conn.batch(updates).execute();
+                }
             }
         );
     }
