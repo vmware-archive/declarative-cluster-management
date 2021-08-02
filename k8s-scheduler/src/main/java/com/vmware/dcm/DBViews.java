@@ -6,13 +6,19 @@
 
 package com.vmware.dcm;
 
-import org.jooq.DSLContext;
+import com.google.common.base.Splitter;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 
@@ -25,86 +31,109 @@ import java.util.stream.Stream;
  * SQL does allow parameterizing the tables being queried. We therefore resort to dynamic SQL to create two
  * sets of views, each parameterized by a different pair of "fixed" and "unfixed" pods.
  *
- * The {@link Scheduler} uses an instance of this class to get the parameterized query, corresponding to the views
- * required for the respective DCM models.
+ * The {@link Scheduler} queries views for a given DCM model by adding a suffix to all view names being
+ * queried.
  */
 public class DBViews {
-    private final DSLContext conn;
-    private final ViewSet initialPlacement = new ViewSet("pods_to_assign", "assigned_pods");
-    public final ViewSet preemption = new ViewSet("pods_to_assign_preempt", "assigned_pods_preempt");
+    private static final String UNFIXED_PODS_VIEW_NAME = "pods_to_assign";
+    private static final String FIXED_PODS_VIEW_NAME = "assigned_pods";
+    private static final String INITIAL_PLACEMENT_VIEW_NAME_SUFFIX = "";
+    static final String PREEMPTION_VIEW_NAME_SUFFIX = "_preempt";
+    private static final ViewStatements INITIAL_PLACEMENT = new ViewStatements(INITIAL_PLACEMENT_VIEW_NAME_SUFFIX);
+    private static final ViewStatements PREEMPTION = new ViewStatements(PREEMPTION_VIEW_NAME_SUFFIX);
 
-    public DBViews(final DSLContext conn) {
-        this.conn = conn;
-        allPendingPods(initialPlacement);
-        initialPlacementInputPods(initialPlacement);
-        initialPlacementFixedPods(initialPlacement);
-        preemptionInputPods(preemption);
-        preemptionFixedPods(preemption);
-        Stream.of(initialPlacement, preemption).forEach(viewSet -> {
-            podsWithPortRequests(viewSet);
-            podNodeSelectorMatches(viewSet);
-            spareCapacityPerNode(viewSet);
-            podsThatTolerateNodeTaints(viewSet);
-            nodesThatHaveTolerations(viewSet);
-            allowedNodes(viewSet);
-            interPodAffinityAndAntiAffinitySimple(viewSet);
+    static {
+        allPendingPods(INITIAL_PLACEMENT);
+        initialPlacementInputPods(INITIAL_PLACEMENT);
+        initialPlacementFixedPods(INITIAL_PLACEMENT);
+        preemptionInputPods(PREEMPTION);
+        preemptionFixedPods(PREEMPTION);
+        Stream.of(INITIAL_PLACEMENT, PREEMPTION).forEach(viewStatements -> {
+            podsWithPortRequests(viewStatements);
+            podNodeSelectorMatches(viewStatements);
+            spareCapacityPerNode(viewStatements);
+            podsThatTolerateNodeTaints(viewStatements);
+            nodesThatHaveTolerations(viewStatements);
+            allowedNodes(viewStatements);
+            interPodAffinityAndAntiAffinitySimple(viewStatements);
         });
+    }
+
+    static List<String> getSchema() {
+        final List<String> schema = new ArrayList<>();
+        final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/scheduler_tables.sql");
+        try (final BufferedReader tables = new BufferedReader(new InputStreamReader(resourceAsStream,
+                StandardCharsets.UTF_8))) {
+            final String schemaAsString = tables.lines()
+                    .filter(line -> !line.startsWith("--")) // remove SQL comments
+                    .collect(Collectors.joining("\n"));
+            final List<String> baseTableList = Splitter.on(";")
+                    .trimResults()
+                    .omitEmptyStrings()
+                    .splitToList(schemaAsString);
+            schema.addAll(baseTableList);
+            schema.addAll(INITIAL_PLACEMENT.getViewStatements());
+            schema.addAll(PREEMPTION.getViewStatements());
+            return schema;
+        } catch (final IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /*
      * Select all pods that are pending placement.
      */
-    private void allPendingPods(final ViewSet viewSet) {
+    private static void allPendingPods(final ViewStatements viewStatements) {
         final String name = "PODS_TO_ASSIGN_NO_LIMIT";
         final String query = "SELECT pod_info.*, node_name AS controllable__node_name FROM pod_info " +
                 "WHERE status = 'Pending' AND node_name IS NULL AND schedulerName = 'dcm-scheduler'";
-        viewSet.addQuery(name, query);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * Select 50 pods that need to be considered for initial placement.
      */
-    private void initialPlacementInputPods(final ViewSet viewSet) {
+    private static void initialPlacementInputPods(final ViewStatements viewStatements) {
         final String name = "PODS_TO_ASSIGN";
         final String query = "SELECT * FROM PODS_TO_ASSIGN_NO_LIMIT LIMIT 50";
-        viewSet.addQuery(name, query);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * Pods that are already assigned to nodes
      */
-    private void initialPlacementFixedPods(final ViewSet viewSet) {
+    private static void initialPlacementFixedPods(final ViewStatements viewStatements) {
         final String name = "ASSIGNED_PODS";
         final String query = "SELECT * FROM pod_info WHERE node_name IS NOT NULL";
-        viewSet.addQuery(name, query);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * Select all pods that need to be scheduled and pods of comparatively lower priority that could be reassigned.
      */
-    private void preemptionInputPods(final ViewSet viewSet) {
-        final String name = "PODS_TO_ASSIGN_PREEMPT";
+    private static void preemptionInputPods(final ViewStatements viewStatements) {
+        final String name = "PODS_TO_ASSIGN";
         final String query = "(SELECT * FROM PODS_TO_ASSIGN) " +
                              "UNION ALL " +
                              "(SELECT *, node_name AS controllable__node_name FROM pod_info " +
                              " WHERE node_name IS NOT NULL AND priority < (SELECT MAX(priority) FROM PODS_TO_ASSIGN))";
-        viewSet.addQuery(name, query);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * Fix all pods that have higher priority than the set of pods pending pods.
      */
-    private void preemptionFixedPods(final ViewSet viewSet) {
-        final String name = "ASSIGNED_PODS_PREEMPT";
+    private static void preemptionFixedPods(final ViewStatements viewStatements) {
+        final String name = "ASSIGNED_PODS";
         final String query = "SELECT *, node_name AS controllable__node_name FROM pod_info " +
                              " WHERE node_name IS NOT NULL AND priority >= (SELECT MAX(priority) FROM PODS_TO_ASSIGN)";
-        viewSet.addQuery(name, query);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * Pods with port requests
      */
-    private void podsWithPortRequests(final ViewSet viewSet) {
+    private static void podsWithPortRequests(final ViewStatements viewStatements) {
         final String name = "PODS_WITH_PORT_REQUESTS";
         final String query = String.format(
                 "SELECT pods_to_assign.controllable__node_name AS controllable__node_name, " +
@@ -113,14 +142,14 @@ public class DBViews {
                 "       pod_ports_request.host_protocol AS host_protocol " +
                 "FROM %s AS pods_to_assign " +
                 "JOIN pod_ports_request " +
-                "     ON pod_ports_request.pod_uid = pods_to_assign.uid", viewSet.unfixedPods);
-        viewSet.addQuery(name, query);
+                "     ON pod_ports_request.pod_uid = pods_to_assign.uid", viewStatements.unfixedPods);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * For each pod, get the nodes that match its node selector labels.
      */
-    private void podNodeSelectorMatches(final ViewSet viewSet) {
+    private static void podNodeSelectorMatches(final ViewStatements viewStatements) {
         final String name = "POD_NODE_SELECTOR_MATCHES";
         final String query = String.format(
                 "SELECT pods_to_assign.uid AS pod_uid, " +
@@ -147,14 +176,14 @@ public class DBViews {
                 "            WHEN 'DoesNotExist' " +
                 "                 THEN NOT(ANY(pod_node_selector_labels.label_key = node_labels.label_key)) " +
                 "            ELSE count(distinct match_expression) = pod_node_selector_labels.num_match_expressions " +
-                "       END", viewSet.unfixedPods);
-        viewSet.addQuery(name, query);
+                "       END", viewStatements.unfixedPods);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * Spare capacity per node
      */
-    private void spareCapacityPerNode(final ViewSet viewSet) {
+    private static void spareCapacityPerNode(final ViewStatements viewStatements) {
         final String name = "SPARE_CAPACITY_PER_NODE";
         final String query = "SELECT name AS name, " +
                             "  cpu_allocatable - cpu_allocated AS cpu_remaining, " +
@@ -171,13 +200,13 @@ public class DBViews {
                             "      cpu_allocated < cpu_allocatable AND " +
                             "      memory_allocated <  memory_allocatable AND " +
                             "      pods_allocated < pods_allocatable; ";
-        viewSet.addQuery(name, query);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * For each pod, extract nodes that match according to taints/tolerations.
      */
-    private void podsThatTolerateNodeTaints(final ViewSet viewSet) {
+    private static void podsThatTolerateNodeTaints(final ViewStatements viewStatements) {
         final String name = "PODS_THAT_TOLERATE_NODE_TAINTS";
         final String query = String.format(
                              "SELECT pods_to_assign.uid AS pod_uid, " +
@@ -193,32 +222,32 @@ public class DBViews {
                              "     AND (pod_tolerations.tolerations_operator = 'Exists' " +
                              "          OR pod_tolerations.tolerations_value = A.taint_value) " +
                              "GROUP BY pod_tolerations.pod_uid, A.node_name, A.num_taints " +
-                             "HAVING COUNT(*) = A.num_taints ", viewSet.unfixedPods);
-        viewSet.addQuery(name, query);
+                             "HAVING COUNT(*) = A.num_taints ", viewStatements.unfixedPods);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * The set of nodes that have any tolerations configured
      */
-    private void nodesThatHaveTolerations(final ViewSet viewSet) {
+    private static void nodesThatHaveTolerations(final ViewStatements viewStatements) {
         final String name = "NODES_THAT_HAVE_TOLERATIONS";
         final String query = "SELECT distinct node_name FROM node_taints";
-        viewSet.addQuery(name, query);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * Avoid overloaded nodes or nodes that report being under resource pressure
      */
-    private void allowedNodes(final ViewSet viewSet) {
+    private static void allowedNodes(final ViewStatements viewStatements) {
         final String name = "ALLOWED_NODES";
         final String query = "SELECT name FROM spare_capacity_per_node;";
-        viewSet.addQuery(name, query);
+        viewStatements.addQuery(name, query);
     }
 
     /*
      * Inter-pod affinity and anti-affinity
      */
-    public void interPodAffinityAndAntiAffinitySimple(final ViewSet viewSet) {
+    private static void interPodAffinityAndAntiAffinitySimple(final ViewStatements viewStatements) {
         // The below query is simpler than it looks.
         //
         // All it does is the following:
@@ -260,49 +289,37 @@ public class DBViews {
                         "HAVING " +
                         "  COUNT(distinct match_expression) = num_match_expressions";
         for (final String type: List.of("affinity", "anti_affinity")) {
-            final String pendingQuery = String.format(formatString, type, viewSet.unfixedPods, viewSet.unfixedPods);
-            final String scheduledQuery = String.format(formatString, type, viewSet.unfixedPods, viewSet.fixedPods);
-            viewSet.addQuery(String.format("INTER_POD_%s_MATCHES_PENDING", type.toUpperCase(Locale.ROOT)),
+            final String pendingQuery = String.format(formatString, type, viewStatements.unfixedPods,
+                                                                          viewStatements.unfixedPods);
+            final String scheduledQuery = String.format(formatString, type, viewStatements.unfixedPods,
+                                                                            viewStatements.fixedPods);
+            viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_PENDING", type.toUpperCase(Locale.ROOT)),
                              pendingQuery);
-            viewSet.addQuery(String.format("INTER_POD_%s_MATCHES_SCHEDULED", type.toUpperCase(Locale.ROOT)),
+            viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_SCHEDULED", type.toUpperCase(Locale.ROOT)),
                              scheduledQuery);
         }
     }
 
-    @SuppressWarnings("ReturnValueIgnored")
-    void initializeViews() {
-        final BiFunction<String, String, Integer> createView =
-                (name, query) -> conn.createView(name).as(query).execute();
-
-        // By default, all views refer to their initial placement versions
-        initialPlacement.asQuery.forEach(createView::apply);
-
-        // Create views for the preemption version of fixed/unfixed pods
-        preemption.asQuery.forEach(
-                (name, query) -> {
-                    if (name.equals("PODS_TO_ASSIGN_PREEMPT") || name.equals("ASSIGNED_PODS_PREEMPT")) {
-                        createView.apply(name, query);
-                    }
-                }
-        );
-    }
-
-    static class ViewSet {
+    private static class ViewStatements {
         private final String unfixedPods;
         private final String fixedPods;
+        private final String viewNameSuffix;
         private final Map<String, String> asQuery = new LinkedHashMap<>();
 
-        ViewSet(final String unfixedPods, final String fixedPods) {
-            this.unfixedPods = unfixedPods;
-            this.fixedPods = fixedPods;
+        ViewStatements(final String suffix) {
+            this.unfixedPods = UNFIXED_PODS_VIEW_NAME + suffix;
+            this.fixedPods = FIXED_PODS_VIEW_NAME + suffix;
+            this.viewNameSuffix = suffix;
         }
 
         void addQuery(final String name, final String query) {
-            asQuery.put(name, query);
+            asQuery.put(name + viewNameSuffix, query);
         }
 
-        public String getQuery(final String name) {
-            return asQuery.get(name.toUpperCase());
+        List<String> getViewStatements() {
+            return asQuery.entrySet().stream()
+                          .map(e -> String.format("%nCREATE VIEW %s AS %s%n", e.getKey(), e.getValue()))
+                          .collect(Collectors.toList());
         }
     }
 }
