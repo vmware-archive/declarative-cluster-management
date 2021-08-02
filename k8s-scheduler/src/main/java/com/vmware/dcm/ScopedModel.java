@@ -59,9 +59,9 @@ public class ScopedModel {
     }
 
     private Map<Set<String>, Set<String>> getNodeSets() {
-        Result<?> podNodeSelectorMatches = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES).fetch();
-        Set<String> constraintNodes = podNodeSelectorMatches.intoSet(Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
-        Set<String> constraintPods = podNodeSelectorMatches.intoSet(Tables.POD_NODE_SELECTOR_MATCHES.POD_UID);
+        final Result<?> podNodeSelectorMatches = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES).fetch();
+        final Set<String> constraintNodes = podNodeSelectorMatches.intoSet(Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
+        final Set<String> constraintPods = podNodeSelectorMatches.intoSet(Tables.POD_NODE_SELECTOR_MATCHES.POD_UID);
 
         System.out.println("node sets");
         System.out.println(constraintNodes.size());
@@ -73,7 +73,7 @@ public class ScopedModel {
     }
 
     private int getRestPodsCnt() {
-        int restPodsCnt = conn.fetchCount(selectFrom(Tables.PODS_TO_ASSIGN_NO_LIMIT)
+        final int restPodsCnt = conn.fetchCount(selectFrom(Tables.PODS_TO_ASSIGN_NO_LIMIT)
                 .where(Tables.PODS_TO_ASSIGN_NO_LIMIT.HAS_NODE_SELECTOR_LABELS.eq(false)));
 
         System.out.println("pods not labeled");
@@ -84,39 +84,39 @@ public class ScopedModel {
         return restPodsCnt;
     }
 
-    private Collection<Condition> getWhereClause(Set<String> nodeSet) {
-        Collection<Condition> conditions = new ArrayList<>();
+    private Collection<Condition> getWhereClause(final Set<String> nodeSet) {
+        final Collection<Condition> conditions = new ArrayList<>();
         conditions.add(Tables.SPARE_CAPACITY_PER_NODE.NAME.in(nodeSet));
 
         return conditions;
     }
 
-    // choose the commented option to tune node selection between spare cpu and memory capacity
-    private SortField<?> getSorting() {
-        return field(sortWeightCpu + " * cpu_remaining + "
-                + sortWeightMemory + " * memory_remaining").desc();
-    }
+    // choose the uncommented option to tune node selection between spare cpu and memory capacity
 //    private Collection<SortField<?>> getSorting() {
-//        Collection<SortField<?>> sorts = new ArrayList<>();
+//        final Collection<SortField<?>> sorts = new ArrayList<>();
 //        sorts.add(Tables.SPARE_CAPACITY_PER_NODE.CPU_REMAINING.desc());
 //        sorts.add(Tables.SPARE_CAPACITY_PER_NODE.MEMORY_REMAINING.desc());
 //
 //        return sorts;
 //    }
+    private SortField<?> getSorting() {
+        return field(sortWeightCpu + " * cpu_remaining + "
+                + sortWeightMemory + " * memory_remaining").desc();
+    }
 
 //    private int getLimit() {
 //        int podsCount = conn.fetchCount(Tables.PODS_TO_ASSIGN_NO_LIMIT);
 //        return (int) Math.ceil(limitTune * podsCount);
 //    }
 
-    private int getLimit(int cnt) {
+    private int getLimit(final int cnt) {
         return (int) Math.ceil(limitTune * cnt);
     }
 
     private Function<Table<?>, Result<? extends Record>> scope() {
-        int restPodsCnt = getRestPodsCnt();
-        Map<Set<String>, Set<String>> nodeSets = getNodeSets();
-        Set<String> nodeSet = nodeSets.keySet().iterator().next();
+        final int restPodsCnt = getRestPodsCnt();
+        final Map<Set<String>, Set<String>> nodeSets = getNodeSets();
+        final Set<String> nodeSet = nodeSets.keySet().iterator().next();
 
         // TODO: union nodesets
 
@@ -124,9 +124,9 @@ public class ScopedModel {
             if (table.getName().equalsIgnoreCase("spare_capacity_per_node")) {
 
                 // TODO: Is this expensive to compute? remove?
-                int sizeUnfiltered = conn.selectFrom(table).fetch().size();
+                final int sizeUnfiltered = conn.selectFrom(table).fetch().size();
 
-                Result<?> scopedFetcher = conn.select().from(
+                final Result<?> scopedFetcher = conn.select().from(
                         select().from(table)
                         .where(getWhereClause(nodeSet))
 // TODO: enable limit in separate node sets
@@ -138,50 +138,22 @@ public class ScopedModel {
                         .limit(getLimit(restPodsCnt))
                     )).fetch();
 
-                int sizeFiltered = scopedFetcher.size();
+                final int sizeFiltered = scopedFetcher.size();
                 LOG.info("solver input size without scope: {}\n" +
                         "solver input size with scope: {}\n" +
                         "scope fraction: {}",
                         sizeUnfiltered, sizeFiltered, (double) sizeFiltered / sizeUnfiltered);
 
                 return scopedFetcher;
-
-//                SelectOrderByStep<?> a = conn.select().from(
-//                        select().from(table)
-//                        .where(Tables.SPARE_CAPACITY_PER_NODE.NAME.in(tmp_key1))
-//                        .orderBy(getSorting())
-//                        .limit(getLimit(tmp_val1.size()))
-//                    .union(
-//                        select().from(table)
-//                        .where(Tables.SPARE_CAPACITY_PER_NODE.NAME.in(tmp_key2))
-//                        .orderBy(getSorting())
-//                        .limit(getLimit(tmp_val2.size()))
-//                        ));
-//
-//                Stream<Object> x = nodeSets.keySet().stream().map( (nodes) -> {
-//                    return conn.selectFrom(table)
-//                            .where(Tables.SPARE_CAPACITY_PER_NODE.NAME
-//                                    .in(nodes));
-//                });
-//
-//                int xx = x.reduce((select1, select2) -> {
-//                    return select1.union(select2);
-//                });
-
-                // filter them (where)
-
-                // sort them (order by)
-
-                // limit them (limit)
-
-                // union (union)
             }
-            else
+
+            else {
                 return conn.fetch(table);
+            }
         };
     }
 
-    public void setSortWeights(double weightCpu, double weightMemory) {
+    public void setSortWeights(final double weightCpu, final double weightMemory) {
         sortWeightCpu = weightCpu;
         sortWeightMemory = weightMemory;
     }

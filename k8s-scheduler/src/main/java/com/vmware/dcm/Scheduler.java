@@ -172,10 +172,11 @@ public final class Scheduler {
     Result<? extends Record> runOneLoop() {
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated;
-        if (scopeOn)
-             podsToAssignUpdated = scopedModel.solve("PODS_TO_ASSIGN");
-        else
+        if (scopeOn) {
+            podsToAssignUpdated = scopedModel.solve("PODS_TO_ASSIGN");
+        } else {
             podsToAssignUpdated = model.solve("PODS_TO_ASSIGN");
+        }
         solveTimer.stop();
         return podsToAssignUpdated;
     }
