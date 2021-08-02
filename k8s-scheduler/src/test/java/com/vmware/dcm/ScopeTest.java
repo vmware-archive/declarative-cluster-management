@@ -6,6 +6,7 @@
 
 package com.vmware.dcm;
 
+import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
@@ -26,11 +27,7 @@ import org.jooq.Result;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,8 +39,41 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ScopeTest {
     private static final int NUM_THREADS = 1;
 
+    @Test
+    public void testSpareCapacityFilter() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        final int numNodes = 10;
+        final int numPods = 4;
+
+        for (int i = 0; i < numNodes; i++) {
+            final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
+            // more spare capacity as i increases
+            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10 + i)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000)));
+            node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
+            nodeResourceEventHandler.onAddSync(node);
+        }
+        for (int i = 0; i < numPods; i++) {
+            handler.onAddSync(newPod("p" + i));
+        }
+
+        Model model = buildModel(conn);
+        ScopedModel scopedModel = new ScopedModel(conn, model);
+        Set<String> scopedNodes = scopedModel.getScopedNodes();
+
+        assertEquals(numPods, scopedNodes.size());
+        scopedNodes.forEach(n -> assertTrue(Integer.parseInt(n.substring(1)) >= numNodes - numPods));
+    }
+
     /*
-     * Test if Scope limits candidate nodes according to spare resources sorting
+     * E2E test with scheduler:
+     * Test if Scope limits candidate nodes according to spare resources
      */
     @Test
     public void testScopedSchedulerSimple() {
@@ -52,7 +82,7 @@ public class ScopeTest {
         final List<String> policies = Policies.getDefaultPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final int numNodes = 100;
-        final int numPods = 60;
+        final int numPods = 40;
         conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
@@ -91,10 +121,11 @@ public class ScopeTest {
     }
 
     /*
+     * E2E test with scheduler:
      * Test if Scope filters out nodes maintaining while matching labels
      */
     @Test
-    public void testScopedSchedulerAffinity() {
+    public void testScopedSchedulerNodeLabels() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
@@ -148,6 +179,13 @@ public class ScopeTest {
                   || Integer.parseInt(e.getNodeName().substring(1)) < 16)));
     }
 
+
+    private Model buildModel(final DSLContext conn) {
+        final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
+                .setPrintDiagnostics(true)
+                .build();
+        return Model.build(conn, orToolsSolver, Policies.getDefaultPolicies());
+    }
 
     static Pod newPod(final String name) {
         return newPod(name, "Pending");
