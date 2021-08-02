@@ -45,6 +45,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
+import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
 import static org.jooq.impl.DSL.field;
 import static org.jooq.impl.DSL.table;
 
@@ -62,8 +63,6 @@ public final class Scheduler {
     private final ScopedModel scopedModel;
     private boolean scopeOn = false;
     private final Model preemption;
-    private final DBViews views;
-
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
     private final Meter solverInvocations = metrics.meter("solverInvocations");
@@ -105,8 +104,6 @@ public final class Scheduler {
             throw new RuntimeException(e);
         }
         this.dbConnectionPool = dbConnectionPool;
-        views = new DBViews(dbConnectionPool.getConnectionToDb());
-        views.initializeViews();
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
                 .setNumThreads(numThreads)
@@ -238,30 +235,14 @@ public final class Scheduler {
 
     /**
      * We use two sets of views to fetch data required for the DCM models. These views correspond to different kinds
-     * of problems, like initial placement and preemption. See {@link DBViews}.
-     *
-     * All constraints operate on two groups of pods: "pods to assign" and "assigned pods". The former represents
-     * pods that can be assigned or reassigned by a model, whereas the latter represents pods that have fixed
-     * assignments.
-     *
-     * For simplicity, we keep the policy specification fixed but change the group of pods considered within
-     * each of these sets dynamically, depending on the "scope" of the problem. By default, the views are
-     * created assuming initial placement. When performing preemption, we dynamically change the contents
-     * of the pods_to_assign and assigned_pods views by querying the pods_to_assign_preempt and assigned_pods_preempt
-     * views instead, using DCM's fetcher API below. The remaining views in views.preemption already reflect
-     * this switch.
+     * of problems, like initial placement and preemption. See {@link DBViews}. For preemption, all view names are
+     * suffixed with PREEMPTION_VIEW_NAME_SUFFIX.
      */
     Result<? extends Record> preempt() {
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated = preemption.solve("PODS_TO_ASSIGN",
-                table -> {
-                     final String tableNameTweak = table.getName().equalsIgnoreCase("PODS_TO_ASSIGN") ||
-                                                   table.getName().equalsIgnoreCase("ASSIGNED_PODS") ?
-                                                   "_PREEMPT" : "";
-                    // We control the set of pods that appear in the fixed/unfixed sets here.
-                    return dbConnectionPool.getConnectionToDb()
-                            .fetch(views.preemption.getQuery(table.getName() + tableNameTweak));
-                });
+                table -> dbConnectionPool.getConnectionToDb()
+                                         .fetch(table(table.getName() + PREEMPTION_VIEW_NAME_SUFFIX)));
         solveTimer.stop();
         return podsToAssignUpdated;
     }
