@@ -215,22 +215,15 @@ class Policies {
 
 
     static List<String> getInitialPlacementPolicies() {
-        return getDefaultPoliciesWithPodsToAssignReplaced(from(INITIAL_PLACEMENT_POLICIES),
-                                    "pods_to_assign_limit");
-    }
-
-    static List<String> getInitialPlacementPolicies(final Policy... policies) {
-        return getDefaultPoliciesWithPodsToAssignReplaced(from(List.of(policies)), "pods_to_assign_limit");
+        return from(INITIAL_PLACEMENT_POLICIES);
     }
 
     static List<String> getPreemptionPlacementPolicies() {
-        return getDefaultPoliciesWithPodsToAssignReplaced(from(PREEMPTION_POLICIES),
-                "pods_to_assign_preempt");
+        return from(PREEMPTION_POLICIES);
     }
 
-    private static List<String> getDefaultPoliciesWithPodsToAssignReplaced(final List<String> policies,
-                                                                   final String podsToAssignReplacement) {
-        return new ArrayList<>(policies);
+    static List<String> getInitialPlacementPolicies(final Policy... policies) {
+        return from(List.of(policies));
     }
 
     static List<String> from(final List<Policy> policies) {

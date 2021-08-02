@@ -46,7 +46,6 @@ import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
 import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
-import static org.jooq.impl.DSL.field;
 import static org.jooq.impl.DSL.table;
 
 /**
@@ -56,6 +55,10 @@ import static org.jooq.impl.DSL.table;
 public final class Scheduler {
     private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
     private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
+    private static final String ASSIGNED = "ASSIGNED";
+    private static final String PREEMPT = "PREEMPT";
+    private static final String UNASSIGNED = "UNASSIGNED";
+    private static final String UNCHANGED = "UNCHANGED";
 
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
@@ -166,24 +169,39 @@ public final class Scheduler {
 
             final long now = System.nanoTime();
             final Result<? extends Record> podsToAssignUpdated = initialPlacement();
-            final Map<Boolean, ? extends Result<? extends Record>> byType = podsToAssignUpdated
-                                        .intoGroups(r -> !r.get(field("CONTROLLABLE__NODE_NAME")).equals("NULL_NODE"));
+            final Map<String, ? extends Result<? extends Record>> byType = podsToAssignUpdated
+                .intoGroups(r -> {
+                    final boolean hasNewAssignment = !r.get("CONTROLLABLE__NODE_NAME", String.class)
+                                                       .equals("NULL_NODE");
+                    final boolean hadOldAssignment = r.get("NODE_NAME", String.class) != null;
+                    if (hasNewAssignment && !hadOldAssignment) {
+                        return ASSIGNED;
+                    } else if (!hasNewAssignment && hadOldAssignment) {
+                        return PREEMPT;
+                    } else if (!hasNewAssignment) {
+                        return UNASSIGNED;
+                    } else {
+                        return UNCHANGED;
+                    }
+                });
             final long totalTime = System.nanoTime() - now;
             solverInvocations.mark();
 
-            fetchCount -= podsToAssignUpdated.size();
-
             // Handle successful placements first
-            if (byType.containsKey(true)) {
+            if (byType.containsKey(ASSIGNED)) {
+                // Only consider pods that were previously unassigned.
+                final Result<? extends Record> assignedPods = byType.get(ASSIGNED);
+                fetchCount -= assignedPods.size();
+
                 // First, locally update the node_name entries for pods
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
                     final List<Update<?>> updates = new ArrayList<>();
-                    byType.get(true).forEach(r -> {
+                    assignedPods.forEach(r -> {
                         final String podName = r.get("POD_NAME", String.class);
-                        final String nodeName = r.get("CONTROLLABLE__NODE_NAME", String.class);
+                        final String newNodeName = r.get("CONTROLLABLE__NODE_NAME", String.class);
                         updates.add(
                                 conn.update(Tables.POD_INFO)
-                                        .set(Tables.POD_INFO.NODE_NAME, nodeName)
+                                        .set(Tables.POD_INFO.NODE_NAME, newNodeName)
                                         .where(Tables.POD_INFO.POD_NAME.eq(podName))
                         );
                         LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
@@ -193,13 +211,19 @@ public final class Scheduler {
                 }
                 LOG.info("Done with updates");
                 // Next, issue bind requests for pod -> node_name
-                binder.bindManyAsnc(byType.get(true));
+                binder.bindManyAsnc(assignedPods);
                 LOG.info("Done with bindings");
             }
 
-            // Initiate preemption for assignments that failed
-            if (byType.containsKey(false)) {
-                byType.get(false).forEach(
+            // Initiate preemption if needed
+            if (byType.containsKey(PREEMPT)) {
+                final Result<? extends Record> toPreempt = byType.get(PREEMPT);
+                toPreempt.forEach(e -> LOG.info("pod:{} will be preempted", e.get("POD_NAME")));
+                binder.unbindManyAsnc(byType.get(PREEMPT));
+            }
+
+            if (byType.containsKey(UNASSIGNED)) {
+                byType.get(UNASSIGNED).forEach(
                         e -> LOG.info("pod:{} could not be assigned a node in this iteration", e.get("POD_NAME"))
                 );
             }

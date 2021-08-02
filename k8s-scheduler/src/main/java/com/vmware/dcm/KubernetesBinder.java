@@ -12,8 +12,8 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.jooq.Record;
-import org.jooq.Result;
 
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
@@ -47,7 +47,7 @@ class KubernetesBinder implements IPodToNodeBinder {
     }
 
     @Override
-    public void bindManyAsnc(final Result<? extends Record> records) {
+    public void bindManyAsnc(final List<? extends Record> records) {
         ForkJoinPool.commonPool().execute(() -> records.forEach(
                 r -> service.execute(() -> {
                     final String podName = r.get("POD_NAME", String.class);
@@ -56,6 +56,18 @@ class KubernetesBinder implements IPodToNodeBinder {
                     bindOne(namespace, podName, nodeName);
                 }
             )
+        ));
+    }
+
+    @Override
+    public void unbindManyAsnc(final List<? extends Record> records) {
+        ForkJoinPool.commonPool().execute(() -> records.forEach(
+                r -> service.execute(() -> {
+                        final String podName = r.get("POD_NAME", String.class);
+                        final String namespace = r.get("NAMESPACE", String.class);
+                        client.pods().inNamespace(namespace).withName(podName).delete();
+                    }
+                )
         ));
     }
 }
