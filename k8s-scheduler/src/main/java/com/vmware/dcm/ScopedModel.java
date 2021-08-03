@@ -33,8 +33,8 @@ import java.util.function.Function;
 public class ScopedModel {
     private static final Logger LOG = LoggerFactory.getLogger(ScopedModel.class);
     private static final double LIMIT_TUNE_DEFAULT = 1.0;
-    private static final double CPU_WEIGHT_DEFAULT = 1.0;
-    private static final double MEM_WEIGHT_DEFAULT = 1.0;
+    private static final double CPU_WEIGHT_DEFAULT = 0.8;
+    private static final double MEM_WEIGHT_DEFAULT = 0.2;
 
     private final DSLContext conn;
     private final Model model;
