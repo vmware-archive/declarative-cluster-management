@@ -59,6 +59,8 @@ public final class Scheduler {
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
     private final Model model;
+    private final ScopedModel scopedModel;
+    private boolean scopeOn = false;
 
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
@@ -90,6 +92,7 @@ public final class Scheduler {
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         this.model = createDcmModel(dbConnectionPool.getConnectionToDb(), solverToUse, policies, numThreads,
                                     solverMaxTimeInSeconds, debugMode);
+        this.scopedModel = new ScopedModel(dbConnectionPool.getConnectionToDb(), model);
         LOG.info("Initialized scheduler:: model:{}", model);
     }
 
@@ -168,7 +171,12 @@ public final class Scheduler {
 
     Result<? extends Record> runOneLoop() {
         final Timer.Context solveTimer = solveTimes.time();
-        final Result<? extends Record> podsToAssignUpdated = model.solve("PODS_TO_ASSIGN");
+        final Result<? extends Record> podsToAssignUpdated;
+        if (scopeOn) {
+            podsToAssignUpdated = scopedModel.solve("PODS_TO_ASSIGN");
+        } else {
+            podsToAssignUpdated = model.solve("PODS_TO_ASSIGN");
+        }
         solveTimer.stop();
         return podsToAssignUpdated;
     }
@@ -178,6 +186,14 @@ public final class Scheduler {
         final Result<? extends Record> podsToAssignUpdated = model.solve("PODS_TO_ASSIGN", fetcher);
         solveTimer.stop();
         return podsToAssignUpdated;
+    }
+
+    /**
+     * Sets the usage of ScopedModel.
+     * TODO: add to constructor
+     */
+    public void setScopeOn() {
+        scopeOn = true;
     }
 
     /**
