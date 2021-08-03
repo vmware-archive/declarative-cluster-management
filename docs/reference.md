@@ -44,7 +44,7 @@ is a single SQL view. See the section below on [writing constraints](#writing-co
 the solver's properties (such as the timeout to use). If you omit the argument, an instance of the `OrToolsSolver` 
 is used. Here's an example of this API's use in our Kubernetes scheduler:
 
-  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L109-L112 -->
+  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L111-L114 -->
   ```java
   final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
           .setNumThreads(numThreads)
