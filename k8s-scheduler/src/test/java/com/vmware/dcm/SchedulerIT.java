@@ -6,9 +6,9 @@
 
 package com.vmware.dcm;
 
+import com.vmware.dcm.trace.TraceReplayer;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
-import com.vmware.dcm.trace.TraceReplayer;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -41,11 +41,11 @@ public class SchedulerIT extends ITBase {
     @Timeout(60 /* seconds */)
     public void testDeployments() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, 4);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).build();
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);
-        scheduler.startScheduler(new KubernetesBinder(fabricClient), 50, 1000);
+        scheduler.startScheduler(new KubernetesBinder(fabricClient));
         stateSync.startProcessingEvents();
 
         // Add a new one
@@ -71,11 +71,11 @@ public class SchedulerIT extends ITBase {
     @Timeout(60 /* seconds */)
     public void testAffinityAntiAffinity() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, 4);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).build();
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);
-        scheduler.startScheduler(new KubernetesBinder(fabricClient),  50, 1000);
+        scheduler.startScheduler(new KubernetesBinder(fabricClient));
         stateSync.startProcessingEvents();
 
         // Add a new one
@@ -111,11 +111,11 @@ public class SchedulerIT extends ITBase {
     @Timeout(120 /* seconds */)
     public void testSmallTrace() throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, 4);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).build();
         final KubernetesStateSync stateSync = new KubernetesStateSync(fabricClient);
 
         stateSync.setupInformersAndPodEventStream(dbConnectionPool, scheduler::handlePodEvent);
-        scheduler.startScheduler(new KubernetesBinder(fabricClient), 50, 1000);
+        scheduler.startScheduler(new KubernetesBinder(fabricClient));
         stateSync.startProcessingEvents();
 
         // Add a new one

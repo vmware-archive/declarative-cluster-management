@@ -89,7 +89,8 @@ public class ScaleModelBenchmark {
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
             final boolean debugMode = true;
             final int numThreads = 1;
-            scheduler = new Scheduler(dbConnectionPool, debugMode, numThreads);
+            scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(debugMode)
+                                     .setNumThreads(numThreads).build();
             handler = new PodResourceEventHandler(scheduler::handlePodEventNoNotify);
             addedPods = new HashSet<Pod>();
 

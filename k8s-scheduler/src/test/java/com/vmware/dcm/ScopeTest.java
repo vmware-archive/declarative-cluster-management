@@ -24,8 +24,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import static com.vmware.dcm.SchedulerTest.newPod;
 import static com.vmware.dcm.SchedulerTest.newNode;
+import static com.vmware.dcm.SchedulerTest.newPod;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,8 +34,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @ExtendWith({})
 public class ScopeTest {
-    private static final int NUM_THREADS = 1;
-
     @Test
     public void testSpareCapacityFilter() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
@@ -77,7 +75,7 @@ public class ScopeTest {
     public void testScopedSchedulerSimple() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.getDefaultPolicies();
+        final List<String> policies = Policies.getInitialPlacementPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
@@ -105,8 +103,10 @@ public class ScopeTest {
             handler.onAddSync(newPod("p" + i));
         }
 
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
-        scheduler.setScopeOn();
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policies)
+                                                 .setScopedInitialPlacement(true)
+                                                 .setDebugMode(true).build();
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
 
         // Check that all pods have been scheduled to a node eligible by the scope filtering
@@ -128,7 +128,7 @@ public class ScopeTest {
     public void testScopedSchedulerNodeLabels() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final List<String> policies = Policies.getDefaultPolicies();
+        final List<String> policies = Policies.getInitialPlacementPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
@@ -172,8 +172,10 @@ public class ScopeTest {
             handler.onAddSync(newPod);
         }
 
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, "ORTOOLS", true, NUM_THREADS);
-        scheduler.setScopeOn();
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                .setInitialPlacementPolicies(policies)
+                                                .setScopedInitialPlacement(true)
+                                                .setDebugMode(true).build();
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
 
         // Check that all pods have been scheduled to a node eligible by the scope filtering
@@ -193,6 +195,6 @@ public class ScopeTest {
         final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
                 .setPrintDiagnostics(true)
                 .build();
-        return Model.build(conn, orToolsSolver, Policies.getDefaultPolicies());
+        return Model.build(conn, orToolsSolver, Policies.getInitialPlacementPolicies());
     }
 }

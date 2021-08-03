@@ -54,7 +54,6 @@ import static org.jooq.impl.DSL.table;
  */
 public final class Scheduler {
     private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
-    private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
     private static final String ASSIGNED = "ASSIGNED";
     private static final String PREEMPT = "PREEMPT";
     private static final String UNASSIGNED = "UNASSIGNED";
@@ -62,9 +61,8 @@ public final class Scheduler {
 
     // This constant is also used in our views: see scheduler_tables.sql. Do not change.
     static final String SCHEDULER_NAME = "dcm-scheduler";
+    private final Function<String, Result<? extends Record>> initialPlacementFunction;
     private final Model initialPlacement;
-    private final ScopedModel scopedModel;
-    private boolean scopeOn = false;
     private final Model preemption;
     private final AtomicInteger batchId = new AtomicInteger(0);
     private final MetricRegistry metrics = new MetricRegistry();
@@ -77,27 +75,59 @@ public final class Scheduler {
     private final ExecutorService scheduler = Executors.newSingleThreadExecutor(namedThreadFactory);
     private final LinkedBlockingDeque<Boolean> notificationQueue = new LinkedBlockingDeque<>();
 
-    Scheduler(final DBConnectionPool dbConnectionPool, final boolean debugMode,
-              final int numThreads) {
-        this(dbConnectionPool, Policies.getInitialPlacementPolicies(), Policies.getPreemptionPlacementPolicies(),
-             debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
+    public static class Builder {
+        private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
+        private final DBConnectionPool connection;
+        private List<String> initialPlacementPolicies = Policies.getInitialPlacementPolicies();
+        private List<String> preemptionPolicies = Policies.getPreemptionPlacementPolicies();
+        private boolean debugMode = false;
+        private int numThreads = 1;
+        private boolean scopedInitialPlacement = false;
+        private int solverMaxTimeInSeconds = DEFAULT_SOLVER_MAX_TIME_IN_SECONDS;
+
+        public Builder(final DBConnectionPool connection) {
+            this.connection = connection;
+        }
+
+        public Builder setDebugMode(final boolean debugMode) {
+            this.debugMode = debugMode;
+            return this;
+        }
+
+        public Builder setInitialPlacementPolicies(final List<String> initialPlacementPolicies) {
+            this.initialPlacementPolicies = initialPlacementPolicies;
+            return this;
+        }
+
+        public Builder setNumThreads(final int numThreads) {
+            this.numThreads = numThreads;
+            return this;
+        }
+
+        public Builder setPreemptionPolicies(final List<String> preemptionPolicies) {
+            this.preemptionPolicies = preemptionPolicies;
+            return this;
+        }
+
+        public Builder setSolverMaxTimeInSeconds(final int solverMaxTimeInSeconds) {
+            this.solverMaxTimeInSeconds = solverMaxTimeInSeconds;
+            return this;
+        }
+
+        public Builder setScopedInitialPlacement(final boolean scopedInitialPlacement) {
+            this.scopedInitialPlacement = scopedInitialPlacement;
+            return this;
+        }
+
+        public Scheduler build() {
+            return new Scheduler(connection, initialPlacementPolicies, preemptionPolicies, debugMode, numThreads,
+                                 solverMaxTimeInSeconds, scopedInitialPlacement);
+        }
     }
 
-    Scheduler(final DBConnectionPool dbConnectionPool,  final boolean debugMode,
-              final int numThreads, final int solverMaxTimeInSeconds) {
-        this(dbConnectionPool, Policies.getInitialPlacementPolicies(), Policies.getPreemptionPlacementPolicies(),
-             debugMode, numThreads, solverMaxTimeInSeconds);
-    }
-
-    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> initialPlacementPolicies,
-              final boolean debugMode, final int numThreads) {
-        this(dbConnectionPool, initialPlacementPolicies, Policies.getPreemptionPlacementPolicies(),
-             debugMode, numThreads, DEFAULT_SOLVER_MAX_TIME_IN_SECONDS);
-    }
-
-    Scheduler(final DBConnectionPool dbConnectionPool, final List<String> initialPlacementPolicies,
+    private Scheduler(final DBConnectionPool dbConnectionPool, final List<String> initialPlacementPolicies,
               final List<String> preemptionPolicies, final boolean debugMode, final int numThreads,
-              final int solverMaxTimeInSeconds) {
+              final int solverMaxTimeInSeconds, final boolean scopedInitialPlacement) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         try (final BufferedReader gitPropertiesFile = new BufferedReader(new InputStreamReader(resourceAsStream,
                 StandardCharsets.UTF_8))) {
@@ -114,14 +144,16 @@ public final class Scheduler {
                 .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
         this.initialPlacement = Model.build(dbConnectionPool.getConnectionToDb(), orToolsSolver,
                 initialPlacementPolicies);
-        this.scopedModel = new ScopedModel(dbConnectionPool.getConnectionToDb(), initialPlacement);
+        final ScopedModel scopedModel = new ScopedModel(dbConnectionPool.getConnectionToDb(), initialPlacement);
+        this.initialPlacementFunction = scopedInitialPlacement ? scopedModel::solve : initialPlacement::solve;
         final OrToolsSolver orToolsSolverPreemption = new OrToolsSolver.Builder()
                 .setNumThreads(numThreads)
                 .setPrintDiagnostics(debugMode)
                 .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
         this.preemption = Model.build(dbConnectionPool.getConnectionToDb(), orToolsSolverPreemption,
                                       preemptionPolicies);
-        LOG.info("Initialized scheduler:: model:{}", initialPlacement);
+        LOG.info("Initialized scheduler: {} {} {} {} {} {}", initialPlacementPolicies, preemptionPolicies, debugMode,
+                 numThreads, solverMaxTimeInSeconds, scopedInitialPlacement);
     }
 
     void handlePodEvent(final PodEvent podEvent) {
@@ -140,7 +172,7 @@ public final class Scheduler {
         // Skip adding pending pod in notification queue
     }
 
-    void startScheduler(final IPodToNodeBinder binder, final int batchCount, final long batchTimeMs) {
+    void startScheduler(final IPodToNodeBinder binder) {
         scheduler.execute(
                 () -> {
                     while (!Thread.currentThread().isInterrupted()) {
@@ -253,11 +285,7 @@ public final class Scheduler {
     Result<? extends Record> initialPlacement() {
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated;
-        if (scopeOn) {
-            podsToAssignUpdated = scopedModel.solve("PODS_TO_ASSIGN");
-        } else {
-            podsToAssignUpdated = initialPlacement.solve("PODS_TO_ASSIGN");
-        }
+        podsToAssignUpdated = initialPlacementFunction.apply("PODS_TO_ASSIGN");
         solveTimer.stop();
         return podsToAssignUpdated;
     }
@@ -267,14 +295,6 @@ public final class Scheduler {
         final Result<? extends Record> podsToAssignUpdated = initialPlacement.solve("PODS_TO_ASSIGN", fetcher);
         solveTimer.stop();
         return podsToAssignUpdated;
-    }
-
-    /**
-     * Sets the usage of ScopedModel.
-     * TODO: add to constructor
-     */
-    public void setScopeOn() {
-        scopeOn = true;
     }
 
     /**
@@ -309,8 +329,9 @@ public final class Scheduler {
         final CommandLine cmd = parser.parse(options, args);
 
         final DBConnectionPool conn = new DBConnectionPool();
-        final Scheduler scheduler = new Scheduler(conn, Boolean.parseBoolean(cmd.getOptionValue("debug-mode")),
-                                                  Integer.parseInt(cmd.getOptionValue("num-threads")));
+        final Scheduler scheduler = new Scheduler.Builder(conn)
+                .setDebugMode(Boolean.parseBoolean(cmd.getOptionValue("debug-mode")))
+                .setNumThreads(Integer.parseInt(cmd.getOptionValue("num-threads"))).build();
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",
                  kubernetesClient.getConfiguration().getMasterUrl());
@@ -318,8 +339,7 @@ public final class Scheduler {
         final KubernetesStateSync stateSync = new KubernetesStateSync(kubernetesClient);
         stateSync.setupInformersAndPodEventStream(conn, scheduler::handlePodEvent);
         final KubernetesBinder binder = new KubernetesBinder(kubernetesClient);
-        scheduler.startScheduler(binder, Integer.parseInt(cmd.getOptionValue("batch-size")),
-                                 Long.parseLong(cmd.getOptionValue("batch-interval-ms")));
+        scheduler.startScheduler(binder);
         stateSync.startProcessingEvents();
         Thread.currentThread().join();
     }

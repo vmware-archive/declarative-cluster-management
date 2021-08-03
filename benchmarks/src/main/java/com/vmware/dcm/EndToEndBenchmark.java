@@ -69,9 +69,10 @@ public class EndToEndBenchmark {
 
             // Add all nodes
             final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-            scheduler = new Scheduler(dbConnectionPool, true, numThreads);
+            scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true)
+                                     .setNumThreads(numThreads).build();
             handler = new PodResourceEventHandler(scheduler::handlePodEvent);
-            scheduler.startScheduler(binder, 100, 500);
+            scheduler.startScheduler(binder);
             for (int i = 0; i < numNodes; i++) {
                 final String nodeName = "n" + i;
                 final Node node = addNode(nodeName, Collections.emptyMap(), Collections.emptyList());

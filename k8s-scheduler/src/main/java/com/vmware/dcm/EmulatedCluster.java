@@ -60,9 +60,12 @@ class EmulatedCluster {
                 service);
 
         final int solverMaxTimeInSeconds = numNodes >= 5000 ? 2 : 1;
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, 4, solverMaxTimeInSeconds);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setDebugMode(true)
+                                                 .setNumThreads(4)
+                                                 .setSolverMaxTimeInSeconds(solverMaxTimeInSeconds).build();
         final PodResourceEventHandler handler = new PodResourceEventHandler(scheduler::handlePodEvent, service);
-        scheduler.startScheduler(new EmulatedPodToNodeBinder(dbConnectionPool), 100, 50);
+        scheduler.startScheduler(new EmulatedPodToNodeBinder(dbConnectionPool));
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, UUID.randomUUID(), Collections.emptyMap(), Collections.emptyList());

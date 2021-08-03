@@ -7,20 +7,22 @@
 package com.vmware.dcm;
 
 import com.google.common.collect.Sets;
-import com.vmware.dcm.k8s.generated.Tables;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.SortField;
 import org.jooq.Table;
-import static org.jooq.impl.DSL.field;
-import static org.jooq.impl.DSL.selectFrom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Set;
 import java.util.function.Function;
+
+import static org.jooq.impl.DSL.field;
+import static org.jooq.impl.DSL.name;
+import static org.jooq.impl.DSL.selectFrom;
+import static org.jooq.impl.DSL.table;
 
 /**
  * A Scope to reduce the Model's solver input.
@@ -51,7 +53,7 @@ public class ScopedModel {
      * @return Where clause predicate
      */
     private Condition getWherePredicate(final Set<String> nodeSet) {
-        return Tables.SPARE_CAPACITY_PER_NODE.NAME.in(nodeSet);
+        return field(name("SPARE_CAPACITY_PER_NODE", "NAME")).in(nodeSet);
     }
 
     /**
@@ -84,9 +86,8 @@ public class ScopedModel {
      * @return Set of candidate nodes
      */
     private Set<String> getMatchedNodes() {
-        final Result<?> podNodeSelectorMatches = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES).fetch();
-
-        return podNodeSelectorMatches.intoSet(Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
+        final Result<?> podNodeSelectorMatches = conn.selectFrom(table("POD_NODE_SELECTOR_MATCHES")).fetch();
+        return podNodeSelectorMatches.intoSet(field(name("POD_NODE_SELECTOR_MATCHES", "NODE_NAME"), String.class));
     }
 
     /**
@@ -97,12 +98,12 @@ public class ScopedModel {
      * @return Set of least loaded nodes
      */
     private Set<String> getSpareNodes() {
-        final int podsCnt = conn.fetchCount(selectFrom(Tables.PODS_TO_ASSIGN));
-        final Result<?> spareNodes = conn.selectFrom(Tables.SPARE_CAPACITY_PER_NODE)
+        final int podsCnt = conn.fetchCount(selectFrom(table("PODS_TO_ASSIGN")));
+        final Result<?> spareNodes = conn.selectFrom(table("SPARE_CAPACITY_PER_NODE"))
                 .orderBy(getSortingExpression())
                 .limit(getLimit(podsCnt))
                 .fetch();
-        return spareNodes.intoSet(Tables.SPARE_CAPACITY_PER_NODE.NAME);
+        return spareNodes.intoSet(field(name("SPARE_CAPACITY_PER_NODE", "NAME"), String.class));
     }
 
     /**

@@ -76,8 +76,6 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 @ExtendWith({})
 public class SchedulerTest {
-    private static final int NUM_THREADS = 1;
-
     /*
      * Test our simulation of a materialized view by adding and removing pods, and checking whether
      * node_info is correctly updated
@@ -312,7 +310,10 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policies)
+                                                 .setDebugMode(true)
+                                                 .build();
         final Result<? extends Record> results = scheduler.initialPlacement();
         assertEquals(numPods, results.size());
         results.forEach(r -> assertEquals("n" + nodeToAssignTo,
@@ -341,9 +342,10 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                 Policies.nodeSelectorPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true,
-                NUM_THREADS);
-
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policies)
+                                                 .setDebugMode(true)
+                                                 .build();
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
@@ -454,8 +456,10 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true,
-                NUM_THREADS);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policies)
+                                                 .setDebugMode(true)
+                                                 .build();
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
@@ -687,8 +691,10 @@ public class SchedulerTest {
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.podAffinityPredicate(),
                                                                            Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true,
-                NUM_THREADS);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policies)
+                                                 .setDebugMode(true)
+                                                 .build();
 
         final Result<? extends Record> result = scheduler.initialPlacement();
 
@@ -928,7 +934,10 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                     Policies.disallowNullNodeSoft(),
                                                     Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policies)
+                                                 .setDebugMode(true)
+                                                 .build();
         if (feasible) {
             final Result<? extends Record> result = scheduler.initialPlacement();
             assertEquals(numPods, result.size());
@@ -1016,7 +1025,10 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policies, true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policies)
+                                                 .setDebugMode(true)
+                                                 .build();
         final Result<? extends Record> result = scheduler.initialPlacement();
         assertEquals(numPods, result.size());
         final List<String> nodes = result.stream()
@@ -1156,7 +1168,7 @@ public class SchedulerTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         DebugUtils.dbLoad(conn);
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
         for (int i = 0; i < 100; i++) {
             final Result<? extends Record> results = scheduler.initialPlacement();
             System.out.println(results);
@@ -1195,7 +1207,7 @@ public class SchedulerTest {
         }
 
         // All pod additions have completed
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
@@ -1205,7 +1217,7 @@ public class SchedulerTest {
     public void testFilterNodes() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, true, NUM_THREADS);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
 
         final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);
@@ -1265,8 +1277,10 @@ public class SchedulerTest {
                 Policies.disallowNullNodeSoft(),
                 Policies.podAntiAffinityPredicate(),
                 Policies.preemption());
-        final Scheduler scheduler = new Scheduler(dbConnectionPool, policiesInitial, policiesPreemption,
-                                                  true, NUM_THREADS, 1);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policiesInitial)
+                                                 .setPreemptionPolicies(policiesPreemption)
+                                                 .setDebugMode(true).build();
 
         final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);

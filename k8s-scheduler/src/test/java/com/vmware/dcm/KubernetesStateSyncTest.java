@@ -98,10 +98,9 @@ public class KubernetesStateSyncTest {
         nodeHandler.onAddSync(node);
         podHandler.onAddSync(pod);
 
-        final Scheduler scheduler = new Scheduler(conn, false, 4);
-
+        final Scheduler scheduler = new Scheduler.Builder(conn).build();
         final KubernetesBinder binder = new KubernetesBinder(client);
-        scheduler.startScheduler(binder, 50, 100);
+        scheduler.startScheduler(binder);
 
         // Create pod event and wait for scheduler to create a binding
         scheduler.handlePodEvent(new PodEvent(PodEvent.Action.ADDED, pod));
@@ -162,9 +161,12 @@ public class KubernetesStateSyncTest {
                 Policies.disallowNullNodeSoft(),
                 Policies.podAntiAffinityPredicate(),
                 Policies.preemption());
-        final Scheduler scheduler = new Scheduler(conn, policiesInitial, policiesPreemption, false, 4, 1);
+        final Scheduler scheduler = new Scheduler.Builder(conn)
+                                                 .setInitialPlacementPolicies(policiesInitial)
+                                                 .setPreemptionPolicies(policiesPreemption)
+                                                 .build();
         final KubernetesBinder binder = new KubernetesBinder(client);
-        scheduler.startScheduler(binder, 50, 100);
+        scheduler.startScheduler(binder);
 
         // Add low priority pod event and wait for scheduler to create a binding
         scheduler.handlePodEvent(new PodEvent(PodEvent.Action.ADDED, pod1));
