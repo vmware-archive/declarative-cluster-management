@@ -42,14 +42,14 @@ is a single SQL view. See the section below on [writing constraints](#writing-co
 
 * The `solverBackend` argument supplies a configured solver to use under-the-covers. This allows a user to configure
 the solver's properties (such as the timeout to use). If you omit the argument, an instance of the `OrToolsSolver` 
-is used. Here's an example of this API's use in our Kubernetes scheduler:
+is used. Here's an example of this API's use:
 
-  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L141-L144 -->
+  <!-- embedme ../examples/src/test/java/com/vmware/dcm/examples/SolverConfigurationTest.java#L24-L27 -->
   ```java
   final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
-          .setNumThreads(numThreads)
-          .setPrintDiagnostics(debugMode)
-          .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
+          .setNumThreads(1)
+          .setPrintDiagnostics(true)
+          .setMaxTimeInSeconds(5).build();
   ```
   To see all the configuration parameters for an `OrToolsSolver` instance, see the 
 [OrToolsSolverBuilder Javadocs](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/backend/ortools/OrToolsSolver.Builder.html). 

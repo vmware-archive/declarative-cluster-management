@@ -75,6 +75,9 @@ public final class Scheduler {
     private final ExecutorService scheduler = Executors.newSingleThreadExecutor(namedThreadFactory);
     private final LinkedBlockingDeque<Boolean> notificationQueue = new LinkedBlockingDeque<>();
 
+    /**
+     * Builder to instantiate a Kubernetes scheduler
+     */
     public static class Builder {
         private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
         private final DBConnectionPool connection;
@@ -89,31 +92,52 @@ public final class Scheduler {
             this.connection = connection;
         }
 
+        /**
+         * Configures the underlying solver to print the generated code, its execution and solver diagnostics.
+         * Defaults to false.
+         */
         public Builder setDebugMode(final boolean debugMode) {
             this.debugMode = debugMode;
             return this;
         }
 
+        /**
+         * Configure the initial placement policies for the scheduler. Each String is a self-contained SQL
+         * CREATE CONSTRAINT statement.
+         */
         public Builder setInitialPlacementPolicies(final List<String> initialPlacementPolicies) {
             this.initialPlacementPolicies = initialPlacementPolicies;
             return this;
         }
 
-        public Builder setNumThreads(final int numThreads) {
-            this.numThreads = numThreads;
-            return this;
-        }
-
+        /**
+         * Configure the preemption policies for the scheduler. Each String is a self-contained SQL
+         * CREATE CONSTRAINT statement.
+         */
         public Builder setPreemptionPolicies(final List<String> preemptionPolicies) {
             this.preemptionPolicies = preemptionPolicies;
             return this;
         }
 
+        /**
+         * Configure the number of worker threads used by the underlying solver instances. Defaults to 1.
+         */
+        public Builder setNumThreads(final int numThreads) {
+            this.numThreads = numThreads;
+            return this;
+        }
+
+        /**
+         * Set the solver timeout for initial placement or preemption policies. Defaults to 1 second.
+         */
         public Builder setSolverMaxTimeInSeconds(final int solverMaxTimeInSeconds) {
             this.solverMaxTimeInSeconds = solverMaxTimeInSeconds;
             return this;
         }
 
+        /**
+         * Configures the initial placement model to use AutoScope. Experimental. Defaults to false.
+         */
         public Builder setScopedInitialPlacement(final boolean scopedInitialPlacement) {
             this.scopedInitialPlacement = scopedInitialPlacement;
             return this;
@@ -143,7 +167,7 @@ public final class Scheduler {
                 .setPrintDiagnostics(debugMode)
                 .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
         this.initialPlacement = Model.build(dbConnectionPool.getConnectionToDb(), orToolsSolver,
-                initialPlacementPolicies);
+                                            initialPlacementPolicies);
         final ScopedModel scopedModel = new ScopedModel(dbConnectionPool.getConnectionToDb(), initialPlacement);
         this.initialPlacementFunction = scopedInitialPlacement ? scopedModel::solve : initialPlacement::solve;
         final OrToolsSolver orToolsSolverPreemption = new OrToolsSolver.Builder()
