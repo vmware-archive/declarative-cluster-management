@@ -166,69 +166,89 @@ public final class Scheduler {
         while (fetchCount > 0) {
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
-
             final long now = System.nanoTime();
             final Result<? extends Record> podsToAssignUpdated = initialPlacement();
-            final Map<String, ? extends Result<? extends Record>> byType = podsToAssignUpdated
-                .intoGroups(r -> {
-                    final boolean hasNewAssignment = !r.get("CONTROLLABLE__NODE_NAME", String.class)
-                                                       .equals("NULL_NODE");
-                    final boolean hadOldAssignment = r.get("NODE_NAME", String.class) != null;
-                    if (hasNewAssignment && !hadOldAssignment) {
-                        return ASSIGNED;
-                    } else if (!hasNewAssignment && hadOldAssignment) {
-                        return PREEMPT;
-                    } else if (!hasNewAssignment) {
-                        return UNASSIGNED;
-                    } else {
-                        return UNCHANGED;
-                    }
-                });
-            final long totalTime = System.nanoTime() - now;
+            final Map<String, ? extends Result<? extends Record>> initialPlacementResult =
+                                                                 splitByType(podsToAssignUpdated);
+            final long schedulingLatency = System.nanoTime() - now;
             solverInvocations.mark();
 
             // Handle successful placements first
-            if (byType.containsKey(ASSIGNED)) {
+            if (initialPlacementResult.containsKey(ASSIGNED)) {
                 // Only consider pods that were previously unassigned.
-                final Result<? extends Record> assignedPods = byType.get(ASSIGNED);
+                final Result<? extends Record> assignedPods = initialPlacementResult.get(ASSIGNED);
                 fetchCount -= assignedPods.size();
-
-                // First, locally update the node_name entries for pods
-                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                    final List<Update<?>> updates = new ArrayList<>();
-                    assignedPods.forEach(r -> {
-                        final String podName = r.get("POD_NAME", String.class);
-                        final String newNodeName = r.get("CONTROLLABLE__NODE_NAME", String.class);
-                        updates.add(
-                                conn.update(Tables.POD_INFO)
-                                        .set(Tables.POD_INFO.NODE_NAME, newNodeName)
-                                        .where(Tables.POD_INFO.POD_NAME.eq(podName))
-                        );
-                        LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
-                                podName, batch, totalTime);
-                    });
-                    conn.batch(updates).execute();
-                }
-                LOG.info("Done with updates");
-                // Next, issue bind requests for pod -> node_name
-                binder.bindManyAsnc(assignedPods);
-                LOG.info("Done with bindings");
+                handleAssignment(assignedPods, binder, batch, schedulingLatency);
             }
 
-            // Initiate preemption if needed
-            if (byType.containsKey(PREEMPT)) {
-                final Result<? extends Record> toPreempt = byType.get(PREEMPT);
-                toPreempt.forEach(e -> LOG.info("pod:{} will be preempted", e.get("POD_NAME")));
-                binder.unbindManyAsnc(byType.get(PREEMPT));
-            }
-
-            if (byType.containsKey(UNASSIGNED)) {
-                byType.get(UNASSIGNED).forEach(
-                        e -> LOG.info("pod:{} could not be assigned a node in this iteration", e.get("POD_NAME"))
+            // If there are unsuccessful placements, trigger preemption
+            if (initialPlacementResult.containsKey(UNASSIGNED)) {
+                initialPlacementResult.get(UNASSIGNED).forEach(
+                        e -> LOG.info("pod:{} could not be assigned a node in this iteration. Attempting Preemption",
+                                e.get("POD_NAME"))
                 );
+                final Map<String, ? extends Result<? extends Record>> preemptionResults = splitByType(preempt());
+                final long schedulingLatencyWithPreemption = System.nanoTime() - now;
+                if (preemptionResults.containsKey(PREEMPT)) {
+                    final Result<? extends Record> toPreempt = preemptionResults.get(PREEMPT);
+                    toPreempt.forEach(e -> LOG.info("pod:{} will be preempted", e.get("POD_NAME")));
+                    binder.unbindManyAsnc(toPreempt);
+                }
+                if (preemptionResults.containsKey(ASSIGNED)) {
+                    final Result<? extends Record> assignedPodsWithPreemption = preemptionResults.get(ASSIGNED);
+                    fetchCount -= assignedPodsWithPreemption.size();
+                    handleAssignment(assignedPodsWithPreemption, binder, batch, schedulingLatencyWithPreemption);
+                }
+                if (preemptionResults.containsKey(UNASSIGNED)) {
+                    preemptionResults.get(UNASSIGNED).forEach(
+                            e -> LOG.info("pod:{} could not be assigned a node even with preemption", e.get("POD_NAME"))
+                    );
+                }
             }
         }
     }
+
+    private Map<String, ? extends Result<? extends Record>> splitByType(final Result<? extends Record> podsToAssign) {
+        return podsToAssign.intoGroups(r -> {
+            final boolean hasNewAssignment = !r.get("CONTROLLABLE__NODE_NAME", String.class)
+                    .equals("NULL_NODE");
+            final boolean hadOldAssignment = r.get("NODE_NAME", String.class) != null;
+            if (hasNewAssignment && !hadOldAssignment) {
+                return ASSIGNED;
+            } else if (!hasNewAssignment && hadOldAssignment) {
+                return PREEMPT;
+            } else if (!hasNewAssignment) {
+                return UNASSIGNED;
+            } else {
+                return UNCHANGED;
+            }
+        });
+    }
+
+    private void handleAssignment(final Result<? extends Record> assignedPods, final IPodToNodeBinder binder,
+                                  final int batch, final long totalTime) {
+        // First, locally update the node_name entries for pods
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            final List<Update<?>> updates = new ArrayList<>();
+            assignedPods.forEach(r -> {
+                final String podName = r.get("POD_NAME", String.class);
+                final String newNodeName = r.get("CONTROLLABLE__NODE_NAME", String.class);
+                updates.add(
+                        conn.update(Tables.POD_INFO)
+                                .set(Tables.POD_INFO.NODE_NAME, newNodeName)
+                                .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                );
+                LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
+                        podName, batch, totalTime);
+            });
+            conn.batch(updates).execute();
+        }
+        LOG.info("Done with updates");
+        // Next, issue bind requests for pod -> node_name
+        binder.bindManyAsnc(assignedPods);
+        LOG.info("Done with bindings");
+    }
+
 
     Result<? extends Record> initialPlacement() {
         final Timer.Context solveTimer = solveTimes.time();
