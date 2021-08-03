@@ -188,10 +188,13 @@ public final class Scheduler {
         return podsToAssignUpdated;
     }
 
+    /**
+     * Sets the usage of ScopedModel.
+     * TODO: add to constructor
+     */
     public void setScopeOn() {
         scopeOn = true;
     }
-
 
     /**
      * Instantiates a DCM model based on the configured policies.

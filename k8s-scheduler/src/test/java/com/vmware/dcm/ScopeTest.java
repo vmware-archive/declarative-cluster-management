@@ -27,7 +27,12 @@ import org.jooq.Result;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -43,17 +48,19 @@ public class ScopeTest {
     public void testSpareCapacityFilter() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        final Model model = buildModel(conn);
+        final ScopedModel scopedModel = new ScopedModel(conn, model);
 
         final int numNodes = 10;
         final int numPods = 4;
 
         for (int i = 0; i < numNodes; i++) {
             final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
-            // more spare capacity as i increases
+            // nodes have more spare capacity as i increases
             node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10 + i)));
             node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000)));
             node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
@@ -63,11 +70,10 @@ public class ScopeTest {
             handler.onAddSync(newPod("p" + i));
         }
 
-        Model model = buildModel(conn);
-        ScopedModel scopedModel = new ScopedModel(conn, model);
-        Set<String> scopedNodes = scopedModel.getScopedNodes();
+        final Set<String> scopedNodes = scopedModel.getScopedNodes();
 
         assertEquals(numPods, scopedNodes.size());
+        // check that the last, least loaded nodes are selected
         scopedNodes.forEach(n -> assertTrue(Integer.parseInt(n.substring(1)) >= numNodes - numPods));
     }
 
@@ -81,18 +87,18 @@ public class ScopeTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        final int numNodes = 100;
-        final int numPods = 40;
-        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
+        final int numNodes = 100;
+        final int numPods = 40;
+
         for (int i = 0; i < numNodes; i++) {
             final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
-            // more spare capacity as i increases
+            // nodes have more spare capacity as i increases
             node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10)));
-            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + 1000 * i / numNodes)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + (1000 * i) / numNodes)));
             node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
             nodeResourceEventHandler.onAddSync(node);
 
@@ -116,13 +122,15 @@ public class ScopeTest {
         assertEquals(numNodes + numPods, fetch.size());
         fetch.forEach(e -> assertTrue(e.getNodeName() != null
                 && e.getNodeName().startsWith("n")
+                // check that new pods have been scheduled to the last, least loaded nodes
                 && (Integer.parseInt(e.getNodeName().substring(1)) >= numNodes - numPods
                   || !e.getPodName().startsWith("p"))));
     }
 
     /*
      * E2E test with scheduler:
-     * Test if Scope filters out nodes maintaining while matching labels
+     * Test if Scope filters out nodes maintaining while maintaining matching labels.
+     * Labeled nodes have low spare capacity.
      */
     @Test
     public void testScopedSchedulerNodeLabels() {
@@ -130,37 +138,42 @@ public class ScopeTest {
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getDefaultPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        final int numNodes = 1000;
-        final int numPods = 20;
-        conn.insertInto(Tables.BATCH_SIZE).values(numPods).execute();
 
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
+        final int numNodes = 1000;
+        final int numPods = 20;
+
+        final List<Integer> gpuNodesIdx = List.of(0, 1);
+        final List<Integer> ssdNodesIdx = List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Map<String, String> nodeLabels = new HashMap<>();
-            if (i < 2) { // gpu: nodes 0..1
+            if (gpuNodesIdx.contains(i)) {
                 nodeLabels.put("gpu", "true");
             }
-            if (i > 0 && i < 16) { // ssd: nodes 1..15
+            if (ssdNodesIdx.contains(i)) {
                 nodeLabels.put("ssd", "true");
             }
             final Node node = newNode(nodeName, nodeLabels, Collections.emptyList());
-            // more spare capacity as i increases
+
+            // nodes have more spare capacity as i increases (favoring unlabeled nodes)
             node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10 + 10 * i / numNodes)));
-            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + 1000 * i / numNodes)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + (1000 * i) / numNodes)));
             node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
             nodeResourceEventHandler.onAddSync(node);
         }
 
+        final List<Integer> gpuPodsIdx = List.of(0, 1, 2, 3, 4, 5, 6, 7);
+        final List<Integer> ssdPodsIdx = List.of(2, 3, 4, 5, 6, 7, 8, 9);
         for (int i = 0; i < numPods; i++) {
             final String podName = "p" + i;
             final Map<String, String> selectorLabels = new HashMap<>();
-            if (i < 8) { // pods requiring gpu: 0..7
+            if (gpuPodsIdx.contains(i)) {
                 selectorLabels.put("gpu", "true");
             }
-            if (i > 1 && i < 10) { // pods requiring ssd: 2..9
+            if (ssdPodsIdx.contains(i)) {
                 selectorLabels.put("ssd", "true");
             }
             final Pod newPod = newPod(podName, UUID.randomUUID(), "Pending", selectorLabels, Collections.emptyMap());
@@ -175,8 +188,12 @@ public class ScopeTest {
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         assertEquals(numPods, fetch.size());
         fetch.forEach(e -> assertTrue(e.getNodeName() != null
-                && (Integer.parseInt(e.getPodName().substring(1)) >= 10
-                  || Integer.parseInt(e.getNodeName().substring(1)) < 16)));
+                // gpuPod => gpuNode
+                && (!gpuPodsIdx.contains(Integer.parseInt(e.getPodName().substring(1)))
+                  || gpuNodesIdx.contains(Integer.parseInt(e.getNodeName().substring(1))))
+                // ssdPod => ssdNode
+                && (!ssdPodsIdx.contains(Integer.parseInt(e.getPodName().substring(1)))
+                  || ssdNodesIdx.contains(Integer.parseInt(e.getNodeName().substring(1))))));
     }
 
 

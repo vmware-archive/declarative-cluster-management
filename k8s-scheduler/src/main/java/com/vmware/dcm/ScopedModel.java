@@ -6,6 +6,7 @@
 
 package com.vmware.dcm;
 
+import com.google.common.collect.Sets;
 import com.vmware.dcm.k8s.generated.Tables;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
@@ -18,63 +19,85 @@ import static org.jooq.impl.DSL.selectFrom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Stream;
 
 /**
  * A Scope to reduce the Model's solver input.
+ *
+ * TODO: dynamically tune the now default parameters {LIMIT_TUNE, CPU_WEIGHT, MEM_WEIGHT}_DEFAULT
+ *       maintain (three) different limitTune variables according to affinity
+ *       add extra limitPriority (provided as a hint)
+ *       capture successful schedules history
  */
-
 public class ScopedModel {
     private static final Logger LOG = LoggerFactory.getLogger(ScopedModel.class);
+    private static final double LIMIT_TUNE_DEFAULT = 1.0;
+    private static final double CPU_WEIGHT_DEFAULT = 1.0;
+    private static final double MEM_WEIGHT_DEFAULT = 1.0;
+
     private final DSLContext conn;
     private final Model model;
-
-    // dynamically adjuct number of scoped nodes with limitTune
-    private double limitTune = 1.0;
-    // TODO: add extra limitPriority (provided as a hint)
-    //       divide limitTune to (three) categories according to affinity
-    //       actually tune limitTune
-
-    // TODO: add testcase
-    private double sortWeightCpu = 0.8;
-    private double sortWeightMemory = 0.2;
-
-    // TODO: capture successful schedules history
-
 
     ScopedModel(final DSLContext conn, final Model model) {
         this.conn = conn;
         this.model = model;
     }
 
-    private Collection<Condition> getWhereClause(final Set<String> nodeSet) {
-        final Collection<Condition> conditions = new ArrayList<>();
-        conditions.add(Tables.SPARE_CAPACITY_PER_NODE.NAME.in(nodeSet));
-
-        return conditions;
+    /**
+     * Returns a where predicate to filter a given set of nodes.
+     *
+     * @param nodeSet Set of nodes to survive the filtering
+     * @return Where clause predicate
+     */
+    private Condition getWhereClause(final Set<String> nodeSet) {
+        return Tables.SPARE_CAPACITY_PER_NODE.NAME.in(nodeSet);
     }
 
+    /**
+     * Computes a sorting expression for an ORDER BY clause, based on a sorting strategy.
+     * This sorting strategy sorts according to a weighted sum of nodes' spare cpu and memory.
+     *
+     * @return Sorting expression
+     */
     private SortField<?> getSorting() {
-        return field(sortWeightCpu + " * cpu_remaining + "
-                + sortWeightMemory + " * memory_remaining").desc();
+        return field(CPU_WEIGHT_DEFAULT + " * cpu_remaining + "
+                + MEM_WEIGHT_DEFAULT + " * memory_remaining").desc();
     }
 
-    private int getLimit(final int cnt) {
-        return (int) Math.ceil(limitTune * cnt);
+    /**
+     * Limits the number of candidates nodes fetched for a set of pods.
+     * The number of nodes is proportional to the number of pods considered during the invocation.
+     * This nodes to pods ratio will be tuned dynamically.
+     *
+     * @param podCnt Number of pods consider during invocation
+     * @return Number of nodes to consider
+     */
+    private int getLimit(final int podCnt) {
+        return (int) Math.ceil(LIMIT_TUNE_DEFAULT * podCnt);
     }
 
-    private Set<String> getMatchedNodes () {
+    /**
+     * Returns the set of candidate nodes for pods with selector labels.
+     *
+     * @return Set of candidate nodes
+     */
+    private Set<String> getMatchedNodes() {
         final Result<?> podNodeSelectorMatches = conn.selectFrom(Tables.POD_NODE_SELECTOR_MATCHES).fetch();
 
         return podNodeSelectorMatches.intoSet(Tables.POD_NODE_SELECTOR_MATCHES.NODE_NAME);
     }
 
+    /**
+     * Returns a set with the least loaded nodes.
+     * Load is defined by the sorting strategy in {@link #getSorting()}.
+     * Set cardinality is defined by {@link #getLimit(int)}.
+     *
+     * @return Set of least loaded nodes
+     */
     private Set<String> getSpareNodes() {
         final int podsCnt = conn.fetchCount(selectFrom(Tables.PODS_TO_ASSIGN));
-
-        Result<?> spareNodes = conn.selectFrom(Tables.SPARE_CAPACITY_PER_NODE)
+        final Result<?> spareNodes = conn.selectFrom(Tables.SPARE_CAPACITY_PER_NODE)
                 .orderBy(getSorting())
                 .limit(getLimit(podsCnt))
                 .fetch();
@@ -82,21 +105,24 @@ public class ScopedModel {
         return spareNodes.intoSet(Tables.SPARE_CAPACITY_PER_NODE.NAME);
     }
 
+    /**
+     * Gets the final set of scoped nodes as a union.
+     *
+     * @return Set of node names
+     */
     public Set<String> getScopedNodes() {
-        Set<String> union = new HashSet<>();
-        Stream.of(
-                getMatchedNodes(),
-                getSpareNodes()
-        ).forEach(union::addAll);
-
-        return union;
+        return Sets.union(getMatchedNodes(), getSpareNodes());
     }
 
+    /**
+     * Applies the scope logic to filter the nodes table.
+     *
+     * @return A function object to apply the scope filtering
+     */
     public Function<Table<?>, Result<? extends Record>> scope() {
         return (table) -> {
             if (table.getName().equalsIgnoreCase("spare_capacity_per_node")) {
-
-                // TODO: Used only for log info. Remove if it is expensive to compute.
+                // TODO: Used only for log info. Remove if expensive to compute.
                 final int sizeUnfiltered = conn.selectFrom(table).fetch().size();
 
                 final Result<?> scopedFetcher = conn.selectFrom(table)
@@ -118,11 +144,12 @@ public class ScopedModel {
         };
     }
 
-    public void setSortWeights(final double weightCpu, final double weightMemory) {
-        sortWeightCpu = weightCpu;
-        sortWeightMemory = weightMemory;
-    }
-
+    /**
+     * Calls the {@link #model}'s {@link Model#solve(String)} method with the scoped input.
+     *
+     * @param tableName a table name
+     * @return A Result object representing rows of the corresponding tables, with modifications made by the solver
+     */
     public Result<? extends Record> solve(final String tableName) {
         return model.solve(tableName, scope());
     }
