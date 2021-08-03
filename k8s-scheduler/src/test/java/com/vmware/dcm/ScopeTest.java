@@ -9,19 +9,9 @@ package com.vmware.dcm;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
-import io.fabric8.kubernetes.api.model.Affinity;
-import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
-import io.fabric8.kubernetes.api.model.NodeAffinity;
-import io.fabric8.kubernetes.api.model.NodeCondition;
-import io.fabric8.kubernetes.api.model.NodeSpec;
-import io.fabric8.kubernetes.api.model.NodeStatus;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodSpec;
-import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
-import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import org.jooq.DSLContext;
 import org.jooq.Result;
 import org.junit.jupiter.api.Test;
@@ -34,6 +24,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import static com.vmware.dcm.SchedulerTest.newPod;
+import static com.vmware.dcm.SchedulerTest.newNode;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -202,79 +194,5 @@ public class ScopeTest {
                 .setPrintDiagnostics(true)
                 .build();
         return Model.build(conn, orToolsSolver, Policies.getDefaultPolicies());
-    }
-
-    static Pod newPod(final String name) {
-        return newPod(name, "Pending");
-    }
-
-    static Pod newPod(final String name, final String status) {
-        return newPod(name, UUID.randomUUID(), status, Collections.emptyMap(), Collections.emptyMap());
-    }
-
-    static Pod newPod(final String podName, final UUID uid, final String phase,
-                      final Map<String, String> selectorLabels, final Map<String, String> labels) {
-        final Pod pod = new Pod();
-        final ObjectMeta meta = new ObjectMeta();
-        meta.setUid(uid.toString());
-        meta.setName(podName);
-        meta.setLabels(labels);
-        meta.setCreationTimestamp("1");
-        meta.setNamespace("default");
-        meta.setResourceVersion("0");
-        final PodSpec spec = new PodSpec();
-        spec.setSchedulerName(Scheduler.SCHEDULER_NAME);
-        spec.setPriority(0);
-        spec.setNodeSelector(selectorLabels);
-
-        final Container container = new Container();
-        container.setName("pause");
-
-        final ResourceRequirements resourceRequirements = new ResourceRequirements();
-        resourceRequirements.setRequests(Collections.emptyMap());
-        container.setResources(resourceRequirements);
-        spec.getContainers().add(container);
-
-        final Affinity affinity = new Affinity();
-        final NodeAffinity nodeAffinity = new NodeAffinity();
-        affinity.setNodeAffinity(nodeAffinity);
-        spec.setAffinity(affinity);
-        final PodStatus status = new PodStatus();
-        status.setPhase(phase);
-        pod.setMetadata(meta);
-        pod.setSpec(spec);
-        pod.setStatus(status);
-        return pod;
-    }
-
-    static Node newNode(final String nodeName, final Map<String, String> labels,
-                        final List<NodeCondition> conditions) {
-        return newNode(nodeName, UUID.randomUUID(), labels, conditions);
-    }
-
-    static Node newNode(final String nodeName, final UUID uid, final Map<String, String> labels,
-                        final List<NodeCondition> conditions) {
-        final Node node = new Node();
-        final NodeStatus status = new NodeStatus();
-        final Map<String, Quantity> quantityMap = new HashMap<>();
-        quantityMap.put("cpu", new Quantity("10", "m"));
-        quantityMap.put("memory", new Quantity("1000"));
-        quantityMap.put("ephemeral-storage", new Quantity("1000"));
-        quantityMap.put("pods", new Quantity("100"));
-        status.setCapacity(quantityMap);
-        status.setAllocatable(quantityMap);
-        status.setImages(Collections.emptyList());
-        node.setStatus(status);
-        status.setConditions(conditions);
-        final NodeSpec spec = new NodeSpec();
-        spec.setUnschedulable(false);
-        spec.setTaints(Collections.emptyList());
-        node.setSpec(spec);
-        final ObjectMeta meta = new ObjectMeta();
-        meta.setUid(uid.toString());
-        meta.setName(nodeName);
-        meta.setLabels(labels);
-        node.setMetadata(meta);
-        return node;
     }
 }

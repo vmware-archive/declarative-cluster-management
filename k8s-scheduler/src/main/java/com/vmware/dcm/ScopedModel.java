@@ -50,7 +50,7 @@ public class ScopedModel {
      * @param nodeSet Set of nodes to survive the filtering
      * @return Where clause predicate
      */
-    private Condition getWhereClause(final Set<String> nodeSet) {
+    private Condition getWherePredicate(final Set<String> nodeSet) {
         return Tables.SPARE_CAPACITY_PER_NODE.NAME.in(nodeSet);
     }
 
@@ -60,7 +60,7 @@ public class ScopedModel {
      *
      * @return Sorting expression
      */
-    private SortField<?> getSorting() {
+    private SortField<?> getSortingExpression() {
         return field(CPU_WEIGHT_DEFAULT + " * cpu_remaining + "
                 + MEM_WEIGHT_DEFAULT + " * memory_remaining").desc();
     }
@@ -79,6 +79,7 @@ public class ScopedModel {
 
     /**
      * Returns the set of candidate nodes for pods with selector labels.
+     * TODO: Cover more constraints
      *
      * @return Set of candidate nodes
      */
@@ -90,7 +91,7 @@ public class ScopedModel {
 
     /**
      * Returns a set with the least loaded nodes.
-     * Load is defined by the sorting strategy in {@link #getSorting()}.
+     * Load is defined by the sorting strategy in {@link #getSortingExpression()}.
      * Set cardinality is defined by {@link #getLimit(int)}.
      *
      * @return Set of least loaded nodes
@@ -98,10 +99,9 @@ public class ScopedModel {
     private Set<String> getSpareNodes() {
         final int podsCnt = conn.fetchCount(selectFrom(Tables.PODS_TO_ASSIGN));
         final Result<?> spareNodes = conn.selectFrom(Tables.SPARE_CAPACITY_PER_NODE)
-                .orderBy(getSorting())
+                .orderBy(getSortingExpression())
                 .limit(getLimit(podsCnt))
                 .fetch();
-
         return spareNodes.intoSet(Tables.SPARE_CAPACITY_PER_NODE.NAME);
     }
 
@@ -126,7 +126,7 @@ public class ScopedModel {
                 final int sizeUnfiltered = conn.selectFrom(table).fetch().size();
 
                 final Result<?> scopedFetcher = conn.selectFrom(table)
-                        .where(getWhereClause(getScopedNodes()))
+                        .where(getWherePredicate(getScopedNodes()))
                         .fetch();
 
                 final int sizeFiltered = scopedFetcher.size();
@@ -134,11 +134,8 @@ public class ScopedModel {
                                 "solver input size with scope: {}\n" +
                                 "scope fraction: {}",
                         sizeUnfiltered, sizeFiltered, (double) sizeFiltered / sizeUnfiltered);
-
                 return scopedFetcher;
-            }
-
-            else {
+            } else {
                 return conn.fetch(table);
             }
         };
