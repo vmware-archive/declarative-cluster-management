@@ -1350,7 +1350,7 @@ public class SchedulerTest {
         return requirement;
     }
 
-    private static PodAffinityTerm term(final String topologyKey, final LabelSelectorRequirement... requirements) {
+    static PodAffinityTerm term(final String topologyKey, final LabelSelectorRequirement... requirements) {
         final LabelSelector labelSelector = new LabelSelectorBuilder()
                 .withMatchExpressions(requirements)
                 .build();
@@ -1360,7 +1360,7 @@ public class SchedulerTest {
                 .build();
     }
 
-    private static LabelSelectorRequirement podExpr(final String key, final String op, final String... values) {
+    static LabelSelectorRequirement podExpr(final String key, final String op, final String... values) {
         final LabelSelectorRequirement requirement = new LabelSelectorRequirement();
         requirement.setKey(key);
         requirement.setOperator(op);
