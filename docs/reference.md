@@ -44,23 +44,12 @@ is a single SQL view. See the section below on [writing constraints](#writing-co
 the solver's properties (such as the timeout to use). If you omit the argument, an instance of the `OrToolsSolver` 
 is used. Here's an example of this API's use in our Kubernetes scheduler:
 
-  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L188-L202 -->
+  <!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/Scheduler.java#L109-L112 -->
   ```java
-  switch (solverToUse) {
-      case "ORTOOLS":
-          final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
-                                               .setNumThreads(numThreads)
-                                               .setPrintDiagnostics(debugMode)
-                                               .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
-          return Model.build(conn, orToolsSolver, policies);
-      case "MNZ-CHUFFED":
-          final File modelFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_model.mzn");
-          final File dataFile = new File(MINIZINC_MODEL_PATH + "/" + "k8s_data.dzn");
-          final MinizincSolver solver = new MinizincSolver(modelFile, dataFile, new Conf());
-          return Model.build(conn, solver, policies);
-      default:
-          throw new IllegalArgumentException(solverToUse);
-  }
+  final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder()
+          .setNumThreads(numThreads)
+          .setPrintDiagnostics(debugMode)
+          .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
   ```
   To see all the configuration parameters for an `OrToolsSolver` instance, see the 
 [OrToolsSolverBuilder Javadocs](https://javadoc.io/doc/com.vmware.dcm/dcm/latest/com/vmware/dcm/backend/ortools/OrToolsSolver.Builder.html). 
@@ -167,28 +156,11 @@ create table virtual_machine (
 ```
 
 Example usage in a view:
-<!-- embedme ../k8s-scheduler/src/main/resources/scheduler_tables.sql#L213-L232 -->
+<!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/DBViews.java#L88-L90 -->
 ```sql
-create view pods_to_assign_no_limit as
-select
-  uid,
-  pod_name,
-  status,
-  node_name as controllable__node_name,
-  namespace,
-  cpu_request,
-  memory_request,
-  ephemeral_storage_request,
-  pods_request,
-  owner_name,
-  creation_timestamp,
-  has_node_selector_labels,
-  has_pod_affinity_requirements,
-  has_pod_anti_affinity_requirements,
-  equivalence_class,
-  qos_class
-from pod_info
-where status = 'Pending' and node_name is null and schedulerName = 'dcm-scheduler';
+final String query = "SELECT pod_info.*, node_name AS controllable__node_name " +
+                     "FROM pod_info " +
+                     "WHERE status = 'Pending' AND node_name IS NULL AND schedulerName = 'dcm-scheduler'";
 ```
 
 ### Hard constraints

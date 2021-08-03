@@ -85,8 +85,9 @@ public class DBViews {
      */
     private static void allPendingPods(final ViewStatements viewStatements) {
         final String name = "PODS_TO_ASSIGN_NO_LIMIT";
-        final String query = "SELECT pod_info.*, node_name AS controllable__node_name FROM pod_info " +
-                "WHERE status = 'Pending' AND node_name IS NULL AND schedulerName = 'dcm-scheduler'";
+        final String query = "SELECT pod_info.*, node_name AS controllable__node_name " +
+                             "FROM pod_info " +
+                             "WHERE status = 'Pending' AND node_name IS NULL AND schedulerName = 'dcm-scheduler'";
         viewStatements.addQuery(name, query);
     }
 
