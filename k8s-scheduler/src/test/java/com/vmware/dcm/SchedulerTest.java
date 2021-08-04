@@ -877,10 +877,35 @@ public class SchedulerTest {
 
     /*
      * Tests pods with affinity and anti-affinity constraints that exclude each other
+     *
+     * Setup:
+     * Pending pods pod-group1-0, pod-group1-1
+     *   Labels:             Both pods are labeled as collocated-group:group1.
+     *   Inter-pod-affinity: The two pods are affine to each other to run in the same node.
+     *                       The two pods are anti-affine to pods with the avoided-by-group:group1 label.
+     *   Node-affinity:      One of the pods is affine to a node containing the gpu:true label
+     *
+     * Pending pod pod-anti-group1-0
+     *   Inter-pod-affinity: This pod is anti-affine to pods with the collocated-group:group1 label.
+     *   Node-affinity:      This pod is affine to a node containing the gpu:true label
+     *
+     * Nodes n0, ..., n4
+     *   Labels:             Exactly one of the nodes is labeled as gpu:true
+     *
+     * Running pod conflicting-pod (conditionally added by test boolean parameter)
+     *   Assigned node:      Already running in the node with the gpu:true label
+     *   Labels:             Labeled as avoided-by-group:group1
+     *
+     * Desired outcome:
+     * Either (both pods in pod-group1) or (the pod-anti-group1-0 pod) can be scheduled.
+     * When the conflicting-pod is not added, the two pods in pod-group1 are scheduled
+     * in the gpu node because of the disallowNullNodeSoft policy.
+     * When the conflicting-pod is added, the pod-anti-group1-0 pod is scheduled
+     * because of the pod-group1 pods anti-affinity with the conflicting-pod
      */
     @ParameterizedTest
     @MethodSource("testAffinityExcludeEachOtherCondition")
-    public void testAffinityExcludeEachOther(boolean conflictingRunningPod) {
+    public void testAffinityExcludeEachOther(final boolean conflictingRunningPod) {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
@@ -939,7 +964,7 @@ public class SchedulerTest {
         }
 
         // Add nodes
-        int numNodes = 5;
+        final int numNodes = 5;
         final int gpuNode = ThreadLocalRandom.current().nextInt(numNodes);
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
