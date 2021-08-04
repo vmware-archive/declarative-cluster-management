@@ -876,6 +876,129 @@ public class SchedulerTest {
     }
 
     /*
+     * Tests pods with affinity and anti-affinity constraints that exclude each other
+     */
+    @ParameterizedTest
+    @MethodSource("testAffinityExcludeEachOtherCondition")
+    public void testAffinityExcludeEachOther(boolean conflictingRunningPod) {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final String topologyKey = "kubernetes.io/hostname";
+
+        // Two pods labeled as group1 that must be collocated in a gpu node
+        final int group1Pods = 2;
+        final int gpuPod = ThreadLocalRandom.current().nextInt(group1Pods);
+        for (int i = 0; i < group1Pods; i++) {
+            final String podName = "pod-group1-" + i;
+            final Pod pod = newPod(podName);
+            pod.getMetadata().setLabels(map("collocated-group", "group1"));
+
+            final PodAffinity podAffinity = new PodAffinity();
+            final List<PodAffinityTerm> terms =
+                    podAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
+            terms.addAll(List.of(
+                    // collocate with each other
+                    term(topologyKey, podExpr("collocated-group", "In", "group1")),
+                    // don't collocate with pods of the avoid-by-group:group1 label
+                    term(topologyKey, podExpr("avoided-by-group", "NotIn", "group1"))));
+            pod.getSpec().getAffinity().setPodAffinity(podAffinity);
+
+            // One of those pods requires a node with a gpu
+            if (i == gpuPod) {
+                final NodeSelector selector = new NodeSelectorBuilder()
+                        .withNodeSelectorTerms(List.of(
+                                term(nodeExpr("gpu", "In", "true"))))
+                        .build();
+                pod.getSpec().getAffinity().getNodeAffinity()
+                        .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
+            }
+
+            handler.onAddSync(pod);
+        }
+
+        // Pod that requires a gpu and is anti-affine to group1 pods
+        final int group1AntiAffinePods = 1;
+        for (int i = 0; i < group1AntiAffinePods; i++) {
+            final Pod pod = newPod("pod-anti-group1-" + i);
+            final PodAntiAffinity podAntiAffinity = new PodAntiAffinity();
+            final List<PodAffinityTerm> terms =
+                    podAntiAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
+            terms.addAll(List.of(
+                    term(topologyKey, podExpr("collocated-group", "Exists", ""))));
+            pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
+
+            final NodeSelector selector = new NodeSelectorBuilder()
+                    .withNodeSelectorTerms(List.of(
+                            term(nodeExpr("gpu", "In", "true"))))
+                    .build();
+            pod.getSpec().getAffinity().getNodeAffinity()
+                    .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
+            handler.onAddSync(pod);
+        }
+
+        // Add nodes
+        int numNodes = 5;
+        final int gpuNode = ThreadLocalRandom.current().nextInt(numNodes);
+        for (int i = 0; i < numNodes; i++) {
+            final String nodeName = "n" + i;
+            final Map<String, String> nodeLabels = new HashMap<>();
+            if (i == gpuNode) {
+                nodeLabels.putAll(map("gpu", "true"));
+            }
+            final Node node = newNode(nodeName, nodeLabels, Collections.emptyList());
+            nodeResourceEventHandler.onAddSync(node);
+        }
+
+        // Conditionally add an already running pod that is avoided by group1 pods
+        if (conflictingRunningPod) {
+            final Pod pod = newPod("conflicting-pod", "Running");
+            pod.getSpec().setNodeName("n" + gpuNode);
+            pod.getMetadata().setLabels(map("avoided-by-group", "group1"));
+            handler.onAddSync(pod);
+        }
+
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                                                                           Policies.disallowNullNodeSoft(),
+                                                                           Policies.nodeSelectorPredicate(),
+                                                                           Policies.podAffinityPredicate(),
+                                                                           Policies.podAntiAffinityPredicate());
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                                                 .setInitialPlacementPolicies(policies)
+                                                 .setDebugMode(true)
+                                                 .build();
+
+        final Result<? extends Record> results = scheduler.initialPlacement();
+
+        assertEquals(group1Pods + group1AntiAffinePods, results.size());
+        if (conflictingRunningPod) {
+            results.forEach(r -> assertTrue(
+                    // pod is in pod-group1 => could not be scheduled
+                    (! r.get("POD_NAME", String.class).startsWith("pod-group1")
+                    || r.get("CONTROLLABLE__NODE_NAME", String.class).equals("NULL_NODE")) &&
+                    // pod is in pod-anti-group1 => scheduled in the gpu node
+                    (! r.get("POD_NAME", String.class).startsWith("pod-anti-group1")
+                    || r.get("CONTROLLABLE__NODE_NAME", String.class).equals("n" + gpuNode))));
+        } else {
+            results.forEach(r -> assertTrue(
+                    // pod is in pod-group1 => scheduled in the gpu node
+                    (! r.get("POD_NAME", String.class).startsWith("pod-group1")
+                    || r.get("CONTROLLABLE__NODE_NAME", String.class).equals("n" + gpuNode)) &&
+                    // pod is in pod-anti-group1 => could not be scheduled
+                    (! r.get("POD_NAME", String.class).startsWith("pod-anti-group1")
+                    || r.get("CONTROLLABLE__NODE_NAME", String.class).equals("NULL_NODE"))));
+        }
+    }
+
+    public static Stream<Arguments> testAffinityExcludeEachOtherCondition() {
+        return Stream.of(
+                Arguments.of(true),
+                Arguments.of(false)
+        );
+    }
+
+    /*
      * Capacity constraints
      */
     @ParameterizedTest(name = "{0} => feasible:{8}")
