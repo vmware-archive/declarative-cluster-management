@@ -1016,7 +1016,8 @@ public class SchedulerTest {
         }
     }
 
-    public static Stream<Arguments> testAffinityExcludeEachOtherCondition() {
+    @SuppressWarnings("UnusedMethod")
+    private static Stream<Arguments> testAffinityExcludeEachOtherCondition() {
         return Stream.of(
                 Arguments.of(true),
                 Arguments.of(false)
