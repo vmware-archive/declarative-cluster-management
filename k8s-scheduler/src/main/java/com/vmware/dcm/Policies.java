@@ -125,7 +125,7 @@ class Policies {
 
     /**
      * Ensures that the pods_to_assign.constraint_controllable__node_name column is assigned to nodes
-     * that satisfy pod anti0affinity requirements.
+     * that satisfy pod anti-affinity requirements.
      */
     static Policy podAntiAffinityPredicate() {
         final String constraintPending = "create constraint constraint_pod_anti_affinity_pending as " +
