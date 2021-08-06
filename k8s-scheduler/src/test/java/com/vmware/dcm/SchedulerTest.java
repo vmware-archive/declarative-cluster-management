@@ -1339,24 +1339,24 @@ public class SchedulerTest {
     }
 
 
-    private static Map<String, String> map(final String k1, final String v1) {
+    static Map<String, String> map(final String k1, final String v1) {
         return Collections.singletonMap(k1, v1);
     }
 
-    private static Map<String, String> map(final String k1, final String v1, final String k2, final String v2) {
+    static Map<String, String> map(final String k1, final String v1, final String k2, final String v2) {
         final Map<String, String> ret = new HashMap<>();
         ret.put(k1, v1);
         ret.put(k2, v2);
         return ret;
     }
 
-    private static NodeSelectorTerm term(final NodeSelectorRequirement... requirements) {
+    static NodeSelectorTerm term(final NodeSelectorRequirement... requirements) {
         return new NodeSelectorTermBuilder()
                 .withMatchExpressions(requirements)
                 .build();
     }
 
-    private static NodeSelectorRequirement nodeExpr(final String key, final String op, final String... values) {
+    static NodeSelectorRequirement nodeExpr(final String key, final String op, final String... values) {
         final NodeSelectorRequirement requirement = new NodeSelectorRequirement();
         requirement.setKey(key);
         requirement.setOperator(op);
