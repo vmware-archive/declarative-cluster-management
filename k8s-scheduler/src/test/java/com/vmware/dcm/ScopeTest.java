@@ -255,7 +255,11 @@ public class ScopeTest {
 
     /*
      * E2E test with scheduler:
-     * Test if Scope does not filter out nodes required by inter-pod affinity
+     * Test if Scope does not filter out nodes required by inter-pod affinity.
+     *
+     * Pods in group 0 are affine to each other.
+     * Pods in group 1 are affine to an already running pod.
+     * Pods in group 2 are anti-affine to each other and to a running pod.
      */
     @Test
     public void testVariousPodAffinities() {
