@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -110,6 +111,16 @@ public class ScopedModel {
     }
 
     /**
+     * TODO description
+     *
+     * @return Set of candidate nodes
+     */
+    private Set<String> getToleratedNodes() {
+        final Result<?> podsThatTolerateNodeTaints = conn.selectFrom(table("PODS_THAT_TOLERATE_NODE_TAINTS")).fetch();
+        return podsThatTolerateNodeTaints.intoSet(field(name("PODS_THAT_TOLERATE_NODE_TAINTS", "NODE_NAME"), String.class));
+    }
+
+    /**
      * Returns the set of candidate nodes for pods with selector labels.
      *
      * @return Set of candidate nodes
@@ -142,7 +153,12 @@ public class ScopedModel {
      */
     public Set<String> getScopedNodes() {
         final Set<String> union = new HashSet<>();
-        Stream.of(getMatchedNodes(), getPodAffinityNodes(), getSpareNodes()).forEach(union::addAll);
+        Stream.of(
+                getMatchedNodes(),
+                getToleratedNodes(),
+                getPodAffinityNodes(),
+                getSpareNodes()
+        ).forEach(union::addAll);
         return union;
     }
 
