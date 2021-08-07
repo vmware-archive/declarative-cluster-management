@@ -16,8 +16,13 @@ import org.jooq.Table;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.jooq.impl.DSL.field;
 import static org.jooq.impl.DSL.name;
@@ -80,8 +85,32 @@ public class ScopedModel {
     }
 
     /**
+     * Returns the set of candidate nodes for pods with inter-pod-affinity constraints
+     *
+     * @return Set of candidate nodes
+     */
+    private Set<String> getPodAffinityNodes() {
+        final Result<?> affinityNodeMatchesPending = conn.select(field("NODE_MATCHES")).from(
+                table("INTER_POD_AFFINITY_MATCHES_PENDING")).fetch();
+        final Result<?> affinityNodeMatchesScheduled = conn.select(field("NODE_MATCHES")).from(
+                table("INTER_POD_AFFINITY_MATCHES_SCHEDULED")).fetch();
+
+        return Sets.union(
+                affinityNodeMatchesPending
+                        .stream()
+                        .map(x -> Optional.ofNullable(x.get(0, String[].class)))
+                        .flatMap(x -> x.stream().flatMap(Arrays::stream))
+                        .collect(Collectors.toSet()),
+                affinityNodeMatchesScheduled
+                        .stream()
+                        .map(x -> Optional.ofNullable(x.get(0, String[].class)))
+                        .flatMap(x -> x.stream().flatMap(Arrays::stream))
+                        .collect(Collectors.toSet())
+        );
+    }
+
+    /**
      * Returns the set of candidate nodes for pods with selector labels.
-     * TODO: Cover more constraints
      *
      * @return Set of candidate nodes
      */
@@ -112,7 +141,9 @@ public class ScopedModel {
      * @return Set of node names
      */
     public Set<String> getScopedNodes() {
-        return Sets.union(getMatchedNodes(), getSpareNodes());
+        final Set<String> union = new HashSet<>();
+        Stream.of(getMatchedNodes(), getPodAffinityNodes(), getSpareNodes()).forEach(union::addAll);
+        return union;
     }
 
     /**
