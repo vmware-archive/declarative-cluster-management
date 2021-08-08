@@ -152,14 +152,12 @@ public class ScopedModel {
      * @return Set of node names
      */
     public Set<String> getScopedNodes() {
-        final Set<String> union = new HashSet<>();
-        Stream.of(
+        return Stream.of(
                 getMatchedNodes(),
                 getToleratedNodes(),
                 getPodAffinityNodes(),
                 getSpareNodes()
-        ).forEach(union::addAll);
-        return union;
+        ).flatMap(Set::stream).collect(Collectors.toSet());
     }
 
     /**

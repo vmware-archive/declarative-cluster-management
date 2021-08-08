@@ -126,7 +126,7 @@ public class ScopeTest {
 
         final Set<String> scopedNodes = scopedModel.getScopedNodes();
 
-        // check that the loaded nod containing the affine pod is included in the scope
+        // check that the loaded node containing the affine pod is included in the scope
         assertTrue(scopedNodes.contains("n" + randNode));
     }
 
@@ -135,7 +135,7 @@ public class ScopeTest {
      * Test if Scope limits candidate nodes according to spare resources
      */
     @Test
-    public void testScopedSchedulerSimple() {
+    public void testSchedulerSimple() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getInitialPlacementPolicies();
@@ -188,7 +188,7 @@ public class ScopeTest {
      * Labeled nodes have low spare capacity.
      */
     @Test
-    public void testScopedSchedulerNodeLabels() {
+    public void testSchedulerNodeLabels() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getInitialPlacementPolicies();
@@ -262,7 +262,7 @@ public class ScopeTest {
      * Pods in group 2 are anti-affine to each other and to a running pod.
      */
     @Test
-    public void testVariousPodAffinities() {
+    public void testSchedulerPodAffinitiesMixed() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
