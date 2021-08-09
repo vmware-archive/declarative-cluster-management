@@ -15,6 +15,8 @@ import io.fabric8.kubernetes.api.model.PodAffinity;
 import io.fabric8.kubernetes.api.model.PodAffinityTerm;
 import io.fabric8.kubernetes.api.model.PodAntiAffinity;
 import io.fabric8.kubernetes.api.model.Quantity;
+import io.fabric8.kubernetes.api.model.Taint;
+import io.fabric8.kubernetes.api.model.Toleration;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -29,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 import static com.vmware.dcm.SchedulerTest.map;
 import static com.vmware.dcm.SchedulerTest.newNode;
@@ -126,8 +129,67 @@ public class ScopeTest {
 
         final Set<String> scopedNodes = scopedModel.getScopedNodes();
 
-        // check that the loaded nod containing the affine pod is included in the scope
+        // check that the loaded node containing the affine pod is included in the scope
         assertTrue(scopedNodes.contains("n" + randNode));
+    }
+
+    /*
+     * Test if scope includes tainted nodes that are tolerated by pods to be assigned
+     */
+    @Test
+    public void testPodTolerations() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        final Model model = buildModel(conn);
+        final ScopedModel scopedModel = new ScopedModel(conn, model);
+
+        final Taint taintUntolerated = new Taint();
+        taintUntolerated.setKey("taint");
+        taintUntolerated.setValue("untolerated");
+        taintUntolerated.setEffect("NoSchedule");
+        final Taint taintTolerated = new Taint();
+        taintTolerated.setKey("taint");
+        taintTolerated.setValue("tolerated");
+        taintTolerated.setEffect("NoSchedule");
+
+        final Toleration toleration = new Toleration();
+        toleration.setKey("taint");
+        toleration.setOperator("Equal");
+        toleration.setValue("tolerated");
+        toleration.setEffect("NoSchedule");
+
+        final int numPods = 2;
+        for (int i = 0; i < numPods; i++) {
+            final Pod pod = newPod("p" + i);
+            pod.getSpec().setTolerations(List.of(toleration));
+            handler.onAddSync(pod);
+        }
+
+        // Add tainted nodes
+        final int numNodes = 10;
+        final Set<Integer> randNodes = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(2).boxed().collect(Collectors.toSet());
+        for (int i = 0; i < numNodes; i++) {
+            final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
+            if (randNodes.contains(i)) {
+                // two of the nodes are tainted as taint:tolerated
+                node.getSpec().setTaints(List.of(taintTolerated));
+            } else {
+                // the rest are tainted as taint:untolerated
+                node.getSpec().setTaints(List.of(taintUntolerated));
+            }
+            nodeResourceEventHandler.onAddSync(node);
+        }
+
+        final Set<String> scopedNodes = scopedModel.getScopedNodes();
+
+        // check that the scope contains the tainted nodes, plus at numPods other
+        assertTrue(scopedNodes.size() <= randNodes.size() + numPods);
+        assertTrue(scopedNodes.containsAll(randNodes.stream().map(x -> "n" + x).collect(Collectors.toSet())));
     }
 
     /*
@@ -135,7 +197,7 @@ public class ScopeTest {
      * Test if Scope limits candidate nodes according to spare resources
      */
     @Test
-    public void testScopedSchedulerSimple() {
+    public void testSchedulerSimple() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getInitialPlacementPolicies();
@@ -188,7 +250,7 @@ public class ScopeTest {
      * Labeled nodes have low spare capacity.
      */
     @Test
-    public void testScopedSchedulerNodeLabels() {
+    public void testSchedulerNodeLabels() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getInitialPlacementPolicies();
@@ -262,7 +324,7 @@ public class ScopeTest {
      * Pods in group 2 are anti-affine to each other and to a running pod.
      */
     @Test
-    public void testVariousPodAffinities() {
+    public void testSchedulerPodAffinitiesMixed() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);

@@ -1089,7 +1089,7 @@ public class SchedulerTest {
         taintK2V4.setValue("v4");
         taintK2V4.setEffect("NoSchedule");
 
-        final Predicate<List<String>> nodeGoesToN0 = nodes -> nodes.size() == 1 && nodes.get(0).equals("n0");
+        final Predicate<List<String>> P0GoesToN0 = nodes -> nodes.size() == 1 && nodes.get(0).equals("n0");
         final Predicate<List<String>> p0goesToN1andP1GoesToN0 =
                 nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n0");
         final Predicate<List<String>> p0goesToN1andP1GoesToN1 =
@@ -1101,11 +1101,11 @@ public class SchedulerTest {
 
                 Arguments.of("toleration k1=v1 matches taint k1:v1",
                              List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1)),
-                             nodeGoesToN0, true),
+                             P0GoesToN0, true),
 
                 Arguments.of("toleration exists(k1) matches taint k1:v1",
                         List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK2V4)),
-                        nodeGoesToN0, true),
+                        P0GoesToN0, true),
 
                 Arguments.of("toleration k1=v1 does not match taint k1:v2",
                         List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1V2)),
@@ -1119,9 +1119,9 @@ public class SchedulerTest {
                         List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1, taintK2V4)),
                         null, false),
 
-                Arguments.of("toleration [k1=v1, exists(k2)] matches taints [k1:v1, k1:v2]",
+                Arguments.of("toleration [k1=v1, exists(k2)] matches taints [k1:v1, k2:v4]",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists)), List.of(List.of(taintK1, taintK2V4)),
-                        nodeGoesToN0, true),
+                        P0GoesToN0, true),
 
                 Arguments.of("toleration [k1=v1, exists(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists)),
@@ -1131,7 +1131,7 @@ public class SchedulerTest {
                 Arguments.of("toleration [exists(k1), exists(k2)] matches taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Exists, tolerateK2Exists)),
                         List.of(List.of(taintK1, taintK1V2, taintK2V4)),
-                        nodeGoesToN0, true),
+                        P0GoesToN0, true),
 
                 Arguments.of("toleration [exists(k1), exists_noexec(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)),
@@ -1140,7 +1140,7 @@ public class SchedulerTest {
 
                 Arguments.of("toleration [exists(k1), exists_noexec(k2)] matches taints [k1:v1]",
                         List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)), List.of(List.of(taintK1)),
-                        nodeGoesToN0, true),
+                        P0GoesToN0, true),
 
                 Arguments.of("Multi node: p0 should go to n1 and p1 to n0.",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists),   // pod-0

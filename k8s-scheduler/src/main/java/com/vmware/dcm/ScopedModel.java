@@ -17,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -85,6 +84,16 @@ public class ScopedModel {
     }
 
     /**
+     * Returns the set of candidate nodes for pods with selector labels.
+     *
+     * @return Set of candidate nodes
+     */
+    private Set<String> getMatchedNodes() {
+        final Result<?> podNodeSelectorMatches = conn.selectFrom(table("POD_NODE_SELECTOR_MATCHES")).fetch();
+        return podNodeSelectorMatches.intoSet(field(name("POD_NODE_SELECTOR_MATCHES", "NODE_NAME"), String.class));
+    }
+
+    /**
      * Returns the set of candidate nodes for pods with inter-pod-affinity constraints
      *
      * @return Set of candidate nodes
@@ -110,13 +119,13 @@ public class ScopedModel {
     }
 
     /**
-     * Returns the set of candidate nodes for pods with selector labels.
+     * Returns the set of tainted nodes that are tolerated by pods to be assigned.
      *
      * @return Set of candidate nodes
      */
-    private Set<String> getMatchedNodes() {
-        final Result<?> podNodeSelectorMatches = conn.selectFrom(table("POD_NODE_SELECTOR_MATCHES")).fetch();
-        return podNodeSelectorMatches.intoSet(field(name("POD_NODE_SELECTOR_MATCHES", "NODE_NAME"), String.class));
+    private Set<String> getToleratedNodes() {
+        final Result<?> toleratingPods = conn.selectFrom(table("PODS_THAT_TOLERATE_NODE_TAINTS")).fetch();
+        return toleratingPods.intoSet(field(name("PODS_THAT_TOLERATE_NODE_TAINTS", "NODE_NAME"), String.class));
     }
 
     /**
@@ -141,9 +150,12 @@ public class ScopedModel {
      * @return Set of node names
      */
     public Set<String> getScopedNodes() {
-        final Set<String> union = new HashSet<>();
-        Stream.of(getMatchedNodes(), getPodAffinityNodes(), getSpareNodes()).forEach(union::addAll);
-        return union;
+        return Stream.of(
+                getMatchedNodes(),
+                getPodAffinityNodes(),
+                getToleratedNodes(),
+                getSpareNodes()
+        ).flatMap(Set::stream).collect(Collectors.toSet());
     }
 
     /**
