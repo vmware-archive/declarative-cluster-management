@@ -35,7 +35,6 @@ import org.jooq.DSLContext;
 import org.jooq.Insert;
 import org.jooq.InsertOnDuplicateSetMoreStep;
 import org.jooq.Query;
-import org.jooq.Record;
 import org.jooq.Table;
 import org.jooq.exception.DataAccessException;
 import org.slf4j.Logger;
@@ -507,55 +506,29 @@ class PodEventsToDatabase {
         Optional.ofNullable(affinity)
                 .map(Affinity::getPodAffinity)
                 .map(PodAffinity::getRequiredDuringSchedulingIgnoredDuringExecution)
-                .ifPresent(podAffinityTerm ->
-                        inserts.addAll(insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS,
-                                            Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod, podAffinityTerm)));
+                .ifPresent(podAffinityTerm -> inserts.addAll(
+                    insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod, podAffinityTerm, conn)));
 
         // Pod Anti affinity
         Optional.ofNullable(affinity)
                 .map(Affinity::getPodAntiAffinity)
                 .map(PodAntiAffinity::getRequiredDuringSchedulingIgnoredDuringExecution)
                 .ifPresent(podAntiAffinityTerm -> inserts.addAll(
-                    insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS,
-                        Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod, podAntiAffinityTerm)));
+                    insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod, podAntiAffinityTerm,
+                                           conn)));
         return Collections.unmodifiableList(inserts);
     }
 
-    private <T extends Record> List<Insert<?>> insertPodAffinityTerms(final Table<?> table,
-                                                                      final Table<?> antiTable,
-                                                                      final Pod pod,
-                                                                      final List<PodAffinityTerm> terms) {
+    private List<Insert<?>> insertPodAffinityTerms(final Table<?> table, final Pod pod,
+                                                   final List<PodAffinityTerm> terms, final DSLContext conn) {
         final List<Insert<?>> inserts = new ArrayList<>();
         int termNumber = 0;
         for (final PodAffinityTerm term: terms) {
-            int matchExpressionNumber = 0;
-            final int numMatchExpressions =  term.getLabelSelector().getMatchExpressions().size();
-            for (final LabelSelectorRequirement expr: term.getLabelSelector().getMatchExpressions()) {
-                matchExpressionNumber += 1;
-                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                    final Table<?> finalTable;
-                    final String operator;
-                    if (expr.getOperator().equals(Operators.In.toString()) ||
-                            expr.getOperator().equals(Operators.Exists.toString())) {
-                        finalTable = table;
-                        operator = expr.getOperator();
-                    } else {
-                        finalTable = antiTable;
-                        if (expr.getOperator().equals(Operators.DoesNotExist.toString())) {
-                            operator = Operators.Exists.toString();
-                        } else {
-                            operator = Operators.In.toString();
-                        }
-                    }
-
-                    inserts.add(
-                        conn.insertInto(finalTable)
-                            .values(pod.getMetadata().getUid(), termNumber, matchExpressionNumber,
-                                    numMatchExpressions, expr.getKey(), operator, expr.getValues(),
-                                    term.getTopologyKey())
-                    );
-                }
-            }
+            final Object[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
+                    .map(e -> toMatchExpressionId(conn, e.getKey(), e.getOperator(), e.getValues()))
+                    .toArray();
+            inserts.add(conn.insertInto(table)
+                            .values(pod.getMetadata().getUid(), termNumber, matchExpressions, term.getTopologyKey()));
             termNumber += 1;
         }
         return inserts;
