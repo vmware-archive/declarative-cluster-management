@@ -95,11 +95,7 @@ create table pod_affinity_match_expressions
 (
   pod_uid char(36) not null,
   label_selector integer not null,
-  match_expression integer not null,
-  num_match_expressions integer not null,
-  label_key varchar(317) not null,
-  label_operator varchar(12) not null,
-  label_value array not null,
+  match_expressions array not null,
   topology_key varchar(100) not null,
   foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
@@ -109,11 +105,7 @@ create table pod_anti_affinity_match_expressions
 (
   pod_uid char(36) not null,
   label_selector integer not null,
-  match_expression integer not null,
-  num_match_expressions integer not null,
-  label_key varchar(317) not null,
-  label_operator varchar(30) not null,
-  label_value array not null,
+  match_expressions array not null,
   topology_key varchar(100) not null,
   foreign key(pod_uid) references pod_info(uid) on delete cascade
 );

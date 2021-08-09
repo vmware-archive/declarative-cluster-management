@@ -306,42 +306,34 @@ public class DBViews {
         //
         // All it does is the following:
         //   * A = join the set of pending pods with their configured <affinity/anti-affinity> match-expressions
-        //   * B = join the set of <pending | fixed> pods with the set of pod labels
-        //   * C = join A and C to match the set of pending pods with <pending/fixed> pods
-        //         they are <affine/anti-affine> to
-        //   * D = for each pending pod, produce the set of pods and nodes they are <affine / anti-affine> to
+        //   * B = join A with the matched-pods view to get the set of pods that match the required expressions
+        //   * C = join with the set of <pending/fixed> pods that satisfy the matched expressions
+        //   * D = select for each pending pod, the set of pods and nodes they are <affine / anti-affine> to
         //
         // The format string parameterizes the <pending/fixed> pods and whether we are producing the
         // result for <affinity/anti-affinity>
         final String formatString =
                         "SELECT DISTINCT" +
-                        "  pods_to_assign_A.uid as pod_uid, " +
-                        "  ARRAY_AGG(pod_labels.pod_uid) OVER (PARTITION BY pods_to_assign_A.uid) AS pod_matches, " +
-                        "  ARRAY_AGG(B.node_name) OVER (PARTITION BY pods_to_assign_A.uid) AS node_matches " +
+                        "  pods_to_assign.uid as pod_uid, " +
+                        "  ARRAY_AGG(matching_pods.pod_uid) OVER (PARTITION BY pods_to_assign.uid) AS pod_matches, " +
+                        "  ARRAY_AGG(other_pods.node_name) OVER (PARTITION BY pods_to_assign.uid) AS node_matches " +
                         "FROM " +
-                        "  %2$s AS pods_to_assign_A " +
+                        "  %2$s AS pods_to_assign " +
                         "  JOIN pod_%1$s_match_expressions ON " +
-                        "        pods_to_assign_A.uid = pod_%1$s_match_expressions.pod_uid " +
-                        "  JOIN pod_labels ON ( " +
-                        "         (pod_%1$s_match_expressions.label_operator = 'Exists' " +
-                        "         AND pod_%1$s_match_expressions.label_key = pod_labels.label_key) " +
-                        "     OR (pod_%1$s_match_expressions.label_operator = 'In' " +
-                        "         AND pod_%1$s_match_expressions.label_key = pod_labels.label_key " +
-                        "         AND pod_labels.label_value in (unnest(pod_%1$s_match_expressions.label_value)))" +
-                        "    ) " +
-                        "  JOIN %3$s as B ON " +
-                        "           pod_labels.pod_uid = B.uid AND pods_to_assign_A.uid != B.uid " +
-                        "  WHERE pods_to_assign_A.has_pod_%1$s_requirements = true " +
+                        "        pods_to_assign.uid = pod_%1$s_match_expressions.pod_uid " +
+                        "  JOIN matching_pods " +
+                        "     ON array_contains(pod_%1$s_match_expressions.match_expressions, matching_pods.expr_id) " +
+                        "  JOIN %3$s as other_pods ON " +
+                        "           matching_pods.pod_uid = other_pods.uid AND pods_to_assign.uid != other_pods.uid " +
+                        "  WHERE pods_to_assign.has_pod_%1$s_requirements = true " +
                         "GROUP BY " +
-                        "  pods_to_assign_A.uid, " +
-                        "  pod_labels.pod_uid, " +
+                        "  pods_to_assign.uid, " +
+                        "  matching_pods.pod_uid, " +
                         "  label_selector, " +
                         "  topology_key, " +
-                        "  label_operator, " +
-                        "  num_match_expressions, " +
-                        "  B.node_name " +
-                        "HAVING " +
-                        "  COUNT(distinct match_expression) = num_match_expressions";
+                        "  match_expressions, " +
+                        "  other_pods.node_name " +
+                        "HAVING array_length(match_expressions) = COUNT(DISTINCT matching_pods.expr_id)";
         for (final String type: List.of("affinity", "anti_affinity")) {
             final String pendingQuery = String.format(formatString, type, viewStatements.unfixedPods,
                                                                           viewStatements.unfixedPods);
