@@ -82,7 +82,7 @@ class Policies {
                                   "from pods_to_assign " +
                                   "check pods_to_assign.has_node_selector_labels = false or " +
                                   "      pods_to_assign.controllable__node_name in " +
-                                  "         (select node_name " +
+                                  "         (select node_matches " +
                                   "          from pod_node_selector_matches " +
                                   "          where pods_to_assign.uid = pod_node_selector_matches.pod_uid) " +
                                   "or controllable__node_name = 'NULL_NODE'";

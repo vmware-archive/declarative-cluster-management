@@ -47,6 +47,16 @@ create table pod_info
   constraint uc_namespaced_pod_name unique (pod_name, namespace)
 );
 
+create table match_expressions
+(
+  expr_id bigint not null,
+  -- up to 253 for prefix, up to 63 for name and one for /
+  label_key varchar(317) not null,
+  label_operator varchar(30) not null,
+  label_values array not null,
+  primary key (label_key, label_operator, label_values)
+);
+
 -- This table tracks the "ContainerPorts" fields of each pod.
 -- It is used to enforce the PodFitsHostPorts constraint.
 create table pod_ports_request
@@ -76,12 +86,7 @@ create table pod_node_selector_labels
 (
   pod_uid char(36) not null,
   term integer not null,
-  match_expression integer not null,
-  num_match_expressions integer not null,
-  -- up to 253 for prefix, up to 63 for name and one for /
-  label_key varchar(317) not null,
-  label_operator varchar(12) not null,
-  label_value varchar(63) null,
+  match_expressions array not null,
   foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
@@ -93,7 +98,7 @@ create table pod_affinity_match_expressions
   match_expression integer not null,
   num_match_expressions integer not null,
   label_key varchar(317) not null,
-  label_operator varchar(30) not null,
+  label_operator varchar(12) not null,
   label_value array not null,
   topology_key varchar(100) not null,
   foreign key(pod_uid) references pod_info(uid) on delete cascade
@@ -131,7 +136,8 @@ create table node_labels
   node_name varchar(253) not null,
   label_key varchar(317) not null,
   label_value varchar(63) not null,
-  foreign key(node_name) references node_info(name) on delete cascade
+  foreign key(node_name) references node_info(name) on delete cascade,
+  primary key(node_name, label_key, label_value)
 );
 
 -- Volume labels
@@ -214,6 +220,7 @@ create table pdb_match_expressions
   allowed_disruptions integer not null
 );
 
+
 create index pod_info_idx on pod_info (status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_uid);
 create index node_labels_idx on node_labels (label_key, label_value);
@@ -221,3 +228,5 @@ create index node_labels_idx on node_labels (label_key, label_value);
 create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_uid);
 create index pod_anti_affinity_match_expressions_idx on pod_anti_affinity_match_expressions (pod_uid);
 create index pod_labels_idx on pod_labels (label_key, label_value);
+
+create index match_expressions_idx on match_expressions (label_key, label_operator, label_values);

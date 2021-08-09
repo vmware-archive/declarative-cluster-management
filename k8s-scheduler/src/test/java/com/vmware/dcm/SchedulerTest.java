@@ -400,19 +400,18 @@ public class SchedulerTest {
         }
 
         // First, we check if the computed intermediate view is correct
-        final Map<String, List<String>> podsToNodesMap = conn.selectFrom("POD_NODE_SELECTOR_MATCHES")
-                                                              .fetchGroups(field("POD_UID", String.class),
-                                                                           field("NODE_NAME", String.class));
-        podsToMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(podNameToUid.get(p))));
-        podsPartialMatch.forEach(p -> assertTrue(podsToNodesMap.containsKey(podNameToUid.get(p))));
-        podsWithoutLabels.forEach(p -> assertFalse(podsToNodesMap.containsKey(podNameToUid.get(p))));
-        for (final Map.Entry<String, List<String>> record: podsToNodesMap.entrySet()) {
-            final String pod = podNameToUid.inverse().get(record.getKey());
-            final Set<String> nodes = new HashSet<>(record.getValue());
+        final Result<Record> podsToNodesMap = conn.selectFrom("POD_NODE_SELECTOR_MATCHES").fetch();
+        podsToMatch.forEach(p -> assertTrue(podsToNodesMap.intoSet(0).contains(podNameToUid.get(p))));
+        podsPartialMatch.forEach(p -> assertTrue(podsToNodesMap.intoSet(0).contains(podNameToUid.get(p))));
+        podsWithoutLabels.forEach(p -> assertFalse(podsToNodesMap.intoSet(0).contains(podNameToUid.get(p))));
+        for (final Record record: podsToNodesMap) {
+            final String pod = podNameToUid.inverse().get(record.getValue("POD_UID", String.class));
+            final Object[] nodes = record.getValue("NODE_MATCHES", Object[].class);
+            final Set<String> nodeSet = Arrays.stream(nodes).map(Object::toString).collect(Collectors.toSet());
             if (podsToMatch.contains(pod)) {
-                assertEquals(nodesToMatch, nodes);
+                assertEquals(nodesToMatch, nodeSet, "For pod " + pod);
             } else if (podsPartialMatch.contains(pod)) {
-                assertEquals(Sets.union(nodesToMatch, nodesPartialMatch), nodes);
+                assertEquals(Sets.union(nodesToMatch, nodesPartialMatch), nodeSet);
             } else {
                 fail();
             }
@@ -456,18 +455,13 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                                                 .setInitialPlacementPolicies(policies)
-                                                 .setDebugMode(true)
-                                                 .build();
-
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
         final int numPods = 10;
-        final int numNodes = 100;
+        final int numNodes = 20;
         final int numPodsToModify = 3;
-        final int numNodesToModify = 20;
+        final int numNodesToModify = 10;
 
         final List<String> allPods = IntStream.range(0, numPods)
                 .mapToObj(i -> "p" + i)
@@ -490,6 +484,7 @@ public class SchedulerTest {
             podNameToUid.put(podName, pod.getMetadata().getUid());
             handler.onAddSync(pod);
         }
+
 
         // Add all nodes, some of which have labels described by nodeLabelsInput,
         // whereas others have a different set of labels
@@ -518,26 +513,24 @@ public class SchedulerTest {
             podNameToUid.put(podName, pod.getMetadata().getUid());
             handler.onAddSync(pod);
         }
-
         // First, we check if the computed intermediate views are correct
-        final Map<String, List<String>> podsToNodesMap = conn.selectFrom("POD_NODE_SELECTOR_MATCHES")
-                                                             .fetchGroups(field("POD_UID", String.class),
-                                                                          field("NODE_NAME", String.class));
-        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.containsKey(podNameToUid.get(p)),
+        final Result<Record> podsToNodesMap = conn.selectFrom("POD_NODE_SELECTOR_MATCHES")
+                                                             .fetch();
+        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.intoSet("POD_UID").contains(podNameToUid.get(p)),
                                                shouldBeAffineToLabelledNodes || shouldBeAffineToRemainingNodes));
         podsToNodesMap.forEach(
-            (uid, nodeList) -> {
-                final String podName = podNameToUid.inverse().get(uid);
+            (record) -> {
+                final String podUid = record.get(0, String.class);
+                final Object[] matchingNodes = record.get(1, Object[].class);
+                final String podName = podNameToUid.inverse().get(podUid);
                 assertTrue(podsToAssign.contains(podName));
-                nodeList.forEach(
+                Arrays.stream(matchingNodes).map(e -> (String) e).forEach(
                     node -> {
                         if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
                             assertTrue(nodesToAssign.contains(node) || remainingNodes.contains(node));
-                        }
-                        else if (shouldBeAffineToLabelledNodes) {
+                        } else if (shouldBeAffineToLabelledNodes) {
                             assertTrue(nodesToAssign.contains(node));
-                        }
-                        else if (shouldBeAffineToRemainingNodes) {
+                        } else if (shouldBeAffineToRemainingNodes) {
                             assertFalse(nodesToAssign.contains(node));
                         }
                     }
@@ -551,6 +544,10 @@ public class SchedulerTest {
                                 .where(Tables.POD_INFO.HAS_NODE_SELECTOR_LABELS.eq(true))
                                 .fetch("UID")));
 
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                .setInitialPlacementPolicies(policies)
+                .setDebugMode(true)
+                .build();
         final Result<? extends Record> results = scheduler.initialPlacement();
         if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
             results.forEach(
