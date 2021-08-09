@@ -49,6 +49,8 @@ public class DBViews {
         preemptionInputPods(PREEMPTION);
         preemptionFixedPods(PREEMPTION);
         Stream.of(INITIAL_PLACEMENT, PREEMPTION).forEach(viewStatements -> {
+            matchingNodes(viewStatements);
+            matchingPods(viewStatements);
             podsWithPortRequests(viewStatements);
             podNodeSelectorMatches(viewStatements);
             spareCapacityPerNode(viewStatements);
@@ -148,36 +150,87 @@ public class DBViews {
     }
 
     /*
+     * For each match expression, find the set of nodes that match it
+     */
+    private static void matchingNodes(final ViewStatements viewStatements) {
+        final String name = "MATCHING_NODES";
+        final String query = "SELECT DISTINCT expr_id, node_name " +
+                             "FROM match_expressions me " +
+                             "JOIN node_labels " +
+                             "     ON (me.label_operator = 'In' " +
+                             "        AND me.label_key = node_labels.label_key " +
+                             "        AND array_contains(me.label_values, node_labels.label_value)) " +
+                             "      OR (me.label_operator = 'Exists' " +
+                             "        AND me.label_key = node_labels.label_key) " +
+                             "      OR (me.label_operator = 'NotIn') " +
+                             "      OR (me.label_operator = 'DoesNotExist') " +
+                             "GROUP BY expr_id, label_operator, node_name " +
+                             "HAVING CASE me.label_operator " +
+                             "          WHEN 'NotIn' " +
+                             "              THEN NOT(ANY(me.label_key = node_labels.label_key " +
+                             "                        AND array_contains(me.label_values, node_labels.label_value))) " +
+                             "          WHEN 'DoesNotExist' " +
+                             "              THEN NOT(ANY(me.label_key = node_labels.label_key)) " +
+                             "          ELSE 1 = 1 " +
+                             "       END";
+        viewStatements.addQuery(name, query);
+    }
+
+    /*
+     * For each match expression, find the set of pods that match it
+     */
+    private static void matchingPods(final ViewStatements viewStatements) {
+        final String name = "MATCHING_PODS";
+        final String query = "SELECT expr_id, label_operator, pod_uid " +
+                            "FROM match_expressions me " +
+                            "JOIN pod_labels " +
+                            "     ON (me.label_operator = 'In' " +
+                            "        AND me.label_key = pod_labels.label_key " +
+                            "        AND array_contains(me.label_values, pod_labels.label_value)) " +
+                            "      OR (me.label_operator = 'Exists' " +
+                            "        AND me.label_key = pod_labels.label_key) " +
+                            "      OR (me.label_operator = 'NotIn') " +
+                            "      OR (me.label_operator = 'DoesNotExist') " +
+                            "GROUP BY expr_id, label_operator, pod_uid " +
+                            "HAVING CASE me.label_operator " +
+                            "          WHEN 'NotIn' " +
+                            "              THEN NOT(ANY(me.label_key = pod_labels.label_key " +
+                            "                        AND array_contains(me.label_values, pod_labels.label_value))) " +
+                            "          WHEN 'DoesNotExist' " +
+                            "              THEN NOT(ANY(me.label_key = pod_labels.label_key)) " +
+                            "          ELSE 1 = 1 " +
+                            "       END";
+        viewStatements.addQuery(name, query);
+    }
+
+    /*
      * For each pod, get the nodes that match its node selector labels.
      */
     private static void podNodeSelectorMatches(final ViewStatements viewStatements) {
+        //
+        // https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+        //
+        // Multiple match expressions within a nodeSelectorTerm is treated as a logical AND. This
+        // is accounted for in the GROUP BY + HAVING clause below. That is, we make sure that for a node to be counted,
+        // it has to match all match_expression IDs in the pod_node_selector_labels.match_expression array.
+        //
+        // Multiple nodeSelectorTerms (pod_node_selector_labels.term) are treated as a logical OR.
+        // We can therefore array_agg() all nodes over multiple such terms and only need to group by
+        // pod.uid below.
+        //
         final String name = "POD_NODE_SELECTOR_MATCHES";
         final String query = String.format(
-                "SELECT pods_to_assign.uid AS pod_uid, " +
-                "       node_labels.node_name AS node_name " +
-                "FROM %s AS pods_to_assign " +
-                "JOIN pod_node_selector_labels " +
-                "     ON pods_to_assign.uid = pod_node_selector_labels.pod_uid " +
-                "JOIN node_labels " +
-                "        ON " +
-                "           (pod_node_selector_labels.label_operator = 'In' " +
-                "            AND pod_node_selector_labels.label_key = node_labels.label_key " +
-                "            AND pod_node_selector_labels.label_value = node_labels.label_value) " +
-                "        OR (pod_node_selector_labels.label_operator = 'Exists' " +
-                "            AND pod_node_selector_labels.label_key = node_labels.label_key) " +
-                "        OR (pod_node_selector_labels.label_operator = 'NotIn') " +
-                "        OR (pod_node_selector_labels.label_operator = 'DoesNotExist') " +
-                "WHERE pods_to_assign.has_node_selector_labels = true " +
-                "GROUP BY pods_to_assign.uid, node_labels.node_name, pod_node_selector_labels.term, " +
-                "         pod_node_selector_labels.label_operator, pod_node_selector_labels.num_match_expressions " +
-                "HAVING CASE pod_node_selector_labels.label_operator " +
-                "            WHEN 'NotIn' " +
-                "                 THEN NOT(ANY(pod_node_selector_labels.label_key = node_labels.label_key " +
-                "                              AND pod_node_selector_labels.label_value = node_labels.label_value)) " +
-                "            WHEN 'DoesNotExist' " +
-                "                 THEN NOT(ANY(pod_node_selector_labels.label_key = node_labels.label_key)) " +
-                "            ELSE count(distinct match_expression) = pod_node_selector_labels.num_match_expressions " +
-                "       END", viewStatements.unfixedPods);
+                    "SELECT pods_to_assign.uid AS pod_uid, " +
+                    "       array_agg(distinct matching_nodes.node_name) over (partition by pod_uid) node_matches " +
+                    "FROM %s AS pods_to_assign " +
+                    "JOIN pod_node_selector_labels pnsl" +
+                    "     ON pods_to_assign.uid = pnsl.pod_uid " +
+                    "JOIN matching_nodes " +
+                    "     ON array_contains(pnsl.match_expressions, matching_nodes.expr_id) " +
+                    "WHERE pods_to_assign.has_node_selector_labels = true " +
+                    "GROUP BY pods_to_assign.uid, pnsl.match_expressions, pnsl.term, matching_nodes.node_name " +
+                    "HAVING array_length(pnsl.match_expressions) = COUNT(DISTINCT matching_nodes.expr_id)",
+                    viewStatements.unfixedPods);
         viewStatements.addQuery(name, query);
     }
 

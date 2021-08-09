@@ -8,26 +8,28 @@ package com.vmware.dcm;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import io.fabric8.kubernetes.api.model.Affinity;
-import io.fabric8.kubernetes.api.model.Container;
-import io.fabric8.kubernetes.api.model.ContainerPort;
-import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
-import io.fabric8.kubernetes.api.model.NodeSelector;
-import io.fabric8.kubernetes.api.model.NodeSelectorRequirement;
-import io.fabric8.kubernetes.api.model.NodeSelectorTerm;
-import io.fabric8.kubernetes.api.model.OwnerReference;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodAffinityTerm;
-import io.fabric8.kubernetes.api.model.PodSpec;
-import io.fabric8.kubernetes.api.model.Quantity;
-import io.fabric8.kubernetes.api.model.ResourceRequirements;
-import io.fabric8.kubernetes.api.model.Toleration;
 import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.dcm.k8s.generated.tables.MatchExpressions;
 import com.vmware.dcm.k8s.generated.tables.PodInfo;
+import com.vmware.dcm.k8s.generated.tables.records.MatchExpressionsRecord;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import com.vmware.dcm.k8s.generated.tables.records.PodLabelsRecord;
 import com.vmware.dcm.k8s.generated.tables.records.PodNodeSelectorLabelsRecord;
 import com.vmware.dcm.k8s.generated.tables.records.PodTolerationsRecord;
+import io.fabric8.kubernetes.api.model.Affinity;
+import io.fabric8.kubernetes.api.model.Container;
+import io.fabric8.kubernetes.api.model.ContainerPort;
+import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
+import io.fabric8.kubernetes.api.model.NodeAffinity;
+import io.fabric8.kubernetes.api.model.OwnerReference;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodAffinity;
+import io.fabric8.kubernetes.api.model.PodAffinityTerm;
+import io.fabric8.kubernetes.api.model.PodAntiAffinity;
+import io.fabric8.kubernetes.api.model.PodSpec;
+import io.fabric8.kubernetes.api.model.Quantity;
+import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import io.fabric8.kubernetes.api.model.Toleration;
 import org.h2.api.Trigger;
 import org.jooq.DSLContext;
 import org.jooq.Insert;
@@ -39,6 +41,7 @@ import org.jooq.exception.DataAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -47,7 +50,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 
@@ -60,6 +66,7 @@ class PodEventsToDatabase {
     private final Cache<String, Boolean> deletedUids = CacheBuilder.newBuilder()
                                                                       .expireAfterWrite(5, TimeUnit.MINUTES)
                                                                       .build();
+    private final AtomicLong expressionIds = new AtomicLong();
 
     private enum Operators {
         In,
@@ -434,20 +441,17 @@ class PodEventsToDatabase {
         // Update pod_node_selector_labels table
         final Map<String, String> nodeSelector = pod.getSpec().getNodeSelector();
         if (nodeSelector != null) {
-            // Using a node selector is equivalent to having a single node-selector term and one match expression
-            // per selector term
+            // Using a node selector is equivalent to having a single node-selector term and a list of match expressions
             final int term = 0;
-            final int numMatchExpressions = nodeSelector.size();
-            int matchExpression = 0;
-            for (final Map.Entry<String, String> entry: nodeSelector.entrySet()) {
-                matchExpression += 1;
-                final String labelKey = entry.getKey();
-                final String labelValue = entry.getValue();
-                podNodeSelectorLabels.add(
-                conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                        .values(pod.getMetadata().getUid(), term, matchExpression, numMatchExpressions,
-                                labelKey, Operators.In.toString(), labelValue));
+            final Object[] matchExpressions = nodeSelector.entrySet().stream()
+                                                .map(e -> toMatchExpressionId(conn, e.getKey(), Operators.In.toString(),
+                                                                              List.of(e.getValue())))
+                                                .toArray();
+            if (matchExpressions.length == 0) {
+                return podNodeSelectorLabels;
             }
+            podNodeSelectorLabels.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                          .values(pod.getMetadata().getUid(), term, matchExpressions));
         }
         return podNodeSelectorLabels;
     }
@@ -483,64 +487,37 @@ class PodEventsToDatabase {
     private List<Insert<?>> updatePodAffinity(final Pod pod, final DSLContext conn) {
         final List<Insert<?>> inserts = new ArrayList<>();
         final Affinity affinity = pod.getSpec().getAffinity();
-        if (affinity == null) {
-            return Collections.emptyList();
-        }
-
-        // Node affinity
-        if (affinity.getNodeAffinity() != null
-                && affinity.getNodeAffinity().getRequiredDuringSchedulingIgnoredDuringExecution() != null) {
-            final NodeSelector selector =
-                    affinity.getNodeAffinity().getRequiredDuringSchedulingIgnoredDuringExecution();
-            int termNumber = 0;
-            for (final NodeSelectorTerm term: selector.getNodeSelectorTerms()) {
-                int matchExpressionNumber = 0;
-                final int numMatchExpressions = term.getMatchExpressions().size();
-                for (final NodeSelectorRequirement expr: term.getMatchExpressions()) {
-                    matchExpressionNumber += 1;
-                    LOG.trace("Pod:{} (uid: {}), Term:{}, MatchExpressionNum:{}, NumMatchExpressions:{}, Key:{}, " +
-                              "op:{}, values:{}", pod.getMetadata().getName(), pod.getMetadata().getUid(), termNumber,
-                              matchExpressionNumber, numMatchExpressions, expr.getKey(), expr.getOperator(),
-                              expr.getValues());
-
-                    if (expr.getValues() != null) {
-                        for (final String value : expr.getValues()) {
-                            inserts.add(
-                                conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                        .values(pod.getMetadata().getUid(), termNumber, matchExpressionNumber,
-                                                numMatchExpressions, expr.getKey(), expr.getOperator(), value)
-                            );
+        Optional.ofNullable(affinity)
+                .map(Affinity::getNodeAffinity)
+                .map(NodeAffinity::getRequiredDuringSchedulingIgnoredDuringExecution)
+                .ifPresent(selector -> {
+                    final AtomicInteger termNumber = new AtomicInteger(0);
+                    selector.getNodeSelectorTerms().forEach(term -> {
+                            final Object[] exprIds = term.getMatchExpressions().stream()
+                                    .map(expr -> toMatchExpressionId(conn, expr.getKey(), expr.getOperator(),
+                                                                     expr.getValues())).toArray();
+                            inserts.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                            .values(pod.getMetadata().getUid(), termNumber, exprIds));
+                            termNumber.incrementAndGet();
                         }
-                    } else {
-                        inserts.add(
-                            conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                            .values(pod.getMetadata().getUid(), termNumber, matchExpressionNumber,
-                                    numMatchExpressions, expr.getKey(), expr.getOperator(), null)
-                        );
-                    }
-                }
-                termNumber += 1;
-            }
-
-        }
+                    );
+                });
 
         // Pod affinity
-        if (affinity.getPodAffinity() != null) {
-            inserts.addAll(
-                    insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS,
-                            Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod,
-                            affinity.getPodAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
-            );
-        }
+        Optional.ofNullable(affinity)
+                .map(Affinity::getPodAffinity)
+                .map(PodAffinity::getRequiredDuringSchedulingIgnoredDuringExecution)
+                .ifPresent(podAffinityTerm ->
+                        inserts.addAll(insertPodAffinityTerms(Tables.POD_AFFINITY_MATCH_EXPRESSIONS,
+                                            Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod, podAffinityTerm)));
 
         // Pod Anti affinity
-        if (affinity.getPodAntiAffinity() != null) {
-            inserts.addAll(
+        Optional.ofNullable(affinity)
+                .map(Affinity::getPodAntiAffinity)
+                .map(PodAntiAffinity::getRequiredDuringSchedulingIgnoredDuringExecution)
+                .ifPresent(podAntiAffinityTerm -> inserts.addAll(
                     insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS,
-                            Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod,
-                            affinity.getPodAntiAffinity().getRequiredDuringSchedulingIgnoredDuringExecution())
-            );
-        }
+                        Tables.POD_AFFINITY_MATCH_EXPRESSIONS, pod, podAntiAffinityTerm)));
         return Collections.unmodifiableList(inserts);
     }
 
@@ -582,6 +559,28 @@ class PodEventsToDatabase {
             termNumber += 1;
         }
         return inserts;
+    }
+
+    private long toMatchExpressionId(final DSLContext conn, final String key, final String operator,
+                                     @Nullable final List<String> values) {
+        final MatchExpressions me = Tables.MATCH_EXPRESSIONS;
+        final Object[] valuesArray = values == null ? new Object[0] : values.toArray();
+        final MatchExpressionsRecord record = conn.selectFrom(me)
+                .where(me.LABEL_KEY.eq(key)
+                        .and(me.LABEL_OPERATOR.eq(operator))
+                        .and(me.LABEL_VALUES.eq(valuesArray)))
+                .fetchOne();
+        if (record == null) {
+            final MatchExpressionsRecord newRecord = conn.newRecord(me);
+            newRecord.setExprId(expressionIds.incrementAndGet());
+            newRecord.setLabelKey(key);
+            newRecord.setLabelOperator(operator);
+            newRecord.setLabelValues(valuesArray);
+            newRecord.store();
+            return expressionIds.get();
+        } else {
+            return record.getExprId();
+        }
     }
 
     private long equivalenceClassHash(final Pod pod) {

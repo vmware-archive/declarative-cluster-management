@@ -90,7 +90,9 @@ public class ScopedModel {
      */
     private Set<String> getMatchedNodes() {
         final Result<?> podNodeSelectorMatches = conn.selectFrom(table("POD_NODE_SELECTOR_MATCHES")).fetch();
-        return podNodeSelectorMatches.intoSet(field(name("POD_NODE_SELECTOR_MATCHES", "NODE_NAME"), String.class));
+        final Set<Object[]> setOfNodeLists = podNodeSelectorMatches
+                .intoSet(field(name("POD_NODE_SELECTOR_MATCHES", "NODE_MATCHES"), Object[].class));
+        return flattenObjectArray(setOfNodeLists);
     }
 
     /**
@@ -116,6 +118,10 @@ public class ScopedModel {
                         .flatMap(x -> x.stream().flatMap(Arrays::stream))
                         .collect(Collectors.toSet())
         );
+    }
+
+    private Set<String> flattenObjectArray(final Set<Object[]> arrays) {
+        return arrays.stream().flatMap(Arrays::stream).map(Object::toString).collect(Collectors.toSet());
     }
 
     /**

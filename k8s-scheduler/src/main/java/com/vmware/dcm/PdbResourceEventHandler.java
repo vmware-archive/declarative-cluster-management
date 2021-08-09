@@ -30,6 +30,7 @@ public class PdbResourceEventHandler implements ResourceEventHandler<PodDisrupti
                 (k, v) ->
                         dbConnectionPool.getConnectionToDb().insertInto(Tables.PDB_MATCH_EXPRESSIONS)
                                 .values(pdb.getMetadata().getName(),
+                                        pdb.getSpec().getSelector(),
                                         pdb.getSpec().getMinAvailable(),
                                         pdb.getSpec().getMaxUnavailable(),
                                         pdb.getStatus().getDisruptionsAllowed())
