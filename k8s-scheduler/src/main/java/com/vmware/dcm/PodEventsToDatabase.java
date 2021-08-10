@@ -538,21 +538,24 @@ class PodEventsToDatabase {
                                      @Nullable final List<String> values) {
         final MatchExpressions me = Tables.MATCH_EXPRESSIONS;
         final Object[] valuesArray = values == null ? new Object[0] : values.toArray();
-        final MatchExpressionsRecord record = conn.selectFrom(me)
-                .where(me.LABEL_KEY.eq(key)
-                        .and(me.LABEL_OPERATOR.eq(operator))
-                        .and(me.LABEL_VALUES.eq(valuesArray)))
-                .fetchOne();
-        if (record == null) {
-            final MatchExpressionsRecord newRecord = conn.newRecord(me);
-            newRecord.setExprId(expressionIds.incrementAndGet());
-            newRecord.setLabelKey(key);
-            newRecord.setLabelOperator(operator);
-            newRecord.setLabelValues(valuesArray);
-            newRecord.store();
-            return expressionIds.get();
-        } else {
-            return record.getExprId();
+        synchronized (this) {
+            final MatchExpressionsRecord record = conn.selectFrom(me)
+                    .where(me.LABEL_KEY.eq(key)
+                            .and(me.LABEL_OPERATOR.eq(operator))
+                            .and(me.LABEL_VALUES.eq(valuesArray)))
+                    .fetchOne();
+            if (record == null) {
+                final MatchExpressionsRecord newRecord = conn.newRecord(me);
+                final long value = expressionIds.incrementAndGet();
+                newRecord.setExprId(value);
+                newRecord.setLabelKey(key);
+                newRecord.setLabelOperator(operator);
+                newRecord.setLabelValues(valuesArray);
+                newRecord.store();
+                return value;
+            } else {
+                return record.getExprId();
+            }
         }
     }
 
