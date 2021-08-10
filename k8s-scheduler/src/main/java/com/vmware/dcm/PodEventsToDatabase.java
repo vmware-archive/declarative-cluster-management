@@ -539,6 +539,9 @@ class PodEventsToDatabase {
         final MatchExpressions me = Tables.MATCH_EXPRESSIONS;
         final Object[] valuesArray = values == null ? new Object[0] : values.toArray();
         synchronized (this) {
+            // Ideally, we'd use an auto-incrementing field on the expression_id column to handle this
+            // in a single insert/returning statement. But we keep the ID incrementing outside the database
+            // in anticipation of using ddlog, which does not yet support auto-incrementing IDs.
             final MatchExpressionsRecord record = conn.selectFrom(me)
                     .where(me.LABEL_KEY.eq(key)
                             .and(me.LABEL_OPERATOR.eq(operator))
