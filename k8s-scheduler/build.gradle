@@ -68,6 +68,6 @@ application {
 }
 
 task(runBenchmark, dependsOn: 'classes', type: JavaExec) {
-   main = 'EmulatedCluster'
+   main = 'com.vmware.dcm.EmulatedCluster'
    classpath = sourceSets.main.runtimeClasspath
 }
