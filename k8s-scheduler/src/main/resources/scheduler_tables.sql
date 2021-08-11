@@ -1,6 +1,6 @@
 create table node_info
 (
-  uid char(36) not null primary key,
+  uid char(36) not null,
   name varchar(253) not null,
   unschedulable boolean not null,
   out_of_disk boolean not null,
@@ -20,12 +20,13 @@ create table node_info
   cpu_allocated bigint not null,
   memory_allocated bigint not null,
   ephemeral_storage_allocated bigint not null,
-  pods_allocated bigint not null
+  pods_allocated bigint not null,
+  primary key(uid)
 );
 
 create table pod_info
 (
-  uid char(36) not null primary key,
+  uid char(36) not null,
   pod_name varchar(253) not null,
   status varchar(36) not null,
   node_name varchar(253) null,
@@ -44,6 +45,7 @@ create table pod_info
   equivalence_class bigint not null,
   qos_class varchar(10) not null,
   resourceVersion bigint not null,
+  primary key(uid),
   constraint uc_namespaced_pod_name unique (pod_name, namespace)
 );
 
