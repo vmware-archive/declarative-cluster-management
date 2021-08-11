@@ -13,19 +13,22 @@ GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`
 mkdir -p $TRACE_DIR/$GIT_REV
 
 startTimeCutOff=$1
+# traceFile="test-data.txt"
+traceFile="v2-cropped.txt"
 
 for affinityProportion in 0 50 100;
 do
-   numNodes=500
-   ./gradlew runBenchmark --args="-n $numNodes -f v2-cropped.txt -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p $affinityProportion" &> /tmp/out
+#   numNodes=500
+   numNodes=100
+   ./gradlew runBenchmark --args="-n ${numNodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion}" &> /tmp/out
 
    expId=`date +%s`
    mkdir -p $TRACE_DIR/$GIT_REV/$expId
    cp /tmp/out $TRACE_DIR/$GIT_REV/$expId/workload_output
    cp /tmp/out $TRACE_DIR/$GIT_REV/$expId/dcm_scheduler_trace
 
-   echo "workload,schedulerName,solver,kubeconfig,dcmGitBranch,dcmGitCommitId,numNodes,startTimeCutOff,percentageOfNodesToScoreValue,timeScaleDown,affinityProportion" > $TRACE_DIR/$GIT_REV/$expId/metadata
-   echo "v2-cropped.txt,dcm-scheduler,ORTOOLS,local,$GIT_BRANCH,$GIT_REV,$numNodes,$startTimeCutOff,0,100,$affinityProportion" >> $TRACE_DIR/$GIT_REV/$expId/metadata
+      echo "workload,schedulerName,solver,kubeconfig,dcmGitBranch,dcmGitCommitId,numNodes,startTimeCutOff,percentageOfNodesToScoreValue,timeScaleDown,affinityProportion" > $TRACE_DIR/$GIT_REV/$expId/metadata
+      echo "$traceFile,dcm-scheduler,ORTOOLS,local,$GIT_BRANCH,$GIT_REV,$numNodes,$startTimeCutOff,0,100,$affinityProportion" >> $TRACE_DIR/$GIT_REV/$expId/metadata
 done
 
 # Process the above trace (creates a plots/ folder)
@@ -35,10 +38,11 @@ Rscript plot.r
 TRACE_DIR=trace-`date +%s`
 mkdir -p $TRACE_DIR/$GIT_REV
 
-for numNodes in 500 5000 10000;
+#for numNodes in 500 5000 10000;
+for numNodes in 50 100 500;
 do
    affinityProportion=100
-   ./gradlew runBenchmark --args="-n ${numNodes} -f v2-cropped.txt -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion}" &> /tmp/out
+   ./gradlew runBenchmark --args="-n ${numNodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion}" &> /tmp/out
    
    expId=`date +%s`
    mkdir -p $TRACE_DIR/$GIT_REV/$expId
@@ -46,7 +50,7 @@ do
    cp /tmp/out $TRACE_DIR/$GIT_REV/$expId/dcm_scheduler_trace
 
    echo "workload,schedulerName,solver,kubeconfig,dcmGitBranch,dcmGitCommitId,numNodes,startTimeCutOff,percentageOfNodesToScoreValue,timeScaleDown,affinityProportion" > $TRACE_DIR/$GIT_REV/$expId/metadata
-   echo "v2-cropped.txt,dcm-scheduler,ORTOOLS,local,$GIT_BRANCH,$GIT_REV,$numNodes,$startTimeCutOff,0,100,$affinityProportion" >> $TRACE_DIR/$GIT_REV/$expId/metadata
+   echo "$traceFile,dcm-scheduler,ORTOOLS,local,$GIT_BRANCH,$GIT_REV,$numNodes,$startTimeCutOff,0,100,$affinityProportion" >> $TRACE_DIR/$GIT_REV/$expId/metadata
 done
 
 # Process the above trace (creates a plots/ folder)

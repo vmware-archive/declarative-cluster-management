@@ -59,7 +59,7 @@ class EmulatedCluster {
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool,
                 service);
 
-        final int solverMaxTimeInSeconds = numNodes >= 5000 ? 2 : 1;
+        final int solverMaxTimeInSeconds = numNodes >= 5000 ? 5 : 1;
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
                                                  .setDebugMode(true)
                                                  .setNumThreads(4)

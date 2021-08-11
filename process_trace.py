@@ -26,43 +26,43 @@ conn.execute("drop table if exists event_trace")
 conn.execute('''
     create table params
     (
-       expId integer not null primary key,
-       workload varchar(100) not null,
-       scheduler varchar(100) not null,
-       solver varchar(100) not null,
-       kubeconfig integer not null,
-       dcmGitBranch integer not null,
-       dcmGitCommitId varchar(100) not null,
-       numNodes integer not null,
-       startTimeCutOff integer not null,
-       percentageOfNodesToScoreValue integer not null,
-       timeScaleDown integer not null,
-       affinityProportion integer not null
+        expId integer not null primary key,
+        workload varchar(100) not null,
+        scheduler varchar(100) not null,
+        solver varchar(100) not null,
+        kubeconfig integer not null,
+        dcmGitBranch integer not null,
+        dcmGitCommitId varchar(100) not null,
+        numNodes integer not null,
+        startTimeCutOff integer not null,
+        percentageOfNodesToScoreValue integer not null,
+        timeScaleDown integer not null,
+        affinityProportion integer not null
     )
 ''')
 
 conn.execute('''
     create table pods_over_time
     (
-       expId integer not null,
-       podName varchar(100) not null,
-       status varchar(100) not null,
-       event varchar(100) not null,
-       eventTime integer not null,
-       nodeName varchar(100) not null,
-       foreign key(expId) references params(expId)
+        expId integer not null,
+        podName varchar(100) not null,
+        status varchar(100) not null,
+        event varchar(100) not null,
+        eventTime integer not null,
+        nodeName varchar(100) not null,
+        foreign key(expId) references params(expId)
     )
 ''')
 
 conn.execute('''
     create table scheduler_trace
     (
-       expId integer not null,
-       podName varchar(100) not null,
-       bindTime numeric not null,
-       batchId integer not null,
-       scheduler varchar(100) not null,
-       foreign key(expId) references params(expId)
+        expId integer not null,
+        podName varchar(100) not null,
+        bindTime numeric not null,
+        batchId integer not null,
+        scheduler varchar(100) not null,
+        foreign key(expId) references params(expId)
     )
 ''')
 
@@ -70,34 +70,34 @@ conn.execute('''
 conn.execute('''
     create table dcm_table_access_latency
     (
-       expId integer not null,
-       batchId integer not null,
-       tableName varchar(50) not null,
-       fetchLatency integer not null,
-       reflectLatency integer not null,
-       foreign key(expId) references params(expId)
+        expId integer not null,
+        batchId integer not null,
+        tableName varchar(50) not null,
+        fetchLatency integer not null,
+        reflectLatency integer not null,
+        foreign key(expId) references params(expId)
     )
 ''')
 
 conn.execute('''
     create table dcm_metrics
     (
-       expId integer not null,
-       batchId integer not null,
-       dcmSolveTime integer not null,
-       fetchcount integer not null,
-       modelCreationLatency integer not null,
-       variablesBeforePresolve integer not null,
-       variablesBeforePresolveObjective integer not null,
-       variablesAfterPresolve integer not null,
-       variablesAfterPresolveObjective integer not null,
-       presolveTime numeric not null,
-       propagations integer not null,
-       integerPropagations integer not null,
-       orToolsUserTime integer not null,
-       orToolsWallTime integer not null,
-       databaseLatencyTotal integer not null,
-       foreign key(expId) references params(expId)
+        expId integer not null,
+        batchId integer not null,
+        dcmSolveTime integer not null,
+        fetchcount integer not null,
+        modelCreationLatency integer not null,
+        variablesBeforePresolve integer not null,
+        variablesBeforePresolveObjective integer not null,
+        variablesAfterPresolve integer not null,
+        variablesAfterPresolveObjective integer not null,
+        presolveTime numeric not null,
+        propagations integer not null,
+        integerPropagations integer not null,
+        orToolsUserTime integer not null,
+        orToolsWallTime integer not null,
+        databaseLatencyTotal integer not null,
+        foreign key(expId) references params(expId)
     )
 ''')
 
@@ -130,16 +130,22 @@ def convertK8sTimestamp(k8stimestamp):
    return (int(timestamp) * 1e9) + int(nanos)
 
 
-
-
 for trace in traceFolders:
     # First, we populate the params table
     expId = trace.split('/')[2]
     expParams = {}
     expParams["expId"] = expId
 
-    paramFiles = glob.glob(trace + "/metadata")
+    paramFiles = glob.glob(trace + "metadata")
     assert len(paramFiles) == 1
+
+    print("trace folder:")
+    print(trace)
+    print()
+    # print("expId")
+    # print(expId)
+    # print("paramfiles")
+    # print(paramFiles)
 
     # Add params file in addition
     with open(paramFiles[0]) as paramFile:
@@ -147,21 +153,27 @@ for trace in traceFolders:
         header = next(reader)
         data = next(reader)
         for i in range(len(header)):
-          expParams[header[i]] = data[i]
+            expParams[header[i]] = data[i]
+
+        # print(reader)
+        # print(header)
+        # print(data)
+        # print(expParams)
+        # print()
 
     conn.execute("insert into params values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (expParams["expId"],
-                 expParams["workload"],
-                 expParams["schedulerName"],
-                 expParams["solver"],
-                 expParams["kubeconfig"],
-                 expParams["dcmGitBranch"],
-                 expParams["dcmGitCommitId"],
-                 expParams["numNodes"],
-                 expParams["startTimeCutOff"],
-                 expParams["percentageOfNodesToScoreValue"],
-                 expParams["timeScaleDown"],
-                 expParams["affinityProportion"]))
+                 (expParams["expId"],
+                  expParams["workload"],
+                  expParams["schedulerName"],
+                  expParams["solver"],
+                  expParams["kubeconfig"],
+                  expParams["dcmGitBranch"],
+                  expParams["dcmGitCommitId"],
+                  expParams["numNodes"],
+                  expParams["startTimeCutOff"],
+                  expParams["percentageOfNodesToScoreValue"],
+                  expParams["timeScaleDown"],
+                  expParams["affinityProportion"]))
 
 
     # Get the list of pods
@@ -180,125 +192,166 @@ for trace in traceFolders:
 
     dcmSchedulerFile = glob.glob(trace + "/dcm_scheduler_trace")
     if (len(dcmSchedulerFile) > 0):
-       with open(dcmSchedulerFile[0]) as traceFile:
-          batchId = 1
-          metrics = {}
-          variablesBeforePresolve = False
-          for line in traceFile:
-              if ("Fetchcount is" in line):
-                  metrics["fetchcount"] = line.split()[-1]
+        with open(dcmSchedulerFile[0]) as traceFile:
+            batchId = 1
+            metrics = {}
+            variablesBeforePresolve = False
+            for line in traceFile:
+                if ("Fetchcount is" in line):
+                    metrics["fetchcount"] = line.split()[-1]
 
-              if ("updateDataFields for" in line):
-                  split = line.split()
-                  tableName = split[8]
-                  latencyToDb = split[10][:-2]
-                  latencyToReflect = split[16][:-2] # remove ns
-                  conn.execute("insert into dcm_table_access_latency values (?, ?, ?, ?, ?)",
-                                (expParams["expId"], batchId, tableName, latencyToDb, latencyToReflect))
+                if ("updateDataFields for" in line):
+                    split = line.split()
+                    tableName = split[8]
+                    latencyToDb = split[10]
+                    latencyToReflect = split[19]
 
-              if ("compiler.updateData()" in line):
-                  split = line.split()
-                  latency = split[7]
-                  metrics["databaseLatencyTotal"] = latency[:-2] # remove ns
+                    # print("updateDataFields:")
+                    # print(split)
+                    # print(expParams["expId"], batchId)
+                    # print(tableName, latencyToDb, latencyToReflect)
+                    # print()
 
-              if ("Model creation:" in line):
-                  split = line.split()
-                  latency = split[5]
-                  metrics["modelCreationLatency"] = latency
+                    conn.execute("insert into dcm_table_access_latency values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, tableName, latencyToDb, latencyToReflect))
 
-              if ("#Variables" in line and variablesBeforePresolve == False):
-                  split = line.split()
-                  numVariablesTotal = split[1]
-                  numVariablesObjective = split[2][1:] # Remove opening bracket
-                  variablesBeforePresolve = True
-                  metrics["variablesBeforePresolve"] = numVariablesTotal
-                  metrics["variablesBeforePresolveObjective"] = numVariablesObjective
-              elif ("#Variables" in line and variablesBeforePresolve == True):
-                  split = line.split()
-                  numVariablesTotal = split[1]
-                  numVariablesObjective = split[2][1:]
-                  variablesBeforePresolve = False
-                  metrics["variablesAfterPresolve"] = numVariablesTotal
-                  metrics["variablesAfterPresolveObjective"] = numVariablesObjective
+                if ("compiler.updateData()" in line):
+                    split = line.split()
+                    latency = split[7][:-2] # remove ns
 
-              if ("starting Search" in line):
-                  split = line.split()
-                  latency = split[4][:-1]
-                  metrics["preSolveTime"] = latency
+                    # print("compilerupdateData")
+                    # print(split)
+                    # print(latency)
+                    # print()
 
-              if ("propagations:" in line):
-                  split = line.split()
-                  propagations = split[1]
-                  metrics["propagations"] = propagations
+                    metrics["databaseLatencyTotal"] = latency
 
-              if ("integer_propagations:" in line):
-                  split = line.split()
-                  integerPropagations = split[1]
-                  metrics["integerPropagations"] = integerPropagations
+                if ("Model creation:" in line and not "println" in line):
+                    split = line.split()
+                    latency = split[5]
+                    metrics["modelCreationLatency"] = latency
 
-              if ("walltime" in line):
-                  split = line.split()
-                  latency = split[1]
-                  metrics["orToolsWallTime"] = latency
+                    # print("model creation")
+                    # print(split)
+                    # print(latency)
+                    # print()
 
-              if ("usertime" in line):
-                  split = line.split()
-                  latency = split[1]
-                  metrics["orToolsUserTime"] = latency
+                if ("#Variables" in line and variablesBeforePresolve == False):
+                    split = line.split()
+                    numVariablesTotal = split[1]
+                    numVariablesObjective = split[2][1:] # Remove opening bracket
+                    variablesBeforePresolve = True
+                    metrics["variablesBeforePresolve"] = numVariablesTotal
+                    metrics["variablesBeforePresolveObjective"] = numVariablesObjective
+                elif ("#Variables" in line and variablesBeforePresolve == True):
+                    split = line.split()
+                    numVariablesTotal = split[1]
+                    numVariablesObjective = split[2][1:]
+                    variablesBeforePresolve = False
+                    metrics["variablesAfterPresolve"] = numVariablesTotal
+                    metrics["variablesAfterPresolveObjective"] = numVariablesObjective
 
-              if ("Solver has run successfully" in line):
-                  split = line.split()
-                  latency = split[10][:-3] # Remove ns and period
-                  metrics["dcmSolveTime"] = latency
-                  conn.execute("insert into dcm_metrics values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                (expParams["expId"],
-                                batchId,
-                                metrics["dcmSolveTime"],
-                                metrics["fetchcount"],
-                                metrics["modelCreationLatency"],
-                                metrics["variablesBeforePresolve"],
-                                metrics["variablesBeforePresolveObjective"],
-                                metrics["variablesAfterPresolve"],
-                                metrics["variablesAfterPresolveObjective"],
-                                metrics["preSolveTime"],
-                                metrics["propagations"],
-                                metrics["integerPropagations"],
-                                metrics["orToolsUserTime"],
-                                metrics["orToolsWallTime"],
-                                metrics["databaseLatencyTotal"]
-                                ))
+                if ("Starting Search" in line):
+                    split = line.split()
+                    latency = split[3][:-1]
+                    metrics["preSolveTime"] = latency
 
-              if ("Scheduling decision for pod" in line):
-                  split = line.split("Scheduling decision for pod")[-1].split()
-                  pod, batch, bindTime = split[0], split[5], split[-1]
-                  conn.execute("insert into scheduler_trace values (?, ?, ?, ?, ?)",
-                                  (expParams["expId"], pod, bindTime, batch, "dcm-scheduler"))
-                  batchId = int(batch) + 1
+                    # print("starting search")
+                    # print(split)
+                    # print(latency)
+                    # print()
+
+                if ("propagations:" in line and not "integer_propagations" in line):
+                    split = line.split()
+                    propagations = split[1]
+                    metrics["propagations"] = propagations
+
+                    # print("propagations")
+                    # print(split)
+                    # print(propagations)
+                    # print()
+
+                if ("integer_propagations:" in line):
+                    split = line.split()
+                    integerPropagations = split[1]
+                    metrics["integerPropagations"] = integerPropagations
+
+                if ("walltime" in line):
+                    split = line.split()
+                    latency = split[1]
+                    metrics["orToolsWallTime"] = latency
+
+                if ("usertime" in line):
+                    split = line.split()
+                    latency = split[1]
+                    metrics["orToolsUserTime"] = latency
+
+                if ("Solver has run successfully" in line):
+                    split = line.split()
+                    latency = split[10][:-3] # Remove ns and period
+
+                    # print("solver success")
+                    # print(split)
+                    # print(latency)
+                    # print()
+                    # print()
+
+                    metrics["dcmSolveTime"] = latency
+                    conn.execute("insert into dcm_metrics values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                 (expParams["expId"],
+                                  batchId,
+                                  metrics["dcmSolveTime"],
+                                  metrics["fetchcount"],
+                                  metrics["modelCreationLatency"],
+                                  metrics["variablesBeforePresolve"],
+                                  metrics["variablesBeforePresolveObjective"],
+                                  metrics["variablesAfterPresolve"],
+                                  metrics["variablesAfterPresolveObjective"],
+                                  metrics["preSolveTime"],
+                                  metrics["propagations"],
+                                  metrics["integerPropagations"],
+                                  metrics["orToolsUserTime"],
+                                  metrics["orToolsWallTime"],
+                                  metrics["databaseLatencyTotal"]
+                                 ))
+
+                if ("Scheduling decision for pod" in line):
+                    split = line.split("Scheduling decision for pod")[-1].split()
+                    pod, batch, bindTime = split[0], split[5], split[-1]
+
+                    # print("scheduling decision")
+                    # print(split)
+                    # print(pod, batch, bindTime)
+                    # print()
+
+                    conn.execute("insert into scheduler_trace values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], pod, bindTime, batch, "dcm-scheduler"))
+                    batchId = int(batch) + 1
 
 
     defaultSchedulerFile = glob.glob(trace + "/default_scheduler_trace")
     batchId = 0
     if (len(defaultSchedulerFile) > 0):
-       with open(defaultSchedulerFile[0]) as traceFile:
-          for line in traceFile:
-              if ("About to try and schedule pod" in line):
-                  split = line.split()
-                  startTime, pod = split[0], split[-1]
-                  pod = pod.split("/")[-1]  # pods here are named <namespace>/<podname>
-                  if (pod not in pods):
-                     pods[pod] = {}
-                  pods[pod]["startTime"] = convertK8sTimestamp(startTime)
-                  pods[pod]["startLine"] = split
+        with open(defaultSchedulerFile[0]) as traceFile:
+            for line in traceFile:
+                if ("About to try and schedule pod" in line):
+                    split = line.split()
+                    startTime, pod = split[0], split[-1]
+                    pod = pod.split("/")[-1]  # pods here are named <namespace>/<podname>
+                    if (pod not in pods):
+                        pods[pod] = {}
+                    pods[pod]["startTime"] = convertK8sTimestamp(startTime)
+                    pods[pod]["startLine"] = split
 
-              if ("Attempting to bind" in line):
-                  split = line.split()
-                  bindTime, pod = split[0], split[-3]
-                  assert pod in pods
-                  pods[pod]["bindTime"] = convertK8sTimestamp(bindTime)
-                  pods[pod]["endLine"] = split
-                  assert pods[pod]["bindTime"] > pods[pod]["startTime"], pods[pod]
-                  conn.execute("insert into scheduler_trace values (?, ?, ?, ?, ?)",
-                             (expParams["expId"], pod, pods[pod]["bindTime"] - pods[pod]["startTime"],
-                              batchId, "default-scheduler"))
-                  batchId += 1 
+                if ("Attempting to bind" in line):
+                    split = line.split()
+                    bindTime, pod = split[0], split[-3]
+                    assert pod in pods
+                    pods[pod]["bindTime"] = convertK8sTimestamp(bindTime)
+                    pods[pod]["endLine"] = split
+                    assert pods[pod]["bindTime"] > pods[pod]["startTime"], pods[pod]
+                    conn.execute("insert into scheduler_trace values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], pod, pods[pod]["bindTime"] - pods[pod]["startTime"],
+                                  batchId, "default-scheduler"))
+                    batchId += 1
     conn.commit()

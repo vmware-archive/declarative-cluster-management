@@ -71,7 +71,8 @@ dcmMetrics <- data.table(dbGetQuery(conn, "select * from dcm_metrics"))
 dcmTableAccessLatency <- data.table(dbGetQuery(conn, "select * from dcm_table_access_latency"))
 plotHeight=4
 plotWidth=5
-appCountCutOff=5000
+## FIXME: appCountCutOff was set to 5000
+appCountCutOff=10
 fixedTimeScale=20
 
 params$gitInfo <- paste(params$dcmGitBranch, substr(params$dcmGitCommitId, 0, 10), sep=":")
@@ -132,7 +133,7 @@ if (varyFExperiment) {
                                     levels=c("numNodes=500", "numNodes=5000", "numNodes=10000"))]
 }
 
-if(varyFExperiment) {
+if (varyFExperiment) {
    perPodSchedulingLatencyWithParams[,af := factor(paste("F=", affinityProportion, "%", sep=""), 
                                                    levels = c("F=0%", "F=50%", "F=100%"))]
    schedulingLatencyEcdf100xPlot <- applyTheme(
@@ -152,7 +153,6 @@ if(varyFExperiment) {
    schedulingLatencyEcdf100xPlot
    savePlot(schedulingLatencyEcdf100xPlot, "plots/schedulingLatencyEcdfVaryFN=500Plot", params, plotHeight, plotWidth, scale=FALSE)
 }
-
 
 #'
 #' Distribution of latency metrics collected by DCM, amortized over batch sizes.
@@ -203,7 +203,7 @@ if (varyFExperiment) {
 }
 
 #
-#' Print model sizes to file
+# Print model sizes to file
 #
 if (varyNExperiment) {
    longDcmModelMetricsWithBatchSizes <- melt(dcmMetricsWithBatchSizesExpanded, c("expId", "batchId", "N"), measure=patterns("variables"))
@@ -219,4 +219,8 @@ if (varyNExperiment) {
    optimization models as a function of cluster size"), 
          file = "plots/modelSizeTable.tex",
          include.rownames=FALSE)
+}
+if (FALSE) {
+
+
 }
