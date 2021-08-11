@@ -6,9 +6,6 @@
 
 package com.vmware.dcm;
 
-import com.google.common.collect.BiMap;
-import com.google.common.collect.HashBiMap;
-import com.google.common.collect.Sets;
 import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
@@ -57,12 +54,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import static com.vmware.dcm.TestScenario.Op.COLOCATED_WITH;
+import static com.vmware.dcm.TestScenario.Op.EQUALS;
+import static com.vmware.dcm.TestScenario.Op.IN;
+import static com.vmware.dcm.TestScenario.Op.NOT_COLOCATED_WITH;
+import static com.vmware.dcm.TestScenario.Op.NOT_IN;
+import static com.vmware.dcm.TestScenario.nodeGroup;
+import static com.vmware.dcm.TestScenario.nodesForPodGroup;
+import static com.vmware.dcm.TestScenario.podGroup;
 import static org.jooq.impl.DSL.field;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -75,6 +78,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * Tests for the scheduler
  */
 @ExtendWith({})
+@SuppressWarnings("unchecked")
 public class SchedulerTest {
     /*
      * Test our simulation of a materialized view by adding and removing pods, and checking whether
@@ -280,48 +284,24 @@ public class SchedulerTest {
     @ParameterizedTest
     @MethodSource("conditions")
     public void testSchedulerNodePredicates(final String type, final String status) {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft());
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        final int numNodes = 5;
-        final int numPods = 10;
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
-
-        // We pick a random node from [0, numNodes) to assign all pods to.
-        final int nodeToAssignTo = ThreadLocalRandom.current().nextInt(numNodes);
-        for (int i = 0; i < numNodes; i++) {
-            final NodeCondition badCondition = new NodeCondition();
-            badCondition.setStatus(status);
-            badCondition.setType(type);
-            nodeResourceEventHandler.onAddSync(newNode("n" + i, Collections.emptyMap(),
-                                           i == nodeToAssignTo ? Collections.emptyList() : List.of(badCondition)));
-
-            // Add one system pod per node
-            final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running");
-            pod.getSpec().setNodeName("n" + i);
-            handler.onAddSync(pod);
-        }
-
-        for (int i = 0; i < numPods; i++) {
-            handler.onAddSync(newPod("p" + i));
-        }
-
-        // All pod additions have completed
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                                                 .setInitialPlacementPolicies(policies)
-                                                 .setDebugMode(true)
-                                                 .build();
-        final Result<? extends Record> results = scheduler.initialPlacement();
-        assertEquals(numPods, results.size());
-        results.forEach(r -> assertEquals("n" + nodeToAssignTo,
-                r.get("CONTROLLABLE__NODE_NAME", String.class)));
+        TestScenario.withInitialPlacementPolicies(policies)
+                .withNodeGroup("badNodes", 5, (node) -> {
+                    final NodeCondition badCondition = new NodeCondition();
+                    badCondition.setStatus(status);
+                    badCondition.setType(type);
+                    node.getStatus().setConditions(List.of(badCondition));
+                })
+                .withNodeGroup("goodNodes", 1)
+                .withPodGroup("p", 10)
+                .runInitialPlacement()
+                .expect(nodesForPodGroup("p"), IN, nodeGroup("goodNodes"))
+                .expect(nodesForPodGroup("p"), NOT_IN, nodeGroup("badNodes"));
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream conditions() {
+    private static Stream<Arguments> conditions() {
         return Stream.of(Arguments.of("OutOfDisk", "True"),
                          Arguments.of("MemoryPressure", "True"),
                          Arguments.of("DiskPressure", "True"),
@@ -333,114 +313,29 @@ public class SchedulerTest {
     /*
      * Tests the pod_node_selector_matches view.
      */
-    @ParameterizedTest
-    @MethodSource("nodeSelectorConditions")
-    public void testPodNodeSelector(final Set<String> podsToMatch, final Set<String> podsPartialMatch,
-                                    final Set<String> nodesToMatch, final Set<String> nodesPartialMatch) {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+    @Test
+    public void testPodNodeSelector() {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
-                Policies.nodeSelectorPredicate());
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                                                 .setInitialPlacementPolicies(policies)
-                                                 .setDebugMode(true)
-                                                 .build();
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
-
-        final int numPods = 10;
-        final int numNodes = 10;
-
-        // Add all pods, some of which have both the disk and gpu node selectors, whereas others only have the disk
-        // node selector
-        final Set<String> podsWithoutLabels = new HashSet<>();
-        final BiMap<String, String> podNameToUid = HashBiMap.create(numPods);
-        for (int i = 0; i < numPods; i++) {
-            final String podName = "p" + i;
-            final Map<String, String> selectorLabels = new HashMap<>();
-            if (podsToMatch.contains(podName)) {
-                selectorLabels.put("diskType", "ssd");
-                selectorLabels.put("gpu", "true");
-            }
-            else if (podsPartialMatch.contains(podName)) {
-                selectorLabels.put("diskType", "ssd");
-            } else {
-                podsWithoutLabels.add(podName);
-            }
-            final Pod pod = newPod(podName, UUID.randomUUID(), "Pending", selectorLabels, Collections.emptyMap());
-            podNameToUid.put(podName, pod.getMetadata().getUid());
-            handler.onAddSync(pod);
-        }
-
-        // Add all nodes, some of which have both the disk and gpu labels, whereas others only have the disk label
-        final Set<String> nodesWithoutLabels = new HashSet<>();
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        for (int i = 0; i < numNodes; i++) {
-            final String nodeName = "n" + i;
-            final Map<String, String> nodeLabels = new HashMap<>();
-            if (nodesToMatch.contains(nodeName)) {
-                nodeLabels.put("diskType", "ssd");
-                nodeLabels.put("gpu", "true");
-            }
-            else if (nodesPartialMatch.contains(nodeName)) {
-                nodeLabels.put("diskType", "ssd");
-            }
-            else {
-                nodesWithoutLabels.add(nodeName);
-            }
-            nodeResourceEventHandler.onAddSync(newNode(nodeName, nodeLabels, Collections.emptyList()));
-
-            // Add one system pod per node
-            final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running");
-            pod.getSpec().setNodeName("n" + i);
-            podNameToUid.put(podName, pod.getMetadata().getUid());
-            handler.onAddSync(pod);
-        }
-
-        // First, we check if the computed intermediate view is correct
-        final Result<Record> podsToNodesMap = conn.selectFrom("POD_NODE_SELECTOR_MATCHES").fetch();
-        podsToMatch.forEach(p -> assertTrue(podsToNodesMap.intoSet(0).contains(podNameToUid.get(p))));
-        podsPartialMatch.forEach(p -> assertTrue(podsToNodesMap.intoSet(0).contains(podNameToUid.get(p))));
-        podsWithoutLabels.forEach(p -> assertFalse(podsToNodesMap.intoSet(0).contains(podNameToUid.get(p))));
-        for (final Record record: podsToNodesMap) {
-            final String pod = podNameToUid.inverse().get(record.getValue("POD_UID", String.class));
-            final Object[] nodes = record.getValue("NODE_MATCHES", Object[].class);
-            final Set<String> nodeSet = Arrays.stream(nodes).map(Object::toString).collect(Collectors.toSet());
-            if (podsToMatch.contains(pod)) {
-                assertEquals(nodesToMatch, nodeSet, "For pod " + pod);
-            } else if (podsPartialMatch.contains(pod)) {
-                assertEquals(Sets.union(nodesToMatch, nodesPartialMatch), nodeSet);
-            } else {
-                fail();
-            }
-        }
-        final Result<? extends Record> results = scheduler.initialPlacement();
-        assertEquals(numPods, results.size());
-        results.forEach(r -> {
-            final String pod = r.get("POD_NAME", String.class);
-            final String node = r.get("CONTROLLABLE__NODE_NAME", String.class);
-            if (podsToMatch.contains(pod)) {
-                assertTrue(nodesToMatch.contains(node), String.format("%s assigned to %s", pod, node));
-            } else if (podsPartialMatch.contains(pod)) {
-                assertTrue(nodesToMatch.contains(node) || nodesPartialMatch.contains(node),
-                           String.format("%s assigned to %s", pod, node));
-            } else {
-                assertTrue(nodesToMatch.contains(node)
-                        || nodesPartialMatch.contains(node)
-                        || nodesWithoutLabels.contains(node),
-                        String.format("%s assigned to %s", pod, node));
-            }
-        });
+                                                                           Policies.nodeSelectorPredicate());
+        TestScenario.withInitialPlacementPolicies(policies)
+                .withNodeGroup("noLabels", 5)
+                .withNodeGroup("fullMatch", 5,
+                               (node) -> node.getMetadata().setLabels(Map.of("diskType", "ssd", "gpu", "true")))
+                .withNodeGroup("partialMatch", 5,
+                               (node) -> node.getMetadata().setLabels(Map.of("diskType", "ssd")))
+                .withPodGroup("noLabels", 5)
+                .withPodGroup("fullMatch", 5,
+                               (pod) -> pod.getSpec().setNodeSelector(Map.of("diskType", "ssd", "gpu", "true")))
+                .withPodGroup("partialMatch", 5,
+                               (pod) -> pod.getSpec().setNodeSelector(Map.of("diskType", "ssd")))
+                .runInitialPlacement()
+                .expect(nodesForPodGroup("fullMatch"), IN, nodeGroup("fullMatch"))
+                .expect(nodesForPodGroup("fullMatch"), NOT_IN, nodeGroup("partialMatch", "noLabels"))
+                .expect(nodesForPodGroup("partialMatch"), IN, nodeGroup("fullMatch", "partialMatch"))
+                .expect(nodesForPodGroup("partialMatch"), NOT_IN, nodeGroup("noLabels"))
+                .expect(nodesForPodGroup("noLabels"), IN, nodeGroup("fullMatch", "partialMatch", "noLabels"));
     }
-
-    @SuppressWarnings("UnusedMethod")
-    private static Stream nodeSelectorConditions() {
-        return Stream.of(Arguments.of(Set.of("p2", "p4"), Set.of("p6"), Set.of("n4"), Set.of("n5")),
-                         Arguments.of(Set.of(), Set.of("p6"), Set.of(), Set.of("n5")));
-    }
-
 
     /*
      * Tests the pod_node_selector_matches view.
@@ -450,122 +345,36 @@ public class SchedulerTest {
     public void testPodToNodeAffinity(final List<NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
                                       final boolean shouldBeAffineToLabelledNodes,
                                       final boolean shouldBeAffineToRemainingNodes) {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+        final Map<String, String> dummyLabels = Map.of("dummyKey1", "dummyValue1", "dummyKey2", "dummyValue2");
+        final TestScenario.TestResult testResult = TestScenario.withInitialPlacementPolicies(policies)
+                .withNodeGroup("providedLabels", 5, (node) -> node.getMetadata().setLabels(nodeLabelsInput))
+                .withNodeGroup("dummyLabels", 5, (node) -> node.getMetadata().setLabels(dummyLabels))
+                .withPodGroup("withConstraint", 3, (pod) -> {
+                    final NodeSelector selector = new NodeSelectorBuilder().withNodeSelectorTerms(terms).build();
+                    pod.getSpec().getAffinity().getNodeAffinity()
+                            .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
+                })
+                .withPodGroup("remaining", 17)
+                .runInitialPlacement()
+                // Pods without constraints should always be placed and can go anywhere
+                .expect(nodesForPodGroup("remaining"), IN, nodeGroup("providedLabels", "dummyLabels"));
 
-        final int numPods = 10;
-        final int numNodes = 20;
-        final int numPodsToModify = 3;
-        final int numNodesToModify = 10;
-
-        final List<String> allPods = IntStream.range(0, numPods)
-                .mapToObj(i -> "p" + i)
-                .collect(Collectors.toList());
-        Collections.shuffle(allPods);
-        final Set<String> podsToAssign = new HashSet<>(allPods.subList(0, numPodsToModify));
-
-        // Add all pods
-        final BiMap<String, String> podNameToUid = HashBiMap.create(numPods);
-        for (int i = 0; i < numPods; i++) {
-            final String podName = "p" + i;
-            final Pod pod = newPod(podName);
-            if (podsToAssign.contains(podName)) {
-                final NodeSelector selector = new NodeSelectorBuilder()
-                                                            .withNodeSelectorTerms(terms)
-                                                            .build();
-                pod.getSpec().getAffinity().getNodeAffinity()
-                   .setRequiredDuringSchedulingIgnoredDuringExecution(selector);
-            }
-            podNameToUid.put(podName, pod.getMetadata().getUid());
-            handler.onAddSync(pod);
-        }
-
-
-        // Add all nodes, some of which have labels described by nodeLabelsInput,
-        // whereas others have a different set of labels
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        final Set<String> nodesToAssign = ThreadLocalRandom.current()
-                                                         .ints(numNodesToModify, 0, numNodes)
-                                                         .mapToObj(i -> "n" + i)
-                                                         .collect(Collectors.toSet());
-        final Set<String> remainingNodes = new HashSet<>();
-        for (int i = 0; i < numNodes; i++) {
-            final String nodeName = "n" + i;
-            final Map<String, String> nodeLabels = new HashMap<>();
-            if (nodesToAssign.contains(nodeName)) {
-                nodeLabels.putAll(nodeLabelsInput);
-            } else {
-                nodeLabels.put("dummyKey1", "dummyValue1");
-                nodeLabels.put("dummyKey2", "dummyValue2");
-                remainingNodes.add(nodeName);
-            }
-            nodeResourceEventHandler.onAddSync(newNode(nodeName, nodeLabels, Collections.emptyList()));
-
-            // Add one system pod per node
-            final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running");
-            pod.getSpec().setNodeName("n" + i);
-            podNameToUid.put(podName, pod.getMetadata().getUid());
-            handler.onAddSync(pod);
-        }
-        // First, we check if the computed intermediate views are correct
-        final Result<Record> podsToNodesMap = conn.selectFrom("POD_NODE_SELECTOR_MATCHES")
-                                                             .fetch();
-        podsToAssign.forEach(p -> assertEquals(podsToNodesMap.intoSet("POD_UID").contains(podNameToUid.get(p)),
-                                               shouldBeAffineToLabelledNodes || shouldBeAffineToRemainingNodes));
-        podsToNodesMap.forEach(
-            (record) -> {
-                final String podUid = record.get(0, String.class);
-                final Object[] matchingNodes = record.get(1, Object[].class);
-                final String podName = podNameToUid.inverse().get(podUid);
-                assertTrue(podsToAssign.contains(podName));
-                Arrays.stream(matchingNodes).map(e -> (String) e).forEach(
-                    node -> {
-                        if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
-                            assertTrue(nodesToAssign.contains(node) || remainingNodes.contains(node));
-                        } else if (shouldBeAffineToLabelledNodes) {
-                            assertTrue(nodesToAssign.contains(node));
-                        } else if (shouldBeAffineToRemainingNodes) {
-                            assertFalse(nodesToAssign.contains(node));
-                        }
-                    }
-                );
-            }
-        );
-
-        assertEquals(Sets.newHashSet(conn.selectFrom(Tables.POD_NODE_SELECTOR_LABELS)
-                                .fetch("POD_UID")),
-                     Sets.newHashSet(conn.selectFrom(Tables.POD_INFO)
-                                .where(Tables.POD_INFO.HAS_NODE_SELECTOR_LABELS.eq(true))
-                                .fetch("UID")));
-
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                .setInitialPlacementPolicies(policies)
-                .setDebugMode(true)
-                .build();
-        final Result<? extends Record> results = scheduler.initialPlacement();
-        if (!shouldBeAffineToLabelledNodes && !shouldBeAffineToRemainingNodes) {
-            results.forEach(
-                    r -> {
-                        if (podsToAssign.contains(r.get("POD_NAME", String.class))) {
-                            assertEquals("NULL_NODE", r.get("CONTROLLABLE__NODE_NAME", String.class));
-                        } else {
-                            assertNotEquals("NULL_NODE", r.get("CONTROLLABLE__NODE_NAME", String.class));
-                        }
-                    }
-            );
+        if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
+            testResult.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("providedLabels", "dummyLabels"));
+        } else if (shouldBeAffineToLabelledNodes) {
+            testResult.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("providedLabels"));
+        } else if (shouldBeAffineToRemainingNodes) {
+            testResult.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("dummyLabels"));
         } else {
-            assertEquals(numPods, results.size());
+            testResult.expect(nodesForPodGroup("withConstraint"), EQUALS, nodeGroup("NULL_NODE"));
         }
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream testNodeAffinity() {
+    private static Stream<Arguments> testNodeAffinity() {
         final List<NodeSelectorTerm> inTerm = List.of(term(nodeExpr("k1", "In", "l1", "l2")));
         final List<NodeSelectorTerm> existsTerm = List.of(term(nodeExpr("k1", "Exists", "l1", "l2")));
         final List<NodeSelectorTerm> notInTerm = List.of(term(nodeExpr("k1", "NotIn", "l1", "l2")));
@@ -618,138 +427,62 @@ public class SchedulerTest {
      */
     @ParameterizedTest(name = "{0}")
     @MethodSource("testPodAffinity")
+    @SuppressWarnings("UnnecessaryLocalVariable") // Done for readability
     public void testPodToPodAffinityOrAntiAffinity(final String label, final String condition,
                                                    final List<PodAffinityTerm> terms,
                                                    final Map<String, String> podLabelsInput,
                                                    final boolean conditionToLabelledPods,
                                                    final boolean conditionToRemainingPods,
                                                    final boolean cannotBePlacedAnywhere) {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final int numPods = 4;
-        final int numPodsToModify = 3;
-        final int numNodes = 3;
-
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
-
-        final List<String> allPods = IntStream.range(0, numPods)
-                .mapToObj(i -> "p" + i)
-                .collect(Collectors.toList());
-        Collections.shuffle(allPods);
-        final Set<String> podsToAssign = new HashSet<>(allPods.subList(0, numPodsToModify));
-
-        // If we only get one pod in podsToAssign, then that will be the only labelled pod. In cases of affinity
-        // requirements, that means that that pod will not have any candidate nodes to be placed on.
-        for (int i = 0; i < numPods; i++) {
-            final String podName = "p" + i;
-            final Pod pod = newPod(podName);
-            if (podsToAssign.contains(podName)) {
-                pod.getMetadata().setLabels(podLabelsInput);
-
-                if (condition.equals("AntiAffinity")) {
-                    final PodAntiAffinity podAntiAffinity = new PodAntiAffinity();
-                    final List<PodAffinityTerm> podAntiAffinityTerms =
-                            podAntiAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
-                    podAntiAffinityTerms.addAll(terms);
-                    pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
-                } else if (condition.equals("Affinity")) {
-                    final PodAffinity podAffinity = new PodAffinity();
-                    final List<PodAffinityTerm> podAffinityTerms =
-                            podAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
-                    podAffinityTerms.addAll(terms);
-                    pod.getSpec().getAffinity().setPodAffinity(podAffinity);
-                } else {
-                    throw new IllegalArgumentException(condition);
-                }
-            } else {
-                pod.getMetadata().setLabels(Collections.singletonMap("dummyKey", "dummyValue"));
-            }
-            handler.onAddSync(pod);
-        }
-
-        // Add all nodes
-        final Set<String> nodes =  new HashSet<String>();
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        for (int i = 0; i < numNodes; i++) {
-            final String nodeName = "n" + i;
-            nodes.add(nodeName);
-            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            nodeResourceEventHandler.onAddSync(node);
-
-            // Add one system pod per node
-            final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running");
-            pod.getSpec().setNodeName("n" + i);
-            handler.onAddSync(pod);
-        }
-
-
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.podAffinityPredicate(),
                                                                            Policies.podAntiAffinityPredicate());
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                                                 .setInitialPlacementPolicies(policies)
-                                                 .setDebugMode(true)
-                                                 .build();
-
-        final Result<? extends Record> result = scheduler.initialPlacement();
-
-        for (final Record record : result) {
-            final String podName = record.getValue("POD_NAME", String.class);
-            final String assignedNode = record.getValue("CONTROLLABLE__NODE_NAME", String.class);
-            final Set<String> nodesAssignedToPodsWithAffinityRequirements = result.stream()
-                    .filter(e -> podsToAssign.contains(e.getValue("POD_NAME", String.class)))
-                    .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
-                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                    .collect(Collectors.toSet());
-            final Set<String> nodesAssignedToPodsWithoutAffinityRequirements = result.stream()
-                    .filter(e -> !podsToAssign.contains(e.getValue("POD_NAME", String.class)))
-                    .filter(e -> podsToAssign.size() == 1 || !podName.equals(e.getValue("POD_NAME", String.class)))
-                    .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                    .collect(Collectors.toSet());
-
-            if (cannotBePlacedAnywhere) {
-                assertEquals(Set.of("NULL_NODE"), nodesAssignedToPodsWithAffinityRequirements);
-                continue;
+        final TestScenario.TestResult result = TestScenario.withInitialPlacementPolicies(policies)
+                .withNodeGroup("nodes", 3)
+                .withPodGroup("withConstraint", 3, (pod) -> {
+                    pod.getMetadata().setLabels(podLabelsInput);
+                    if (condition.equals("AntiAffinity")) {
+                        final PodAntiAffinity podAntiAffinity = new PodAntiAffinity();
+                        final List<PodAffinityTerm> podAntiAffinityTerms =
+                                podAntiAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
+                        podAntiAffinityTerms.addAll(terms);
+                        pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
+                    } else if (condition.equals("Affinity")) {
+                        final PodAffinity podAffinity = new PodAffinity();
+                        final List<PodAffinityTerm> podAffinityTerms =
+                                podAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
+                        podAffinityTerms.addAll(terms);
+                        pod.getSpec().getAffinity().setPodAffinity(podAffinity);
+                    } else {
+                        throw new IllegalArgumentException(condition);
+                    }
+                })
+                .withPodGroup("remaining", 5)
+                .runInitialPlacement();
+        if (cannotBePlacedAnywhere) {
+            result.expect(nodesForPodGroup("withConstraint"), EQUALS, nodeGroup("NULL_NODE"));
+        } else if (condition.equals("Affinity")) {
+            final boolean affineToLabelledPods = conditionToLabelledPods;
+            final boolean affineToRemainingPods = conditionToRemainingPods;
+            if (affineToLabelledPods && affineToRemainingPods) {
+                result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint", "remaining"));
+            } else if (affineToLabelledPods) {
+                result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint"));
+            } else if (affineToRemainingPods) {
+                result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("remaining"));
             }
-
-            // nodes without pods that have affinity requirements or without pods that are unlabelled
-            final Set<String> remainingNodes = new HashSet<>(nodes);
-            remainingNodes.removeAll(nodesAssignedToPodsWithAffinityRequirements);
-            remainingNodes.removeAll(nodesAssignedToPodsWithoutAffinityRequirements);
-
-            if (condition.equals("Affinity")) {
-                // conditionToLabelledPods => affineToLabelledPods
-                // conditionToRemainingPods => affineToRemainingPods
-                if (podsToAssign.contains(podName) && conditionToLabelledPods && conditionToRemainingPods) {
-                    assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode) ||
-                            nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
-                    assertTrue(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
-                } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
-                    // the pod is alone or with an unlabelled pod
-                    assertTrue(remainingNodes.contains(assignedNode) ||
-                            nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                }
-            } else if (condition.equals("AntiAffinity")) {
-                // conditionToLabelledPods => antiAffineToLabelledPods
-                // conditionToRemainingPods => antiAffineToRemainingPods
-                if (podsToAssign.contains(podName) && conditionToLabelledPods && conditionToRemainingPods) {
-                    fail();
-                } else if (podsToAssign.contains(podName) && conditionToLabelledPods) {
-                    assertFalse(nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode));
-                } else if (podsToAssign.contains(podName) && conditionToRemainingPods) {
-                    assertFalse(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode));
-                } else if (podsToAssign.contains(podName)
-                        && !conditionToRemainingPods
-                        && !conditionToLabelledPods) {
-                    // all pods can be with the unlabelled pod
-                    assertTrue(nodesAssignedToPodsWithoutAffinityRequirements.contains(assignedNode)
-                            // All pods with anti-affinities are assigned to the same node
-                            || (nodesAssignedToPodsWithAffinityRequirements.size() == 1 &&
-                            nodesAssignedToPodsWithAffinityRequirements.contains(assignedNode)));
-                }
+        } else if (condition.equals("AntiAffinity")) {
+            final boolean antiAffineToLabelledPods = conditionToLabelledPods;
+            final boolean antiAffineToRemainingPods = conditionToRemainingPods;
+            if (antiAffineToLabelledPods && antiAffineToRemainingPods) {
+                fail();
+            } else if (antiAffineToLabelledPods) {
+                result.expect(podGroup("withConstraint"), NOT_COLOCATED_WITH, podGroup("withConstraint"));
+            } else if (antiAffineToRemainingPods) {
+                result.expect(podGroup("withConstraint"), NOT_COLOCATED_WITH, podGroup("remaining"));
+            } else { // can be placed anywhere
+                result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint", "remaining"));
             }
         }
     }
