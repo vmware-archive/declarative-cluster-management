@@ -17,8 +17,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static com.vmware.dcm.SchedulerTest.newNode;
@@ -58,7 +58,7 @@ class TestScenario {
         }
         podGroups.add(groupName);
         for (int i = 0; i < numPods; i++) {
-            final Pod pod = newPod(groupName + "-" + UUID.randomUUID());
+            final Pod pod = newPod(groupName + "-" + i);
             for (final var modifier : modifiers) {
                 modifier.accept(pod);
             }
@@ -74,13 +74,21 @@ class TestScenario {
         }
         nodeGroups.add(groupName);
         for (int i = 0; i < numNodes; i++) {
-            final Node node = newNode(groupName + "-" + UUID.randomUUID(),
+            final Node node = newNode(groupName + "-" + i,
                                       Collections.emptyMap(), Collections.emptyList());
             for (final var modifier : modifiers) {
                 modifier.accept(node);
             }
             nodes.add(node);
             nodeResourceEventHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-" + node.getMetadata().getName();
+            final Pod pod;
+            final String status = "Running";
+            pod = newPod(podName, status);
+            pod.getSpec().setNodeName(node.getMetadata().getName());
+            podResourceEventHandler.onAddSync(pod);
         }
         return this;
     }
@@ -109,6 +117,15 @@ class TestScenario {
         private TestResult(final Result<? extends Record> result, final List<Node> nodes) {
             this.results = result;
             this.nodes = nodes;
+        }
+
+        public TestResult expect(final NodesForPodGroup podGroup, final Predicate<List<String>> predicate) {
+            final List<String> collect = results.stream()
+                    .filter(e -> e.get("POD_NAME", String.class).startsWith(podGroup.name + "-"))
+                    .map(e -> e.get("CONTROLLABLE__NODE_NAME", String.class))
+                    .collect(Collectors.toList());
+            assertTrue(predicate.test(collect));
+            return this;
         }
 
         public TestResult expect(final PodGroup leftGroup, final Op op, final PodGroup rightGroup) {
