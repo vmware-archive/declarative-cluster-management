@@ -689,55 +689,24 @@ public class SchedulerTest {
     public void testTaintsAndTolerations(final String displayName, final List<List<Toleration>> tolerations,
                                          final List<List<Taint>> taints, final Predicate<List<String>> assertOn,
                                          final boolean feasible) {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
-
-        final int numPods = tolerations.size();
-        final int numNodes = taints.size();
-
-        // If we only get one pod in podsToAssign, then that will be the only labelled pod. In cases of affinity
-        // requirements, that means that that pod will not have any candidate nodes to be placed on.
-        for (int i = 0; i < numPods; i++) {
-            final String podName = "p" + i;
-            final Pod pod = newPod(podName);
-            if (tolerations.get(i).size() != 0) {
-                pod.getSpec().setTolerations(tolerations.get(i));
-            }
-            handler.onAddSync(pod);
-        }
-
-        // Add all nodes
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        for (int i = 0; i < numNodes; i++) {
-            final String nodeName = "n" + i;
-            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getSpec().setTaints(taints.get(i));
-            nodeResourceEventHandler.onAddSync(node);
-
-            // Add one system pod per node
-            final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running");
-            pod.getSpec().setNodeName("n" + i);
-            handler.onAddSync(pod);
-        }
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
-                                                                           Policies.disallowNullNodeSoft(),
-                                                                           Policies.taintsAndTolerations());
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                                                 .setInitialPlacementPolicies(policies)
-                                                 .setDebugMode(true)
-                                                 .build();
-        final Result<? extends Record> result = scheduler.initialPlacement();
-        assertEquals(numPods, result.size());
-        final List<String> nodes = result.stream()
-                .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                .collect(Collectors.toList());
+                                                                   Policies.disallowNullNodeSoft(),
+                                                                   Policies.taintsAndTolerations());
+        final Iterator<List<Toleration>> tolerationsIt = tolerations.iterator();
+        final Iterator<List<Taint>> taintsIt = taints.iterator();
+        final TestScenario.TestResult result = TestScenario.withInitialPlacementPolicies(policies)
+                .withNodeGroup("n", taints.size(), node -> node.getSpec().setTaints(taintsIt.next()))
+                .withPodGroup("pods", tolerations.size(), pod -> {
+                    final List<Toleration> t = tolerationsIt.next();
+                    if (t.size() != 0) {
+                        pod.getSpec().setTolerations(t);
+                    }
+                })
+                .runInitialPlacement();
         if (feasible) {
-            assertTrue(assertOn.test(nodes));
+            result.expect(nodesForPodGroup("pods"), assertOn);
         } else {
-            assertEquals(Set.of("NULL_NODE"), new HashSet<>(nodes));
+            result.expect(nodesForPodGroup("pods"), EQUALS, nodeGroup("NULL_NODE"));
         }
     }
 
@@ -789,11 +758,11 @@ public class SchedulerTest {
         taintK2V4.setValue("v4");
         taintK2V4.setEffect("NoSchedule");
 
-        final Predicate<List<String>> P0GoesToN0 = nodes -> nodes.size() == 1 && nodes.get(0).equals("n0");
+        final Predicate<List<String>> P0GoesToN0 = nodes -> nodes.size() == 1 && nodes.get(0).equals("n-0");
         final Predicate<List<String>> p0goesToN1andP1GoesToN0 =
-                nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n0");
+                nodes -> nodes.size() == 2 && nodes.get(0).equals("n-1") && nodes.get(1).equals("n-0");
         final Predicate<List<String>> p0goesToN1andP1GoesToN1 =
-                nodes -> nodes.size() == 2 && nodes.get(0).equals("n1") && nodes.get(1).equals("n1");
+                nodes -> nodes.size() == 2 && nodes.get(0).equals("n-1") && nodes.get(1).equals("n-1");
         return Stream.of(
                 Arguments.of("No toleration => cannot match taint k1:v1",
                         List.of(List.of()), List.of(List.of(taintK1)),
