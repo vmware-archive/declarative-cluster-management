@@ -62,6 +62,7 @@ import static com.vmware.dcm.TestScenario.Op.COLOCATED_WITH;
 import static com.vmware.dcm.TestScenario.Op.EQUALS;
 import static com.vmware.dcm.TestScenario.Op.IN;
 import static com.vmware.dcm.TestScenario.Op.NOT_COLOCATED_WITH;
+import static com.vmware.dcm.TestScenario.Op.NOT_EQUALS;
 import static com.vmware.dcm.TestScenario.Op.NOT_IN;
 import static com.vmware.dcm.TestScenario.nodeGroup;
 import static com.vmware.dcm.TestScenario.nodesForPodGroup;
@@ -462,7 +463,10 @@ public class SchedulerTest {
                 .runInitialPlacement();
         if (cannotBePlacedAnywhere) {
             result.expect(nodesForPodGroup("withConstraint"), EQUALS, nodeGroup("NULL_NODE"));
-        } else if (condition.equals("Affinity")) {
+            return;
+        }
+        result.expect(nodesForPodGroup("withConstraint"), NOT_EQUALS, nodeGroup("NULL_NODE"));
+        if (condition.equals("Affinity")) {
             final boolean affineToLabelledPods = conditionToLabelledPods;
             final boolean affineToRemainingPods = conditionToRemainingPods;
             if (affineToLabelledPods && affineToRemainingPods) {
@@ -488,7 +492,7 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream testPodAffinity() {
+    private static Stream<Arguments> testPodAffinity() {
         final String topologyKey = "kubernetes.io/hostname";
         final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
                                                        podExpr("k1", "In", "l1", "l2")));
@@ -562,21 +566,23 @@ public class SchedulerTest {
                 argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l2"), false, false, false),
                 argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
 
+                // TODO: The following tests need to be revisited, as they always lead (correctly)
+                //       to NULL_NODE assignments for the labelled pods
                 // NotIn
-                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, false, false),
-                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, false, true),
+                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, false, true),
                 argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, false, true),
                 argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, false, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, false, true),
 
                 // DoesNotExist
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, false, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, false, false)
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, false, true),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, false, true),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, false, true),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, false, true),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, false, true),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, false, true)
         );
     }
 
