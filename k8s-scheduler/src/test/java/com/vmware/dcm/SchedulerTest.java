@@ -50,6 +50,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -621,77 +622,40 @@ public class SchedulerTest {
                                   final List<Integer> nodeMemoryCapacities,
                                   final boolean useHardConstraint, final boolean useSoftConstraint,
                                   final Predicate<List<String>> assertOn, final boolean feasible) {
-        assertEquals(cpuRequests.size(), memoryRequests.size());
-        assertEquals(nodeCpuCapacities.size(), nodeMemoryCapacities.size());
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
-        final int numPods = cpuRequests.size();
-        final int numNodes = nodeCpuCapacities.size();
-
-        // Add pending pods
-        for (int i = 0; i < numPods; i++) {
-            final String podName = "p" + i;
-            final Pod pod;
-
-            final Map<String, Quantity> resourceRequests = new HashMap<>();
-            resourceRequests.put("cpu", new Quantity(String.valueOf(cpuRequests.get(i))));
-            resourceRequests.put("memory", new Quantity(String.valueOf(memoryRequests.get(i))));
-            resourceRequests.put("pods", new Quantity("1"));
-            pod = newPod(podName);
-
-            // Assumes that there is only one container
-            pod.getSpec().getContainers().get(0)
-                .getResources()
-                .setRequests(resourceRequests);
-            handler.onAddSync(pod);
-        }
-
-        // Add all nodes and one system pod per node
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
-        for (int i = 0; i < numNodes; i++) {
-            final String nodeName = "n" + i;
-            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu",
-                                               new Quantity(String.valueOf(nodeCpuCapacities.get(i))));
-            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(nodeMemoryCapacities.get(i))));
-            nodeResourceEventHandler.onAddSync(node);
-
-            // Add one system pod per node
-            final String podName = "system-pod-" + nodeName;
-            final Pod pod;
-            final String status = "Running";
-            pod = newPod(podName, status);
-            pod.getSpec().setNodeName(nodeName);
-            handler.onAddSync(pod);
-        }
-
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
-                                                    Policies.disallowNullNodeSoft(),
-                                                    Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                                                 .setInitialPlacementPolicies(policies)
-                                                 .setDebugMode(true)
-                                                 .build();
-        if (feasible) {
-            final Result<? extends Record> result = scheduler.initialPlacement();
-            assertEquals(numPods, result.size());
-            final List<String> nodes = result.stream()
-                                            .map(e -> e.getValue("CONTROLLABLE__NODE_NAME", String.class))
-                                            .collect(Collectors.toList());
-            assertTrue(assertOn.test(nodes));
+                                            Policies.disallowNullNodeSoft(),
+                                            Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
+        final Iterator<Integer> cpuCapIt = nodeCpuCapacities.iterator();
+        final Iterator<Integer> memCapIt = nodeMemoryCapacities.iterator();
+        final Iterator<Integer> cpuReqIt = cpuRequests.iterator();
+        final Iterator<Integer> memReqIt = memoryRequests.iterator();
+        final TestScenario scenario = TestScenario.withInitialPlacementPolicies(policies)
+                .withNodeGroup("n", nodeCpuCapacities.size(), (node) -> {
+                    node.getStatus().getCapacity().put("cpu",
+                            new Quantity(String.valueOf(cpuCapIt.next())));
+                    node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(memCapIt.next())));
+                })
+                .withPodGroup("pods", cpuRequests.size(), pod -> {
+                    final Map<String, Quantity> resourceRequests = new HashMap<>();
+                    resourceRequests.put("cpu", new Quantity(String.valueOf(cpuReqIt.next())));
+                    resourceRequests.put("memory", new Quantity(String.valueOf(memReqIt.next())));
+                    resourceRequests.put("pods", new Quantity("1"));
+                    // Assumes that there is only one container
+                    pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+                });
+        if (!feasible) {
+            assertThrows(SolverException.class, scenario::runInitialPlacement);
         } else {
-            assertThrows(SolverException.class, scheduler::initialPlacement);
+            scenario.runInitialPlacement().expect(nodesForPodGroup("pods"), assertOn);
         }
     }
 
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream spareCapacityValues() {
+    private static Stream<Arguments> spareCapacityValues() {
         final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
-        final Predicate<List<String>> n2MustNotBeAssignedNewPods = nodes -> !nodes.contains("n2");
-        final Predicate<List<String>> onlyN3MustBeAssignedNewPods = nodes -> Set.of("n3").equals(Set.copyOf(nodes));
+        final Predicate<List<String>> n2MustNotBeAssignedNewPods = nodes -> !nodes.contains("n-2");
+        final Predicate<List<String>> onlyN3MustBeAssignedNewPods = nodes -> Set.of("n-3").equals(Set.copyOf(nodes));
         return Stream.of(
                 Arguments.of("One pod per node",
                              List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
@@ -779,7 +743,7 @@ public class SchedulerTest {
 
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream testTaintsAndTolerationsValues() {
+    private static Stream<Arguments> testTaintsAndTolerationsValues() {
         final Toleration tolerateK1Equals = new Toleration();
         tolerateK1Equals.setKey("k1");
         tolerateK1Equals.setOperator("Equal");
