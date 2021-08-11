@@ -103,7 +103,7 @@ class TestScenario {
     }
 
     static class TestResult {
-        private final Result<? extends Record> results;
+        final Result<? extends Record> results;
         private final List<Node> nodes;
 
         private TestResult(final Result<? extends Record> result, final List<Node> nodes) {
@@ -165,6 +165,9 @@ class TestScenario {
                 case EQUALS:
                     assertEquals(expected, actual, String.format("Failed: %s == %s", actual, expected));
                     break;
+                case NOT_EQUALS:
+                    assertNotEquals(expected, actual, String.format("Failed: %s == %s", actual, expected));
+                    break;
                 case IN:
                     assertTrue(expected.containsAll(actual),
                                String.format("Failed: %s IN %s", actual, expected));
@@ -184,6 +187,7 @@ class TestScenario {
         NOT_COLOCATED_WITH,
         COLOCATED_WITH,
         EQUALS,
+        NOT_EQUALS,
         IN,
         NOT_IN
     }
