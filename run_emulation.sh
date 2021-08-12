@@ -18,9 +18,9 @@ traceFile="v2-cropped.txt"
 
 for affinityProportion in 0 50 100;
 do
-#   numNodes=500
-   numNodes=100
-   ./gradlew runBenchmark --args="-n ${numNodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion}" &> /tmp/out
+   numNodes=500
+##   numNodes=100
+   ./gradlew runBenchmark --args="-n ${numNodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion} -S" &> /tmp/out
 
    expId=`date +%s`
    mkdir -p $TRACE_DIR/$GIT_REV/$expId
@@ -38,11 +38,11 @@ Rscript plot.r
 TRACE_DIR=trace-`date +%s`
 mkdir -p $TRACE_DIR/$GIT_REV
 
-#for numNodes in 500 5000 10000;
+## for numNodes in 500 5000 10000;
 for numNodes in 50 100 500;
 do
    affinityProportion=100
-   ./gradlew runBenchmark --args="-n ${numNodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion}" &> /tmp/out
+   ./gradlew runBenchmark --args="-n ${numNodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion} -S" &> /tmp/out
    
    expId=`date +%s`
    mkdir -p $TRACE_DIR/$GIT_REV/$expId

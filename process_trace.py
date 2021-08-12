@@ -139,13 +139,8 @@ for trace in traceFolders:
     paramFiles = glob.glob(trace + "metadata")
     assert len(paramFiles) == 1
 
-    print("trace folder:")
-    print(trace)
-    print()
-    # print("expId")
-    # print(expId)
-    # print("paramfiles")
-    # print(paramFiles)
+    print("experiment ID: ", end='')
+    print(expId)
 
     # Add params file in addition
     with open(paramFiles[0]) as paramFile:
@@ -218,13 +213,12 @@ for trace in traceFolders:
                 if ("compiler.updateData()" in line):
                     split = line.split()
                     latency = split[7][:-2] # remove ns
+                    metrics["databaseLatencyTotal"] = latency
 
-                    # print("compilerupdateData")
+                    # print("database")
                     # print(split)
                     # print(latency)
                     # print()
-
-                    metrics["databaseLatencyTotal"] = latency
 
                 if ("Model creation:" in line and not "println" in line):
                     split = line.split()
@@ -280,6 +274,11 @@ for trace in traceFolders:
                     split = line.split()
                     latency = split[1]
                     metrics["orToolsWallTime"] = latency
+
+                    # print("orToolsWallTime")
+                    # print(split)
+                    # print(latency)
+                    # print()
 
                 if ("usertime" in line):
                     split = line.split()
