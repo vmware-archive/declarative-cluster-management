@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * A simple DSL to set up scheduling scenarios for testing
  */
 class TestScenario {
-    private final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+    final DBConnectionPool dbConnectionPool = new DBConnectionPool();
     private final Scheduler.Builder schedulerBuilder = new Scheduler.Builder(dbConnectionPool);
     private final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
     private final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
