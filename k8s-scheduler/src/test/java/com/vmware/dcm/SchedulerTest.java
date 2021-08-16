@@ -878,34 +878,15 @@ public class SchedulerTest {
      */
     @Test
     public void testPlaceAllPendingPodsRegardlessOfBatchSize() {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final int numNodes = 50;
         final int numPods = 102;
-
-        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
-        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
-
-        for (int i = 0; i < numNodes; i++) {
-            nodeResourceEventHandler.onAddSync(newNode("n" + i, Collections.emptyMap(),
-                                           Collections.emptyList()));
-
-            // Add one system pod per node
-            final String podName = "system-pod-n" + i;
-            final Pod pod = newPod(podName, "Running");
-            pod.getSpec().setNodeName("n" + i);
-            handler.onAddSync(pod);
-        }
-
-        for (int i = 0; i < numPods; i++) {
-            handler.onAddSync(newPod("p" + i));
-        }
-
-        // All pod additions have completed
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
-        scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
-        final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
+        final List<String> policies = Policies.getInitialPlacementPolicies();
+        final var result = TestScenario.withPolicies(policies)
+                .withNodeGroup("n", numNodes)
+                .withPodGroup("pods", numPods);
+        result.scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(result.dbConnectionPool));
+        final Result<PodInfoRecord> fetch = result.dbConnectionPool.getConnectionToDb()
+                                                  .selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
     }
 
