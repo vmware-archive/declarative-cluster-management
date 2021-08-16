@@ -280,7 +280,7 @@ public class SchedulerTest {
     }
 
     /*
-     * Evaluates the node predicates policy. One randomly chosen node is free of any node conditions, so all pod
+     * Evaluates the node predicates policy. One node is free of any node conditions, so all pod
      * assignments must go to that node.
      */
     @ParameterizedTest
@@ -288,7 +288,7 @@ public class SchedulerTest {
     public void testSchedulerNodePredicates(final String type, final String status) {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft());
-        TestScenario.withInitialPlacementPolicies(policies)
+        TestScenario.withPolicies(policies)
                 .withNodeGroup("badNodes", 5, (node) -> {
                     final NodeCondition badCondition = new NodeCondition();
                     badCondition.setStatus(status);
@@ -320,7 +320,7 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
-        TestScenario.withInitialPlacementPolicies(policies)
+        TestScenario.withPolicies(policies)
                 .withNodeGroup("noLabels", 5)
                 .withNodeGroup("fullMatch", 5,
                                (node) -> node.getMetadata().setLabels(Map.of("diskType", "ssd", "gpu", "true")))
@@ -351,7 +351,7 @@ public class SchedulerTest {
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
         final Map<String, String> dummyLabels = Map.of("dummyKey1", "dummyValue1", "dummyKey2", "dummyValue2");
-        final TestScenario.TestResult testResult = TestScenario.withInitialPlacementPolicies(policies)
+        final var result = TestScenario.withPolicies(policies)
                 .withNodeGroup("providedLabels", 5, (node) -> node.getMetadata().setLabels(nodeLabelsInput))
                 .withNodeGroup("dummyLabels", 5, (node) -> node.getMetadata().setLabels(dummyLabels))
                 .withPodGroup("withConstraint", 3, (pod) -> {
@@ -365,13 +365,13 @@ public class SchedulerTest {
                 .expect(nodesForPodGroup("remaining"), IN, nodeGroup("providedLabels", "dummyLabels"));
 
         if (shouldBeAffineToLabelledNodes && shouldBeAffineToRemainingNodes) {
-            testResult.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("providedLabels", "dummyLabels"));
+            result.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("providedLabels", "dummyLabels"));
         } else if (shouldBeAffineToLabelledNodes) {
-            testResult.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("providedLabels"));
+            result.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("providedLabels"));
         } else if (shouldBeAffineToRemainingNodes) {
-            testResult.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("dummyLabels"));
+            result.expect(nodesForPodGroup("withConstraint"), IN, nodeGroup("dummyLabels"));
         } else {
-            testResult.expect(nodesForPodGroup("withConstraint"), EQUALS, nodeGroup("NULL_NODE"));
+            result.expect(nodesForPodGroup("withConstraint"), EQUALS, nodeGroup("NULL_NODE"));
         }
     }
 
@@ -429,36 +429,24 @@ public class SchedulerTest {
      */
     @ParameterizedTest(name = "{0}")
     @MethodSource("testPodAffinity")
-    @SuppressWarnings("UnnecessaryLocalVariable") // Done for readability
-    public void testPodToPodAffinityOrAntiAffinity(final String label, final String condition,
-                                                   final List<PodAffinityTerm> terms,
-                                                   final Map<String, String> podLabelsInput,
-                                                   final boolean conditionToLabelledPods,
-                                                   final boolean conditionToRemainingPods,
-                                                   final boolean cannotBePlacedAnywhere) {
+    public void testPodToPodAffinity(final String label, final List<PodAffinityTerm> terms,
+                                     final Map<String, String> podLabelsInput,
+                                     final boolean affineToLabelledPods,
+                                     final boolean affineToRemainingPods,
+                                     final boolean cannotBePlacedAnywhere) {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.podAffinityPredicate(),
                                                                            Policies.podAntiAffinityPredicate());
-        final TestScenario.TestResult result = TestScenario.withInitialPlacementPolicies(policies)
+        final var result = TestScenario.withPolicies(policies)
                 .withNodeGroup("nodes", 3)
                 .withPodGroup("withConstraint", 3, (pod) -> {
                     pod.getMetadata().setLabels(podLabelsInput);
-                    if (condition.equals("AntiAffinity")) {
-                        final PodAntiAffinity podAntiAffinity = new PodAntiAffinity();
-                        final List<PodAffinityTerm> podAntiAffinityTerms =
-                                podAntiAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
-                        podAntiAffinityTerms.addAll(terms);
-                        pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
-                    } else if (condition.equals("Affinity")) {
-                        final PodAffinity podAffinity = new PodAffinity();
-                        final List<PodAffinityTerm> podAffinityTerms =
-                                podAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
-                        podAffinityTerms.addAll(terms);
-                        pod.getSpec().getAffinity().setPodAffinity(podAffinity);
-                    } else {
-                        throw new IllegalArgumentException(condition);
-                    }
+                    final PodAffinity podAffinity = new PodAffinity();
+                    final List<PodAffinityTerm> podAffinityTerms =
+                            podAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
+                    podAffinityTerms.addAll(terms);
+                    pod.getSpec().getAffinity().setPodAffinity(podAffinity);
                 })
                 .withPodGroup("remaining", 5)
                 .runInitialPlacement();
@@ -467,28 +455,12 @@ public class SchedulerTest {
             return;
         }
         result.expect(nodesForPodGroup("withConstraint"), NOT_EQUALS, nodeGroup("NULL_NODE"));
-        if (condition.equals("Affinity")) {
-            final boolean affineToLabelledPods = conditionToLabelledPods;
-            final boolean affineToRemainingPods = conditionToRemainingPods;
-            if (affineToLabelledPods && affineToRemainingPods) {
-                result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint", "remaining"));
-            } else if (affineToLabelledPods) {
-                result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint"));
-            } else if (affineToRemainingPods) {
-                result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("remaining"));
-            }
-        } else if (condition.equals("AntiAffinity")) {
-            final boolean antiAffineToLabelledPods = conditionToLabelledPods;
-            final boolean antiAffineToRemainingPods = conditionToRemainingPods;
-            if (antiAffineToLabelledPods && antiAffineToRemainingPods) {
-                fail();
-            } else if (antiAffineToLabelledPods) {
-                result.expect(podGroup("withConstraint"), NOT_COLOCATED_WITH, podGroup("withConstraint"));
-            } else if (antiAffineToRemainingPods) {
-                result.expect(podGroup("withConstraint"), NOT_COLOCATED_WITH, podGroup("remaining"));
-            } else { // can be placed anywhere
-                result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint", "remaining"));
-            }
+        if (affineToLabelledPods && affineToRemainingPods) {
+            result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint", "remaining"));
+        } else if (affineToLabelledPods) {
+            result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint"));
+        } else if (affineToRemainingPods) {
+            result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("remaining"));
         }
     }
 
@@ -503,10 +475,7 @@ public class SchedulerTest {
                                                           podExpr("k1", "NotIn", "l1", "l2")));
         final List<PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
                                                                    podExpr("k1", "DoesNotExist", "l1", "l2")));
-
         return Stream.of(
-                // First, we test to see if all our operators work on their own
-
                 // --------- Pod Affinity -----------
                 // In
                 argGen("Affinity", inTerm, map("k1", "l1"), true, false, false),
@@ -543,8 +512,66 @@ public class SchedulerTest {
                 argGen("Affinity", notExistsTerm, map("k1", "l3"), false, true, false),
                 argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
                 argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false),
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
+        );
+    }
 
+
+    /*
+     * Tests inter-pod anti-affinity behavior
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("testPodAntiAffinity")
+    public void testPodToPodAntiAffinity(final String label, final List<PodAffinityTerm> terms,
+                                         final Map<String, String> podLabelsInput,
+                                         final boolean antiAffineToLabelledPods,
+                                         final boolean antiAffineToRemainingPods,
+                                         final boolean cannotBePlacedAnywhere) {
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                Policies.disallowNullNodeSoft(),
+                Policies.podAffinityPredicate(),
+                Policies.podAntiAffinityPredicate());
+        final var result = TestScenario.withPolicies(policies)
+                .withNodeGroup("nodes", 3)
+                .withPodGroup("withConstraint", 3, (pod) -> {
+                    pod.getMetadata().setLabels(podLabelsInput);
+                    final PodAntiAffinity podAntiAffinity = new PodAntiAffinity();
+                    final List<PodAffinityTerm> podAntiAffinityTerms =
+                            podAntiAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
+                    podAntiAffinityTerms.addAll(terms);
+                    pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
+                })
+                .withPodGroup("remaining", 5)
+                .runInitialPlacement();
+        if (cannotBePlacedAnywhere) {
+            result.expect(nodesForPodGroup("withConstraint"), EQUALS, nodeGroup("NULL_NODE"));
+            return;
+        }
+        result.expect(nodesForPodGroup("withConstraint"), NOT_EQUALS, nodeGroup("NULL_NODE"));
+        if (antiAffineToLabelledPods && antiAffineToRemainingPods) {
+            fail();
+        } else if (antiAffineToLabelledPods) {
+            result.expect(podGroup("withConstraint"), NOT_COLOCATED_WITH, podGroup("withConstraint"));
+        } else if (antiAffineToRemainingPods) {
+            result.expect(podGroup("withConstraint"), NOT_COLOCATED_WITH, podGroup("remaining"));
+        } else { // can be placed anywhere
+            result.expect(podGroup("withConstraint"), COLOCATED_WITH, podGroup("withConstraint", "remaining"));
+        }
+    }
+
+    @SuppressWarnings("UnusedMethod")
+    private static Stream<Arguments> testPodAntiAffinity() {
+        final String topologyKey = "kubernetes.io/hostname";
+        final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
+                podExpr("k1", "In", "l1", "l2")));
+        final List<PodAffinityTerm> existsTerm = List.of(term(topologyKey,
+                podExpr("k1", "Exists", "l1", "l2")));
+        final List<PodAffinityTerm> notInTerm = List.of(term(topologyKey,
+                podExpr("k1", "NotIn", "l1", "l2")));
+        final List<PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
+                podExpr("k1", "DoesNotExist", "l1", "l2")));
+
+        return Stream.of(
                 // --------- Pod Anti Affinity -----------
                 // In
                 argGen("AntiAffinity", inTerm, map("k1", "l1"), true, false, false),
@@ -608,7 +635,7 @@ public class SchedulerTest {
                 .collect(Collectors.joining(" and "));
         final String label = String.format("%s: pods with term {%s} and labels %s, %s", scenario, termsString,
                 podLabelsInput, outcomeString);
-        return Arguments.of(label, scenario, terms, podLabelsInput, shouldBeAffineToLabelledPods,
+        return Arguments.of(label, terms, podLabelsInput, shouldBeAffineToLabelledPods,
                             shouldBeAffineToRemainingPods, cannotBePlacedAnywhere);
     }
 
@@ -629,7 +656,7 @@ public class SchedulerTest {
         final Iterator<Integer> memCapIt = nodeMemoryCapacities.iterator();
         final Iterator<Integer> cpuReqIt = cpuRequests.iterator();
         final Iterator<Integer> memReqIt = memoryRequests.iterator();
-        final TestScenario scenario = TestScenario.withInitialPlacementPolicies(policies)
+        final var scenario = TestScenario.withPolicies(policies)
                 .withNodeGroup("n", nodeCpuCapacities.size(), (node) -> {
                     node.getStatus().getCapacity().put("cpu",
                             new Quantity(String.valueOf(cpuCapIt.next())));
@@ -694,7 +721,7 @@ public class SchedulerTest {
                                                                    Policies.taintsAndTolerations());
         final Iterator<List<Toleration>> tolerationsIt = tolerations.iterator();
         final Iterator<List<Taint>> taintsIt = taints.iterator();
-        final TestScenario.TestResult result = TestScenario.withInitialPlacementPolicies(policies)
+        final var result = TestScenario.withPolicies(policies)
                 .withNodeGroup("n", taints.size(), node -> node.getSpec().setTaints(taintsIt.next()))
                 .withPodGroup("pods", tolerations.size(), pod -> {
                     final List<Toleration> t = tolerationsIt.next();

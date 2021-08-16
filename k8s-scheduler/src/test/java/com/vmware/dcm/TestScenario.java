@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/*
+/**
  * A simple DSL to set up scheduling scenarios for testing
  */
 class TestScenario {
@@ -45,13 +45,17 @@ class TestScenario {
     @Nullable
     Scheduler scheduler;
 
-    static TestScenario withInitialPlacementPolicies(final List<String> policies) {
+    static TestScenario withPolicies(final List<String> initialPlacement) {
         final var scenario = new TestScenario();
-        scenario.schedulerBuilder.setInitialPlacementPolicies(policies);
+        scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
         scenario.scheduler = scenario.schedulerBuilder.build();
         return scenario;
     }
 
+    /**
+     * Adds a group of 'numPods' pods, who's names have the prefix 'groupName' to the test case.
+     * A test can supply a 'modifier' lambdas to modify these pods as required for the test.
+     */
     TestScenario withPodGroup(final String groupName, final int numPods, final Consumer<Pod>... modifiers) {
         if (podGroups.contains(groupName)) {
             throw new IllegalArgumentException("Pod group already exists: " + groupName);
@@ -63,11 +67,14 @@ class TestScenario {
                 modifier.accept(pod);
             }
             pods.add(pod);
-            podResourceEventHandler.onAddSync(pod);
         }
         return this;
     }
 
+    /**
+     * Adds a group of 'numNodes' nodes, who's names have the prefix 'groupName' to the test case.
+     * A test can supply a 'modifier' lambdas to modify these nodes as required for the test.
+     */
     TestScenario withNodeGroup(final String groupName, final int numNodes, final Consumer<Node>... modifiers) {
         if (nodeGroups.contains(groupName)) {
             throw new IllegalArgumentException("Node group already exists: " + groupName);
@@ -80,7 +87,6 @@ class TestScenario {
                 modifier.accept(node);
             }
             nodes.add(node);
-            nodeResourceEventHandler.onAddSync(node);
 
             // Add one system pod per node
             final String podName = "system-pod-" + node.getMetadata().getName();
@@ -88,28 +94,48 @@ class TestScenario {
             final String status = "Running";
             pod = newPod(podName, status);
             pod.getSpec().setNodeName(node.getMetadata().getName());
-            podResourceEventHandler.onAddSync(pod);
         }
         return this;
     }
 
+    /**
+     * Runs initial placement using all configured pod and node groups. We shuffle the pod/nodes to avoid
+     * artifacts from database insertion order in the test results.
+     */
     TestResult runInitialPlacement() {
+        Collections.shuffle(pods);
+        Collections.shuffle(nodes);
+        pods.forEach(podResourceEventHandler::onAddSync);
+        nodes.forEach(nodeResourceEventHandler::onAddSync);
         assertNotNull(scheduler);
         return new TestResult(scheduler.initialPlacement(), nodes);
     }
 
+    /**
+     * Refers to a named group of pods
+     */
     static PodGroup podGroup(final String... name) {
         return new PodGroup(name);
     }
 
+    /**
+     * Refers to the nodes that a named group of pods were assigned to
+     */
     static NodesForPodGroup nodesForPodGroup(final String name) {
         return new NodesForPodGroup(name);
     }
 
+    /**
+     * Refers to a named group of nodes
+     */
     static NodeGroup nodeGroup(final String... names) {
         return new NodeGroup(names);
     }
 
+    /**
+     * Encapsulates the results of running a DCM model. It includes the set of nodes that were configured
+     * in the scenario and the ResultSet returned by DCM.
+     */
     static class TestResult {
         final Result<? extends Record> results;
         private final List<Node> nodes;
@@ -119,6 +145,10 @@ class TestScenario {
             this.nodes = nodes;
         }
 
+        /**
+         * For all nodes that a pod group was assigned to, check whether a predicate holds true (the argument
+         * to the predicate is the list of node names).
+         */
         public TestResult expect(final NodesForPodGroup podGroup, final Predicate<List<String>> predicate) {
             final List<String> collect = results.stream()
                     .filter(e -> e.get("POD_NAME", String.class).startsWith(podGroup.name + "-"))
@@ -128,6 +158,9 @@ class TestScenario {
             return this;
         }
 
+        /**
+         * Overload to check whether two groups of pods end up co-located with each or not
+         */
         public TestResult expect(final PodGroup leftGroup, final Op op, final PodGroup rightGroup) {
             assert op == Op.COLOCATED_WITH || op == Op.NOT_COLOCATED_WITH;
             assertEquals(1, leftGroup.names.size());
@@ -159,6 +192,9 @@ class TestScenario {
             return this;
         }
 
+        /**
+         * Overload to compare nodes assigned to a group of pods with a given group of nodes
+         */
         public TestResult expect(final NodesForPodGroup podGroup, final Op op, final NodeGroup nodeGroup) {
             final Set<String> actual = results.stream()
                     .filter(e -> e.get("POD_NAME", String.class).startsWith(podGroup.name + "-"))
@@ -209,7 +245,7 @@ class TestScenario {
         NOT_IN
     }
 
-    static class PodGroup {
+    private static class PodGroup {
         private final List<String> names;
 
         PodGroup(final String... name) {
@@ -218,7 +254,7 @@ class TestScenario {
         }
     }
 
-    static class NodesForPodGroup {
+    private static class NodesForPodGroup {
         private final String name;
 
         NodesForPodGroup(final String name) {
@@ -226,7 +262,7 @@ class TestScenario {
         }
     }
 
-    static class NodeGroup {
+    private static class NodeGroup {
         private final List<String> names;
 
         NodeGroup(final String... name) {
