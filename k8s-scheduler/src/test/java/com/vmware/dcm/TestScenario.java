@@ -14,8 +14,12 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -33,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * A simple DSL to set up scheduling scenarios for testing
  */
 class TestScenario {
-    final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+    private final DBConnectionPool dbConnectionPool = new DBConnectionPool();
     private final Scheduler.Builder schedulerBuilder = new Scheduler.Builder(dbConnectionPool);
     private final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
     private final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
@@ -42,12 +46,20 @@ class TestScenario {
     private final Set<String> nodeGroups = new HashSet<>();
     private final List<Pod> pods = new ArrayList<>();
     private final List<Node> nodes = new ArrayList<>();
-    @Nullable
-    Scheduler scheduler;
+    private final Map<Node, Pod> systemPods = new HashMap<>();
+    @Nullable private Scheduler scheduler;
 
     static TestScenario withPolicies(final List<String> initialPlacement) {
         final var scenario = new TestScenario();
         scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
+        scenario.scheduler = scenario.schedulerBuilder.build();
+        return scenario;
+    }
+
+    static TestScenario withPolicies(final List<String> initialPlacement, final List<String> preemption) {
+        final var scenario = new TestScenario();
+        scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
+        scenario.schedulerBuilder.setPreemptionPolicies(preemption);
         scenario.scheduler = scenario.schedulerBuilder.build();
         return scenario;
     }
@@ -94,7 +106,46 @@ class TestScenario {
             final String status = "Running";
             pod = newPod(podName, status);
             pod.getSpec().setNodeName(node.getMetadata().getName());
+            systemPods.put(node, pod);
+            pods.add(pod);
         }
+        return this;
+    }
+
+
+    /**
+     * Configure each system pod for a group of nodes
+     */
+    TestScenario forSystemPods(final String groupName, final Consumer<Pod>... modifiers) {
+        if (!nodeGroups.contains(groupName)) {
+            throw new IllegalArgumentException("Node group does not exist: " + groupName);
+        }
+        nodes.forEach(n -> Arrays.stream(modifiers).forEach(m -> m.accept(systemPods.get(n))));
+        return this;
+    }
+
+    /**
+     * Returns a scheduler if it has been instantiated
+     */
+    Scheduler scheduler() {
+        return Objects.requireNonNull(scheduler);
+    }
+
+    /**
+     * Returns a scheduler if it has been instantiated
+     */
+    DBConnectionPool conn() {
+        return dbConnectionPool;
+    }
+
+    /**
+     * Adds all created pods/nodes to the test scenario.
+     */
+    TestScenario build() {
+        Collections.shuffle(pods);
+        Collections.shuffle(nodes);
+        pods.forEach(podResourceEventHandler::onAddSync);
+        nodes.forEach(nodeResourceEventHandler::onAddSync);
         return this;
     }
 
@@ -103,10 +154,7 @@ class TestScenario {
      * artifacts from database insertion order in the test results.
      */
     TestResult runInitialPlacement() {
-        Collections.shuffle(pods);
-        Collections.shuffle(nodes);
-        pods.forEach(podResourceEventHandler::onAddSync);
-        nodes.forEach(nodeResourceEventHandler::onAddSync);
+        build();
         assertNotNull(scheduler);
         return new TestResult(scheduler.initialPlacement(), nodes);
     }
@@ -150,8 +198,13 @@ class TestScenario {
          * to the predicate is the list of node names).
          */
         public TestResult expect(final NodesForPodGroup podGroup, final Predicate<List<String>> predicate) {
+            final Comparator<Record> comparator = Comparator.comparingInt(value -> {
+                final String podIdx = value.get("POD_NAME", String.class).split("-")[1];
+                return Integer.parseInt(podIdx);
+            });
             final List<String> collect = results.stream()
                     .filter(e -> e.get("POD_NAME", String.class).startsWith(podGroup.name + "-"))
+                    .sorted(comparator)
                     .map(e -> e.get("CONTROLLABLE__NODE_NAME", String.class))
                     .collect(Collectors.toList());
             assertTrue(predicate.test(collect));

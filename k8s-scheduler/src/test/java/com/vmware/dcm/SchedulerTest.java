@@ -884,47 +884,20 @@ public class SchedulerTest {
         final var result = TestScenario.withPolicies(policies)
                 .withNodeGroup("n", numNodes)
                 .withPodGroup("pods", numPods);
-        result.scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(result.dbConnectionPool));
-        final Result<PodInfoRecord> fetch = result.dbConnectionPool.getConnectionToDb()
+        result.scheduler().scheduleAllPendingPods(new EmulatedPodToNodeBinder(result.conn()));
+        final Result<PodInfoRecord> fetch = result.conn().getConnectionToDb()
                                                   .selectFrom(Tables.POD_INFO).fetch();
         fetch.forEach(e -> assertTrue(e.getNodeName() != null && e.getNodeName().startsWith("n")));
     }
 
     @Test
     public void testFilterNodes() {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
-        final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
-
-        final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
-        final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);
-
-        // Add nodes
-        for (int i = 0; i < 8; i++) {
-            final String nodeName = "node-" + i;
-            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(100)));
-            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(100)));
-
-            nodeHandler.onAddSync(node);
-        }
-
-        // Add pending pods
-        for (int i = 0; i < 10; i++) {
-            final String podName = "pod-" + i;
-            final String status = "Pending";
-            final Pod pod = newPod(podName, status);
-
-            final Map<String, Quantity> resourceRequests = new HashMap<>();
-            resourceRequests.put("cpu", new Quantity(42 + ""));
-            resourceRequests.put("memory", new Quantity(42 + ""));
-            pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
-
-            podHandler.onAddSync(pod);
-        }
-
-        // Schedule
-        final Result<? extends Record> results = scheduler.initialPlacement((table) -> {
+        final var scenario = TestScenario.withPolicies(Policies.getInitialPlacementPolicies())
+                .withNodeGroup("node", 8)
+                .withPodGroup("pods", 10).build();
+        // Schedule using a filter
+        final DSLContext conn = scenario.conn().getConnectionToDb();
+        final Result<? extends Record> results = scenario.scheduler().initialPlacement((table) -> {
             if (table.getName().equalsIgnoreCase("spare_capacity_per_node")) {
                 final String lb = "node-" + 3;
                 final String ub = "none-" + 7;
@@ -932,7 +905,6 @@ public class SchedulerTest {
             }
             return conn.selectFrom(table).fetch();
         });
-
         assertEquals(10, results.size());
         final List<String> allowedNodes = new ArrayList<>(
                 Arrays.asList("node-3", "node-4", "node-5", "node-6", "node-7"));
@@ -946,7 +918,6 @@ public class SchedulerTest {
      */
     @Test
     public void testPreemption() {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final List<String> policiesInitial = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                     Policies.disallowNullNodeSoft(),
                                                     Policies.podAntiAffinityPredicate());
@@ -954,63 +925,42 @@ public class SchedulerTest {
                 Policies.disallowNullNodeSoft(),
                 Policies.podAntiAffinityPredicate(),
                 Policies.preemption());
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                                                 .setInitialPlacementPolicies(policiesInitial)
-                                                 .setPreemptionPolicies(policiesPreemption)
-                                                 .setDebugMode(true).build();
-
-        final NodeResourceEventHandler nodeHandler = new NodeResourceEventHandler(dbConnectionPool);
-        final PodResourceEventHandler podHandler = new PodResourceEventHandler(scheduler::handlePodEvent);
-
-        // Add nodes with low or high priority pods
-        for (int i = 0; i < 10; i++) {
-            final String nodeName = "node-" + i;
-            final Node node = newNode(nodeName, Collections.emptyMap(), Collections.emptyList());
-            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(100)));
-            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(100)));
-            nodeHandler.onAddSync(node);
-
-            // Add one system pod per node
-            final String podName = "running-pod-" + nodeName;
-            final Pod pod;
-            final String status = "Running";
-            pod = newPod(podName, status);
-            pod.getSpec().setPriority(i < 5 ? 20 : 150);
-            pod.getSpec().setNodeName(nodeName);
-            pod.getMetadata().setLabels(Map.of("k1", "l1"));
-            podHandler.onAddSync(pod);
-        }
-
-        // add high priority pods
-        for (int i = 0; i < 1; i++) {
-            final String podName = "pod-" + i;
-            final String status = "Pending";
-            final Pod pod = newPod(podName, status);
-            pod.getSpec().setPriority(100);
-            final List<PodAffinityTerm> notInTerm = List.of(term("kubernetes.io/hostname",
-                                                                  podExpr("k1", "In", "l1")));
-            final PodAntiAffinity podAntiAffinity = new PodAntiAffinity();
-            podAntiAffinity.setRequiredDuringSchedulingIgnoredDuringExecution(notInTerm);
-            pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
-            podHandler.onAddSync(pod);
-        }
-        final Result<? extends Record> results = scheduler.initialPlacement();
+        final var scenario = TestScenario.withPolicies(policiesInitial, policiesPreemption)
+                .withNodeGroup("node", 10, (node) -> {
+                    node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(100)));
+                    node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(100)));
+                })
+                .forSystemPods("node", (pod) -> {
+                    final String nodeName = pod.getSpec().getNodeName();
+                    final int i = Integer.parseInt(nodeName.split("-")[1]);
+                    pod.getSpec().setPriority(i < 5 ? 20 : 150);
+                    pod.getMetadata().setLabels(Map.of("k1", "l1"));
+                })
+                .withPodGroup("pod", 1, (pod) -> {
+                    pod.getSpec().setPriority(100);
+                    final List<PodAffinityTerm> notInTerm = List.of(term("kubernetes.io/hostname",
+                                                                          podExpr("k1", "In", "l1")));
+                    final PodAntiAffinity podAntiAffinity = new PodAntiAffinity();
+                    podAntiAffinity.setRequiredDuringSchedulingIgnoredDuringExecution(notInTerm);
+                    pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
+                }).build();
+        final Result<? extends Record> results = scenario.scheduler().initialPlacement();
         // No pods get assignments
         assertEquals(Set.of("NULL_NODE"), results.intoSet(field("CONTROLLABLE__NODE_NAME", String.class)));
         // Preemption must succeed for new pods
-        final Result<? extends Record> preemption = scheduler.preempt();
+        final Result<? extends Record> preemption = scenario.scheduler().preempt();
         final Set<String> runningPodAssignments = new HashSet<>();
         preemption.forEach(
-                r -> {
-                    final String assignment = r.get(field("CONTROLLABLE__NODE_NAME", String.class));
-                    if (r.get(field("POD_NAME", String.class)).startsWith("pod-")) {
-                        assertNotEquals("NULL_NODE", assignment);
-                    } else {
-                        // We should only consider nodes with lower priority pods
-                        assertEquals(20, r.get("PRIORITY", Integer.class));
-                        runningPodAssignments.add(assignment);
-                    }
+            r -> {
+                final String assignment = r.get(field("CONTROLLABLE__NODE_NAME", String.class));
+                if (r.get(field("POD_NAME", String.class)).startsWith("pod-")) {
+                    assertNotEquals("NULL_NODE", assignment);
+                } else {
+                    // We should only consider nodes with lower priority pods
+                    assertEquals(20, r.get("PRIORITY", Integer.class));
+                    runningPodAssignments.add(assignment);
                 }
+            }
         );
         assertTrue(runningPodAssignments.contains("NULL_NODE"));
     }
