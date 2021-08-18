@@ -61,9 +61,16 @@ savePlot <- function(plot, fileName, params, plotHeight, plotWidth, scale=TRUE) 
   }
 }
 
+#' 
+#' Configuration
+#'
+args <- commandArgs(TRUE)
+db <- args[1]
+mode <- args[2]
+
 dir.create("plots")
 
-conn <- dbConnect(RSQLite::SQLite(), "data.db")
+conn <- dbConnect(RSQLite::SQLite(), db)
 params <- data.table(dbGetQuery(conn, "select * from params"))
 schedulerTrace <- data.table(dbGetQuery(conn, "select * from scheduler_trace"))
 podsOverTime <- data.table(dbGetQuery(conn, "select * from pods_over_time"))
@@ -114,7 +121,6 @@ bp.vals <- function(x, probs=c(0.01, 0.25, 0.5, 0.75, .99)) {
   names(r) <- c("ymin", "lower", "middle", "upper", "ymax")
   r
 }
-
 
 #'
 #' ## Scheduling latency and batch sizes
