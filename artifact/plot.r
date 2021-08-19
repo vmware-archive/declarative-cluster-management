@@ -86,7 +86,7 @@ if (mode == "long") {
 }
 fixedTimeScale=20
 plotHeight=4
-plotWidth=5
+plotWidth=7
 
 params$gitInfo <- paste(params$dcmGitBranch, substr(params$dcmGitCommitId, 0, 10), sep=":")
 varyFExperiment <- NROW(unique(params$numNodes)) == 1
@@ -106,15 +106,18 @@ applyTheme <- function(ggplotObject) {
 #'
 #' Change system names if required for anonymization or shortening
 #'
-dcmSchedulerAnonName <- "DCM"
+dcmSchedulerName <- "DCM"
+dcmScopedSchedulerName <- "DCM-scoped"
 defaultSchedulerName <- "default-scheduler"
-params[scheduler == "dcm-scheduler"]$scheduler <- dcmSchedulerAnonName
+params[scheduler == "dcm-scheduler"]$scheduler <- dcmSchedulerName
+params[scheduler == "dcm-scheduler-scoped"]$scheduler <- dcmScopedSchedulerName
 
 params[scheduler == "default-scheduler" & percentageOfNodesToScoreValue == 100, 
        Scheme := sprintf("%s (%s%%)", scheduler, percentageOfNodesToScoreValue)]
 params[scheduler == "default-scheduler" & percentageOfNodesToScoreValue == 0, 
        Scheme := sprintf("%s (sampling)", scheduler)]
 params[scheduler == "DCM", Scheme := scheduler]
+params[scheduler == "DCM-scoped", Scheme := scheduler]
 #' Display experiment metadata
 print(params)
 
@@ -140,7 +143,7 @@ if (varyFExperiment) {
     perPodSchedulingLatencyWithParams$color <- perPodSchedulingLatencyWithParams$Scheme
 } else {
     perPodSchedulingLatencyWithParams[,color:=factor(paste("numNodes=", numNodes, sep=""),
-      levels=sapply(params$numNodes, function(n) paste(c("numNodes=", n), collapse = "")))]
+      levels=sapply(params$numNodes[1:3], function(n) paste(c("numNodes=", n), collapse = "")))]
 }
 
 if (varyFExperiment) {
@@ -152,9 +155,10 @@ if (varyFExperiment) {
                    color = color), size= 1) +
         stat_ecdf(size = 1) +
         scale_linetype_manual(values = c("solid", "dotted")) +
-        scale_x_log10(breaks=c(1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100)) +
-        facet_grid(af ~ .  ) +
-        coord_cartesian(xlim = c(1.1, 100)) +
+        ## scale_x_log10(breaks=c(1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100)) +
+        facet_grid(af ~ . ) +
+        scale_x_log10() + 
+        ## coord_cartesian(xlim = c(1.1, 100)) +
         xlab("Scheduling Latency (ms)") +
         ylab("ECDF") +
         labs(col = "", linetype = "") 
@@ -189,10 +193,11 @@ longDcmLatencyMetricsWithBatchSizes[variableClean == "orToolsWall"]$variableClea
 if (varyFExperiment) {
     dcmLatencyBreakdown100xPlot <- applyTheme(ggplot(longDcmLatencyMetricsWithBatchSizes[batchId >= batchIdMin]) +
       stat_ecdf(size=1, aes(x=value/1e6/N, col=variableClean, linetype=variableClean)) +
-      scale_x_log10(limits=c(0.01, 50)) +
+      scale_x_log10() + 
+      ## coord_cartesian(xlim = c(0.01, 50)) +
       xlab("Latency (ms)") +
       ylab("ECDF") +
-      facet_grid(factor(paste("F=", affinityProportion, "%", sep=""), levels=c("F=0%", "F=50%", "F=100%")) ~ .) +
+      facet_grid(factor(paste("F=", affinityProportion, "%", sep=""), levels=c("F=0%", "F=50%", "F=100%")) ~ scheduler ) +
       guides(linetype=guide_legend(keywidth = 2, keyheight = 1),
              colour=guide_legend(nrow=2, keywidth = 2, keyheight = 1))
       ) + theme(legend.title=element_blank())
@@ -206,7 +211,7 @@ if (varyFExperiment) {
       xlab("Latency (ms)") +
       ylab("ECDF") +
       facet_grid(factor(paste("N=", numNodes, sep=""),
-                        levels=sapply(params$numNodes, function(n) paste(c("N=", n), collapse = ""))) ~ .) +
+                        levels=sapply(params$numNodes[1:3], function(n) paste(c("N=", n), collapse = ""))) ~ scheduler ) +
       guides(linetype=guide_legend(keywidth = 2, keyheight = 1),
              colour=guide_legend(nrow=2, keywidth = 2, keyheight = 1))
       ) + theme(legend.title=element_blank())
