@@ -92,8 +92,8 @@ class EmulatedCluster {
         final TraceReplayer traceReplayer = new TraceReplayer();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
-        traceReplayer.runTrace(client, traceFileName, deployer, "dcm-scheduler", cpuScaleDown,
-                memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion, 5);
+        traceReplayer.runTrace(client, traceFileName, deployer, "dcm-scheduler", numNodes,
+                cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion, 5);
     }
 
     private static Node addNode(final String nodeName, final UUID uid, final Map<String, String> labels,
