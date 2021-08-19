@@ -23,8 +23,9 @@ class Policies {
         INITIAL_PLACEMENT_POLICIES.add(disallowNullNodeSoft());
         INITIAL_PLACEMENT_POLICIES.add(nodePredicates());
         INITIAL_PLACEMENT_POLICIES.add(nodeSelectorPredicate());
-        INITIAL_PLACEMENT_POLICIES.add(podAffinityPredicate());
-        INITIAL_PLACEMENT_POLICIES.add(podAntiAffinityPredicate());
+        // Uncomment these when we have added the affinity views back to DDlogDBViews
+        //INITIAL_PLACEMENT_POLICIES.add(podAffinityPredicate());
+        //INITIAL_PLACEMENT_POLICIES.add(podAntiAffinityPredicate());
         INITIAL_PLACEMENT_POLICIES.add(capacityConstraint(true, true));
         INITIAL_PLACEMENT_POLICIES.add(taintsAndTolerations());
         INITIAL_PLACEMENT_POLICIES.add(symmetryBreaking());

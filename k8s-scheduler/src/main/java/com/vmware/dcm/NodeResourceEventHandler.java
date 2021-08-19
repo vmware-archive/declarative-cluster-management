@@ -44,15 +44,15 @@ import static com.vmware.dcm.Utils.convertUnit;
  */
 class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     private static final Logger LOG = LoggerFactory.getLogger(NodeResourceEventHandler.class);
-    private final DBConnectionPool dbConnectionPool;
+    private final IConnectionPool dbConnectionPool;
     private final ExecutorService service;
 
-    NodeResourceEventHandler(final DBConnectionPool dbConnectionPool) {
+    NodeResourceEventHandler(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
         this.service = Executors.newFixedThreadPool(10);
     }
 
-    NodeResourceEventHandler(final DBConnectionPool dbConnectionPool, final ExecutorService service) {
+    NodeResourceEventHandler(final IConnectionPool dbConnectionPool, final ExecutorService service) {
         this.dbConnectionPool = dbConnectionPool;
         this.service = service;
     }
@@ -172,8 +172,32 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                     pidPressure,
                     ready,
                     networkUnavailable
+            );
+        /*
+         * TODO: InsertOnDuplicateSetMoreStep generates a `merge` SQL statement, which isn't currently handled by the
+         * SQl->DDlog translator. For now we comment out, but need to address duplicate keys later.
+         */
+        /*return conn.insertInto(Tables.NODE_INFO,
+                n.UID,
+                n.NAME,
+                n.UNSCHEDULABLE,
+                n.OUT_OF_DISK,
+                n.MEMORY_PRESSURE,
+                n.DISK_PRESSURE,
+                n.PID_PRESSURE,
+                n.READY,
+                n.NETWORK_UNAVAILABLE)
+            .values(node.getMetadata().getUid(),
+                    node.getMetadata().getName(),
+                    getUnschedulable,
+                    outOfDisk,
+                    memoryPressure,
+                    diskPressure,
+                    pidPressure,
+                    ready,
+                    networkUnavailable,
             )
-            .onDuplicateKeyUpdate()
+                .onDuplicateKeyUpdate()
             .set(n.UID, node.getMetadata().getUid())
             .set(n.NAME, node.getMetadata().getName())
             .set(n.UNSCHEDULABLE, getUnschedulable)
@@ -182,7 +206,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
             .set(n.DISK_PRESSURE, diskPressure)
             .set(n.PID_PRESSURE, pidPressure)
             .set(n.READY, ready)
-            .set(n.NETWORK_UNAVAILABLE, networkUnavailable);
+            .set(n.NETWORK_UNAVAILABLE, networkUnavailable); */
     }
 
     private void deleteNode(final Node node, final DSLContext conn) {

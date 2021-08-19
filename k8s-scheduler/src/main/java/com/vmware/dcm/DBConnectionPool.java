@@ -18,7 +18,7 @@ import java.util.UUID;
 
 import static org.jooq.impl.DSL.using;
 
-class DBConnectionPool {
+class DBConnectionPool implements IConnectionPool {
     private static final Settings JOOQ_SETTING = new Settings().withExecuteLogging(false);
     private final String databaseName;
     private final DataSource ds;
@@ -39,16 +39,25 @@ class DBConnectionPool {
     /**
      * Sets up a private, in-memory database.
      */
-    DSLContext getConnectionToDb() {
+    @Override
+    @VisibleForTesting
+    public DSLContext getConnectionToDb() {
         return using(ds, SQLDialect.H2, JOOQ_SETTING);
     }
 
     /**
      * Used only for refreshing the DB state between tests
      */
+    @Override
     @VisibleForTesting
-    void refresh() {
+    public void refresh() {
         getConnectionToDb().execute("drop all objects");
         DBViews.getSchema().forEach(getConnectionToDb()::execute);
+    }
+
+    @Override
+    @VisibleForTesting
+    public DSLContext getDataConnectionToDb() {
+        return getConnectionToDb();
     }
 }

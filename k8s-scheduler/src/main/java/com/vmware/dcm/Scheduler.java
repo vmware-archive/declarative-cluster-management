@@ -79,7 +79,7 @@ public final class Scheduler {
     private final ThreadFactory namedThreadFactory =
             new ThreadFactoryBuilder().setNameFormat("computation-thread-%d").build();
     private final PodEventsToDatabase podEventsToDatabase;
-    private final DBConnectionPool dbConnectionPool;
+    private final IConnectionPool dbConnectionPool;
     private final ExecutorService scheduler = Executors.newSingleThreadExecutor(namedThreadFactory);
     private final LinkedBlockingDeque<Boolean> notificationQueue = new LinkedBlockingDeque<>();
 
@@ -90,7 +90,7 @@ public final class Scheduler {
         private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
         private static final long DEFAULT_POD_RETRY_INTERVAL_MS = 1000;
         private static final int DEFAULT_NODE_LIMIT = 20;
-        @VisibleForTesting final DBConnectionPool connection;
+        @VisibleForTesting final IConnectionPool connection;
         private List<String> initialPlacementPolicies = Policies.getInitialPlacementPolicies();
         private List<String> preemptionPolicies = Policies.getPreemptionPlacementPolicies();
         private boolean debugMode = false;
@@ -102,7 +102,7 @@ public final class Scheduler {
         @Nullable private Model initialPlacement = null;
         @Nullable private Model preemption = null;
 
-        public Builder(final DBConnectionPool connection) {
+        public Builder(final IConnectionPool connection) {
             this.connection = connection;
         }
 
@@ -207,7 +207,7 @@ public final class Scheduler {
         }
     }
 
-    private Scheduler(final DBConnectionPool dbConnectionPool, final Model initialPlacement,
+    private Scheduler(final IConnectionPool dbConnectionPool, final Model initialPlacement,
               final Model preemption, final boolean debugMode, final int numThreads,
               final int solverMaxTimeInSeconds, final boolean scopedInitialPlacement,
               final long retryIntervalMs, final int limit) {

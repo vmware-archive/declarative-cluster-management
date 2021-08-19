@@ -205,4 +205,3 @@ create table pdb_match_expressions
   max_unavailable integer not null,
   allowed_disruptions integer not null
 );
-

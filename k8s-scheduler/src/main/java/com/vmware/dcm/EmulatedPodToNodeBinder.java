@@ -29,10 +29,10 @@ import java.util.stream.Collectors;
  */
 public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedPodToNodeBinder.class);
-    private final DBConnectionPool dbConnectionPool;
+    private final IConnectionPool dbConnectionPool;
     private final Map<String, SettableFuture<Boolean>> waitForPodBinding = new HashMap<>();
 
-    EmulatedPodToNodeBinder(final DBConnectionPool dbConnectionPool) {
+    EmulatedPodToNodeBinder(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
     }
 
