@@ -53,18 +53,17 @@ public class TraceReplayer {
     }
 
     public void runTrace(final KubernetesClient client, final String fileName, final IPodDeployer deployer,
-                         final String schedulerName, final int nodesLimit, final int cpuScaleDown, final int memScaleDown,
-                         final int timeScaleDown, final int startTimeCutOff, final int affinityProportion)
-                                                                                                throws Exception {
+                         final String schedulerName, final int nodesLimit, final int cpuScaleDown,
+                         final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
+                         final int affinityProportion) throws Exception {
         runTrace(client, fileName, deployer, schedulerName, nodesLimit, cpuScaleDown, memScaleDown, timeScaleDown,
                 startTimeCutOff, affinityProportion, 60);
     }
 
     public void runTrace(final KubernetesClient client, final String fileName, final IPodDeployer deployer,
-                         final String schedulerName, final int nodesLimit, final int cpuScaleDown, final int memScaleDown,
-                         final int timeScaleDown, final int startTimeCutOff, final int affinityProportion,
-                         final int deletionTime)
-            throws Exception {
+                         final String schedulerName, final int nodesLimit, final int cpuScaleDown,
+                         final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
+                         final int affinityProportion, final int deletionTime) throws Exception {
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
                         " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{} AffinityProportion:{}",
                 schedulerName, cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff, affinityProportion);
