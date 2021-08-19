@@ -27,7 +27,7 @@ mkdir -p $TRACE_DIR/$GIT_REV
 for scheduler in "dcm-scheduler" "dcm-scheduler-scoped"; do
     for affinityProportion in 0 50 100; do
         cd $SCRIPT_DIR/..
-        if [ scheduler == "dcm-scheduler-scoped" ]; then
+        if [ $scheduler == "dcm-scheduler-scoped" ]; then
             ./gradlew runBenchmark --args="-n ${exp1Nodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion} -S" &> /tmp/out
         else
             ./gradlew runBenchmark --args="-n ${exp1Nodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion}" &> /tmp/out
@@ -57,7 +57,7 @@ for scheduler in "dcm-scheduler" "dcm-scheduler-scoped"; do
         affinityProportion=100
 
         cd $SCRIPT_DIR/..
-        if [ scheduler == "dcm-scheduler-scoped" ]; then
+        if [ $scheduler == "dcm-scheduler-scoped" ]; then
             ./gradlew runBenchmark --args="-n ${exp2Nodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion} -S" &> /tmp/out
         else
             ./gradlew runBenchmark --args="-n ${exp2Nodes} -f ${traceFile} -c 100 -m 200 -t 100 -s ${startTimeCutOff} -p ${affinityProportion}" &> /tmp/out

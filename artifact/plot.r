@@ -52,7 +52,7 @@ scale_colour_Publication <- function(...){
 savePlot <- function(plot, fileName, suffix, params, plotHeight, plotWidth, scale=TRUE) {
     if ("local" %in% params$kubeconfig) {
         ggsave(plot, file=paste(fileName, suffix, "Local", ".pdf", sep=""), 
-               height= if(scale) plotHeight *1.5 else plotHeight, 
+               height = plotHeight,
                width=plotWidth, units="in")
     } else {
         ggsave(plot, file=paste(fileName, suffix, ".pdf", sep=""), 
@@ -76,16 +76,17 @@ schedulerTrace <- data.table(dbGetQuery(conn, "select * from scheduler_trace"))
 podsOverTime <- data.table(dbGetQuery(conn, "select * from pods_over_time"))
 dcmMetrics <- data.table(dbGetQuery(conn, "select * from dcm_metrics"))
 dcmTableAccessLatency <- data.table(dbGetQuery(conn, "select * from dcm_table_access_latency"))
+scopeFraction <- data.table(dbGetQuery(conn, "select * from scope_fraction"))
 
-if (mode == "long") {
-    appCountCutOff=5000
-    batchIdMin=100    
+if (mode == "full") {
+    appCountCutOff=0 ## FIXME: increase when exceptions are resolved
+    batchIdMin=3
 } else {
     appCountCutOff=0
     batchIdMin=3
 }
 fixedTimeScale=20
-plotHeight=4
+plotHeight=5
 plotWidth=7
 
 params$gitInfo <- paste(params$dcmGitBranch, substr(params$dcmGitCommitId, 0, 10), sep=":")
@@ -136,15 +137,22 @@ bp.vals <- function(x, probs=c(0.01, 0.25, 0.5, 0.75, .99)) {
 #' for scheduling a batch divided by the batch size. The data frames represent
 #' latency measurements in nanoseconds, which we convert to milliseconds when plotting.
 schedulerTrace$appCount <- tstrsplit(schedulerTrace$podName, "-")[2]
-perPodSchedulingLatency <- schedulerTrace[as.numeric(appCount) >= appCountCutOff, list(Latency = bindTime, BatchSize = .N), 
+perPodSchedulingLatency <- schedulerTrace[as.numeric(appCount) >= appCountCutOff,
+                                          list(Latency = bindTime, BatchSize = .N), 
                                           by=list(expId, batchId)]
 perPodSchedulingLatencyWithParams <- merge(perPodSchedulingLatency, params, by=c('expId'))
+
 if (varyFExperiment) {
     perPodSchedulingLatencyWithParams$color <- perPodSchedulingLatencyWithParams$Scheme
 } else {
     perPodSchedulingLatencyWithParams[,color:=factor(paste("numNodes=", numNodes, sep=""),
       levels=sapply(params$numNodes[1:3], function(n) paste(c("numNodes=", n), collapse = "")))]
 }
+
+#'
+#' Distribution of scope fractions used.
+#'
+scopeFractionWithParams <- marge(scopeFraction[by=list(expId, batchId)], params, by=c('expId'))
 
 if (varyFExperiment) {
     perPodSchedulingLatencyWithParams[,af := factor(paste("F=", affinityProportion, "%", sep=""), 
@@ -155,9 +163,9 @@ if (varyFExperiment) {
                    color = color), size= 1) +
         stat_ecdf(size = 1) +
         scale_linetype_manual(values = c("solid", "dotted")) +
+        scale_x_log10() +
         ## scale_x_log10(breaks=c(1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100)) +
         facet_grid(af ~ . ) +
-        scale_x_log10() + 
         ## coord_cartesian(xlim = c(1.1, 100)) +
         xlab("Scheduling Latency (ms)") +
         ylab("ECDF") +
@@ -165,7 +173,8 @@ if (varyFExperiment) {
     ) + guides(col = guide_legend(nrow = 1), linetype=guide_legend(keywidth = 1.6, nrow=2, byrow=TRUE))
 
     schedulingLatencyEcdf100xPlot
-    savePlot(schedulingLatencyEcdf100xPlot, "plots/schedulingLatencyEcdfVaryFN=", params$numNodes[1], params, plotHeight, plotWidth, scale=FALSE)
+    savePlot(schedulingLatencyEcdf100xPlot, "plots/schedulingLatencyEcdfVaryFN=",
+             params$numNodes[1], params, plotHeight, plotWidth, scale=FALSE)
 }
 
 #'
@@ -175,57 +184,68 @@ if (varyFExperiment) {
 countByBatchId <- perPodSchedulingLatencyWithParams[,.N,by=list(expId,batchId)]
 dcmMetrics$dcmSolveTime <- as.numeric(dcmMetrics$dcmSolveTime)
 dcmMetrics$modelCreationLatency <- as.numeric(dcmMetrics$modelCreationLatency)
+dcmMetrics$scopeLatency <- as.numeric(dcmMetrics$scopeLatency)
 dcmMetrics$databaseLatencyTotal <- as.numeric(dcmMetrics$databaseLatencyTotal)
 dcmMetrics$presolveTime <- as.numeric(dcmMetrics$presolveTime * 1e9) # convert to ns
 dcmMetrics$orToolsWallTime <- as.numeric(dcmMetrics$orToolsWallTime * 1e9) # convert to ns
 dcmMetrics$orToolsUserTime <- as.numeric(dcmMetrics$orToolsUserTime * 1e9) # convert to ns
+dcmMetrics[scopeLatency == 0]$scopeLatency <- NA # ommit line of zeros when scope is off
 dcmMetricsWithBatchSizes <- merge(dcmMetrics, countByBatchId, by=c('expId', 'batchId'))
 
 # Expand to repeat each row as many times as the batch size it represents
 dcmMetricsWithBatchSizesExpanded <- dcmMetricsWithBatchSizes[rep(seq(.N), N)]
 longDcmLatencyMetricsWithBatchSizes <- melt(dcmMetricsWithBatchSizesExpanded, c("expId", "batchId", "N"),
                                             measure=patterns("Time|Latency"))
-longDcmLatencyMetricsWithBatchSizes$variableClean <- gsub("Latency|Total|Time", "", longDcmLatencyMetricsWithBatchSizes$variable)
+longDcmLatencyMetricsWithBatchSizes$variableClean <- gsub("Latency|Total|Time", "",
+                                                          longDcmLatencyMetricsWithBatchSizes$variable)
 longDcmLatencyMetricsWithBatchSizes <- merge(longDcmLatencyMetricsWithBatchSizes, params, by=c("expId"))
 longDcmLatencyMetricsWithBatchSizes <- longDcmLatencyMetricsWithBatchSizes[variableClean != "orToolsUser"]
 longDcmLatencyMetricsWithBatchSizes[variableClean == "orToolsWall"]$variableClean <- "orToolsTotal"
 
 if (varyFExperiment) {
-    dcmLatencyBreakdown100xPlot <- applyTheme(ggplot(longDcmLatencyMetricsWithBatchSizes[batchId >= batchIdMin]) +
-      stat_ecdf(size=1, aes(x=value/1e6/N, col=variableClean, linetype=variableClean)) +
-      scale_x_log10() + 
-      ## coord_cartesian(xlim = c(0.01, 50)) +
-      xlab("Latency (ms)") +
-      ylab("ECDF") +
-      facet_grid(factor(paste("F=", affinityProportion, "%", sep=""), levels=c("F=0%", "F=50%", "F=100%")) ~ scheduler ) +
-      guides(linetype=guide_legend(keywidth = 2, keyheight = 1),
-             colour=guide_legend(nrow=2, keywidth = 2, keyheight = 1))
-      ) + theme(legend.title=element_blank())
+    dcmLatencyBreakdown100xPlot <- applyTheme(
+        ggplot(longDcmLatencyMetricsWithBatchSizes[batchId >= batchIdMin]) +
+        stat_ecdf(size=1, aes(x=value/1e6/N, col=variableClean, linetype=variableClean)) +
+        scale_x_log10() + 
+        ## coord_cartesian(xlim = c(0.01, 50)) +
+        xlab("Latency (ms)") +
+        ylab("ECDF") +
+        facet_grid(factor(paste("F=", affinityProportion, "%", sep=""),
+                          levels=c("F=0%", "F=50%", "F=100%")) ~ scheduler ) +
+        guides(linetype=guide_legend(keywidth = 2, keyheight = 1),
+               colour=guide_legend(nrow=2, keywidth = 2, keyheight = 1))
+    ) + theme(legend.title=element_blank())
 
     dcmLatencyBreakdown100xPlot
-    savePlot(dcmLatencyBreakdown100xPlot, "plots/dcmLatencyBreakdownVaryFN=", params$numNodes[1], params, plotHeight, plotWidth)
+    savePlot(dcmLatencyBreakdown100xPlot, "plots/dcmLatencyBreakdownVaryFN=",
+             params$numNodes[1], params, plotHeight, plotWidth)
 } else {
-    dcmLatencyBreakdownPlot <- applyTheme(ggplot(longDcmLatencyMetricsWithBatchSizes[batchId >= batchIdMin]) +
-      stat_ecdf(size=1, aes(x=value/1e6/N, col=variableClean, linetype=variableClean)) + 
-      scale_x_log10() +
-      xlab("Latency (ms)") +
-      ylab("ECDF") +
-      facet_grid(factor(paste("N=", numNodes, sep=""),
-                        levels=sapply(params$numNodes[1:3], function(n) paste(c("N=", n), collapse = ""))) ~ scheduler ) +
-      guides(linetype=guide_legend(keywidth = 2, keyheight = 1),
-             colour=guide_legend(nrow=2, keywidth = 2, keyheight = 1))
-      ) + theme(legend.title=element_blank())
+    dcmLatencyBreakdownPlot <- applyTheme(
+        ggplot(longDcmLatencyMetricsWithBatchSizes[batchId >= batchIdMin]) +
+        stat_ecdf(size=1, aes(x=value/1e6/N, col=variableClean, linetype=variableClean)) + 
+        scale_x_log10() +
+        xlab("Latency (ms)") +
+        ylab("ECDF") +
+        facet_grid(factor(paste("N=", numNodes, sep=""),
+                          levels=sapply(params$numNodes[1:3],
+                                        function(n) paste(c("N=", n), collapse = ""))) ~ scheduler ) +
+        guides(linetype=guide_legend(keywidth = 2, keyheight = 1),
+               colour=guide_legend(nrow=2, keywidth = 2, keyheight = 1))
+    ) + theme(legend.title=element_blank())
 
     dcmLatencyBreakdownPlot
-    savePlot(dcmLatencyBreakdownPlot, "plots/dcmLatencyBreakdownVaryNF=", params$affinityProportion[1], params, plotHeight, plotWidth, scale=FALSE)
+    savePlot(dcmLatencyBreakdownPlot, "plots/dcmLatencyBreakdownVaryNF=",
+             params$affinityProportion[1], params, plotHeight, plotWidth, scale=FALSE)
 }
 
 #
 #' Print model sizes to file
 #
 if (varyNExperiment) {
-    longDcmModelMetricsWithBatchSizes <- melt(dcmMetricsWithBatchSizesExpanded, c("expId", "batchId", "N"), measure=patterns("variables"))
-    longDcmModelMetricsWithBatchSizes$variableClean <- gsub("variables", "", longDcmModelMetricsWithBatchSizes$variable)
+    longDcmModelMetricsWithBatchSizes <- melt(dcmMetricsWithBatchSizesExpanded,
+                                              c("expId", "batchId", "N"), measure=patterns("variables"))
+    longDcmModelMetricsWithBatchSizes$variableClean <- gsub("variables", "",
+                                                            longDcmModelMetricsWithBatchSizes$variable)
     longDcmModelMetricsWithBatchSizes <- merge(longDcmModelMetricsWithBatchSizes, params, by=c("expId"))
     
     result <- longDcmModelMetricsWithBatchSizes[batchId >= batchIdMin & grepl("Before", variableClean)

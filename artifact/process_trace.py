@@ -21,6 +21,7 @@ conn.execute("drop table if exists pods_over_time")
 conn.execute("drop table if exists scheduler_trace")
 conn.execute("drop table if exists dcm_table_access_latency")
 conn.execute("drop table if exists dcm_metrics")
+conn.execute("drop table if exists scope_fraction")
 conn.execute("drop table if exists event_trace")
 
 conn.execute('''
@@ -85,6 +86,7 @@ conn.execute('''
         batchId integer not null,
         dcmSolveTime integer not null,
         fetchcount integer not null,
+        scopeLatency integer not null,
         modelCreationLatency integer not null,
         variablesBeforePresolve integer not null,
         variablesBeforePresolveObjective integer not null,
@@ -96,6 +98,16 @@ conn.execute('''
         orToolsUserTime integer not null,
         orToolsWallTime integer not null,
         databaseLatencyTotal integer not null,
+        foreign key(expId) references params(expId)
+    )
+''')
+
+conn.execute('''
+    create table scope_fraction
+    (
+        expId integer not null,
+        batchId integer not null,
+        scopeFraction double not null,
         foreign key(expId) references params(expId)
     )
 ''')
@@ -183,6 +195,7 @@ for trace in traceFolders:
         with open(dcmSchedulerFile[0]) as traceFile:
             batchId = 1
             metrics = {}
+            metrics["scopeLatency"] = 0 # when scope is not used
             variablesBeforePresolve = False
             for line in traceFile:
                 if ("Fetchcount is" in line):
@@ -196,6 +209,12 @@ for trace in traceFolders:
 
                     conn.execute("insert into dcm_table_access_latency values (?, ?, ?, ?, ?)",
                                  (expParams["expId"], batchId, tableName, latencyToDb, latencyToReflect))
+
+                if ("scope fraction" in line):
+                    split = line.split()
+                    fraction = split[-1]
+                    conn.execute("insert into scope_fraction values (?, ?, ?)",
+                                 (expParams["expId"], batchId, float(fraction)))
 
                 if ("compiler.updateData()" in line):
                     split = line.split()
@@ -248,16 +267,21 @@ for trace in traceFolders:
                     latency = split[1]
                     metrics["orToolsUserTime"] = latency
 
+                if ("Scope filtering" in line):
+                    split = line.split()
+                    latency = split[-1][:-3] # Remove ns and period
+                    metrics["scopeLatency"] = latency
+
                 if ("Solver has run successfully" in line):
                     split = line.split()
                     latency = split[10][:-3] # Remove ns and period
-
                     metrics["dcmSolveTime"] = latency
-                    conn.execute("insert into dcm_metrics values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    conn.execute("insert into dcm_metrics values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                  (expParams["expId"],
                                   batchId,
                                   metrics["dcmSolveTime"],
                                   metrics["fetchcount"],
+                                  metrics["scopeLatency"],
                                   metrics["modelCreationLatency"],
                                   metrics["variablesBeforePresolve"],
                                   metrics["variablesBeforePresolveObjective"],

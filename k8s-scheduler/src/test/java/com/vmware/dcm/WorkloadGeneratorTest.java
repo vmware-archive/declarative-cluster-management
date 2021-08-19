@@ -6,7 +6,6 @@
 package com.vmware.dcm;
 
 import com.vmware.dcm.trace.TraceReplayer;
-import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesServer;
