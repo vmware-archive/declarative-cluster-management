@@ -6,6 +6,7 @@
 package com.vmware.dcm;
 
 import com.vmware.dcm.trace.TraceReplayer;
+import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesServer;
@@ -49,9 +50,8 @@ public class WorkloadGeneratorTest {
         final NamespacedKubernetesClient client = server.getClient();
         final IPodDeployer deployer = new KubernetesPodDeployer(client, "default");
         final TraceReplayer traceReplayer = new TraceReplayer();
-
         traceReplayer.runTrace(client, "test-data.txt", deployer, "default-scheduler",
-                1, 1, 100, 1000, 100, 2);
+                400, 1, 1, 100, 1000, 100, 2);
         assertEquals(8, server.getMockServer().getRequestCount());
         final List<String> events = IntStream.range(0, 8)
                 .mapToObj(e -> {

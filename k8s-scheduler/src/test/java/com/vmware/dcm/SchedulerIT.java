@@ -122,7 +122,7 @@ public class SchedulerIT extends ITBase {
         final KubernetesPodDeployer deployer = new KubernetesPodDeployer(fabricClient, "default");
         final TraceReplayer traceReplayer = new TraceReplayer();
         traceReplayer.runTrace(fabricClient, "test-data.txt", deployer, "dcm-scheduler",
-                100, 50, 100, 1000000);
+                400, 100, 50, 100, 1000000);
         stateSync.shutdown();
         scheduler.shutdown();
     }

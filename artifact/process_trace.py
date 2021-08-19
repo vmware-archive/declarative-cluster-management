@@ -150,12 +150,6 @@ for trace in traceFolders:
         for i in range(len(header)):
             expParams[header[i]] = data[i]
 
-        # print(reader)
-        # print(header)
-        # print(data)
-        # print(expParams)
-        # print()
-
     conn.execute("insert into params values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                  (expParams["expId"],
                   expParams["workload"],
@@ -201,12 +195,6 @@ for trace in traceFolders:
                     latencyToDb = split[10]
                     latencyToReflect = split[19]
 
-                    # print("updateDataFields:")
-                    # print(split)
-                    # print(expParams["expId"], batchId)
-                    # print(tableName, latencyToDb, latencyToReflect)
-                    # print()
-
                     conn.execute("insert into dcm_table_access_latency values (?, ?, ?, ?, ?)",
                                  (expParams["expId"], batchId, tableName, latencyToDb, latencyToReflect))
 
@@ -215,20 +203,10 @@ for trace in traceFolders:
                     latency = split[7][:-2] # remove ns
                     metrics["databaseLatencyTotal"] = latency
 
-                    # print("database")
-                    # print(split)
-                    # print(latency)
-                    # print()
-
                 if ("Model creation:" in line and not "println" in line):
                     split = line.split()
                     latency = split[5]
                     metrics["modelCreationLatency"] = latency
-
-                    # print("model creation")
-                    # print(split)
-                    # print(latency)
-                    # print()
 
                 if ("#Variables" in line and variablesBeforePresolve == False):
                     split = line.split()
@@ -237,6 +215,7 @@ for trace in traceFolders:
                     variablesBeforePresolve = True
                     metrics["variablesBeforePresolve"] = numVariablesTotal
                     metrics["variablesBeforePresolveObjective"] = numVariablesObjective
+                    
                 elif ("#Variables" in line and variablesBeforePresolve == True):
                     split = line.split()
                     numVariablesTotal = split[1]
@@ -250,20 +229,10 @@ for trace in traceFolders:
                     latency = split[3][:-1]
                     metrics["preSolveTime"] = latency
 
-                    # print("starting search")
-                    # print(split)
-                    # print(latency)
-                    # print()
-
                 if ("propagations:" in line and not "integer_propagations" in line):
                     split = line.split()
                     propagations = split[1]
                     metrics["propagations"] = propagations
-
-                    # print("propagations")
-                    # print(split)
-                    # print(propagations)
-                    # print()
 
                 if ("integer_propagations:" in line):
                     split = line.split()
@@ -275,11 +244,6 @@ for trace in traceFolders:
                     latency = split[1]
                     metrics["orToolsWallTime"] = latency
 
-                    # print("orToolsWallTime")
-                    # print(split)
-                    # print(latency)
-                    # print()
-
                 if ("usertime" in line):
                     split = line.split()
                     latency = split[1]
@@ -288,12 +252,6 @@ for trace in traceFolders:
                 if ("Solver has run successfully" in line):
                     split = line.split()
                     latency = split[10][:-3] # Remove ns and period
-
-                    # print("solver success")
-                    # print(split)
-                    # print(latency)
-                    # print()
-                    # print()
 
                     metrics["dcmSolveTime"] = latency
                     conn.execute("insert into dcm_metrics values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -317,11 +275,6 @@ for trace in traceFolders:
                 if ("Scheduling decision for pod" in line):
                     split = line.split("Scheduling decision for pod")[-1].split()
                     pod, batch, bindTime = split[0], split[5], split[-1]
-
-                    # print("scheduling decision")
-                    # print(split)
-                    # print(pod, batch, bindTime)
-                    # print()
 
                     conn.execute("insert into scheduler_trace values (?, ?, ?, ?, ?)",
                                  (expParams["expId"], pod, bindTime, batch, "dcm-scheduler"))
