@@ -61,7 +61,6 @@ conn.execute('''
         podName varchar(100) not null,
         bindTime numeric not null,
         batchId integer not null,
-        scheduler varchar(100) not null,
         foreign key(expId) references params(expId)
     )
 ''')
@@ -276,8 +275,8 @@ for trace in traceFolders:
                     split = line.split("Scheduling decision for pod")[-1].split()
                     pod, batch, bindTime = split[0], split[5], split[-1]
 
-                    conn.execute("insert into scheduler_trace values (?, ?, ?, ?, ?)",
-                                 (expParams["expId"], pod, bindTime, batch, "dcm-scheduler"))
+                    conn.execute("insert into scheduler_trace values (?, ?, ?, ?)",
+                                 (expParams["expId"], pod, bindTime, batch))
                     batchId = int(batch) + 1
 
 
@@ -302,8 +301,8 @@ for trace in traceFolders:
                     pods[pod]["bindTime"] = convertK8sTimestamp(bindTime)
                     pods[pod]["endLine"] = split
                     assert pods[pod]["bindTime"] > pods[pod]["startTime"], pods[pod]
-                    conn.execute("insert into scheduler_trace values (?, ?, ?, ?, ?)",
+                    conn.execute("insert into scheduler_trace values (?, ?, ?, ?)",
                                  (expParams["expId"], pod, pods[pod]["bindTime"] - pods[pod]["startTime"],
-                                  batchId, "default-scheduler"))
+                                  batchId))
                     batchId += 1
     conn.commit()

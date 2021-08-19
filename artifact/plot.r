@@ -109,7 +109,6 @@ applyTheme <- function(ggplotObject) {
 dcmSchedulerAnonName <- "DCM"
 defaultSchedulerName <- "default-scheduler"
 params[scheduler == "dcm-scheduler"]$scheduler <- dcmSchedulerAnonName
-schedulerTrace[scheduler == "dcm-scheduler"]$scheduler <- dcmSchedulerAnonName
 
 params[scheduler == "default-scheduler" & percentageOfNodesToScoreValue == 100, 
        Scheme := sprintf("%s (%s%%)", scheduler, percentageOfNodesToScoreValue)]
@@ -135,9 +134,8 @@ bp.vals <- function(x, probs=c(0.01, 0.25, 0.5, 0.75, .99)) {
 #' latency measurements in nanoseconds, which we convert to milliseconds when plotting.
 schedulerTrace$appCount <- tstrsplit(schedulerTrace$podName, "-")[2]
 perPodSchedulingLatency <- schedulerTrace[as.numeric(appCount) >= appCountCutOff, list(Latency = bindTime, BatchSize = .N), 
-                                          by=list(expId, batchId, scheduler)]
+                                          by=list(expId, batchId)]
 perPodSchedulingLatencyWithParams <- merge(perPodSchedulingLatency, params, by=c('expId'))
-setnames(perPodSchedulingLatencyWithParams, old = "scheduler.x", new = "Scheduler")
 if (varyFExperiment) {
     perPodSchedulingLatencyWithParams$color <- perPodSchedulingLatencyWithParams$Scheme
 } else {
@@ -170,7 +168,7 @@ if (varyFExperiment) {
 #' Distribution of latency metrics collected by DCM, amortized over batch sizes.
 #' Note: uses the first 1K batchIds only.
 #'
-countByBatchId <- perPodSchedulingLatencyWithParams[,.N,by=list(Scheduler,expId,batchId)]
+countByBatchId <- perPodSchedulingLatencyWithParams[,.N,by=list(expId,batchId)]
 dcmMetrics$dcmSolveTime <- as.numeric(dcmMetrics$dcmSolveTime)
 dcmMetrics$modelCreationLatency <- as.numeric(dcmMetrics$modelCreationLatency)
 dcmMetrics$databaseLatencyTotal <- as.numeric(dcmMetrics$databaseLatencyTotal)
