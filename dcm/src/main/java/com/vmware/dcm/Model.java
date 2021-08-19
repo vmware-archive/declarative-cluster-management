@@ -60,6 +60,11 @@ public class Model {
 
     private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
                   final List<String> constraints) {
+        this(dbCtx, backend, tables, constraints, dbCtx);
+    }
+
+    private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
+                  final List<String> constraints, final DSLContext dbCtxForMeta) {
         if (tables.isEmpty()) {
             throw new ModelException("Model does not contain any constraints or " +
                                      "constraints do not refer to any tables");
@@ -112,7 +117,7 @@ public class Model {
         final List<Table<?>> augmentedTableList = new ArrayList<>(tables);
         // dbCtx.meta().getTables(<name>) is buggy https://github.com/jOOQ/jOOQ/issues/7686,
         // so we're going to scan all tables and pick the ones whose names match that of the views we created.
-        for (final Table<?> table: dbCtx.meta().getTables()) {
+        for (final Table<?> table: dbCtxForMeta.meta().getTables()) {
             if (createdViewNames.contains(table.getName().toUpperCase(Locale.getDefault()))) {
                 augmentedTableList.add(table);
             }
@@ -156,6 +161,12 @@ public class Model {
                               final List<String> constraints) {
         final List<Table<?>> tables = getTablesFromContext(dslContext, constraints);
         return new Model(dslContext, solverBackend, tables, constraints);
+    }
+
+    public static Model build(final DSLContext dslContext, final ISolverBackend solverBackend,
+                              final List<String> constraints, final DSLContext dslContextForMeta) {
+        final List<Table<?>> tables = getTablesFromContext(dslContextForMeta, constraints);
+        return new Model(dslContext, solverBackend, tables, constraints, dslContextForMeta);
     }
 
     /**
@@ -284,7 +295,7 @@ public class Model {
     }
 
     Result<? extends Record> defaultFetcher(final Table<?> table) {
-        return dbCtx.selectFrom(table).fetch();
+        return dbCtx.selectFrom(table.getUnqualifiedName()).fetch();
     }
 
 

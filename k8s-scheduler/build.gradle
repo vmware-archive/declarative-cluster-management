@@ -33,7 +33,11 @@ dependencies {
     implementation "commons-io:commons-io:${commonsIoVersion}"
     implementation "com.h2database:h2:${h2Version}"
     implementation "ddlog:ddlogapi:0.1"
-    implementation "ddlog:sql:1.0-SNAPSHOT"
+    implementation ("ddlog:sql:1.0-SNAPSHOT") {
+        // The required dependencies: apache-calcite-core, the presto parser, and jooq, are available here,
+        // but we still include dependencies because we need apache-calcite-server for DDL parsing.
+        transitive = true
+    }
     jooqRuntime "org.jooq:jooq-meta-extensions:${jooqVersion}"
 }
 

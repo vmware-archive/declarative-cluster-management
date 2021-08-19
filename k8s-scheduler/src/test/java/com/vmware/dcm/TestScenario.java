@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TestScenario {
     private static final Map<List<String>, Scheduler.Builder> BUILDER_CACHE = new HashMap<>();
-    private final DBConnectionPool dbConnectionPool;
+    private final IConnectionPool dbConnectionPool;
     private final PodEventsToDatabase eventHandler;
     private final NodeResourceEventHandler nodeResourceEventHandler;
     private final PodResourceEventHandler podResourceEventHandler;
@@ -49,6 +49,27 @@ class TestScenario {
     private final Map<Node, Pod> systemPods = new HashMap<>();
     private final Scheduler.Builder schedulerBuilder;
     @Nullable private Scheduler scheduler;
+    private boolean built = false; // Just a temporary add, sometimes we want to inspect the DB after it's built.
+
+    TestScenario() {
+        this(new DBConnectionPool());
+    }
+
+    // Constructor to enable passing custom ConnectionPools, e.g. DDlogDBConnectionPool
+    TestScenario (IConnectionPool dbConnectionPool) {
+        this.dbConnectionPool = dbConnectionPool;
+        this.schedulerBuilder = new Scheduler.Builder(dbConnectionPool);
+        this.eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        this.nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        this.podResourceEventHandler = new PodResourceEventHandler(eventHandler::handle);
+    }
+
+    static TestScenario withPolicies(final List<String> initialPlacement, IConnectionPool connectionPool) {
+        final var scenario = new TestScenario(connectionPool);
+        scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
+        scenario.scheduler = scenario.schedulerBuilder.build();
+        return scenario;
+    }
 
     TestScenario(final DBConnectionPool pool) {
          this.dbConnectionPool = pool;
@@ -58,7 +79,7 @@ class TestScenario {
          this.schedulerBuilder = new Scheduler.Builder(dbConnectionPool);
     }
 
-    TestScenario(final DBConnectionPool pool, final Scheduler.Builder builder) {
+    TestScenario(final IConnectionPool pool, final Scheduler.Builder builder) {
         this.dbConnectionPool = pool;
         this.eventHandler = new PodEventsToDatabase(dbConnectionPool);
         this.nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
@@ -97,6 +118,14 @@ class TestScenario {
         scenario.schedulerBuilder.setScopedInitialPlacement(scoped);
         scenario.scheduler = scenario.schedulerBuilder.build();
         BUILDER_CACHE.put(initialPlacement, scenario.schedulerBuilder);
+        return scenario;
+    }
+
+    static TestScenario withPolicies(final List<String> initialPlacement, final boolean scoped, IConnectionPool dbConnectionPool) {
+        final var scenario = new TestScenario(dbConnectionPool);
+        scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
+        scenario.schedulerBuilder.setScopedInitialPlacement(scoped);
+        scenario.scheduler = scenario.schedulerBuilder.build();
         return scenario;
     }
 
@@ -178,7 +207,7 @@ class TestScenario {
     /**
      * Returns a scheduler if it has been instantiated
      */
-    DBConnectionPool conn() {
+    IConnectionPool conn() {
         return dbConnectionPool;
     }
 
@@ -190,6 +219,7 @@ class TestScenario {
         Collections.shuffle(nodes);
         nodes.forEach(nodeResourceEventHandler::onAddSync);
         pods.forEach(podResourceEventHandler::onAddSync);
+        built = true;
         return this;
     }
 
@@ -198,7 +228,9 @@ class TestScenario {
      * artifacts from database insertion order in the test results.
      */
     TestResult runInitialPlacement() {
-        build();
+        if (!built) {
+            build();
+        }
         assertNotNull(scheduler);
         return new TestResult(scheduler.initialPlacement(), nodes);
     }

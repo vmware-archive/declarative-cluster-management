@@ -31,10 +31,10 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
 import org.jooq.DSLContext;
-import org.jooq.Insert;
-import org.jooq.InsertOnDuplicateSetMoreStep;
-import org.jooq.Query;
-import org.jooq.Table;
+import org.h2.api.Trigger;
+import org.jooq.*;
+import org.jooq.exception.DataAccessException;
+import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,7 +61,7 @@ import static com.vmware.dcm.Utils.convertUnit;
 class PodEventsToDatabase {
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
     private static final long NEVER_REQUEUED = 0;
-    private final DBConnectionPool dbConnectionPool;
+    private final IConnectionPool dbConnectionPool;
     private final Cache<String, Boolean> deletedUids = CacheBuilder.newBuilder()
                                                                       .expireAfterWrite(5, TimeUnit.MINUTES)
                                                                       .build();
@@ -74,7 +74,7 @@ class PodEventsToDatabase {
         DoesNotExist
     }
 
-    PodEventsToDatabase(final DBConnectionPool dbConnectionPool) {
+    PodEventsToDatabase(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
     }
 
@@ -89,7 +89,7 @@ class PodEventsToDatabase {
     }
 
     private void addPod(final Pod pod) {
-        LOG.trace("Adding pod {} (uid: {}, resourceVersion: {})",
+        LOG.info("Adding pod {} (uid: {}, resourceVersion: {})",
                   pod.getMetadata().getName(), pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
         if (pod.getMetadata().getUid() != null &&
             deletedUids.getIfPresent(pod.getMetadata().getUid()) != null) {
@@ -235,7 +235,9 @@ class PodEventsToDatabase {
                 equivalenceClassHash(pod),
                 getQosClass(resourceRequirements),
                 resourceVersion);
-        final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
+        // In order for this insert to work for the DDlog backend, we MUST ensure the columns are ordered exactly
+        // as they are ordered in the table creation SQL statement.
+        final InsertOnDuplicateStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
                 p.UID,
                 p.POD_NAME,
                 p.STATUS,
@@ -243,6 +245,8 @@ class PodEventsToDatabase {
                 p.NAMESPACE,
                 p.OWNER_NAME,
                 p.CREATION_TIMESTAMP,
+                p.PRIORITY,
+                p.SCHEDULERNAME,
                 p.HAS_NODE_SELECTOR_LABELS,
                 p.HAS_POD_AFFINITY_REQUIREMENTS,
                 p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
@@ -261,13 +265,62 @@ class PodEventsToDatabase {
                         pod.getMetadata().getNamespace(),
                         ownerName,
                         pod.getMetadata().getCreationTimestamp(),
+                        priority,
+                        pod.getSpec().getSchedulerName(),
                         hasNodeSelector,
                         hasPodAffinityRequirements,
                         hasPodAntiAffinityRequirements,
                         hasNodePortRequirements,
                         hasPodTopologySpreadConstraints,
+                        equivalenceClassHash(pod),
+                        getQosClass(resourceRequirements).toString(),
+                        resourceVersion,
+                        NEVER_REQUEUED
+                );
+
+        /*
+         * TODO: InsertOnDuplicateSetMoreStep generates a `merge` SQL statement, which isn't currently handled by the
+         * SQl->DDlog translator. For now we comment, but need to address duplicate keys later.
+         */
+        /*final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
+                p.UID,
+                p.POD_NAME,
+                p.STATUS,
+                p.NODE_NAME,
+                p.NAMESPACE,
+                p.CPU_REQUEST,
+                p.MEMORY_REQUEST,
+                p.EPHEMERAL_STORAGE_REQUEST,
+                p.PODS_REQUEST,
+                p.OWNER_NAME,
+                p.CREATION_TIMESTAMP,
+                p.PRIORITY,
+                p.SCHEDULERNAME,
+                p.HAS_NODE_SELECTOR_LABELS,
+                p.HAS_POD_AFFINITY_REQUIREMENTS,
+                p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
+                p.HAS_NODE_PORT_REQUIREMENTS,
+                p.EQUIVALENCE_CLASS,
+                p.QOS_CLASS,
+                p.RESOURCEVERSION,
+                p.LAST_REQUEUE)
+                .values(pod.getMetadata().getUid(),
+                        pod.getMetadata().getName(),
+                        pod.getStatus().getPhase(),
+                        pod.getSpec().getNodeName(),
+                        pod.getMetadata().getNamespace(),
+                        cpuRequest,
+                        memoryRequest,
+                        ephemeralStorageRequest,
+                        podsRequest,
+                        ownerName,
+                        pod.getMetadata().getCreationTimestamp(),
                         priority,
                         pod.getSpec().getSchedulerName(),
+                        hasNodeSelector,
+                        hasPodAffinityRequirements,
+                        hasPodAntiAffinityRequirements,
+                        hasNodePortRequirements,
                         equivalenceClassHash(pod),
                         getQosClass(resourceRequirements).toString(),
                         resourceVersion,
@@ -303,7 +356,7 @@ class PodEventsToDatabase {
                 .set(p.QOS_CLASS, getQosClass(resourceRequirements).toString())
 
                 // This should monotonically increase
-                .set(p.RESOURCEVERSION, resourceVersion);
+                .set(p.RESOURCEVERSION, resourceVersion);*/
         inserts.add(podInfoInsert);
         return inserts;
     }
@@ -528,9 +581,9 @@ class PodEventsToDatabase {
             // in a single insert/returning statement. But we keep the ID incrementing outside the database
             // in anticipation of using ddlog, which does not yet support auto-incrementing IDs.
             final MatchExpressionsRecord record = conn.selectFrom(me)
-                    .where(me.LABEL_KEY.eq(key)
-                            .and(me.LABEL_OPERATOR.eq(operator))
-                            .and(me.LABEL_VALUES.eq(valuesArray)))
+                    .where(DSL.field(me.LABEL_KEY.getUnqualifiedName()).eq(key)
+                            .and(DSL.field(me.LABEL_OPERATOR.getUnqualifiedName()).eq(operator))
+                            .and(DSL.field(me.LABEL_VALUES.getUnqualifiedName()).eq(valuesArray)))
                     .fetchOne();
             if (record == null) {
                 final MatchExpressionsRecord newRecord = conn.newRecord(me);
