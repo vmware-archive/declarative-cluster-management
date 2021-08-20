@@ -37,6 +37,7 @@ import static org.jooq.impl.DSL.using;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -1589,8 +1590,9 @@ public class ModelTest {
 
         final Result<? extends Record> podInfo = model.solve("POD_INFO");
         assertEquals(1, podInfo.size());
-        assertTrue(podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n1") ||
-                            podInfo.get(0).get("CONTROLLABLE__NODE_NAME").equals("n2"));
+        final String value = podInfo.get(0).get("CONTROLLABLE__NODE_NAME", String.class);
+        assertNotNull(value);
+        assertTrue(value.equals("n1") || value.equals("n2"));
     }
 
     @Test

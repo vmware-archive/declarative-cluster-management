@@ -186,20 +186,7 @@ public class DBViews {
                             "JOIN pod_labels " +
                             "     ON (me.label_operator = 'In' " +
                             "        AND me.label_key = pod_labels.label_key " +
-                            "        AND array_contains(me.label_values, pod_labels.label_value)) " +
-                            "      OR (me.label_operator = 'Exists' " +
-                            "        AND me.label_key = pod_labels.label_key) " +
-                            "      OR (me.label_operator = 'NotIn') " +
-                            "      OR (me.label_operator = 'DoesNotExist') " +
-                            "GROUP BY expr_id, label_operator, pod_uid " +
-                            "HAVING CASE me.label_operator " +
-                            "          WHEN 'NotIn' " +
-                            "              THEN NOT(ANY(me.label_key = pod_labels.label_key " +
-                            "                        AND array_contains(me.label_values, pod_labels.label_value))) " +
-                            "          WHEN 'DoesNotExist' " +
-                            "              THEN NOT(ANY(me.label_key = pod_labels.label_key)) " +
-                            "          ELSE 1 = 1 " +
-                            "       END";
+                            "        AND array_contains(me.label_values, pod_labels.label_value)) ";
         viewStatements.addQuery(name, query);
     }
 

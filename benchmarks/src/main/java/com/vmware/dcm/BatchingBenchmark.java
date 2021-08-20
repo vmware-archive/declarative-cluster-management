@@ -16,7 +16,6 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
-import org.jooq.DSLContext;
 import org.jooq.UpdateConditionStep;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -108,21 +107,19 @@ public class BatchingBenchmark {
                                                    : IntStream.range(0, numPods);
         final List<PodInfoRecord> records = stream
             .mapToObj(i -> {
-                    try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                        final PodInfoRecord podInfoRecord = conn.selectFrom(Tables.POD_INFO)
-                                .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i))
-                                .fetchOne();
-                        podInfoRecord.setNodeName("node-1");
-                        return podInfoRecord;
-                    }
+                    final var conn = dbConnectionPool.getConnectionToDb();
+                    final PodInfoRecord podInfoRecord = conn.selectFrom(Tables.POD_INFO)
+                            .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i))
+                            .fetchOne();
+                    podInfoRecord.setNodeName("node-1");
+                    return podInfoRecord;
                 }
             ).collect(Collectors.toList());
-        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            final int[] execute = conn.batchUpdate(records).execute();
-            for (int i = 0; i < numPods; i++) {
-                if (execute[i] == 0) {
-                    throw new RuntimeException();
-                }
+        final var conn = dbConnectionPool.getConnectionToDb();
+        final int[] execute = conn.batchUpdate(records).execute();
+        for (int i = 0; i < numPods; i++) {
+            if (execute[i] == 0) {
+                throw new RuntimeException();
             }
         }
     }
@@ -133,19 +130,16 @@ public class BatchingBenchmark {
                 : IntStream.range(0, numPods);
         final List<UpdateConditionStep<PodInfoRecord>> records = stream
             .mapToObj(i -> {
-                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                        return conn.update(Tables.POD_INFO)
-                                .set(Tables.POD_INFO.NODE_NAME, "node-1")
-                                .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i));
-                    }
-                }
-            ).collect(Collectors.toList());
-        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            final int[] execute = conn.batch(records).execute();
-            for (int i = 0; i < numPods; i++) {
-                if (execute[i] == 0) {
-                    throw new RuntimeException();
-                }
+                final var conn = dbConnectionPool.getConnectionToDb();
+                return conn.update(Tables.POD_INFO)
+                        .set(Tables.POD_INFO.NODE_NAME, "node-1")
+                        .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i));
+            }).collect(Collectors.toList());
+        final var conn = dbConnectionPool.getConnectionToDb();
+        final int[] execute = conn.batch(records).execute();
+        for (int i = 0; i < numPods; i++) {
+            if (execute[i] == 0) {
+                throw new RuntimeException();
             }
         }
     }
@@ -157,15 +151,13 @@ public class BatchingBenchmark {
         final int[] execute = stream
                 .map(
                     i -> {
-                        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                            return conn.update(Tables.POD_INFO)
-                                    .set(Tables.POD_INFO.NODE_NAME, "node-1")
-                                    .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i))
-                                    .execute();
-                        }
+                        final var conn = dbConnectionPool.getConnectionToDb();
+                        return conn.update(Tables.POD_INFO)
+                                .set(Tables.POD_INFO.NODE_NAME, "node-1")
+                                .where(Tables.POD_INFO.POD_NAME.eq("pod-" + i))
+                                .execute();
                     }
                 ).toArray();
-
         for (int i = 0; i < numPods; i++) {
             if (execute[i] == 0) {
                 throw new RuntimeException();

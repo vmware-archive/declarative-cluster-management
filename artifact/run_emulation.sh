@@ -1,6 +1,8 @@
 #!/bin/bash
 
-SCRIPT_DIR=$(dirname $(readlink -f $0))
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 GIT_REV=`git rev-parse HEAD`
 IT_BRANCH=`git rev-parse --abbrev-ref HEAD`
 
