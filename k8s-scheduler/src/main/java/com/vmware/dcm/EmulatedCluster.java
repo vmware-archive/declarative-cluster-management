@@ -47,7 +47,7 @@ class EmulatedCluster {
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
-                                final int affinityRequirementsProportion)
+                                final int affinityRequirementsProportion, final boolean scopeOn)
             throws Exception {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
 
@@ -59,10 +59,11 @@ class EmulatedCluster {
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool,
                 service);
 
-        final int solverMaxTimeInSeconds = numNodes >= 5000 ? 2 : 1;
+        final int solverMaxTimeInSeconds = numNodes >= 5000 ? 30 : 1;
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
                                                  .setDebugMode(true)
                                                  .setNumThreads(4)
+                                                 .setScopedInitialPlacement(scopeOn)
                                                  .setSolverMaxTimeInSeconds(solverMaxTimeInSeconds).build();
         final PodResourceEventHandler handler = new PodResourceEventHandler(scheduler::handlePodEvent, service);
         scheduler.startScheduler(new EmulatedPodToNodeBinder(dbConnectionPool));
@@ -91,8 +92,8 @@ class EmulatedCluster {
         final TraceReplayer traceReplayer = new TraceReplayer();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();
-        traceReplayer.runTrace(client, traceFileName, deployer, "dcm-scheduler", cpuScaleDown,
-                memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion, 5);
+        traceReplayer.runTrace(client, traceFileName, deployer, "dcm-scheduler", numNodes,
+                cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff, affinityRequirementsProportion, 5);
     }
 
     private static Node addNode(final String nodeName, final UUID uid, final Map<String, String> labels,
@@ -170,9 +171,11 @@ class EmulatedCluster {
         options.addRequiredOption("t", "timeScaleDown", true,
                 "Factor by which to scale down arrival rate for pods");
         options.addRequiredOption("s", "startTimeCutOff", true,
-                "N, where we replay first N seconds of trace");
+                "N, where we replay first N seconds of the trace");
         options.addOption("p", "proportion", true,
                 "P, from 0 to 100, indicating the proportion of pods that have affinity requirements");
+        options.addOption("S", "scopeOn", false,
+                "enable auto-scope in scheduler");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
         final int numNodes = Integer.parseInt(cmd.getOptionValue("numNodes"));
@@ -183,13 +186,14 @@ class EmulatedCluster {
         final int startTimeCutOff = Integer.parseInt(cmd.getOptionValue("startTimeCutOff"));
         final int affinityRequirementsProportion = Integer.parseInt(cmd.hasOption("proportion") ?
                 cmd.getOptionValue("proportion") : "0");
+        final boolean scopeOn = cmd.hasOption("scopeOn");
         assert affinityRequirementsProportion >= 0 && affinityRequirementsProportion <= 100;
         LOG.info("Running experiment with parameters: numNodes: {}, traceFile: {}, cpuScaleDown: {}, " +
-                        "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}",
+                        "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}, scopeOn: {}",
                 numNodes, traceFile, cpuScaleDown, memScaleDown,
-                timeScaleDown, startTimeCutOff, affinityRequirementsProportion);
+                timeScaleDown, startTimeCutOff, affinityRequirementsProportion, scopeOn);
         emulatedCluster.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
-                startTimeCutOff, affinityRequirementsProportion);
+                startTimeCutOff, affinityRequirementsProportion, scopeOn);
     }
 
     public static void main(final String[] args) throws Exception {

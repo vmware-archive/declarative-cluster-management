@@ -172,15 +172,18 @@ public class ScopedModel {
     public Function<Table<?>, Result<? extends Record>> scope() {
         return (table) -> {
             if (table.getName().equalsIgnoreCase("spare_capacity_per_node")) {
-                // TODO: Used only for log info. Remove if expensive to compute.
-                final int sizeUnfiltered = conn.selectFrom(table).fetch().size();
+                final long start = System.nanoTime();
 
                 final Result<?> scopedFetcher = conn.selectFrom(table)
                         .where(getWherePredicate(getScopedNodes()))
                         .fetch();
 
+                LOG.info("Scope filtering latency: {}ns", (System.nanoTime() - start));
+
+                // TODO: Used only for log info. Remove if expensive to compute.
+                final int sizeUnfiltered = conn.selectFrom(table).fetch().size();
                 final int sizeFiltered = scopedFetcher.size();
-                LOG.info("solver input size without scope: {}\n" +
+                LOG.info("Solver input size without scope: {}\n" +
                                 "solver input size with scope: {}\n" +
                                 "scope fraction: {}",
                         sizeUnfiltered, sizeFiltered, (double) sizeFiltered / sizeUnfiltered);

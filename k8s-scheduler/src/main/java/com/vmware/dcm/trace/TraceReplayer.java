@@ -46,25 +46,24 @@ public class TraceReplayer {
             MoreExecutors.listeningDecorator(Executors.newScheduledThreadPool(100));
 
     public void runTrace(final KubernetesClient client, final String fileName, final IPodDeployer deployer,
-                  final String schedulerName, final int cpuScaleDown, final int memScaleDown,
+                  final String schedulerName, final int nodesLimit, final int cpuScaleDown, final int memScaleDown,
                   final int timeScaleDown, final int startTimeCutOff) throws Exception {
-        runTrace(client, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
+        runTrace(client, fileName, deployer, schedulerName, nodesLimit, cpuScaleDown, memScaleDown, timeScaleDown,
                 startTimeCutOff, 0);
     }
 
     public void runTrace(final KubernetesClient client, final String fileName, final IPodDeployer deployer,
-                         final String schedulerName, final int cpuScaleDown, final int memScaleDown,
-                         final int timeScaleDown, final int startTimeCutOff, final int affinityProportion)
-                                                                                                throws Exception {
-        runTrace(client, fileName, deployer, schedulerName, cpuScaleDown, memScaleDown, timeScaleDown,
+                         final String schedulerName, final int nodesLimit, final int cpuScaleDown,
+                         final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
+                         final int affinityProportion) throws Exception {
+        runTrace(client, fileName, deployer, schedulerName, nodesLimit, cpuScaleDown, memScaleDown, timeScaleDown,
                 startTimeCutOff, affinityProportion, 60);
     }
 
     public void runTrace(final KubernetesClient client, final String fileName, final IPodDeployer deployer,
-                         final String schedulerName, final int cpuScaleDown, final int memScaleDown,
-                         final int timeScaleDown, final int startTimeCutOff, final int affinityProportion,
-                         final int deletionTime)
-            throws Exception {
+                         final String schedulerName, final int nodesLimit, final int cpuScaleDown,
+                         final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
+                         final int affinityProportion, final int deletionTime) throws Exception {
         LOG.info("Running trace with parameters: SchedulerName:{} CpuScaleDown:{}" +
                         " MemScaleDown:{} TimeScaleDown:{} StartTimeCutOff:{} AffinityProportion:{}",
                 schedulerName, cpuScaleDown, memScaleDown, timeScaleDown, startTimeCutOff, affinityProportion);
@@ -97,7 +96,7 @@ public class TraceReplayer {
                 final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
                 // If the deployment is not too large, then add affinity requirements according to probability
-                final boolean createAffinityRequirements = vmCount < 400 &&
+                final boolean createAffinityRequirements = vmCount < nodesLimit &&
                         (r.nextInt(100) < affinityProportion);
 
                 // generate a deployment's details based on cpu, mem requirements

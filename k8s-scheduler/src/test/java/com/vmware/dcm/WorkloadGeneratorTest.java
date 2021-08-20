@@ -49,9 +49,8 @@ public class WorkloadGeneratorTest {
         final NamespacedKubernetesClient client = server.getClient();
         final IPodDeployer deployer = new KubernetesPodDeployer(client, "default");
         final TraceReplayer traceReplayer = new TraceReplayer();
-
         traceReplayer.runTrace(client, "test-data.txt", deployer, "default-scheduler",
-                1, 1, 100, 1000, 100, 2);
+                400, 1, 1, 100, 1000, 100, 2);
         assertEquals(8, server.getMockServer().getRequestCount());
         final List<String> events = IntStream.range(0, 8)
                 .mapToObj(e -> {
