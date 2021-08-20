@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
 
 
 /**
@@ -43,24 +44,28 @@ class DebugUtils {
                                                         Tables.POD_IMAGES);
 
     // TODO: add folder path as argument
-    static void dbDump(final DSLContext conn) {
+    static UUID dbDump(final DSLContext conn) {
+        final var uuid = UUID.randomUUID();
+        LOG.error("Creating DB dump with UUID: {}", uuid);
         for (final TableImpl<?> table: TABLES) {
             try {
-                FileUtils.writeStringToFile(new File("/tmp/" + table.getName() + ".json"),
+                FileUtils.writeStringToFile(new File("/tmp/" + uuid, table.getName() + ".json"),
                         conn.selectFrom(table).fetch().formatJSON(),
                         StandardCharsets.UTF_8);
             } catch (final IOException e) {
                 LOG.error("Could not create db-dump for table {} because of exception:", table.getName(), e);
             }
         }
+        return uuid;
     }
 
     // TODO: add folder path as argument
-    static void dbLoad(final DSLContext conn) {
+    static void dbLoad(final DSLContext conn, final UUID uuid) {
         for (final TableImpl<?> table: TABLES) {
             try {
-                final String csv = FileUtils.readFileToString(new File("/tmp/" + table.getName() + ".json"),
-                        StandardCharsets.UTF_8);
+                final String csv = FileUtils.readFileToString(
+                                        new File("/tmp/" + uuid, table.getName() + ".json"),
+                                        StandardCharsets.UTF_8);
                 conn.loadInto(table).onDuplicateKeyError()
                         .onErrorAbort()
                         .commitAll().loadJSON(csv).fields(table.fields())
@@ -70,5 +75,4 @@ class DebugUtils {
             }
         }
     }
-
 }

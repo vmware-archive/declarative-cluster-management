@@ -227,10 +227,10 @@ public class SchedulerTest {
                 .build();
         final Result<Record> resultBefore = result.conn().getConnectionToDb()
                 .selectFrom("pod_affinity_match_expressions").fetch();
-        DebugUtils.dbDump(result.conn().getConnectionToDb());
+        final UUID uuid = DebugUtils.dbDump(result.conn().getConnectionToDb());
 
         final var conn = new DBConnectionPool().getConnectionToDb();
-        DebugUtils.dbLoad(conn);
+        DebugUtils.dbLoad(conn, uuid);
         final Result<Record> resultAfter = conn.selectFrom("pod_affinity_match_expressions").fetch();
         assertEquals(resultBefore, resultAfter);
     }
@@ -893,7 +893,7 @@ public class SchedulerTest {
     public void testNoConstraintPods() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        DebugUtils.dbLoad(conn);
+        DebugUtils.dbLoad(conn, UUID.fromString("<enter some valid value here>"));
         // All pod additions have completed
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
         for (int i = 0; i < 100; i++) {
