@@ -206,6 +206,37 @@ public class SchedulerTest {
     }
 
     /*
+     * Verify that array types are correctly dumped/reloaded
+     */
+    @Test
+    public void testDebugUtilsForArrays() {
+        final var result = TestScenario.withPolicies(Policies.getInitialPlacementPolicies())
+                .withNodeGroup("nodes", 3)
+                .withPodGroup("withConstraint", 3, (pod) -> {
+                    pod.getMetadata().setLabels(Map.of("k1", "v1"));
+                    final PodAffinity podAffinity = new PodAffinity();
+                    final List<PodAffinityTerm> podAffinityTerms =
+                            podAffinity.getRequiredDuringSchedulingIgnoredDuringExecution();
+                    final String topologyKey = "kubernetes.io/hostname";
+                    final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
+                            podExpr("k1", "In", "l1", "l2")));
+                    podAffinityTerms.addAll(inTerm);
+                    pod.getSpec().getAffinity().setPodAffinity(podAffinity);
+                })
+                .withPodGroup("remaining", 5)
+                .build();
+        final Result<Record> resultBefore = result.conn().getConnectionToDb()
+                .selectFrom("pod_affinity_match_expressions").fetch();
+        DebugUtils.dbDump(result.conn().getConnectionToDb());
+
+        final var conn = new DBConnectionPool().getConnectionToDb();
+        DebugUtils.dbLoad(conn);
+        final Result<Record> resultAfter = conn.selectFrom("pod_affinity_match_expressions").fetch();
+        assertEquals(resultBefore, resultAfter);
+    }
+
+
+    /*
      * Tests different QoS configurations using two containers and different requests/limits for each
      */
     @ParameterizedTest

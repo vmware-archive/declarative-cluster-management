@@ -8,7 +8,6 @@ package com.vmware.dcm;
 
 import com.vmware.dcm.k8s.generated.Tables;
 import org.apache.commons.io.FileUtils;
-import org.jooq.CSVFormat;
 import org.jooq.DSLContext;
 import org.jooq.impl.TableImpl;
 import org.slf4j.Logger;
@@ -47,8 +46,8 @@ class DebugUtils {
     static void dbDump(final DSLContext conn) {
         for (final TableImpl<?> table: TABLES) {
             try {
-                FileUtils.writeStringToFile(new File("/tmp/" + table.getName() + ".csv"),
-                        conn.selectFrom(table).fetch().formatCSV(new CSVFormat().nullString("{null}")),
+                FileUtils.writeStringToFile(new File("/tmp/" + table.getName() + ".json"),
+                        conn.selectFrom(table).fetch().formatJSON(),
                         StandardCharsets.UTF_8);
             } catch (final IOException e) {
                 LOG.error("Could not create db-dump for table {} because of exception:", table.getName(), e);
@@ -60,13 +59,12 @@ class DebugUtils {
     static void dbLoad(final DSLContext conn) {
         for (final TableImpl<?> table: TABLES) {
             try {
-                final String csv = FileUtils.readFileToString(new File("/tmp/" + table.getName() + ".csv"),
+                final String csv = FileUtils.readFileToString(new File("/tmp/" + table.getName() + ".json"),
                         StandardCharsets.UTF_8);
                 conn.loadInto(table).onDuplicateKeyError()
                         .onErrorAbort()
-                        .commitAll().loadCSV(csv).fields(table.fields())
-                        .nullString("{null}")
-                        .separator(',').execute();
+                        .commitAll().loadJSON(csv).fields(table.fields())
+                        .execute();
             } catch (final IOException e) {
                 LOG.error("Could not recover db-dump for table {} because of exception:", table.getName(), e);
             }
