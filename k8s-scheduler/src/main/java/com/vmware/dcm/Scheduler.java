@@ -35,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -208,9 +209,10 @@ public final class Scheduler {
                             Thread.currentThread().interrupt();
                             break;
                         } catch (final SolverException e) {
-                            LOG.error("Received Model Exception (reason: {}). Dumping DB state to /tmp/",
-                                      e.reason(), e);
-                            DebugUtils.dbDump(dbConnectionPool.getConnectionToDb());
+                            final UUID uuid = UUID.randomUUID();
+                            LOG.error("Received Model Exception (reason: {}). Dumping DB state to /tmp/{}",
+                                      e.reason(), uuid, e);
+                            DebugUtils.dbDump(dbConnectionPool.getConnectionToDb(), uuid);
                         }
                     }
                 }

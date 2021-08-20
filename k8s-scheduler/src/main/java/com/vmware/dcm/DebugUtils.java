@@ -43,9 +43,7 @@ class DebugUtils {
                                                         Tables.NODE_IMAGES,
                                                         Tables.POD_IMAGES);
 
-    // TODO: add folder path as argument
-    static UUID dbDump(final DSLContext conn) {
-        final var uuid = UUID.randomUUID();
+    static void dbDump(final DSLContext conn, final UUID uuid) {
         LOG.error("Creating DB dump with UUID: {}", uuid);
         for (final TableImpl<?> table: TABLES) {
             try {
@@ -56,10 +54,8 @@ class DebugUtils {
                 LOG.error("Could not create db-dump for table {} because of exception:", table.getName(), e);
             }
         }
-        return uuid;
     }
 
-    // TODO: add folder path as argument
     static void dbLoad(final DSLContext conn, final UUID uuid) {
         for (final TableImpl<?> table: TABLES) {
             try {

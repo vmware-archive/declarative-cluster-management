@@ -227,10 +227,10 @@ public class SchedulerTest {
                 .build();
         final Result<Record> resultBefore = result.conn().getConnectionToDb()
                 .selectFrom("pod_affinity_match_expressions").fetch();
-        final UUID uuid = DebugUtils.dbDump(result.conn().getConnectionToDb());
+        DebugUtils.dbDump(result.conn().getConnectionToDb(), UUID.fromString("daed6555-0ea2-419c-8530-403d2825ea8c"));
 
         final var conn = new DBConnectionPool().getConnectionToDb();
-        DebugUtils.dbLoad(conn, uuid);
+        DebugUtils.dbLoad(conn, UUID.fromString("daed6555-0ea2-419c-8530-403d2825ea8c"));
         final Result<Record> resultAfter = conn.selectFrom("pod_affinity_match_expressions").fetch();
         assertEquals(resultBefore, resultAfter);
     }
