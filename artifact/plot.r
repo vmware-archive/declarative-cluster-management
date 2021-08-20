@@ -76,7 +76,7 @@ schedulerTrace <- data.table(dbGetQuery(conn, "select * from scheduler_trace"))
 podsOverTime <- data.table(dbGetQuery(conn, "select * from pods_over_time"))
 dcmMetrics <- data.table(dbGetQuery(conn, "select * from dcm_metrics"))
 dcmTableAccessLatency <- data.table(dbGetQuery(conn, "select * from dcm_table_access_latency"))
-scopeFraction <- data.table(dbGetQuery(conn, "select * from scope_fraction"))
+scopeMetrics <- data.table(dbGetQuery(conn, "select * from scope_fraction"))
 
 if (mode == "full") {
     appCountCutOff=0 ## FIXME: increase when exceptions are resolved
@@ -152,20 +152,56 @@ if (varyFExperiment) {
 #'
 #' Distribution of scope fractions used.
 #'
-scopeFractionWithParams <- marge(scopeFraction[by=list(expId, batchId)], params, by=c('expId'))
+scopeMetrics$scopePercent = scopeMetrics$scopeFraction * 100
+scopeMetricsWithParams <- merge(scopeMetrics[, scopePercent, by=list(expId)], params, by=c('expId'))
 
 if (varyFExperiment) {
-    perPodSchedulingLatencyWithParams[,af := factor(paste("F=", affinityProportion, "%", sep=""), 
-                                                    levels = c("F=0%", "F=50%", "F=100%"))]
+    scopeMetricsPdfPlot <- applyTheme(
+        ggplot(scopeMetricsWithParams,
+               aes(x = scopePercent), size = 1) +
+        geom_density(alpha = 0.4, fill = "#fdb462") + # TODO: play with that later
+        facet_grid(factor(paste("F=", affinityProportion, "%", sep=""), 
+                          levels = c("F=0%", "F=50%", "F=100%")) ~ ., scales="free") +
+        xlab("Scoped nodes percent (%)") +
+        ylab("PDF") +
+        labs(col = "", linetype = "") 
+    ) + guides(col = guide_legend(nrow = 1), linetype=guide_legend(keywidth = 1.6, nrow=2, byrow=TRUE))
+
+    scopeMetricsPdfPlot
+    savePlot(scopeMetricsPdfPlot, "plots/scopeMetricsPdfPlotVaryFN=",
+             scopeMetricsWithParams$numNodes[1], params, plotHeight, plotWidth/2, scale=FALSE)
+} else {
+    scopeMetricsPdfPlot <- applyTheme(
+        ggplot(scopeMetricsWithParams,
+               aes(x = scopePercent), size = 1) +
+        geom_density(alpha = 0.4, fill = "#fdb462") + # TODO: play with that later
+        ## geom_histogram() +
+        ## geom_vline(aes(xintercept=mean(scopePercent)), linetype="dashed", size=1) +
+        facet_grid(factor(paste("N=", numNodes, sep=""), 
+                          levels = sapply(params$numNodes[1:3],
+                                          function(n) paste(c("N=", n), collapse = ""))) ~ .,
+                   scales="free") +
+        xlab("Scoped nodes percent (%)") +
+        ylab("PDF") +
+        labs(col = "", linetype = "") 
+    ) + guides(col = guide_legend(nrow = 1), linetype=guide_legend(keywidth = 1.6, nrow=2, byrow=TRUE))
+
+    scopeMetricsPdfPlot
+    savePlot(scopeMetricsPdfPlot, "plots/scopeMetricsPdfPlotVaryNF=",
+             scopeMetricsWithParams$numNodes[1], params, plotHeight, plotWidth/2, scale=FALSE)    
+}
+
+if (varyFExperiment) {
     schedulingLatencyEcdf100xPlot <- applyTheme(
         ggplot(perPodSchedulingLatencyWithParams,
                aes(x = Latency / 1e6 / BatchSize,  # To milliseconds
-                   color = color), size= 1) +
+                   color = color), size = 1) +
         stat_ecdf(size = 1) +
         scale_linetype_manual(values = c("solid", "dotted")) +
         scale_x_log10() +
         ## scale_x_log10(breaks=c(1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100)) +
-        facet_grid(af ~ . ) +
+        facet_grid(factor(paste("F=", affinityProportion, "%", sep=""), 
+                          levels = c("F=0%", "F=50%", "F=100%")) ~ . ) +
         ## coord_cartesian(xlim = c(1.1, 100)) +
         xlab("Scheduling Latency (ms)") +
         ylab("ECDF") +
@@ -174,7 +210,7 @@ if (varyFExperiment) {
 
     schedulingLatencyEcdf100xPlot
     savePlot(schedulingLatencyEcdf100xPlot, "plots/schedulingLatencyEcdfVaryFN=",
-             params$numNodes[1], params, plotHeight, plotWidth, scale=FALSE)
+             perPodSchedulingLatencyWithParams$numNodes[1], params, plotHeight, plotWidth, scale=FALSE)
 }
 
 #'
@@ -218,7 +254,7 @@ if (varyFExperiment) {
 
     dcmLatencyBreakdown100xPlot
     savePlot(dcmLatencyBreakdown100xPlot, "plots/dcmLatencyBreakdownVaryFN=",
-             params$numNodes[1], params, plotHeight, plotWidth)
+             longDcmLatencyMetricsWithBatchSizes$numNodes[1], params, plotHeight, plotWidth)
 } else {
     dcmLatencyBreakdownPlot <- applyTheme(
         ggplot(longDcmLatencyMetricsWithBatchSizes[batchId >= batchIdMin]) +
@@ -235,7 +271,7 @@ if (varyFExperiment) {
 
     dcmLatencyBreakdownPlot
     savePlot(dcmLatencyBreakdownPlot, "plots/dcmLatencyBreakdownVaryNF=",
-             params$affinityProportion[1], params, plotHeight, plotWidth, scale=FALSE)
+             longDcmLatencyMetricsWithBatchSizes$affinityProportion[1], params, plotHeight, plotWidth, scale=FALSE)
 }
 
 #
