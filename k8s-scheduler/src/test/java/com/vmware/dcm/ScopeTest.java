@@ -192,6 +192,35 @@ public class ScopeTest {
         assertTrue(scopedNodes.containsAll(randNodes.stream().map(x -> "n" + x).collect(Collectors.toSet())));
     }
 
+    @Test
+    public void testEmptyPodBatch() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final List<String> policies = Policies.getInitialPlacementPolicies();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        final int numNodes = 10;
+        for (int i = 0; i < numNodes; i++) {
+            final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
+            nodeResourceEventHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running");
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
+        }
+
+        // Don't add any pending pods
+
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                .setInitialPlacementPolicies(policies)
+                .setScopedInitialPlacement(true)
+                .setDebugMode(true).build();
+        scheduler.initialPlacement();
+    }
+
     /*
      * E2E test with scheduler:
      * Test if Scope limits candidate nodes according to spare resources

@@ -80,7 +80,7 @@ public class ScopedModel {
      * @return Number of nodes to consider
      */
     private int getLimit(final int podCnt) {
-        return (int) Math.ceil(LIMIT_TUNE_DEFAULT * podCnt);
+        return podCnt == 0 ? 1 : (int) Math.ceil(LIMIT_TUNE_DEFAULT * podCnt);
     }
 
     /**
