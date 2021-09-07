@@ -28,6 +28,12 @@ gitProperties {
     gitPropertiesName = "git.properties"
 }
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(16)
+    }
+}
+
 jooq {
  generateSchemaSourceOnCompilation = true
  sample(sourceSets.main) {

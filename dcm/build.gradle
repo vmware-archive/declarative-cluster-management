@@ -40,20 +40,20 @@ dependencies {
     testImplementation "com.h2database:h2:${h2Version}"
 }
 
-// Use this block to compile DCM for a specific JDK release
-// compileJava {
-//   options.compilerArgs = ["--release", "12"]
-// }
-
 pitest {
     //adds dependency to org.pitest:pitest-junit5-plugin and sets "testPlugin" to "junit5"
     junit5PluginVersion = '0.14'
     targetTests = ["*ModelTest*"]
 }
 
+// Make sure the core DCM library is always built using an older JDK. We are free to use
+// newer JDKs in the rest of the code base.
 java {
     withJavadocJar()
     withSourcesJar()
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(Integer.parseInt("${dcmLibrarySourceLevel}"))
+    }
 }
 
 javadoc {

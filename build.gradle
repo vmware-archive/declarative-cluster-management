@@ -56,8 +56,6 @@ subprojects {
                                           "|.*/com/vmware/dcm/k8s/generated/.*)"
     }
 
-    sourceCompatibility = "${commonSourceLevel}"
-
     tasks.withType(JavaCompile) {
         options.encoding = 'UTF-8'
     }
