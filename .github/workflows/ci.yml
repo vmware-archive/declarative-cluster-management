@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: ['11', '16']
+        java: ['16']
     name: Tests (Java ${{ matrix.java }})
 
     steps:
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: ['11', '16']
+        java: ['16']
     name: Integration Tests (Java ${{ matrix.java }})
 
     steps:

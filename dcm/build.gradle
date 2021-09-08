@@ -56,6 +56,10 @@ java {
     }
 }
 
+tasks.withType(JavaCompile) {
+    options.release.set(Integer.parseInt("${dcmLibrarySourceLevel}"))
+}
+
 javadoc {
     exclude '**/com/vmware/dcm/generated/parser/ParseException**'
     exclude '**/com/vmware/dcm/generated/parser/DcmSqlParserImpl**'
