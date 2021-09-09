@@ -22,6 +22,15 @@ import java.util.function.Consumer;
  * it to the database unlike the NodeResourceEventHandler. We do this to have tighter control over
  * batching these writes to the database.
  */
+
+record PodEvent(Action action, Pod pod) {
+    enum Action {
+        ADDED,
+        UPDATED,
+        DELETED
+    }
+}
+
 class PodResourceEventHandler implements ResourceEventHandler<Pod> {
     private static final Logger LOG = LoggerFactory.getLogger(PodResourceEventHandler.class);
     private final Consumer<PodEvent> podEventNotification;

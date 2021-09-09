@@ -146,15 +146,15 @@ class PodEventsToDatabase {
     }
 
     PodEvent handle(final PodEvent event) {
-        switch (event.getAction()) {
+        switch (event.action()) {
             case ADDED:
-                addPod(event.getPod());
+                addPod(event.pod());
                 break;
             case UPDATED:
-                updatePod(event.getPod());
+                updatePod(event.pod());
                 break;
             case DELETED:
-                deletePod(event.getPod());
+                deletePod(event.pod());
                 break;
             default:
                 throw new IllegalArgumentException(event.toString());
