@@ -222,7 +222,6 @@ class TestScenario {
                    .forEach(leftGroupRow -> {
                             final String leftPodName = leftGroupRow.get("POD_NAME", String.class);
                             final String leftNodeName = leftGroupRow.get("CONTROLLABLE__NODE_NAME", String.class);
-                            assertNotEquals("NULL_NODE", leftNodeName);
                             final Set<String> otherNodes = results.stream()
                                    .filter(e -> {
                                        for (final var groupName: rightGroup.names) {
@@ -268,22 +267,14 @@ class TestScenario {
                 expected.add("NULL_NODE");
             }
             switch (op) {
-                case EQUALS:
-                    assertEquals(expected, actual, String.format("Failed: %s == %s", actual, expected));
-                    break;
-                case NOT_EQUALS:
-                    assertNotEquals(expected, actual, String.format("Failed: %s == %s", actual, expected));
-                    break;
-                case IN:
-                    assertTrue(expected.containsAll(actual),
-                               String.format("Failed: %s IN %s", actual, expected));
-                    break;
-                case NOT_IN:
-                    assertFalse(expected.containsAll(actual),
-                                String.format("Failed: %s NOT IN %s", actual, expected));
-                    break;
-                default:
-                    throw new IllegalArgumentException(op.toString());
+                case EQUALS -> assertEquals(expected, actual, String.format("Failed: %s == %s", actual, expected));
+                case NOT_EQUALS -> assertNotEquals(expected, actual,
+                                                   String.format("Failed: %s != %s", actual, expected));
+                case IN -> assertTrue(expected.containsAll(actual),
+                        String.format("Failed: %s IN %s", actual, expected));
+                case NOT_IN -> assertFalse(expected.containsAll(actual),
+                        String.format("Failed: %s NOT IN %s", actual, expected));
+                default -> throw new IllegalArgumentException(op.toString());
             }
             return this;
         }

@@ -19,7 +19,6 @@ import com.vmware.dcm.k8s.generated.tables.records.PodTolerationsRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
-import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
 import io.fabric8.kubernetes.api.model.NodeAffinity;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -147,17 +146,10 @@ class PodEventsToDatabase {
 
     PodEvent handle(final PodEvent event) {
         switch (event.action()) {
-            case ADDED:
-                addPod(event.pod());
-                break;
-            case UPDATED:
-                updatePod(event.pod());
-                break;
-            case DELETED:
-                deletePod(event.pod());
-                break;
-            default:
-                throw new IllegalArgumentException(event.toString());
+            case ADDED -> addPod(event.pod());
+            case UPDATED -> updatePod(event.pod());
+            case DELETED -> deletePod(event.pod());
+            default -> throw new IllegalArgumentException(event.toString());
         }
         return event;
     }
@@ -257,37 +249,11 @@ class PodEventsToDatabase {
         boolean hasPodAntiAffinityRequirements = false;
 
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
-            final List<PodAffinityTerm> terms = pod.getSpec().getAffinity().getPodAffinity()
-                    .getRequiredDuringSchedulingIgnoredDuringExecution();
-            for (final PodAffinityTerm term: terms) {
-                final List<LabelSelectorRequirement> requirements = term.getLabelSelector().getMatchExpressions();
-                for (final LabelSelectorRequirement requirement: requirements) {
-                    final String operator = requirement.getOperator();
-                    if (operator.equals(Operators.In.toString()) || operator.equals(Operators.Exists.toString())) {
-                        hasPodAffinityRequirements = true;
-                    } else if (operator.equals(Operators.NotIn.toString()) ||
-                            operator.equals(Operators.DoesNotExist.toString())) {
-                        hasPodAntiAffinityRequirements = true;
-                    }
-                }
-            }
+            hasPodAffinityRequirements = true;
         }
 
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAntiAffinity() != null) {
-            final List<PodAffinityTerm> terms = pod.getSpec().getAffinity().getPodAntiAffinity()
-                    .getRequiredDuringSchedulingIgnoredDuringExecution();
-            for (final PodAffinityTerm term: terms) {
-                final List<LabelSelectorRequirement> requirements = term.getLabelSelector().getMatchExpressions();
-                for (final LabelSelectorRequirement requirement: requirements) {
-                    final String operator = requirement.getOperator();
-                    if (operator.equals(Operators.In.toString()) || operator.equals(Operators.Exists.toString())) {
-                        hasPodAntiAffinityRequirements = true;
-                    } else if (operator.equals(Operators.NotIn.toString()) ||
-                            operator.equals(Operators.DoesNotExist.toString())) {
-                        hasPodAffinityRequirements = true;
-                    }
-                }
-            }
+            hasPodAntiAffinityRequirements = true;
         }
 
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
@@ -311,7 +277,7 @@ class PodEventsToDatabase {
                 priority,
                 pod.getSpec().getSchedulerName(),
                 equivalenceClassHash(pod),
-                getQosClass(resourceRequirements).toString(),
+                getQosClass(resourceRequirements),
                 resourceVersion);
         final InsertOnDuplicateSetMoreStep<PodInfoRecord> podInfoInsert = conn.insertInto(Tables.POD_INFO,
                 p.UID,

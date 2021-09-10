@@ -74,7 +74,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Tests for the scheduler
@@ -479,7 +478,8 @@ public class SchedulerTest {
                     podAffinityTerms.addAll(terms);
                     pod.getSpec().getAffinity().setPodAffinity(podAffinity);
                 })
-                .withPodGroup("remaining", 5)
+                .withPodGroup("remaining", 5,
+                              (pod) -> pod.getMetadata().setLabels(Collections.singletonMap("dummyKey", "dummyValue")))
                 .runInitialPlacement();
         if (cannotBePlacedAnywhere) {
             result.expect(nodesForPodGroup("withConstraint"), EQUALS, nodeGroup("NULL_NODE"));
@@ -572,7 +572,8 @@ public class SchedulerTest {
                     podAntiAffinityTerms.addAll(terms);
                     pod.getSpec().getAffinity().setPodAntiAffinity(podAntiAffinity);
                 })
-                .withPodGroup("remaining", 5)
+                .withPodGroup("remaining", 5,
+                              (pod) -> pod.getMetadata().setLabels(Collections.singletonMap("dummyKey", "dummyValue")))
                 .runInitialPlacement();
         if (cannotBePlacedAnywhere) {
             result.expect(nodesForPodGroup("withConstraint"), EQUALS, nodeGroup("NULL_NODE"));
@@ -580,7 +581,12 @@ public class SchedulerTest {
         }
         result.expect(nodesForPodGroup("withConstraint"), NOT_EQUALS, nodeGroup("NULL_NODE"));
         if (antiAffineToLabelledPods && antiAffineToRemainingPods) {
-            fail();
+            // In this configuration, there should be exactly one NULL_NODE assignment (because all pods
+            // from the 'remaining' group go to one node, and then there's 2 nodes left for 3 pods that
+            // are anti-affine to each other).
+            result.expect(podGroup("withConstraint"), NOT_COLOCATED_WITH, podGroup("withConstraint"));
+            result.expect(nodesForPodGroup("withConstraint"),
+                          nodes -> nodes.stream().filter(e -> e.equals("NULL_NODE")).count() == 1);
         } else if (antiAffineToLabelledPods) {
             result.expect(podGroup("withConstraint"), NOT_COLOCATED_WITH, podGroup("withConstraint"));
         } else if (antiAffineToRemainingPods) {
@@ -625,23 +631,21 @@ public class SchedulerTest {
                 argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l2"), false, false, false),
                 argGen("AntiAffinity", existsTerm, map("k", "l", "k2", "l3"), false, false, false),
 
-                // TODO: The following tests need to be revisited, as they always lead (correctly)
-                //       to NULL_NODE assignments for the labelled pods
                 // NotIn
-                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k1", "l3"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), false, false, true),
-                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, false, true),
+                argGen("AntiAffinity", notInTerm, map("k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k1", "l3"), true, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l3"), true, true, false),
+                argGen("AntiAffinity", notInTerm, map("k", "l", "k1", "l2"), false, true, false),
 
                 // DoesNotExist
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, false, true),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, false, true),
-                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, false, true),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, false, true),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, false, true),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, false, true)
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
         );
     }
 

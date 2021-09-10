@@ -7,18 +7,18 @@
 package com.vmware.dcm;
 
 import com.google.common.base.Preconditions;
-import io.fabric8.kubernetes.api.model.ContainerImage;
-import io.fabric8.kubernetes.api.model.Node;
-import io.fabric8.kubernetes.api.model.NodeCondition;
-import io.fabric8.kubernetes.api.model.NodeStatus;
-import io.fabric8.kubernetes.api.model.Quantity;
-import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.NodeInfo;
 import com.vmware.dcm.k8s.generated.tables.records.NodeImagesRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeInfoRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeLabelsRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeTaintsRecord;
+import io.fabric8.kubernetes.api.model.ContainerImage;
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.NodeCondition;
+import io.fabric8.kubernetes.api.model.NodeStatus;
+import io.fabric8.kubernetes.api.model.Quantity;
+import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import org.jooq.DSLContext;
 import org.jooq.Insert;
 import org.jooq.Query;
@@ -145,26 +145,13 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         for (final NodeCondition condition : status.getConditions()) {
             final boolean value = condition.getStatus().equals("True");
             switch (condition.getType()) {
-                case "OutOfDisk":
-                    outOfDisk = value;
-                    break;
-                case "MemoryPressure":
-                    memoryPressure = value;
-                    break;
-                case "DiskPressure":
-                    diskPressure = value;
-                    break;
-                case "PIDPressure":
-                    pidPressure = value;
-                    break;
-                case "NetworkUnavailable":
-                    networkUnavailable = value;
-                    break;
-                case "Ready":
-                    ready = value;
-                    break;
-                default:
-                    throw new IllegalStateException("Unknown condition type " + condition.getType());
+                case "OutOfDisk" -> outOfDisk = value;
+                case "MemoryPressure" -> memoryPressure = value;
+                case "DiskPressure" -> diskPressure = value;
+                case "PIDPressure" -> pidPressure = value;
+                case "NetworkUnavailable" -> networkUnavailable = value;
+                case "Ready" -> ready = value;
+                default -> throw new IllegalStateException("Unknown condition type " + condition.getType());
             }
         }
 

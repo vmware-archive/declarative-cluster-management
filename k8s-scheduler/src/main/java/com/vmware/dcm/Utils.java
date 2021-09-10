@@ -34,25 +34,19 @@ class Utils {
         final double baseAmount = Double.parseDouble(res);
         final String unit = Objects.requireNonNull(quantity.getFormat());
         if (!unit.equals("")) {
-            switch (unit) {
-                case "m":
-                case "Ki":
-                    return baseAmount;
-                case "Mi":
-                    return baseAmount * Math.pow(2, 10);
-                case "Gi":
-                    return baseAmount * Math.pow(2, 20);
-                case "Ti":
-                    return baseAmount * Math.pow(2, 30);
-                case "Pi":
-                    // XXX: Likely to overflow
-                    return baseAmount * Math.pow(2, 40);
-                case "Ei":
-                    // XXX: Likely to overflow
-                    return baseAmount * Math.pow(2, 50);
-                default:
-                    return baseAmount / Math.pow(2, 10);
-            }
+            return switch (unit) {
+                case "m", "Ki" -> baseAmount;
+                case "Mi" -> baseAmount * Math.pow(2, 10);
+                case "Gi" -> baseAmount * Math.pow(2, 20);
+                case "Ti" -> baseAmount * Math.pow(2, 30);
+                case "Pi" ->
+                        // XXX: Likely to overflow
+                        baseAmount * Math.pow(2, 40);
+                case "Ei" ->
+                        // XXX: Likely to overflow
+                        baseAmount * Math.pow(2, 50);
+                default -> baseAmount / Math.pow(2, 10);
+            };
         } else {
             if (resourceName.equals("cpu")) {
                 return baseAmount * 1000; // we represent CPU units in milli-cpus
