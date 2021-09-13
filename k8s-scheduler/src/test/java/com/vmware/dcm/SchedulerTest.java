@@ -1003,6 +1003,31 @@ public class SchedulerTest {
         assertTrue(runningPodAssignments.contains("NULL_NODE"));
     }
 
+    /*
+     * Test requeue code path
+     */
+    @Test
+    public void testRequeue() throws InterruptedException {
+        final var scenario = TestScenario.withPolicies(Policies.getInitialPlacementPolicies())
+                .withNodeGroup("node", 1, (node) -> {
+                    node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(100)));
+                })
+                .withPodGroup("pods", 1, (pod) -> {
+                    final Map<String, Quantity> resourceRequests = new HashMap<>();
+                    resourceRequests.put("cpu", new Quantity("101"));
+                    pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+                }).build();
+        final var conn = scenario.conn().getConnectionToDb();
+        assertEquals(1, conn.fetch("SELECT * FROM PODS_TO_ASSIGN_NO_LIMIT").size());
+        final var binder = new EmulatedPodToNodeBinder(scenario.conn());
+        // Requeued pod should only be considered once every second
+        for (int i = 0; i < 2; i++) {
+            scenario.scheduler().scheduleAllPendingPods(binder);
+            assertEquals(0, conn.fetch("SELECT * FROM PODS_TO_ASSIGN_NO_LIMIT").size());
+            Thread.sleep(1000);
+            assertEquals(1, conn.fetch("SELECT * FROM PODS_TO_ASSIGN_NO_LIMIT").size());
+        }
+    }
 
     static Map<String, String> map(final String k1, final String v1) {
         return Collections.singletonMap(k1, v1);

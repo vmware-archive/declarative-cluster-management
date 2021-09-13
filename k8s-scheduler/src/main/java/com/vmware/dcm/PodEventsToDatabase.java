@@ -60,6 +60,7 @@ import java.util.stream.Collectors;
  */
 class PodEventsToDatabase {
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
+    private static final long NEVER_REQUEUED = 0;
     private final DBConnectionPool dbConnectionPool;
     private final Cache<String, Boolean> deletedUids = CacheBuilder.newBuilder()
                                                                       .expireAfterWrite(5, TimeUnit.MINUTES)
@@ -297,7 +298,8 @@ class PodEventsToDatabase {
                 p.SCHEDULERNAME,
                 p.EQUIVALENCE_CLASS,
                 p.QOS_CLASS,
-                p.RESOURCEVERSION)
+                p.RESOURCEVERSION,
+                p.LAST_REQUEUE)
                 .values(pod.getMetadata().getUid(),
                         pod.getMetadata().getName(),
                         pod.getStatus().getPhase(),
@@ -316,7 +318,8 @@ class PodEventsToDatabase {
                         pod.getSpec().getSchedulerName(),
                         equivalenceClassHash(pod),
                         getQosClass(resourceRequirements).toString(),
-                        resourceVersion
+                        resourceVersion,
+                        NEVER_REQUEUED
                 )
                 .onDuplicateKeyUpdate()
                 .set(p.UID, pod.getMetadata().getUid())

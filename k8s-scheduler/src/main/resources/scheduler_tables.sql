@@ -45,6 +45,7 @@ create table pod_info
   equivalence_class bigint not null,
   qos_class varchar(10) not null,
   resourceVersion bigint not null,
+  last_requeue bigint not null,
   primary key(uid),
   constraint uc_namespaced_pod_name unique (pod_name, namespace)
 );
