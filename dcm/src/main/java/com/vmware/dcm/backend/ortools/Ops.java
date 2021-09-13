@@ -837,11 +837,16 @@ public class Ops {
         final Domain domainT = Domain.fromValues(domainArr);
         final Domain intervalRange = Domain.fromFlatIntervals(new long[] {domainT.min() + 1, domainT.max() + 1});
         final IntVar unitIntervalSize = model.newConstant(1);
+        final List<IntVar> presenceLiterals = new ArrayList<>(numTasks);
         for (int i = 0; i < numTasks; i++) {
             final IntVar intervalEnd = model.newIntVarFromDomain(intervalRange, "");
-
+            final IntVar presence = model.newBoolVar("");
+            presenceLiterals.add(presence);
+            model.addLinearExpressionInDomain(varsToAssign.get(i), domainT).onlyEnforceIf(presence);
+            model.addLinearExpressionInDomain(varsToAssign.get(i), domainT.complement()).onlyEnforceIf(presence.not());
             // interval with start as taskToNodeAssignment and size of 1
-            tasksIntervals[i] = model.newIntervalVar(varsToAssign.get(i), unitIntervalSize, intervalEnd, "");
+            tasksIntervals[i] = model.newOptionalIntervalVar(varsToAssign.get(i), unitIntervalSize, intervalEnd,
+                                                             presence, "");
         }
 
         // Create dummy intervals
@@ -871,7 +876,7 @@ public class Ops {
         for (int i = 0; i < numResources; i++) {
             final long[] demand = new long[numTasks + capacities.get(0).size()];
 
-            // copy over task demands
+            // copy ver task demands
             int iter = 0;
             for (final long taskDemand: demands.get(i)) {
                 demand[iter] = taskDemand;
@@ -893,10 +898,14 @@ public class Ops {
         }
 
         // Cumulative score
+        final IntVar penalty = sumIntVar(presenceLiterals);
         for (int i = 0; i < numResources; i++) {
             final IntVar max = model.newIntVar(0, maxCapacities[i], "");
             model.addCumulative(tasksIntervals, updatedDemands[i], max);
             model.minimize(max);
+
+            // Balance out the need to minimize the load with a penalty for not assigning tasks at all
+            model.maximize(mult(penalty, maxCapacities[i]));
         }
     }
 

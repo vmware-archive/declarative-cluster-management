@@ -2,6 +2,11 @@
 
 ## Ongoing: Release 0.13.0
 
+* Issues fixed:
+  * `capacity_constraint` now uses optional intervals and does not interfere with core computations.
+  * build: use gradle toolchains to always build dcm/ sub-project with JDK 11 and other sub-projects with
+            more recent JDKs.
+  
 ## July 26, 2021: Release 0.12.0
 
 * Public API changes:
