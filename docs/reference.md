@@ -156,11 +156,17 @@ create table virtual_machine (
 ```
 
 Example usage in a view:
-<!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/DBViews.java#L90-L92 -->
+<!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/DBViews.java#L90-L98 -->
 ```sql
-final String query = "SELECT pod_info.*, node_name AS controllable__node_name " +
-                     "FROM pod_info " +
-                     "WHERE status = 'Pending' AND node_name IS NULL AND schedulerName = 'dcm-scheduler'";
+final String query = """
+                      SELECT pod_info.*, node_name AS controllable__node_name
+                      FROM pod_info
+                      WHERE status = 'Pending'
+                        AND node_name IS NULL
+                        AND schedulerName = 'dcm-scheduler'
+                        AND LAST_REQUEUE + 1000 <=
+                            (SELECT 1000 * extract(epoch FROM current_timestamp())) -- timestamp in ms
+                     """;
 ```
 
 ### Hard constraints
