@@ -10,14 +10,12 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 
 import java.util.List;
-import java.util.Objects;
 
 class Utils {
 
-    // By default, we always assign a request size of 1 milli CPU or 1KB.
-    static double resourceRequirementSum(final List<ResourceRequirements> resourceRequirements,
-                                          final String resourceName) {
-        return resourceRequirements.stream().mapToDouble(e -> {
+    static long resourceRequirementSum(final List<ResourceRequirements> resourceRequirements,
+                                             final String resourceName) {
+        return resourceRequirements.stream().mapToLong(e -> {
             if (e == null || e.getRequests() == null) {
                 return 0L;
             }
@@ -29,29 +27,19 @@ class Utils {
         }).sum();
     }
 
-    static double convertUnit(final Quantity quantity, final String resourceName) {
-        final String res = quantity.getAmount();
-        final double baseAmount = Double.parseDouble(res);
-        final String unit = Objects.requireNonNull(quantity.getFormat());
-        if (!unit.equals("")) {
-            return switch (unit) {
-                case "m", "Ki" -> baseAmount;
-                case "Mi" -> baseAmount * Math.pow(2, 10);
-                case "Gi" -> baseAmount * Math.pow(2, 20);
-                case "Ti" -> baseAmount * Math.pow(2, 30);
-                case "Pi" ->
-                        // XXX: Likely to overflow
-                        baseAmount * Math.pow(2, 40);
-                case "Ei" ->
-                        // XXX: Likely to overflow
-                        baseAmount * Math.pow(2, 50);
-                default -> baseAmount / Math.pow(2, 10);
-            };
-        } else {
-            if (resourceName.equals("cpu")) {
-                return baseAmount * 1000; // we represent CPU units in milli-cpus
+    static long convertUnit(final Quantity quantity, final String resourceName) {
+        if (resourceName.equals("cpu")) {
+            final String unit = quantity.getFormat();
+            if (unit.equals("")) {
+                // Convert to milli-cpu
+                return (long) (Double.parseDouble(quantity.getAmount()) * 1000);
+            } else if (unit.equals("m")) {
+                return (long) (Double.parseDouble(quantity.getAmount()));
             }
-            return baseAmount;
+            throw new IllegalArgumentException(quantity + " for resource type: " + resourceName);
+        } else {
+            // Values are guaranteed to be under 2^63 - 1, so this is safe
+            return Quantity.getAmountInBytes(quantity).longValue();
         }
     }
 }

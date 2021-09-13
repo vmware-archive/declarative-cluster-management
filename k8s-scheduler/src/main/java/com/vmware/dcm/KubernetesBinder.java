@@ -8,12 +8,15 @@ package com.vmware.dcm;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.fabric8.kubernetes.api.model.Binding;
+import io.fabric8.kubernetes.api.model.Event;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import org.jooq.Record;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
@@ -44,6 +47,7 @@ class KubernetesBinder implements IPodToNodeBinder {
         binding.setTarget(target);
         binding.setMetadata(meta);
         client.bindings().inNamespace(namespace).create(binding);
+        notifySuccess(namespace, podName, nodeName);
     }
 
     @Override
@@ -69,5 +73,52 @@ class KubernetesBinder implements IPodToNodeBinder {
                     }
                 )
         ));
+    }
+
+    public void notifySuccess(final String namespace, final String podName, final String nodeName) {
+        final ObjectReference podRef = new ObjectReference();
+        podRef.setKind("Pod");
+        podRef.setApiVersion("v1");
+        podRef.setName(podName);
+        podRef.setNamespace(namespace);
+        final Event event = new Event();
+        final ObjectMeta meta = new ObjectMeta();
+        meta.setName(podName + UUID.randomUUID());
+        event.setMetadata(meta);
+        event.setApiVersion("v1");
+        event.setMessage(String.format("Successfully assigned %s/%s to %s", namespace, podName, nodeName));
+        event.setInvolvedObject(podRef);
+        event.setReason("Scheduled");
+        event.setType("Normal");
+        try {
+            client.v1().events().inNamespace(namespace).create(event);
+        } catch (final KubernetesClientException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void notifyFail(final Record record) {
+        final String podName = record.get("POD_NAME", String.class);
+        final String namespace = record.get("NAMESPACE", String.class);
+        final ObjectReference podRef = new ObjectReference();
+        podRef.setKind("Pod");
+        podRef.setApiVersion("v1");
+        podRef.setName(podName);
+        podRef.setNamespace(namespace);
+        final Event event = new Event();
+        final ObjectMeta meta = new ObjectMeta();
+        meta.setName(podName + UUID.randomUUID());
+        event.setMetadata(meta);
+        event.setApiVersion("v1");
+        event.setMessage("looooooooooooooooool");
+        event.setInvolvedObject(podRef);
+        event.setReason("FailedScheduling");
+        event.setType("Warning");
+        try {
+            client.v1().events().inNamespace(namespace).create(event);
+        } catch (final KubernetesClientException e) {
+            e.printStackTrace();
+        }
     }
 }

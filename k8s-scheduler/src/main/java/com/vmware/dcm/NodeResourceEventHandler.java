@@ -105,7 +105,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                     queries.add(conn.deleteFrom(Tables.NODE_LABELS)
                             .where(Tables.NODE_LABELS.NODE_NAME
                                     .eq(oldNode.getMetadata().getName())));
-                    queries.addAll(addNodeTaints(conn, newNode));
+                    queries.addAll(addNodeLabels(conn, newNode));
                 }
                 if (!Optional.ofNullable(oldNode.getStatus().getImages())
                         .equals(Optional.ofNullable(newNode.getStatus().getImages()))) {
@@ -113,7 +113,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                         conn.deleteFrom(Tables.NODE_IMAGES)
                                 .where(Tables.NODE_IMAGES.NODE_NAME
                                         .eq(oldNode.getMetadata().getName())));
-                    queries.addAll(addNodeTaints(conn, newNode));
+                    queries.addAll(addNodeImages(conn, newNode));
                 }
             }
             conn.batch(queries).execute();
@@ -156,14 +156,14 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         }
 
         // TODO: test unit conversions
-        final long cpuCapacity = Long.parseLong(capacity.get("cpu").getAmount()) * 1000L;
-        final long memoryCapacity = (long) Utils.convertUnit(capacity.get("memory"), "memory");
-        final long ephemeralStorageCapacity = (long) Utils.convertUnit(capacity.get("ephemeral-storage"),
+        final long cpuCapacity = Utils.convertUnit(capacity.get("cpu"), "cpu");
+        final long memoryCapacity = Utils.convertUnit(capacity.get("memory"), "memory");
+        final long ephemeralStorageCapacity = Utils.convertUnit(capacity.get("ephemeral-storage"),
                                                                          "ephemeral-storage");
         final long podCapacity = Long.parseLong(capacity.get("pods").getAmount());
-        final long cpuAllocatable = Long.parseLong(allocatable.get("cpu").getAmount()) * 1000L;
-        final long memoryAllocatable = (long) Utils.convertUnit(allocatable.get("memory"), "memory");
-        final long ephemeralStorageAllocatable = (long) Utils.convertUnit(allocatable.get("ephemeral-storage"),
+        final long cpuAllocatable =  Utils.convertUnit(allocatable.get("cpu"), "cpu");
+        final long memoryAllocatable = Utils.convertUnit(allocatable.get("memory"), "memory");
+        final long ephemeralStorageAllocatable = Utils.convertUnit(allocatable.get("ephemeral-storage"),
                                                                          "ephemeral-storage");
         final long podsAllocatable = Long.parseLong(allocatable.get("pods").getAmount());
 
@@ -240,6 +240,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
 
     private boolean hasChanged(final Node oldNode, final Node newNode) {
         return !oldNode.getSpec().equals(newNode.getSpec())
+           || !oldNode.getMetadata().equals(newNode.getMetadata())
            || !oldNode.getStatus().getCapacity().equals(newNode.getStatus().getCapacity())
            || !oldNode.getStatus().getAllocatable().equals(newNode.getStatus().getAllocatable())
            || !Optional.ofNullable(oldNode.getSpec().getUnschedulable())

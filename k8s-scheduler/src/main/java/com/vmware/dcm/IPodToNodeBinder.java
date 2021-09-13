@@ -19,4 +19,6 @@ public interface IPodToNodeBinder {
     void bindManyAsnc(final List<? extends Record> records);
 
     void unbindManyAsnc(final List<? extends Record> records);
+
+    void notifyFail(final Record record);
 }

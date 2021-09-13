@@ -108,4 +108,9 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
             }
         );
     }
+
+    @Override
+    public void notifyFail(final Record record) {
+        // Unimplemented
+    }
 }

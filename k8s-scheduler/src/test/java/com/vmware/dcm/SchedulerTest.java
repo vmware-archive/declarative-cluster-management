@@ -72,7 +72,6 @@ import static org.jooq.impl.DSL.field;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -677,13 +676,13 @@ public class SchedulerTest {
     /*
      * Capacity constraints
      */
-    @ParameterizedTest(name = "{0} => feasible:{8}")
+    @ParameterizedTest(name = "{0}")
     @MethodSource("spareCapacityValues")
     public void testSpareCapacity(final String displayName, final List<Integer> cpuRequests,
                                   final List<Integer> memoryRequests, final List<Integer> nodeCpuCapacities,
                                   final List<Integer> nodeMemoryCapacities,
                                   final boolean useHardConstraint, final boolean useSoftConstraint,
-                                  final Predicate<List<String>> assertOn, final boolean feasible) {
+                                  final Predicate<List<String>> assertOn) {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                             Policies.disallowNullNodeSoft(),
                                             Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
@@ -705,11 +704,7 @@ public class SchedulerTest {
                     // Assumes that there is only one container
                     pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
                 });
-        if (!feasible) {
-            assertThrows(SolverException.class, scenario::runInitialPlacement);
-        } else {
-            scenario.runInitialPlacement().expect(nodesForPodGroup("pods"), assertOn);
-        }
+        scenario.runInitialPlacement().expect(nodesForPodGroup("pods"), assertOn);
     }
 
 
@@ -718,31 +713,33 @@ public class SchedulerTest {
         final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
         final Predicate<List<String>> n2MustNotBeAssignedNewPods = nodes -> !nodes.contains("n-2");
         final Predicate<List<String>> onlyN3MustBeAssignedNewPods = nodes -> Set.of("n-3").equals(Set.copyOf(nodes));
+        final Predicate<List<String>> p1CannotBePlaced = nodes -> nodes.stream()
+                                                                 .filter(e -> e.equals("NULL_NODE")).count() == 1;
         return Stream.of(
                 Arguments.of("One pod per node",
                              List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
                              List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
-                             onePodPerNode, true),
+                             onePodPerNode),
 
                 Arguments.of("p1 cannot be placed",
                         List.of(10, 11, 10, 10, 10), List.of(10, 10, 10, 10, 10),
                         List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
-                        onePodPerNode, false),
+                        p1CannotBePlaced),
 
                 Arguments.of("n2 does not have sufficient CPU capacity and should not host any new pods",
                         List.of(5, 5, 10, 10, 10), List.of(10, 10, 10, 10, 10),
                         List.of(10, 10, 1, 10, 10), List.of(20, 20, 20, 20, 20), true, false,
-                        n2MustNotBeAssignedNewPods, true),
+                        n2MustNotBeAssignedNewPods),
 
                 Arguments.of("Only memory requests, and all pods must go to n3",
                         List.of(0, 0, 0, 0, 0), List.of(10, 10, 10, 10, 10),
                         List.of(1, 1, 1, 1, 1), List.of(1, 1, 1, 50, 1), true, false,
-                        onlyN3MustBeAssignedNewPods, true),
+                        onlyN3MustBeAssignedNewPods),
 
                 Arguments.of("Only memory requests, only soft constraints, pods must be spread out",
                         List.of(0, 0, 0), List.of(10, 10, 10),
                         List.of(1, 1, 1, 1, 1), List.of(100, 100, 100, 100, 100), false, true,
-                        onePodPerNode , true)
+                        onePodPerNode)
         );
     }
 
@@ -898,12 +895,18 @@ public class SchedulerTest {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         DebugUtils.dbLoad(conn, UUID.fromString("<enter some valid value here>"));
-        // All pod additions have completed
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
-        for (int i = 0; i < 100; i++) {
-            final Result<? extends Record> results = scheduler.initialPlacement();
-            System.out.println(results);
-        }
+        System.out.println(conn.selectFrom("PODS_TO_ASSIGN").fetch());
+        System.out.println(conn.selectFrom("NODE_LABELS").fetch());
+        System.out.println(conn.selectFrom("NODES_THAT_HAVE_TOLERATIONS").fetch());
+        System.out.println(conn.selectFrom("POD_NODE_SELECTOR_MATCHES").fetch());
+        System.out.println(conn.selectFrom("POD_NODE_SELECTOR_LABELS").fetch());
+        System.out.println(conn.selectFrom("MATCH_EXPRESSIONS").fetch());
+        System.out.println(conn.selectFrom("MATCHING_NODES").fetch());
+        System.out.println(conn.selectFrom("POD_LABELS").fetch());
+        System.out.println(conn.selectFrom("SPARE_CAPACITY_PER_NODE").fetch());
+        final Result<? extends Record> results = scheduler.initialPlacement();
+        System.out.println(results);
     }
 
 

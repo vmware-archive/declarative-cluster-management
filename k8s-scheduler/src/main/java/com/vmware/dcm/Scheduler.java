@@ -43,6 +43,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
@@ -224,8 +225,11 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        int fetchCount = dbConnectionPool.getConnectionToDb().fetchCount(table("PODS_TO_ASSIGN_NO_LIMIT"));
+        final IntSupplier numPending =
+                () -> dbConnectionPool.getConnectionToDb().fetchCount(table("PODS_TO_ASSIGN_NO_LIMIT"));
+        int fetchCount = numPending.getAsInt();
         while (fetchCount > 0) {
+            System.out.println(dbConnectionPool.getConnectionToDb().selectFrom("PODS_TO_ASSIGN_NO_LIMIT").fetch());
             LOG.info("Fetchcount is {}", fetchCount);
             final int batch = batchId.incrementAndGet();
             final long now = System.nanoTime();
@@ -239,7 +243,6 @@ public final class Scheduler {
             if (initialPlacementResult.containsKey(ASSIGNED)) {
                 // Only consider pods that were previously unassigned.
                 final Result<? extends Record> assignedPods = initialPlacementResult.get(ASSIGNED);
-                fetchCount -= assignedPods.size();
                 handleAssignment(assignedPods, binder, batch, schedulingLatency);
             }
 
@@ -258,15 +261,24 @@ public final class Scheduler {
                 }
                 if (preemptionResults.containsKey(ASSIGNED)) {
                     final Result<? extends Record> assignedPodsWithPreemption = preemptionResults.get(ASSIGNED);
-                    fetchCount -= assignedPodsWithPreemption.size();
                     handleAssignment(assignedPodsWithPreemption, binder, batch, schedulingLatencyWithPreemption);
                 }
                 if (preemptionResults.containsKey(UNASSIGNED)) {
                     preemptionResults.get(UNASSIGNED).forEach(
-                            e -> LOG.info("pod:{} could not be assigned a node even with preemption", e.get("POD_NAME"))
+                            e -> {
+                                LOG.info("pod:{} could not be assigned a node even with preemption", e.get("POD_NAME"));
+                                binder.notifyFail(e);
+                            }
                     );
+                    DebugUtils.dbDump(dbConnectionPool.getConnectionToDb(), UUID.randomUUID());
+                    try {
+                        Thread.sleep(5000);
+                    } catch (final InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
+            fetchCount = numPending.getAsInt();
         }
     }
 

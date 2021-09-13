@@ -240,20 +240,22 @@ public class DBViews {
     private static void spareCapacityPerNode(final ViewStatements viewStatements) {
         final String name = "SPARE_CAPACITY_PER_NODE";
         final String query = "SELECT name AS name, " +
-                            "  cpu_allocatable - cpu_allocated AS cpu_remaining, " +
-                            "  memory_allocatable - memory_allocated AS memory_remaining, " +
-                            "  pods_allocatable - pods_allocated AS pods_remaining " +
-                            "FROM node_info " +
-                            "WHERE unschedulable = false AND " +
-                            "      memory_pressure = false AND " +
-                            "      out_of_disk = false AND " +
-                            "      disk_pressure = false AND " +
-                            "      pid_pressure = false AND " +
-                            "      network_unavailable = false AND " +
-                            "      ready = true AND " +
-                            "      cpu_allocated < cpu_allocatable AND " +
-                            "      memory_allocated <  memory_allocatable AND " +
-                            "      pods_allocated < pods_allocatable; ";
+                    "  cpu_allocatable - cpu_allocated AS cpu_remaining, " +
+                    "  memory_allocatable - memory_allocated AS memory_remaining, " +
+                    "  ephemeral_storage_allocatable - ephemeral_storage_allocated AS ephemeral_storage_remaining, " +
+                    "  pods_allocatable - pods_allocated AS pods_remaining " +
+                        "FROM node_info " +
+                        "WHERE unschedulable = false AND " +
+                        "      memory_pressure = false AND " +
+                        "      out_of_disk = false AND " +
+                        "      disk_pressure = false AND " +
+                        "      pid_pressure = false AND " +
+                        "      network_unavailable = false AND " +
+                        "      ready = true AND " +
+                        "      cpu_allocated < cpu_allocatable AND " +
+                        "      memory_allocated <  memory_allocatable AND " +
+                        "      pods_allocated < pods_allocatable AND " +
+                        "      ephemeral_storage_allocated < ephemeral_storage_allocatable; ";
         viewStatements.addQuery(name, query);
     }
 

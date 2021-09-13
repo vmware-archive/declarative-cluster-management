@@ -234,10 +234,9 @@ class PodEventsToDatabase {
         final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
                 .collect(Collectors.toList());
-        final long cpuRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "cpu");
-        final long memoryRequest = (long) Utils.resourceRequirementSum(resourceRequirements, "memory");
-        final long ephemeralStorageRequest =
-                (long) Utils.resourceRequirementSum(resourceRequirements, "ephemeral-storage");
+        final long cpuRequest = Utils.resourceRequirementSum(resourceRequirements, "cpu");
+        final long memoryRequest = Utils.resourceRequirementSum(resourceRequirements, "memory");
+        final long ephemeralStorageRequest = Utils.resourceRequirementSum(resourceRequirements, "ephemeral-storage");
         final long podsRequest = 1;
 
         // The first owner reference is used to break symmetries.
