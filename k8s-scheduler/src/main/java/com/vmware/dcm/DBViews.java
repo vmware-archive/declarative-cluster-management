@@ -332,14 +332,14 @@ public class DBViews {
                             pods_to_assign.uid as pod_uid,
                             ARRAY_AGG(matching_pods.pod_uid) OVER (PARTITION BY pods_to_assign.uid) AS pod_matches,
                             ARRAY_AGG(other_pods.node_name) OVER (PARTITION BY pods_to_assign.uid) AS node_matches
-                        FROM %2$s AS pods_to_assign
-                        JOIN pod_%1$s_match_expressions AS match_expressions ON
+                        FROM $pendingPods AS pods_to_assign
+                        JOIN pod_$affinityType_match_expressions AS match_expressions ON
                              pods_to_assign.uid = match_expressions.pod_uid
                         JOIN matching_pods
                             ON array_contains(match_expressions.match_expressions, matching_pods.expr_id)
-                        JOIN %3$s as other_pods
+                        JOIN $otherPods as other_pods
                             ON matching_pods.pod_uid = other_pods.uid AND pods_to_assign.uid != other_pods.uid
-                        WHERE pods_to_assign.has_pod_%1$s_requirements = true
+                        WHERE pods_to_assign.has_pod_$affinityType_requirements = true
                         GROUP BY
                             pods_to_assign.uid,
                             matching_pods.pod_uid,
@@ -350,10 +350,10 @@ public class DBViews {
                         HAVING array_length(match_expressions) = COUNT(DISTINCT matching_pods.expr_id)
                     """;
         for (final String type: List.of("affinity", "anti_affinity")) {
-            final String pendingQuery = String.format(formatString, type, viewStatements.unfixedPods,
-                                                                          viewStatements.unfixedPods);
-            final String scheduledQuery = String.format(formatString, type, viewStatements.unfixedPods,
-                                                                            viewStatements.fixedPods);
+            final String baseQuery = formatString.replace("$affinityType",  type)
+                                                 .replace("$pendingPods", viewStatements.unfixedPods);
+            final String pendingQuery = baseQuery.replace("$otherPods", viewStatements.unfixedPods);
+            final String scheduledQuery = baseQuery.replace("$otherPods", viewStatements.fixedPods);
             viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_PENDING", type.toUpperCase(Locale.ROOT)),
                              pendingQuery);
             viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_SCHEDULED", type.toUpperCase(Locale.ROOT)),
