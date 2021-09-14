@@ -111,7 +111,7 @@ class KubernetesBinder implements IPodToNodeBinder {
         meta.setName(podName + UUID.randomUUID());
         event.setMetadata(meta);
         event.setApiVersion("v1");
-        event.setMessage("looooooooooooooooool");
+        event.setMessage("Could not schedule " + podName);
         event.setInvolvedObject(podRef);
         event.setReason("FailedScheduling");
         event.setType("Warning");
