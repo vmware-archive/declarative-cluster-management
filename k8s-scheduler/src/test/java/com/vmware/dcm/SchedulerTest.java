@@ -271,6 +271,7 @@ public class SchedulerTest {
 
             final Container container = new Container();
             container.setName("c" + i);
+            container.setImage("ignore");
 
             final ResourceRequirements resourceRequirements = new ResourceRequirements();
             resourceRequirements.setRequests(requests);
@@ -1192,7 +1193,8 @@ public class SchedulerTest {
         spec.setNodeSelector(selectorLabels);
 
         final Container container = new Container();
-        container.setName("pause");
+        container.setName("ignore");
+        container.setImage("ignore");
 
         final ResourceRequirements resourceRequirements = new ResourceRequirements();
         resourceRequirements.setRequests(Collections.emptyMap());

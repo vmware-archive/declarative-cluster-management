@@ -267,7 +267,7 @@ class PodEventsToDatabase {
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
         final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
-        LOG.trace("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+        LOG.info("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
                 pod.getMetadata().getUid(),
                 pod.getMetadata().getName(),
                 pod.getStatus().getPhase(),
@@ -385,17 +385,20 @@ class PodEventsToDatabase {
     private List<Insert<?>> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
         final List<Insert<?>> inserts = new ArrayList<>();
         for (final Container container: pod.getSpec().getContainers()) {
+            inserts.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getUid(), container.getImage()));
             if (container.getPorts() == null || container.getPorts().isEmpty()) {
                 continue;
             }
             for (final ContainerPort portInfo: container.getPorts()) {
+                if (portInfo.getHostPort() == null) {
+                    continue;
+                }
                 inserts.add(conn.insertInto(Tables.POD_PORTS_REQUEST)
                             .values(pod.getMetadata().getUid(),
                                     portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
                                     portInfo.getHostPort(),
                                     portInfo.getProtocol()));
             }
-            inserts.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getUid(), container.getImage()));
         }
         return inserts;
     }

@@ -138,6 +138,7 @@ class EmulatedCluster {
 
         final Container container = new Container();
         container.setName("pause");
+        container.setImage("ignore");
 
         final ResourceRequirements resourceRequirements = new ResourceRequirements();
         resourceRequirements.setRequests(Collections.emptyMap());
