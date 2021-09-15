@@ -28,7 +28,6 @@ class DebugUtils {
     private static final List<TableImpl<?>> TABLES = List.of(Tables.NODE_INFO,
                                                         Tables.POD_INFO,
                                                         Tables.POD_PORTS_REQUEST,
-                                                        Tables.CONTAINER_HOST_PORTS,
                                                         Tables.POD_NODE_SELECTOR_LABELS,
                                                         Tables.POD_AFFINITY_MATCH_EXPRESSIONS,
                                                         Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS,

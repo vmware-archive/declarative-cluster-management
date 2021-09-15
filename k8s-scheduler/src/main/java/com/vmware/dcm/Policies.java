@@ -28,6 +28,7 @@ class Policies {
         INITIAL_PLACEMENT_POLICIES.add(capacityConstraint(true, true));
         INITIAL_PLACEMENT_POLICIES.add(taintsAndTolerations());
         INITIAL_PLACEMENT_POLICIES.add(symmetryBreaking());
+        INITIAL_PLACEMENT_POLICIES.add(podFitsNodePorts());
 
         PREEMPTION_POLICIES.add(preemption());
         PREEMPTION_POLICIES.addAll(new ArrayList<>(INITIAL_PLACEMENT_POLICIES));
@@ -157,6 +158,39 @@ class Policies {
                 // Or infeasible
                 "   or controllable__node_name = 'NULL_NODE'";
         return new Policy("InterPodAntiAffinity", List.of(constraintPending, constraintScheduled));
+    }
+
+    /**
+     * Avoid assigning pods to the same node if they have conflicting host port requirements
+     */
+    static Policy podFitsNodePorts() {
+        final String constraintPending = """
+                    CREATE CONSTRAINT constraint_pod_fits_node_ports_pending AS
+                    SELECT *
+                    FROM pods_to_assign
+                    CHECK pods_to_assign.has_node_port_requirements = false OR
+                          -- Anti-affinity to pending pods
+                          (pods_to_assign.controllable__node_name NOT IN
+                             (SELECT b.controllable__node_name
+                              FROM pods_to_assign AS b
+                              JOIN pods_with_port_requests_pending
+                               ON  pods_with_port_requests_pending.pod_uid = pods_to_assign.uid
+                                AND contains(pods_with_port_requests_pending.pod_matches, b.uid)))
+                          -- Or infeasible
+                          OR controllable__node_name = 'NULL_NODE'""";
+
+        final String constraintScheduled = """
+                   CREATE CONSTRAINT constraint_pods_with_port_requests_scheduled AS
+                   SELECT *
+                   FROM pods_to_assign
+                   JOIN pods_with_port_requests_scheduled
+                     ON pods_to_assign.uid = pods_with_port_requests_scheduled.pod_uid
+                   CHECK pods_to_assign.has_node_port_requirements = false OR
+                         NOT(CONTAINS(pods_with_port_requests_scheduled.node_matches,
+                                      pods_to_assign.controllable__node_name))
+                         -- Or infeasible
+                         OR controllable__node_name = 'NULL_NODE'""";
+        return new Policy("PodFitsNodePorts", List.of(constraintPending, constraintScheduled));
     }
 
 

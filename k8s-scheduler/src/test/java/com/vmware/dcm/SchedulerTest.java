@@ -10,6 +10,7 @@ import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
+import io.fabric8.kubernetes.api.model.ContainerPort;
 import io.fabric8.kubernetes.api.model.LabelSelector;
 import io.fabric8.kubernetes.api.model.LabelSelectorBuilder;
 import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
@@ -886,12 +887,107 @@ public class SchedulerTest {
         );
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("testHostPortsValues")
+    public void testHostPorts(final String displayName, final List<List<ContainerPort>> runningPods,
+                              final List<List<ContainerPort>> podContainers, final boolean feasible) {
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                Policies.disallowNullNodeSoft(),
+                Policies.podFitsNodePorts());
+        final Iterator<List<ContainerPort>> nodeContainersIt = runningPods.iterator();
+        final Iterator<List<ContainerPort>> podContainersIt = podContainers.iterator();
+        final var result = TestScenario.withPolicies(policies)
+                .withNodeGroup("n", 1)
+                .withPodGroup("runningPods", runningPods.size(), (pod) -> {
+                    pod.getSpec().setNodeName("n-0");
+                    final List<ContainerPort> ports = nodeContainersIt.next();
+                    final var container = new Container();
+                    container.setPorts(ports);
+                    final ResourceRequirements resourceRequirements = new ResourceRequirements();
+                    resourceRequirements.setRequests(Collections.emptyMap());
+                    container.setResources(resourceRequirements);
+                    container.setName("ignore");
+                    container.setImage("ignore");
+                    pod.getSpec().setContainers(List.of(container));
+                })
+                .withPodGroup("newPod", podContainers.size(), pod -> {
+                    final List<ContainerPort> ports = podContainersIt.next();
+                    final var container = new Container();
+                    container.setPorts(ports);
+                    final ResourceRequirements resourceRequirements = new ResourceRequirements();
+                    resourceRequirements.setRequests(Collections.emptyMap());
+                    container.setResources(resourceRequirements);
+                    container.setName("ignore");
+                    container.setImage("ignore");
+                    pod.getSpec().setContainers(List.of(container));
+                }).runInitialPlacement();
+        if (feasible) {
+            result.expect(nodesForPodGroup("newPod"), EQUALS, nodeGroup("n"));
+        } else {
+            result.expect(nodesForPodGroup("newPod"), EQUALS, nodeGroup("NULL_NODE"));
+        }
+    }
+
+    @SuppressWarnings("UnusedMethod")
+    private static Stream<Arguments> testHostPortsValues() {
+        return Stream.of(Arguments.of("Conflicting IP, port and TCP protocol",
+                                List.of(List.of(port("127.0.0.1/8080/UDP"))),
+                                List.of(List.of(port("127.0.0.1/8080/UDP"))),
+                                false),
+                         Arguments.of("Conflicting IP, port and TCP protocol",
+                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                                false),
+                         Arguments.of("Same IP, port but different protocol",
+                                List.of(List.of(port("127.0.0.1/8080/UDP"))),
+                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                                true),
+                         Arguments.of("Different IP, but port and protocol",
+                                List.of(List.of(port("127.0.0.2/8080/UDP"))),
+                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                                true),
+                         Arguments.of("Same IP, different port, same protocol",
+                                List.of(List.of(port("127.0.0.1/8082/UDP"))),
+                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                                true),
+                         Arguments.of("0.0.0.0 IP, same port, different protocol",
+                                List.of(List.of(port("0.0.0.0/8080/UDP"))),
+                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                                true),
+                         Arguments.of("0.0.0.0 IP, same port, same protocol",
+                                List.of(List.of(port("0.0.0.0/8080/TCP"))),
+                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                                false),
+                        Arguments.of("0.0.0.0 IP, same port, same protocol",
+                                List.of(List.of(port("14.0.10.30/8081/UDP"))),
+                                List.of(List.of(port("0.0.0.0/8081/UDP"))),
+                                false),
+                        Arguments.of("0.0.0.0 IP, different port, same protocol",
+                                List.of(List.of(port("14.0.10.30/8081/UDP"))),
+                                List.of(List.of(port("0.0.0.0/8083/UDP"))),
+                                true),
+                        Arguments.of("Multiple pending containers, first one conflicts",
+                                List.of(List.of(port("14.0.10.30/8081/UDP"), port("14.0.10.30/8082/UDP"))),
+                                List.of(List.of(port("0.0.0.0/8083/UDP"), port("0.0.0.0/8081/UDP"))),
+                                false),
+                        Arguments.of("Multiple pending containers, second one conflicts",
+                                List.of(List.of(port("14.0.10.30/8081/UDP"), port("14.0.10.30/8082/UDP"))),
+                                List.of(List.of(port("0.0.0.0/8082/UDP"), port("0.0.0.0/8084/UDP"))),
+                                false)
+                    );
+    }
+
+    private static ContainerPort port(final String hostPort) {
+        final String[] hostPortArr = hostPort.split("/");
+        return new ContainerPort(null, hostPortArr[0], Integer.parseInt(hostPortArr[1]), null, hostPortArr[2]);
+    }
+
     /*
-     * This represents a workload where we are slow
+     * Use this to test Scheduler dumps
      */
     @Test
     @Disabled
-    public void testNoConstraintPods() {
+    public void testSchedulerDebugDump() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         DebugUtils.dbLoad(conn, UUID.fromString("<enter some valid value here>"));

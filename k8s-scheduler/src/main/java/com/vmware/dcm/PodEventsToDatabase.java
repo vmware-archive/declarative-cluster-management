@@ -247,6 +247,7 @@ class PodEventsToDatabase {
 
         boolean hasPodAffinityRequirements = false;
         boolean hasPodAntiAffinityRequirements = false;
+        boolean hasNodePortRequirements = false;
 
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
             hasPodAffinityRequirements = true;
@@ -256,10 +257,17 @@ class PodEventsToDatabase {
             hasPodAntiAffinityRequirements = true;
         }
 
+        if (pod.getSpec().getContainers() != null
+             && pod.getSpec().getContainers().stream()
+                .filter(c -> c.getPorts() != null).flatMap(c -> c.getPorts().stream())
+                .anyMatch(containerPort -> containerPort.getHostPort() != null)) {
+            hasNodePortRequirements = true;
+        }
+
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
         final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
-        LOG.trace("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+        LOG.trace("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
                 pod.getMetadata().getUid(),
                 pod.getMetadata().getName(),
                 pod.getStatus().getPhase(),
@@ -274,6 +282,7 @@ class PodEventsToDatabase {
                 hasNodeSelector,
                 hasPodAffinityRequirements,
                 hasPodAntiAffinityRequirements,
+                hasNodePortRequirements,
                 priority,
                 pod.getSpec().getSchedulerName(),
                 equivalenceClassHash(pod),
@@ -294,6 +303,7 @@ class PodEventsToDatabase {
                 p.HAS_NODE_SELECTOR_LABELS,
                 p.HAS_POD_AFFINITY_REQUIREMENTS,
                 p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
+                p.HAS_NODE_PORT_REQUIREMENTS,
                 p.PRIORITY,
                 p.SCHEDULERNAME,
                 p.EQUIVALENCE_CLASS,
@@ -314,6 +324,7 @@ class PodEventsToDatabase {
                         hasNodeSelector,
                         hasPodAffinityRequirements,
                         hasPodAntiAffinityRequirements,
+                        hasNodePortRequirements,
                         priority,
                         pod.getSpec().getSchedulerName(),
                         equivalenceClassHash(pod),
@@ -338,6 +349,7 @@ class PodEventsToDatabase {
                 .set(p.HAS_NODE_SELECTOR_LABELS, hasNodeSelector)
                 .set(p.HAS_POD_AFFINITY_REQUIREMENTS, hasPodAffinityRequirements)
                 .set(p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS, hasPodAntiAffinityRequirements)
+                .set(p.HAS_NODE_PORT_REQUIREMENTS, hasNodePortRequirements)
 
                 // We cap the max priority to 100 to prevent overflow issues in the solver
                 .set(p.PRIORITY, priority)
@@ -377,25 +389,11 @@ class PodEventsToDatabase {
                 continue;
             }
             for (final ContainerPort portInfo: container.getPorts()) {
-                // This pod has been assigned to a node already. We therefore update the set of host-ports in
-                // use at this node
-                if (pod.getSpec().getNodeName() != null && portInfo.getHostPort() != null) {
-                    inserts.add(conn.insertInto(Tables.CONTAINER_HOST_PORTS)
-                                .values(pod.getMetadata().getUid(),
-                                        pod.getSpec().getNodeName(),
-                                        portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
-                                        portInfo.getHostPort(),
-                                        portInfo.getProtocol()));
-                }
-                // This pod is yet to be assigned to a host, but it has a hostPort requirement. We record
-                // this in the pod_ports_request table
-                else if (pod.getStatus().getPhase().equals("") && portInfo.getHostPort() != null) {
-                    inserts.add(conn.insertInto(Tables.POD_PORTS_REQUEST)
-                                .values(pod.getMetadata().getUid(),
-                                        portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
-                                        portInfo.getHostPort(),
-                                        portInfo.getProtocol()));
-                }
+                inserts.add(conn.insertInto(Tables.POD_PORTS_REQUEST)
+                            .values(pod.getMetadata().getUid(),
+                                    portInfo.getHostIP() == null ? "0.0.0.0" : portInfo.getHostIP(),
+                                    portInfo.getHostPort(),
+                                    portInfo.getProtocol()));
             }
             inserts.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getUid(), container.getImage()));
         }

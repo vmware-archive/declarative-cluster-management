@@ -146,16 +146,26 @@ public class DBViews {
      */
     private static void podsWithPortRequests(final ViewStatements viewStatements) {
         final String name = "PODS_WITH_PORT_REQUESTS";
-        final String query = """
-                SELECT pods_to_assign.controllable__node_name AS controllable__node_name,
-                       pod_ports_request.host_port AS host_port,
-                       pod_ports_request.host_ip AS host_ip,
-                       pod_ports_request.host_protocol AS host_protocol
-                FROM $pendingPods AS pods_to_assign
-                JOIN pod_ports_request
-                     ON pod_ports_request.pod_uid = pods_to_assign.uid"""
+        final String baseQuery = """
+                SELECT pods_to_assign.uid as pod_uid,
+                       ARRAY_AGG(other_pods.uid) OVER (PARTITION BY pods_to_assign.uid) AS pod_matches,
+                       ARRAY_AGG(other_pods.node_name) OVER (PARTITION BY pods_to_assign.uid) AS node_matches
+                FROM $pendingPods pods_to_assign
+                JOIN pod_ports_request ppr1 ON pods_to_assign.uid = ppr1.pod_uid
+                JOIN pod_ports_request ppr2
+                    ON pods_to_assign.uid != ppr2.pod_uid
+                    AND ppr1.host_port = ppr2.host_port
+                    AND ppr1.host_protocol = ppr2.host_protocol
+                    AND (ppr1.host_ip = ppr2.host_ip
+                         OR ppr1.host_ip = '0.0.0.0'
+                         OR ppr2.host_ip = '0.0.0.0')
+                JOIN $otherPods other_pods
+                    ON other_pods.uid = ppr2.pod_uid"""
                 .replace("$pendingPods", viewStatements.unfixedPods);
-        viewStatements.addQuery(name, query);
+        final String pendingQuery = baseQuery.replace("$otherPods", viewStatements.unfixedPods);
+        final String scheduledQuery = baseQuery.replace("$otherPods", viewStatements.fixedPods);
+        viewStatements.addQuery(name + "_PENDING", pendingQuery);
+        viewStatements.addQuery(name + "_SCHEDULED", scheduledQuery);
     }
 
     /*

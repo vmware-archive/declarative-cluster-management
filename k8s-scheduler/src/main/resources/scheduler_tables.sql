@@ -42,6 +42,7 @@ create table pod_info
   has_node_selector_labels boolean not null,
   has_pod_affinity_requirements boolean not null,
   has_pod_anti_affinity_requirements boolean not null,
+  has_node_port_requirements boolean not null,
   equivalence_class bigint not null,
   qos_class varchar(10) not null,
   resourceVersion bigint not null,
@@ -69,19 +70,6 @@ create table pod_ports_request
   host_port integer not null,
   host_protocol varchar(10) not null,
   foreign key(pod_uid) references pod_info(uid) on delete cascade
-);
-
--- This table tracks the set of hostports in use at each node.
--- Also used to enforce the PodFitsHostPorts constraint.
-create table container_host_ports
-(
-  pod_uid char(36) not null,
-  node_name varchar(253) not null,
-  host_ip varchar(100) not null,
-  host_port integer not null,
-  host_protocol varchar(10) not null,
-  foreign key(pod_uid) references pod_info(uid) on delete cascade,
-  foreign key(node_name) references node_info(name) on delete cascade
 );
 
 -- Tracks the set of node selector labels per pod.
@@ -225,3 +213,5 @@ create index pod_anti_affinity_match_expressions_idx on pod_anti_affinity_match_
 create index pod_labels_idx on pod_labels (label_key, label_value);
 
 create index match_expressions_idx on match_expressions (label_key, label_operator, label_values);
+
+create index pod_ports_request_idx on pod_ports_request(pod_uid);
