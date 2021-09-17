@@ -210,13 +210,7 @@ public final class Scheduler {
 
     void handlePodEvent(final PodEvent podEvent) {
         podEventsToDatabase.handle(podEvent);
-        if (podEvent.action().equals(PodEvent.Action.ADDED)
-            && podEvent.pod().getStatus().getPhase().equals("Pending")
-            && podEvent.pod().getSpec().getNodeName() == null
-            && podEvent.pod().getSpec().getSchedulerName().equals(
-            Scheduler.SCHEDULER_NAME)) {
-            notificationQueue.add(true);
-        }
+        notificationQueue.add(true);
     }
 
     void handlePodEventNoNotify(final PodEvent podEvent) {
