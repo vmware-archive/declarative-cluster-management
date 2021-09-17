@@ -1018,7 +1018,8 @@ public class SchedulerTest {
         final List<String> policies = Policies.getInitialPlacementPolicies();
         final var result = TestScenario.withPolicies(policies)
                 .withNodeGroup("n", numNodes)
-                .withPodGroup("pods", numPods);
+                .withPodGroup("pods", numPods)
+                .build();
         result.scheduler().scheduleAllPendingPods(new EmulatedPodToNodeBinder(result.conn()));
         final Result<PodInfoRecord> fetch = result.conn().getConnectionToDb()
                                                   .selectFrom(Tables.POD_INFO).fetch();
