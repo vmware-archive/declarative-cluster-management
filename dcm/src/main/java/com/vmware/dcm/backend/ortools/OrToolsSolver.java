@@ -33,7 +33,6 @@ import com.vmware.dcm.backend.RewriteArity;
 import com.vmware.dcm.backend.RewriteContains;
 import com.vmware.dcm.compiler.IRColumn;
 import com.vmware.dcm.compiler.IRContext;
-import com.vmware.dcm.compiler.IRPrimaryKey;
 import com.vmware.dcm.compiler.IRTable;
 import com.vmware.dcm.compiler.Program;
 import com.vmware.dcm.compiler.UsesControllableFields;
@@ -91,7 +90,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 
@@ -231,16 +229,19 @@ public class OrToolsSolver implements ISolverBackend {
             throw new IllegalStateException(e);
         }
 
-        final TranslationContext translationContext = new TranslationContext(false);
-
+        final var translationContext = new TranslationContext(false);
+        final var determineIndexes = new DetermineIndexes();
         // Lower the program to a block of Java code.
         // Start with some passes on Program<ListComprehension>
-        program
-               .map(RewriteArity::apply)
-               .map(RewriteContains::apply)
-               .map(l -> configTryScalarProductEncoding ? ScalarProductOptimization.apply(l, tupleMetadata) : l)
-               // ... then convert to Program<OutputIR.Block>
-               .map(
+        final Program<ListComprehension> passOne = program
+                .map(RewriteArity::apply)
+                .map(RewriteContains::apply)
+                .map(l -> configTryScalarProductEncoding ? ScalarProductOptimization.apply(l, tupleMetadata) : l)
+                .peek((n, l) -> determineIndexes.apply(l));
+        addIndexes(determineIndexes, output);
+
+        // ... then convert to Program<OutputIR.Block>
+        passOne.map(
                     (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, translationContext),
                     (name, comprehension) -> constraintViewCodeGen(name, comprehension, translationContext),
                     (name, comprehension) -> objectiveViewCodeGen(name, comprehension, translationContext)
@@ -263,6 +264,23 @@ public class OrToolsSolver implements ISolverBackend {
 
         final TypeSpec spec = backendClassBuilder.build();
         return compile(spec);
+    }
+
+    private void addIndexes(final DetermineIndexes determineIndexes, final MethodSpec.Builder output) {
+        if (configUseIndicesForEqualityBasedJoins) {
+            determineIndexes.indexes().forEach(
+                id -> {
+                    final IRTable table = id.relation.getTable();
+                    final IRColumn column = id.columnBeingAccessed.getField();
+                    final int fieldIndex = tupleMetadata.getFieldIndexInTable(table.getName(), column.getName());
+                    output.addStatement("final var $1L$2LIndex = " +
+                                        "o.toIndex($1L, (r) -> r.get($3L /* $4L */, $5L.class));",
+                            tableNameStr(table.getName()),
+                            fieldNameStr(table.getName(), column.getName()), fieldIndex, column.getName(),
+                            tupleMetadata.getTypeForField(table, column));
+                }
+            );
+        }
     }
 
     private OutputIR.Block nonConstraintViewCodeGen(final String name, final ListComprehension comprehension,
@@ -573,7 +591,7 @@ public class OrToolsSolver implements ISolverBackend {
         // XXX: It would be better to look at all join predicates and determine which tables should be scanned
         tableRowGenerators.subList(1, tableRowGenerators.size()).stream()
             .map(tr -> {
-                if (configUseIndicesForEqualityBasedJoins && tr.getUniquePrimaryKeyColumn().isPresent()) {
+                if (configUseIndicesForEqualityBasedJoins) {
                     // We might be able to use an index here, look for equality based accesses
                     // across the join predicates
                     for (final BinaryOperatorPredicate binaryOp: joinPredicates) {
@@ -583,10 +601,10 @@ public class OrToolsSolver implements ISolverBackend {
 
                             if (left.getTableName().equals(forLoopTable.getTable().getName())
                                     && right.getTableName().equals(tr.getTable().getName())) {
-                                return indexedAccess(tr, forLoopTable, left);
+                                return indexedAccess(tr, right, forLoopTable, left);
                             } else if (right.getTableName().equals(forLoopTable.getTable().getName())
                                     && left.getTableName().equals(tr.getTable().getName())) {
-                                return indexedAccess(tr, forLoopTable, right);
+                                return indexedAccess(tr, left, forLoopTable, right);
                             }
                         }
                     }
@@ -599,18 +617,21 @@ public class OrToolsSolver implements ISolverBackend {
         return loopStatements;
     }
 
-    private CodeBlock indexedAccess(final TableRowGenerator indexedTable, final TableRowGenerator scanTable,
-                                    final ColumnIdentifier scanColumn) {
+    private CodeBlock indexedAccess(final TableRowGenerator indexedTable, final ColumnIdentifier indexedColumn,
+                                    final TableRowGenerator scanTable, final ColumnIdentifier scanColumn) {
         final String idxIterStr = iterStr(indexedTable.getTable().getAliasedName());
         final String idxTableNameStr = tableNameStr(indexedTable.getTable().getName());
         final String fieldAccessFromScan = fieldNameStrWithIter(scanTable.getTable().getName(),
                                                                 scanColumn.getField().getName(),
                                                                 iterStr(scanTable.getTable().getAliasedName()));
+        final String idxFieldName = fieldNameStr(indexedColumn.getTableName(), indexedColumn.getField().getName());
         return CodeBlock.builder()
-                .addStatement("final Integer $1L = $2LIndex.get($3L)", idxIterStr, idxTableNameStr, fieldAccessFromScan)
-                .beginControlFlow("if ($L == null)", idxIterStr)
+                .addStatement("final List<Integer> $1LList = $2L$3LIndex.get($4L)", idxIterStr, idxTableNameStr,
+                                                                                    idxFieldName, fieldAccessFromScan)
+                .beginControlFlow("if ($LList == null)", idxIterStr)
                 .addStatement("continue")
                 .endControlFlow()
+                .add("for (int $1L : $1LList)", idxIterStr)
                 .build();
     }
 
@@ -813,30 +834,6 @@ public class OrToolsSolver implements ISolverBackend {
             output.addStatement("final $T<$T<$L>> $L = (List<$T<$L>>) $L.get($S)",
                                  List.class, recordType, recordTypeParameters, tableNameStr(table.getName()),
                                  recordType, recordTypeParameters, INPUT_DATA_VARIABLE, table.getName());
-
-            // ...3) create an index if configured
-            if (configUseIndicesForEqualityBasedJoins) {
-                // XXX: Generate this code only if an index is needed
-                context.getTable(table.getName()).getPrimaryKey()
-                        .map(IRPrimaryKey::getPrimaryKeyFields)
-                        .filter(e -> !e.isEmpty())
-                        .filter(e -> e.size() == 1)
-                        .ifPresent(pkCol -> {
-                            final int fieldIndex = tupleMetadata.getFieldIndexInTable(table.getName(),
-                                                                                       pkCol.get(0).getName());
-                            output.addStatement("final var $1LIndex = $2T.range(0, $3L.size())\n" +
-                                        ".boxed()\n" +
-                                        ".collect($4T.toMap(i -> ($7L) $3L.get(i).get($5L /* $6L */), i -> i));",
-                                tableNameStr(table.getName()),
-                                IntStream.class,
-                                tableNameStr(table.getName()),
-                                Collectors.class,
-                                fieldIndex,
-                                pkCol.get(0).getName(),
-                                tupleMetadata.getTypeForField(table, pkCol.get(0)));
-                            }
-                    );
-            }
 
             // ...4) for controllable fields, create a corresponding array of IntVars.
             for (final Map.Entry<String, IRColumn> fieldEntrySet : table.getIRColumns().entrySet()) {

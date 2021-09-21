@@ -21,7 +21,10 @@ import com.vmware.dcm.SolverException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class Ops {
@@ -979,5 +982,14 @@ public class Ops {
                  .map(model.getBuilder()::getVariables)
                  .map(IntegerVariableProto::getName)
                  .collect(Collectors.toList());
+    }
+
+    public <K, V> Map<K, List<Integer>> toIndex(final List<V> resultSet, final Function<V, K> extractKey) {
+        final Map<K, List<Integer>> index = new HashMap<>();
+        for (int i = 0; i < resultSet.size(); i++) {
+            final K key = extractKey.apply(resultSet.get(i));
+            index.computeIfAbsent(key, (k) -> new ArrayList<>()).add(i);
+        }
+        return index;
     }
 }

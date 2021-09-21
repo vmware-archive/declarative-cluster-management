@@ -50,6 +50,19 @@ public class Program<T> {
     }
 
     /**
+     * Apply the supplied action to all views represented by this program and return the same program.
+     *
+     * @param action An action to apply against each view in the program
+     * @return the current program, unmodified
+     */
+    public Program<T> peek(final BiConsumer<String, T> action) {
+        nonConstraintViews.forEach(action);
+        constraintViews.forEach(action);
+        objectiveFunctionViews.forEach(action);
+        return this;
+    }
+
+    /**
      * Apply the supplied function to all views represented by this program and return a new program.
      *
      * @param function A function that takes an instance of a view of type T and transforms it into a view of type R

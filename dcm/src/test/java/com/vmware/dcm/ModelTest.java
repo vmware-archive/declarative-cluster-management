@@ -2141,8 +2141,8 @@ public class ModelTest {
         conn.execute(String.format("insert into %s values (2, 10)", t2));
 
         final String matchString =
-                String.format("final Integer %sIter = %sIndex.get((Integer) %s.get(%sIter).get(0 /* C1 */))",
-                              t2, t2, t1, t1);
+            String.format("final List<Integer> %sIterList = %s%sC1Index.get((Integer) %s.get(%sIter).get(0 /* C1 */))",
+                          t2, t2, t2, t1, t1);
         final Result<? extends Record> fetch = model.solve(t2.toUpperCase());
         assertEquals(2, fetch.size());
         assertEquals(123, fetch.get(0).get("CONTROLLABLE__C2"));
