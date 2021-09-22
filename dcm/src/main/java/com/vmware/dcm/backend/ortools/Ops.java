@@ -789,7 +789,7 @@ public class Ops {
         return model.newConstant(expr);
     }
 
-    public void capacityConstraint(final List<IntVar> varsToAssign, final List<?> domain,
+    public IntVar capacityConstraint(final List<IntVar> varsToAssign, final List<?> domain,
                                    final List<List<Long>> demands, final List<List<Long>> capacities) {
         // Create the variables.
         capacities.forEach(
@@ -827,6 +827,7 @@ public class Ops {
             // did not correctly type check
             throw new RuntimeException("Unexpected type of list: " + domain);
         }
+        return model.newConstant(1);
     }
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final long[] domainArr,
