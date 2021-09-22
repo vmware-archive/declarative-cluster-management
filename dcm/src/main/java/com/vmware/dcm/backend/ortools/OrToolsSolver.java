@@ -89,6 +89,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -569,34 +570,32 @@ public class OrToolsSolver implements ISolverBackend {
 
 
     private List<CodeBlock> forLoopsOrIndicesFromTableRowGenerators(final List<TableRowGenerator> tableRowGenerators,
-                                                                         final List<JoinPredicate> joinPredicates) {
+                                                                    final List<JoinPredicate> joinPredicates) {
         final TableRowGenerator forLoopTable = tableRowGenerators.get(0);
         final List<CodeBlock> loopStatements = new ArrayList<>();
         loopStatements.add(forLoopFromTableRowGeneratorBlock(forLoopTable));
+        final Function<ColumnIdentifier, TableRowGenerator> trByName =
+                (s) -> tableRowGenerators.stream()
+                        .filter(e -> e.getTable().getAliasedName()
+                                .equalsIgnoreCase(s.getTableName()))
+                        .findAny().orElseThrow();
 
-        // For now, we always use a scan for the first Table being iterated over.
-        // XXX: It would be better to look at all join predicates and determine which tables should be scanned
+        // XXX: Use the IndexDescription from the DetermineIndexes pass instead
         tableRowGenerators.subList(1, tableRowGenerators.size()).stream()
             .map(tr -> {
                 if (configUseIndicesForEqualityBasedJoins) {
-                    // We might be able to use an index here, look for equality based accesses
-                    // across the join predicates
                     for (final BinaryOperatorPredicate binaryOp: joinPredicates) {
                         if (binaryOp.getOperator().equals(BinaryOperatorPredicate.Operator.EQUAL)) {
                             final ColumnIdentifier left = (ColumnIdentifier) binaryOp.getLeft();
                             final ColumnIdentifier right = (ColumnIdentifier) binaryOp.getRight();
-
-                            if (left.getTableName().equals(forLoopTable.getTable().getName())
-                                    && right.getTableName().equals(tr.getTable().getName())) {
-                                return indexedAccess(tr, right, forLoopTable, left);
-                            } else if (right.getTableName().equals(forLoopTable.getTable().getName())
-                                    && left.getTableName().equals(tr.getTable().getName())) {
-                                return indexedAccess(tr, left, forLoopTable, right);
+                            if (right.getTableName().equals(tr.getTable().getName())) {
+                                return indexedAccess(tr, right, trByName.apply(left), left);
+                            } else if (left.getTableName().equals(tr.getTable().getName())) {
+                                return indexedAccess(tr, left,  trByName.apply(right), right);
                             }
                         }
                     }
                 }
-                // By default, we'll stick to producing nested for loops
                 LOG.warn("{} are being iterated using nested for loops", tableRowGenerators);
                 return forLoopFromTableRowGeneratorBlock(tr);
             })

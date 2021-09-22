@@ -47,7 +47,6 @@ class DetermineIndexes {
             final List<JoinPredicate> joinPredicates = inner.getQualifiers().stream()
                     .filter(e -> e instanceof JoinPredicate)
                     .map(e -> (JoinPredicate) e).collect(Collectors.toList());
-            final TableRowGenerator forLoopTable = tableRowGenerators.get(0);
 
             // For now, we always use a scan for the first Table being iterated over.
             tableRowGenerators.subList(1, tableRowGenerators.size())
@@ -58,12 +57,9 @@ class DetermineIndexes {
                             if (binaryOp.getOperator().equals(BinaryOperatorPredicate.Operator.EQUAL)) {
                                 final ColumnIdentifier left = (ColumnIdentifier) binaryOp.getLeft();
                                 final ColumnIdentifier right = (ColumnIdentifier) binaryOp.getRight();
-
-                                if (left.getTableName().equals(forLoopTable.getTable().getName())
-                                        && right.getTableName().equals(tr.getTable().getName())) {
+                                if (right.getTableName().equals(tr.getTable().getName())) {
                                     indexes.add(new IndexDescription(tr, right));
-                                } else if (right.getTableName().equals(forLoopTable.getTable().getName())
-                                        && left.getTableName().equals(tr.getTable().getName())) {
+                                } else if (left.getTableName().equals(tr.getTable().getName())) {
                                     indexes.add(new IndexDescription(tr, left));
                                 }
                             }
