@@ -2244,6 +2244,30 @@ public class ModelTest {
         assertEquals(2, fetch.size());
     }
 
+    @Test
+    public void testCapacityConstraintWithGroupBy() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t2(mid integer primary key, type varchar(30), capacity integer)");
+        conn.execute("CREATE TABLE t1(tid integer, demand integer, type varchar(30), " +
+                        "controllable__mid integer, foreign key(controllable__mid) references t2(mid))");
+
+        final List<String> views = List.of("CREATE CONSTRAINT capacity_c AS " +
+                                       "SELECT * FROM t1 " +
+                                       "JOIN t2 on t1.type = t2.type " +
+                                       "GROUP BY t1.type, t2.type " +
+                                       "CHECK capacity_constraint(controllable__mid, mid, demand, capacity) = true");
+        final Model model = Model.build(conn, views);
+
+        conn.execute("insert into t1 values (1, 5, 'cpu', null)");
+        conn.execute("insert into t1 values (2, 10, 'cpu', null)");
+        conn.execute("insert into t1 values (1, 10, 'mem', null)");
+        conn.execute("insert into t2 values (1, 'cpu', 10)");
+        conn.execute("insert into t2 values (2, 'mem', 10)");
+
+        final Result<? extends Record> fetch = model.solve("T1");
+        assertEquals(Set.of(1, 2), fetch.intoSet(3));
+    }
+
 
     @Test
     public void testNonConstraintViews() {

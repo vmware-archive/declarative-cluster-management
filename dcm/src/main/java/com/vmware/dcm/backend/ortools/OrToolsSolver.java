@@ -242,9 +242,12 @@ public class OrToolsSolver implements ISolverBackend {
 
         // ... then convert to Program<OutputIR.Block>
         passOne.map(
-                    (name, comprehension) -> nonConstraintViewCodeGen(name, comprehension, translationContext),
-                    (name, comprehension) -> constraintViewCodeGen(name, comprehension, translationContext),
-                    (name, comprehension) -> objectiveViewCodeGen(name, comprehension, translationContext)
+                (name, comprehension) -> viewCodeGen(name, comprehension,
+                                                     ConstraintType.NON_CONSTRAINT, translationContext),
+                (name, comprehension) -> viewCodeGen(name, comprehension,
+                                                     ConstraintType.HARD_CONSTRAINT, translationContext),
+                (name, comprehension) -> viewCodeGen(name, comprehension,
+                                                     ConstraintType.OBJECTIVE, translationContext)
                )
                // ... then lower to Program<CodeBlock>
                .map(outputIrBlock -> CodeBlock.builder().add(outputIrBlock.toString()).build())
@@ -283,34 +286,11 @@ public class OrToolsSolver implements ISolverBackend {
         }
     }
 
-    private OutputIR.Block nonConstraintViewCodeGen(final String name, final ListComprehension comprehension,
-                                                    final TranslationContext translationContext) {
+    private OutputIR.Block viewCodeGen(final String name, final ListComprehension comprehension,
+                                       final ConstraintType type, final TranslationContext translationContext) {
         final OutputIR.Block outerBlock = outputIR.newBlock("outer");
         translationContext.enterScope(outerBlock);
-        final OutputIR.Block block = viewBlock(name, comprehension, ConstraintType.NON_CONSTRAINT, translationContext);
-        outerBlock.addBody(block);
-        return outerBlock;
-    }
-
-    private OutputIR.Block constraintViewCodeGen(final String name, final ListComprehension comprehension,
-                                                 final TranslationContext translationContext) {
-        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-        translationContext.enterScope(outerBlock);
-        final List<FunctionCall> capacityConstraints = DetectCapacityConstraints.apply(comprehension);
-        final OutputIR.Block block = capacityConstraints.isEmpty() ?
-                        viewBlock(name, comprehension, ConstraintType.HARD_CONSTRAINT, translationContext) :
-                        createCapacityConstraint(name, comprehension, translationContext, capacityConstraints);
-        translationContext.leaveScope();
-        outerBlock.addBody(block);
-        return outerBlock;
-    }
-
-    private OutputIR.Block objectiveViewCodeGen(final String name, final ListComprehension comprehension,
-                                                final TranslationContext translationContext) {
-        final OutputIR.Block outerBlock = outputIR.newBlock("outer");
-        translationContext.enterScope(outerBlock);
-        final OutputIR.Block block = viewBlock(name, comprehension, ConstraintType.OBJECTIVE, translationContext);
-        translationContext.leaveScope();
+        final OutputIR.Block block = viewBlock(name, comprehension, type, translationContext);
         outerBlock.addBody(block);
         return outerBlock;
     }
@@ -385,11 +365,12 @@ public class OrToolsSolver implements ISolverBackend {
                                                   .addStatement("final var $L = entry.getValue()", groupDataName)
                                                   .build());
 
-            final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName,
-                                            CodeBlock.of("for (final var $L: $L)", groupDataTupleName, groupDataName),
-                                            groupDataName + ".size()");
+            final boolean shouldMaterializeView = DetectCapacityConstraints.apply(inner).isEmpty();
+            final CodeBlock forExpr = shouldMaterializeView ?
+                    CodeBlock.of("for (final var $L: $L)", groupDataTupleName, groupDataName) :
+                    CodeBlock.of("/* Intentionally empty to handle unmaterialized join */");
+            final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName, forExpr, groupDataName + ".size()");
             forBlock.addBody(dataForBlock);
-
 
             // (3) Filter if necessary
             final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(inner);
@@ -437,6 +418,7 @@ public class OrToolsSolver implements ISolverBackend {
                      .add("/* $L view $L */\n", constraintType, viewName)
                      .build()
         );
+        final boolean shouldMaterializeView = DetectCapacityConstraints.apply(comprehension).isEmpty();
 
         // Extract the set of columns being selected in this view
         final List<Expr> headItemsList = getColumnsAccessed(comprehension, constraintType);
@@ -445,7 +427,8 @@ public class OrToolsSolver implements ISolverBackend {
         // For non-constraints, create a Map<> or a List<> to collect the result-set (depending on
         // whether the query is a group by or not)
         final OutputIR.Block resultSetDeclBlock = mapOrListForResultSetBlock(viewName, headItemsList,
-                                                                             groupByQualifier, constraintType);
+                                                                             groupByQualifier, constraintType,
+                                                                             shouldMaterializeView);
         viewBlock.addBody(resultSetDeclBlock);
 
         // Separate out qualifiers into variable and non-variable types.
@@ -466,8 +449,9 @@ public class OrToolsSolver implements ISolverBackend {
         ) {
             // If filter predicate is true, then retrieve expressions to collect into result set. Note, this does not
             // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
-            final OutputIR.Block resultSetAddBlock = resultSetAddBlock(viewName, headItemsList,
-                                                                       groupByQualifier, context);
+            final OutputIR.Block resultSetAddBlock = shouldMaterializeView ?
+                    resultSetAddBlock(viewName, headItemsList, groupByQualifier, context) :
+                    resultSetAddBlock(viewName, comprehension, groupByQualifier, context);
             iterationBlock.addBody(resultSetAddBlock);
         } else {
             final List<CodeBlock> addRowConstraintBlock =
@@ -525,7 +509,8 @@ public class OrToolsSolver implements ISolverBackend {
      */
     private OutputIR.Block mapOrListForResultSetBlock(final String viewName, final List<Expr> headItemsList,
                                                       @Nullable final GroupByQualifier groupByQualifier,
-                                                      final ConstraintType isConstraint) {
+                                                      final ConstraintType isConstraint,
+                                                      final boolean shouldMaterializeView) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "CreateResultSet");
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
@@ -534,6 +519,9 @@ public class OrToolsSolver implements ISolverBackend {
 
         final TypeSpec tupleSpec = tupleGen.getTupleType(headItemsList.size());
         final String resultSetNameStr = nonConstraintViewName(viewName);
+        final CodeBlock resultSetType = shouldMaterializeView ?
+                          CodeBlock.of("$T<$N<$L>>", List.class, tupleSpec, headItemsListTupleGenericParameters) :
+                          CodeBlock.of("$T<$T, $T<$T>>", Map.class, String.class, Set.class, Integer.class);
 
         if (groupByQualifier != null) {
             // Create group by tuple
@@ -541,17 +529,16 @@ public class OrToolsSolver implements ISolverBackend {
             final JavaTypeList groupByTupleGenericParameters =
                     tupleMetadata.computeTupleGenericParameters(groupByQualifier.getGroupByExprs());
             final TypeSpec groupTupleSpec = tupleGen.getTupleType(numberOfGroupColumns);
-            block.addHeader(statement("final Map<$N<$L>, $T<$N<$L>>> $L = new $T<>()",
+
+            block.addHeader(statement("final Map<$N<$L>, $L> $L = new $T<>()",
                                         groupTupleSpec,
                                         groupByTupleGenericParameters,
-                                        List.class, tupleSpec,
-                                        headItemsListTupleGenericParameters,
+                                        resultSetType.toString(),
                                         resultSetNameStr, HashMap.class));
         } else {
             if (isConstraint == ConstraintType.NON_CONSTRAINT) {
-                block.addHeader(statement("final $T<$N<$L>> $L = new $T<>()",
-                                          List.class, tupleSpec, headItemsListTupleGenericParameters,
-                                          resultSetNameStr, ArrayList.class));
+                block.addHeader(statement("final $L $L = new $T<>()",
+                                         resultSetType.toString(), resultSetNameStr, ArrayList.class));
             }
         }
         return block;
@@ -721,6 +708,41 @@ public class OrToolsSolver implements ISolverBackend {
         } else {
             block.addBody(statement("$L.add($L)", resultSetNameStr, context.getTupleVarName()));
         }
+        return block;
+    }
+
+    private OutputIR.Block resultSetAddBlock(final String viewName, final ListComprehension comprehension,
+                                             @Nullable final GroupByQualifier groupByQualifier,
+                                             final TranslationContext context) {
+        final OutputIR.Block block = outputIR.newBlock(viewName + "AddToResultSet");
+        if (groupByQualifier != null) {
+            final int numberOfGroupByColumns = groupByQualifier.getGroupByExprs().size();
+            // Comma separated list of field accesses to construct a group string
+            final String groupString = groupByQualifier.getGroupByExprs().stream()
+                    .map(e -> toJavaExpression(e, context))
+                    .map(JavaExpression::asString)
+                    .collect(Collectors.joining(",     \n"));
+
+            // Organize the collected tuples from the nested for loops by groupByTuple
+            block.addBody(statement("final var groupByTuple = new Tuple$L<>(\n    $L\n    )",
+                    numberOfGroupByColumns, groupString));
+        }
+        comprehension.getQualifiers().stream()
+                .filter(expr -> expr instanceof TableRowGenerator)
+                .forEach(expr -> {
+                    final IRTable table = ((TableRowGenerator) expr).getTable();
+                    final String iterStr = iterStr(table.getName());
+                    final String tableName = tableNameStr(table.getName());
+                    final String resultSetNameStr =  nonConstraintViewName(viewName);
+                    if (groupByQualifier != null) {
+                        block.addBody(statement("$L.computeIfAbsent(groupByTuple, (k) -> new $T<>())" +
+                                                ".computeIfAbsent($S, (k) -> new $T<>()).add($L)",
+                                                resultSetNameStr, HashMap.class, tableName, HashSet.class, iterStr));
+                    } else {
+                        block.addBody(statement("$L.computeIfAbsent($S, (k) -> new $T()).add($L)",
+                                resultSetNameStr, tableName, HashSet.class, iterStr));
+                    }
+                });
         return block;
     }
 
@@ -1140,88 +1162,6 @@ public class OrToolsSolver implements ISolverBackend {
     }
 
     /**
-     *
-     */
-    OutputIR.Block createCapacityConstraint(final String viewName, final ListComprehension comprehension,
-                                            final TranslationContext context,
-                                            final List<FunctionCall> capacityConstraint) {
-        Preconditions.checkArgument(comprehension instanceof GroupByComprehension);
-        final GroupByComprehension groupByComprehension = (GroupByComprehension) comprehension;
-        final ListComprehension innerComprehension = groupByComprehension.getComprehension();
-        final OutputIR.Block block = outputIR.newBlock(viewName);
-        context.enterScope(block);
-
-        // Add individual for loops to extract what we need. This would use table-row generators.
-        final Map<String, OutputIR.ForBlock> tableToForBlock = new HashMap<>();
-        final List<TableRowGenerator> tableRowGenerators =
-                innerComprehension.getQualifiers().stream().filter(q -> q instanceof TableRowGenerator)
-                             .map(q -> (TableRowGenerator) q).collect(Collectors.toList());
-        tableRowGenerators.forEach(
-                tableRowGenerator -> {
-                    final CodeBlock codeBlock = forLoopFromTableRowGeneratorBlock(tableRowGenerator);
-                    final OutputIR.ForBlock forBlock = outputIR.newForBlock("", codeBlock);
-                    block.addBody(forBlock);
-                    tableToForBlock.put(tableRowGenerator.getTable().getName(), forBlock);
-                }
-        );
-        Preconditions.checkArgument(tableToForBlock.size() > 0);
-        final Set<String> vars = new HashSet<>();
-        final Set<String> domain = new HashSet<>();
-        final List<String> demands = new ArrayList<>();
-        final List<String> capacities = new ArrayList<>();
-
-        capacityConstraint.forEach(
-            functionCall -> {
-                Preconditions.checkArgument(functionCall.getFunction()
-                                                          .equals(FunctionCall.Function.CAPACITY_CONSTRAINT));
-                final List<Expr> arguments = functionCall.getArgument();
-                Preconditions.checkArgument(arguments.size() == 4);
-                for (int i = 0; i < 4; i++) {
-                    final Expr arg = arguments.get(i);
-                    Preconditions.checkArgument(arg instanceof ColumnIdentifier);
-                    final ColumnIdentifier columnArg = (ColumnIdentifier) arg;
-                    final OutputIR.ForBlock forBlock = tableToForBlock.get(columnArg.getTableName());
-                    context.enterScope(forBlock);
-                    final JavaExpression variable = toJavaExpression(columnArg, context);
-                    final boolean shouldCoerce = (i == 2 || i == 3) && variable.type() != JavaType.Long;
-                    final JavaExpression maybeCoercedVariable;
-                    if (shouldCoerce) {
-                        // if demands/capacities are in Integer domain, we coerce to longs
-                        forBlock.addBody(statement("final long $L_l = (long) $L", variable.asString(),
-                                                                                  variable.asString()));
-                        maybeCoercedVariable = new JavaExpression(variable.asString() + "_l", JavaType.Long);
-                    } else {
-                        maybeCoercedVariable = variable;
-                    }
-                    context.leaveScope();
-                    final JavaExpression parameter = extractListFromLoop(maybeCoercedVariable, context.currentScope(),
-                                                                         forBlock);
-
-                    if (i == 0) { // vars
-                        vars.add(parameter.asString());
-                    } else if (i == 1) { // domain
-                        domain.add(parameter.asString());
-                    } else if (i == 2) { // demands
-                        demands.add(parameter.asString());
-                    } else { // capacities
-                        capacities.add(parameter.asString());
-                    }
-                }
-            }
-        );
-        context.leaveScope();
-        Preconditions.checkArgument(vars.size() == 1 && domain.size() == 1);
-        final String varsParameterStr = vars.iterator().next();
-        final String domainParameterStr = domain.iterator().next();
-        final String demandsParameterStr = String.join(", ", demands);
-        final String capacitiesParameterStr = String.join(", ", capacities);
-        block.addBody(CodeBlock.of("o.capacityConstraint($L, $L, $T.of($L), $T.of($L));",
-                                  varsParameterStr, domainParameterStr,
-                                  List.class, demandsParameterStr, List.class, capacitiesParameterStr));
-        return block;
-    }
-
-    /**
      * The main logic to parse a comprehension and translate it into a set of intermediate variables and expressions.
      */
     @SuppressFBWarnings("NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE") // false positive
@@ -1277,6 +1217,60 @@ public class OrToolsSolver implements ISolverBackend {
                     return new JavaExpression(CodeBlock.of("o.scalProd$L($L, $L)", arg2Type.toString(),
                                               listOfArg1.asString(), listOfArg2.asString()).toString(),
                                               JavaType.IntVar);
+                case CAPACITY_CONSTRAINT:
+                    final String t1 = ((ColumnIdentifier) node.getArgument().get(0)).getTableName();
+                    final String t2 = ((ColumnIdentifier) node.getArgument().get(1)).getTableName();
+                    final Map<String, OutputIR.ForBlock> tableToForBlock = new HashMap<>();
+                    for (final String tableName: List.of(t1, t2)) {
+                        final CodeBlock codeBlock = CodeBlock.of("for (int $L : $L.get($S))",
+                                iterStr(tableName), context.getGroupContext().getGroupDataName(),
+                                tableNameStr(tableName));
+                        final OutputIR.ForBlock forBlock = outputIR.newForBlock(tableName + "CapacityConstraintLoop", codeBlock);
+                        context.currentScope().addBody(forBlock);
+                        tableToForBlock.put(tableName, forBlock);
+                    }
+                    final Set<String> vars = new HashSet<>();
+                    final Set<String> domain = new HashSet<>();
+                    final List<String> demands = new ArrayList<>();
+                    final List<String> capacities = new ArrayList<>();
+                    for (int i = 0; i < 4; i++) {
+                        final Expr arg = node.getArgument().get(i);
+                        Preconditions.checkArgument(arg instanceof ColumnIdentifier);
+                        final ColumnIdentifier columnArg = (ColumnIdentifier) arg;
+                        final OutputIR.ForBlock forBlock = tableToForBlock.get(columnArg.getTableName());
+                        context.enterScope(forBlock);
+                        final JavaExpression variable = toJavaExpression(columnArg, context);
+                        final boolean shouldCoerce = (i == 2 || i == 3) && variable.type() != JavaType.Long;
+                        final JavaExpression maybeCoercedVariable;
+                        if (shouldCoerce) {
+                            // if demands/capacities are in Integer domain, we coerce to longs
+                            forBlock.addBody(statement("final long $L_l = (long) $L", variable.asString(),
+                                    variable.asString()));
+                            maybeCoercedVariable = new JavaExpression(variable.asString() + "_l", JavaType.Long);
+                        } else {
+                            maybeCoercedVariable = variable;
+                        }
+                        context.leaveScope();
+                        final JavaExpression parameter = extractListFromLoop(maybeCoercedVariable, context.currentScope(),
+                                forBlock);
+                        if (i == 0) { // vars
+                            vars.add(parameter.asString());
+                        } else if (i == 1) { // domain
+                            domain.add(parameter.asString());
+                        } else if (i == 2) { // demands
+                            demands.add(parameter.asString());
+                        } else { // capacities
+                            capacities.add(parameter.asString());
+                        }
+                    }
+                    final String varsParameterStr = vars.iterator().next();
+                    final String domainParameterStr = domain.iterator().next();
+                    final String demandsParameterStr = String.join(", ", demands);
+                    final String capacitiesParameterStr = String.join(", ", capacities);
+                    final CodeBlock constraintExpr = CodeBlock.of("o.capacityConstraint($L, $L, $T.of($L), $T.of($L))",
+                            varsParameterStr, domainParameterStr,
+                            List.class, demandsParameterStr, List.class, capacitiesParameterStr);
+                    return new JavaExpression(constraintExpr.toString(), JavaType.IntVar);
                 default:
                     throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
             }
