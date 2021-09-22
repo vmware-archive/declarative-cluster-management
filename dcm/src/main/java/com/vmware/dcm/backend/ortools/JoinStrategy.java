@@ -13,7 +13,7 @@ import com.vmware.dcm.compiler.ir.SimpleVisitor;
 import java.util.ArrayList;
 import java.util.List;
 
-class DetectCapacityConstraints extends SimpleVisitor {
+class JoinStrategy extends SimpleVisitor {
     final List<FunctionCall> nodes = new ArrayList<>();
 
     @Override
@@ -24,9 +24,14 @@ class DetectCapacityConstraints extends SimpleVisitor {
         return super.visitFunctionCall(node, context);
     }
 
-    public static List<FunctionCall> apply(final Expr expr) {
-        final DetectCapacityConstraints visitor = new DetectCapacityConstraints();
+    public static Type apply(final Expr expr) {
+        final JoinStrategy visitor = new JoinStrategy();
         visitor.visit(expr);
-        return visitor.nodes;
+        return visitor.nodes.isEmpty() ? Type.MATERIALIZED : Type.UNMATERIALIZED;
+    }
+
+    enum Type {
+        MATERIALIZED,
+        UNMATERIALIZED
     }
 }

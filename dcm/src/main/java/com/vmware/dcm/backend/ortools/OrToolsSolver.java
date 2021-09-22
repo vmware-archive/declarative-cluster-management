@@ -365,8 +365,8 @@ public class OrToolsSolver implements ISolverBackend {
                                                   .addStatement("final var $L = entry.getValue()", groupDataName)
                                                   .build());
 
-            final boolean shouldMaterializeView = DetectCapacityConstraints.apply(inner).isEmpty();
-            final CodeBlock forExpr = shouldMaterializeView ?
+            final JoinStrategy.Type joinStrategy = JoinStrategy.apply(inner);
+            final CodeBlock forExpr = joinStrategy == JoinStrategy.Type.MATERIALIZED ?
                     CodeBlock.of("for (final var $L: $L)", groupDataTupleName, groupDataName) :
                     CodeBlock.of("/* Intentionally empty to handle unmaterialized join */");
             final OutputIR.ForBlock dataForBlock = outputIR.newForBlock(viewName, forExpr, groupDataName + ".size()");
@@ -418,7 +418,7 @@ public class OrToolsSolver implements ISolverBackend {
                      .add("/* $L view $L */\n", constraintType, viewName)
                      .build()
         );
-        final boolean shouldMaterializeView = DetectCapacityConstraints.apply(comprehension).isEmpty();
+        final JoinStrategy.Type joinType = JoinStrategy.apply(comprehension);
 
         // Extract the set of columns being selected in this view
         final List<Expr> headItemsList = getColumnsAccessed(comprehension, constraintType);
@@ -428,7 +428,7 @@ public class OrToolsSolver implements ISolverBackend {
         // whether the query is a group by or not)
         final OutputIR.Block resultSetDeclBlock = mapOrListForResultSetBlock(viewName, headItemsList,
                                                                              groupByQualifier, constraintType,
-                                                                             shouldMaterializeView);
+                                                                             joinType);
         viewBlock.addBody(resultSetDeclBlock);
 
         // Separate out qualifiers into variable and non-variable types.
@@ -449,7 +449,7 @@ public class OrToolsSolver implements ISolverBackend {
         ) {
             // If filter predicate is true, then retrieve expressions to collect into result set. Note, this does not
             // evaluate things like functions (sum etc.). These are not aggregated as part of the inner expressions.
-            final OutputIR.Block resultSetAddBlock = shouldMaterializeView ?
+            final OutputIR.Block resultSetAddBlock = joinType == JoinStrategy.Type.MATERIALIZED ?
                     resultSetAddBlock(viewName, headItemsList, groupByQualifier, context) :
                     resultSetAddBlock(viewName, comprehension, groupByQualifier, context);
             iterationBlock.addBody(resultSetAddBlock);
@@ -510,7 +510,7 @@ public class OrToolsSolver implements ISolverBackend {
     private OutputIR.Block mapOrListForResultSetBlock(final String viewName, final List<Expr> headItemsList,
                                                       @Nullable final GroupByQualifier groupByQualifier,
                                                       final ConstraintType isConstraint,
-                                                      final boolean shouldMaterializeView) {
+                                                      final JoinStrategy.Type joinStrategy) {
         final OutputIR.Block block = outputIR.newBlock(viewName + "CreateResultSet");
 
         // Compute a string that represents the Java types corresponding to the headItemsStr
@@ -519,7 +519,7 @@ public class OrToolsSolver implements ISolverBackend {
 
         final TypeSpec tupleSpec = tupleGen.getTupleType(headItemsList.size());
         final String resultSetNameStr = nonConstraintViewName(viewName);
-        final CodeBlock resultSetType = shouldMaterializeView ?
+        final CodeBlock resultSetType = joinStrategy == JoinStrategy.Type.MATERIALIZED ?
                           CodeBlock.of("$T<$N<$L>>", List.class, tupleSpec, headItemsListTupleGenericParameters) :
                           CodeBlock.of("$T<$T, $T<$T>>", Map.class, String.class, Set.class, Integer.class);
 
@@ -1225,7 +1225,8 @@ public class OrToolsSolver implements ISolverBackend {
                         final CodeBlock codeBlock = CodeBlock.of("for (int $L : $L.get($S))",
                                 iterStr(tableName), context.getGroupContext().getGroupDataName(),
                                 tableNameStr(tableName));
-                        final OutputIR.ForBlock forBlock = outputIR.newForBlock(tableName + "CapacityConstraintLoop", codeBlock);
+                        final OutputIR.ForBlock forBlock =
+                                outputIR.newForBlock(tableName + "CapacityConstraintLoop", codeBlock);
                         context.currentScope().addBody(forBlock);
                         tableToForBlock.put(tableName, forBlock);
                     }
@@ -1251,8 +1252,9 @@ public class OrToolsSolver implements ISolverBackend {
                             maybeCoercedVariable = variable;
                         }
                         context.leaveScope();
-                        final JavaExpression parameter = extractListFromLoop(maybeCoercedVariable, context.currentScope(),
-                                forBlock);
+                        final JavaExpression parameter = extractListFromLoop(maybeCoercedVariable,
+                                                                             context.currentScope(),
+                                                                             forBlock);
                         if (i == 0) { // vars
                             vars.add(parameter.asString());
                         } else if (i == 1) { // domain
