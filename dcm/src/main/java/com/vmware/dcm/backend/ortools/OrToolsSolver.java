@@ -1218,10 +1218,12 @@ public class OrToolsSolver implements ISolverBackend {
                                               listOfArg1.asString(), listOfArg2.asString()).toString(),
                                               JavaType.IntVar);
                 case CAPACITY_CONSTRAINT:
-                    final String t1 = ((ColumnIdentifier) node.getArgument().get(0)).getTableName();
-                    final String t2 = ((ColumnIdentifier) node.getArgument().get(1)).getTableName();
                     final Map<String, OutputIR.ForBlock> tableToForBlock = new HashMap<>();
-                    for (final String tableName: List.of(t1, t2)) {
+                    for (int i = 0; i < 4; i++) {
+                        final String tableName = ((ColumnIdentifier) node.getArgument().get(i)).getTableName();
+                        if (tableToForBlock.containsKey(tableName)) {
+                            continue;
+                        }
                         final CodeBlock codeBlock = CodeBlock.of("for (int $L : $L.get($S))",
                                 iterStr(tableName), context.getGroupContext().getGroupDataName(),
                                 tableNameStr(tableName));

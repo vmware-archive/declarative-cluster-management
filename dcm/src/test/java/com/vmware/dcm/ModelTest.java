@@ -2268,6 +2268,37 @@ public class ModelTest {
         assertEquals(Set.of(1, 2), fetch.intoSet(3));
     }
 
+    @Test
+    public void testCapacityConstraintWithJoinAndGroupBy() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t2(mid integer primary key, type varchar(30), capacity integer)");
+        conn.execute("CREATE TABLE t1(tid integer, controllable__mid integer, " +
+                                        "foreign key(controllable__mid) references t2(mid))");
+        conn.execute("CREATE TABLE t1_demands(tid integer, demand integer, type varchar(30), " +
+                                                "foreign key(tid) references t1(tid))");
+
+        final List<String> views = List.of("CREATE CONSTRAINT capacity_c AS " +
+                "SELECT * FROM t1 " +
+                "JOIN t1_demands ON t1_demands.tid = t1.tid " +
+                "JOIN t2 ON t1_demands.type = t2.type " +
+                "WHERE t1.tid != 3 " +
+                "GROUP BY t1_demands.type, t2.type " +
+                "CHECK capacity_constraint(controllable__mid, mid, demand, capacity) = true");
+        final Model model = Model.build(conn, views);
+
+        conn.execute("insert into t1 values (1, null)");
+        conn.execute("insert into t1 values (2, null)");
+        conn.execute("insert into t1 values (3, null)");
+        conn.execute("insert into t1_demands values (1, 5, 'cpu')");
+        conn.execute("insert into t1_demands values (1, 10, 'mem')");
+        conn.execute("insert into t1_demands values (2, 10, 'cpu')");
+        conn.execute("insert into t1_demands values (3, 10, 'mem')");
+        conn.execute("insert into t2 values (1, 'cpu', 10)");
+        conn.execute("insert into t2 values (2, 'mem', 10)");
+
+        final Result<? extends Record> fetch = model.solve("T1");
+        assertEquals(Set.of(1, 2), fetch.intoSet(1));
+    }
 
     @Test
     public void testNonConstraintViews() {
@@ -2276,7 +2307,7 @@ public class ModelTest {
 
         final List<String> views = List.of("CREATE CONSTRAINT intermediate_view AS " +
                         "SELECT c1, controllable__c2 as c2 FROM t1",
-                "CREATE CONSTRAINT c_on_intermediate_view AS " +
+                        "CREATE CONSTRAINT c_on_intermediate_view AS " +
                         "SELECT * FROM intermediate_view " +
                         "CHECK c1 = 10 and c2 = 11");
 
