@@ -167,7 +167,7 @@ public class Model {
                 final ExtractAccessedTables visitor = new ExtractAccessedTables(accessedTableNames);
                 visitor.visit(ddl);
             } catch (final SqlParseException e) {
-                throw new ModelException(e);
+                throw new ModelException("Could not parse constraint:\n" + constraint, e);
             }
         });
 

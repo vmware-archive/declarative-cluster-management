@@ -2271,11 +2271,9 @@ public class ModelTest {
     @Test
     public void testCapacityConstraintWithJoinAndGroupBy() {
         final DSLContext conn = setup();
-        conn.execute("CREATE TABLE t2(mid integer primary key, type varchar(30), capacity integer)");
-        conn.execute("CREATE TABLE t1(tid integer, controllable__mid integer, " +
-                                        "foreign key(controllable__mid) references t2(mid))");
-        conn.execute("CREATE TABLE t1_demands(tid integer, demand integer, type varchar(30), " +
-                                                "foreign key(tid) references t1(tid))");
+        conn.execute("CREATE TABLE t2(mid integer, type varchar(30), capacity integer)");
+        conn.execute("CREATE TABLE t1(tid integer, controllable__mid integer)");
+        conn.execute("CREATE TABLE t1_demands(tid integer, demand integer, type varchar(30))");
 
         final List<String> views = List.of("CREATE CONSTRAINT capacity_c AS " +
                 "SELECT * FROM t1 " +
@@ -2291,13 +2289,24 @@ public class ModelTest {
         conn.execute("insert into t1 values (3, null)");
         conn.execute("insert into t1_demands values (1, 5, 'cpu')");
         conn.execute("insert into t1_demands values (1, 10, 'mem')");
+        conn.execute("insert into t1_demands values (1, 10, 'store')");
+        conn.execute("insert into t1_demands values (1, 1, 'pods')");
         conn.execute("insert into t1_demands values (2, 10, 'cpu')");
         conn.execute("insert into t1_demands values (3, 10, 'mem')");
+        conn.execute("insert into t1_demands values (3, 10, 'store')");
+        conn.execute("insert into t1_demands values (3, 10, 'pods')");
         conn.execute("insert into t2 values (1, 'cpu', 10)");
+        conn.execute("insert into t2 values (1, 'mem', 10)");
+        conn.execute("insert into t2 values (1, 'store', 10)");
+        conn.execute("insert into t2 values (1, 'pods', 10)");
+        conn.execute("insert into t2 values (2, 'cpu', 10)");
         conn.execute("insert into t2 values (2, 'mem', 10)");
+        conn.execute("insert into t2 values (2, 'store', 10)");
+        conn.execute("insert into t2 values (2, 'pods', 10)");
 
         final Result<? extends Record> fetch = model.solve("T1");
-        assertEquals(Set.of(1, 2), fetch.intoSet(1));
+        assertTrue(fetch.intoSet(1, Integer.class).containsAll(Set.of(1, 2)));
+        assertFalse(fetch.intoSet(1).contains(3));
     }
 
     @Test

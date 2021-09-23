@@ -803,7 +803,7 @@ public class Ops {
         demands.forEach(
                 vec -> {
                     Preconditions.checkArgument(varsToAssign.size() == vec.size(),
-                            "Capacities and domain vectors are of different sizes");
+                            "Vars to assign and demand vectors are of different sizes");
                     Preconditions.checkArgument(vec.stream().allMatch(demand -> demand >= 0),
                             "Negative values for demands are not allowed");
                 }
@@ -909,7 +909,7 @@ public class Ops {
             model.minimize(max);
 
             // Balance out the need to minimize the load with a penalty for not assigning tasks at all
-            model.maximize(mult(penalty, maxCapacities[i]));
+            model.maximize(mult(penalty, presenceLiterals.size() * maxCapacities[i]));
         }
     }
 

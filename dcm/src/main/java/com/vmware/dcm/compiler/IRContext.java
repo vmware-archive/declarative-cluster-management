@@ -50,7 +50,8 @@ public class IRContext {
     public IRColumn getColumn(final String tableName, final String fieldName) {
         final IRTable irTable = getTable(tableName);
         final String fieldNameCaps = fieldName.toUpperCase(Locale.US);
-        return Objects.requireNonNull(irTable.getIRColumns().get(fieldNameCaps));
+        return Objects.requireNonNull(irTable.getIRColumns().get(fieldNameCaps),
+                                      String.format("Could not find table: %s field: %s", tableName, fieldName));
     }
 
     /**
