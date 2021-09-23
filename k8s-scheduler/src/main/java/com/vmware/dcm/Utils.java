@@ -7,25 +7,8 @@
 package com.vmware.dcm;
 
 import io.fabric8.kubernetes.api.model.Quantity;
-import io.fabric8.kubernetes.api.model.ResourceRequirements;
-
-import java.util.List;
 
 class Utils {
-
-    static long resourceRequirementSum(final List<ResourceRequirements> resourceRequirements,
-                                             final String resourceName) {
-        return resourceRequirements.stream().mapToLong(e -> {
-            if (e == null || e.getRequests() == null) {
-                return 0L;
-            }
-            final Quantity resourceQuantity = e.getRequests().get(resourceName);
-            if (resourceQuantity == null) {
-                return 0L;
-            }
-            return convertUnit(resourceQuantity, resourceName);
-        }).sum();
-    }
 
     static long convertUnit(final Quantity quantity, final String resourceName) {
         if (resourceName.equals("cpu")) {

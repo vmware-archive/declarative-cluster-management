@@ -29,20 +29,15 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
-import org.h2.api.Trigger;
 import org.jooq.DSLContext;
 import org.jooq.Insert;
 import org.jooq.InsertOnDuplicateSetMoreStep;
 import org.jooq.Query;
 import org.jooq.Table;
-import org.jooq.exception.DataAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -53,6 +48,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+
+import static com.vmware.dcm.Utils.convertUnit;
 
 
 /**
@@ -76,79 +73,12 @@ class PodEventsToDatabase {
 
     PodEventsToDatabase(final DBConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
-        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            conn.execute("create or replace trigger nodeInfoResourceUpdateOnPodInsert " +
-                         "after insert on " + Tables.POD_INFO.getName() + " for each row " +
-                         "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
-            conn.execute("create or replace trigger nodeInfoResourceUpdateOnPodUpdate " +
-                         "after update on " + Tables.POD_INFO.getName() + " for each row " +
-                         "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
-            conn.execute("create or replace trigger nodeInfoResourceUpdateOnPodDelete " +
-                          "after delete on " + Tables.POD_INFO.getName() + " for each row " +
-                          "call \"" + NodeInfoIncrementalUpdate.class.getName() + "\"");
-        } catch (final DataAccessException e) {
-            LOG.error(e.getLocalizedMessage());
-        }
-    }
-
-    /**
-     * This trigger is used to incrementally reflect pod resource requests in the corresponding
-     * node tables.
-     */
-    public static class NodeInfoIncrementalUpdate implements Trigger {
-
-        @Override
-        public void init(final Connection connection, final String s,
-                         final String s1, final String s2, final boolean b, final int i) {
-        }
-
-        @Override
-        public void fire(final Connection connection, final Object[] oldRow, final Object[] newRow)
-                         throws SQLException {
-            try (final PreparedStatement stmt = connection.prepareStatement(
-                    "update " + Tables.NODE_INFO.getName() +
-                    " set cpu_allocated = cpu_allocated + ?," +
-                     "memory_allocated = memory_allocated + ?," +
-                     "ephemeral_storage_allocated = ephemeral_storage_allocated + ?," +
-                     "pods_allocated = pods_allocated + ? " +
-                     "where name = ?")) {
-                final boolean isInsert = (oldRow == null && newRow != null && newRow[3] != null);
-                final boolean isDeletion = (oldRow != null && newRow == null && oldRow[3] != null);
-                final boolean isNodeNameUpdate =
-                        oldRow != null && newRow != null && oldRow[3] == null && newRow[3] != null;
-                if (isDeletion) {
-                    updateNodeAgainstPodInfo(stmt, oldRow, (String) oldRow[3], true);
-                } else if (isInsert || isNodeNameUpdate) {
-                    updateNodeAgainstPodInfo(stmt, newRow, (String) newRow[3], false);
-                }
-            }
-        }
-
-        @Override
-        public void close() {
-        }
-
-        @Override
-        public void remove() {
-        }
-
-        private void updateNodeAgainstPodInfo(final PreparedStatement statement, final Object[] podRow,
-                                              final String nodeName, final boolean isDeletion)
-                                              throws SQLException {
-            final int sign = isDeletion ? -1 : 1;
-            statement.setLong(1, sign * ((long) podRow[5])); // CPU_REQUEST
-            statement.setLong(2, sign * ((long) podRow[6])); // MEMORY_REQUEST
-            statement.setLong(3, sign * ((long) podRow[7])); // EPHEMERAL_STORAGE_REQUEST
-            statement.setLong(4, sign * ((long) podRow[8])); // PODS_REQUEST
-            statement.setString(5, nodeName);
-            statement.execute();
-        }
     }
 
     PodEvent handle(final PodEvent event) {
         switch (event.action()) {
             case ADDED -> addPod(event.pod());
-            case UPDATED -> updatePod(event.pod());
+            case UPDATED -> updatePod(event.pod(), Objects.requireNonNull(event.oldPod()));
             case DELETED -> deletePod(event.pod());
             default -> throw new IllegalArgumentException(event.toString());
         }
@@ -169,11 +99,11 @@ class PodEventsToDatabase {
             final List<Query> inserts = new ArrayList<>();
             inserts.addAll(updatePodRecord(pod, conn));
             inserts.addAll(updateContainerInfoForPod(pod, conn));
-            inserts.addAll(updatePodNodeSelectorLabels(pod, conn));
             inserts.addAll(updatePodLabels(conn, pod));
             // updateVolumeInfoForPod(pod, pvcToPv, conn);
             inserts.addAll(updatePodTolerations(pod, conn));
             inserts.addAll(updatePodAffinity(pod, conn));
+            inserts.addAll(updateResourceRequests(pod, conn));
             conn.batch(inserts).execute();
         }
     }
@@ -193,7 +123,7 @@ class PodEventsToDatabase {
         }
     }
 
-    private void updatePod(final Pod pod) {
+    private void updatePod(final Pod pod, final Pod oldPod) {
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final PodInfoRecord existingPodInfoRecord = conn.selectFrom(Tables.POD_INFO)
                     .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid()))
@@ -226,6 +156,19 @@ class PodEventsToDatabase {
             LOG.trace("Updating pod {} (uid: {}, resourceVersion: {})", pod.getMetadata().getName(),
                       pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
             final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
+            if (!pod.getSpec().getContainers().equals(oldPod.getSpec().getContainers())) {
+                insertOrUpdate.addAll(updateContainerInfoForPod(pod, conn));
+                insertOrUpdate.addAll(updateResourceRequests(pod, conn));
+            }
+            if (!pod.getMetadata().getLabels().equals(oldPod.getMetadata().getLabels())) {
+                insertOrUpdate.addAll(updatePodLabels(conn, pod));
+            }
+            if (!pod.getSpec().getTolerations().equals(oldPod.getSpec().getTolerations())) {
+                insertOrUpdate.addAll(updatePodTolerations(pod, conn));
+            }
+            if (!pod.getSpec().getAffinity().equals(oldPod.getSpec().getAffinity())) {
+                insertOrUpdate.addAll(updatePodAffinity(pod, conn));
+            }
             conn.batch(insertOrUpdate).execute();
         }
     }
@@ -235,10 +178,6 @@ class PodEventsToDatabase {
         final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
                 .collect(Collectors.toList());
-        final long cpuRequest = Utils.resourceRequirementSum(resourceRequirements, "cpu");
-        final long memoryRequest = Utils.resourceRequirementSum(resourceRequirements, "memory");
-        final long ephemeralStorageRequest = Utils.resourceRequirementSum(resourceRequirements, "ephemeral-storage");
-        final long podsRequest = 1;
 
         // The first owner reference is used to break symmetries.
         final List<OwnerReference> owners = pod.getMetadata().getOwnerReferences();
@@ -267,16 +206,12 @@ class PodEventsToDatabase {
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
         final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
-        LOG.info("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+        LOG.info("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
                 pod.getMetadata().getUid(),
                 pod.getMetadata().getName(),
                 pod.getStatus().getPhase(),
                 pod.getSpec().getNodeName(),
                 pod.getMetadata().getNamespace(),
-                cpuRequest,
-                memoryRequest,
-                ephemeralStorageRequest,
-                podsRequest,
                 ownerName,
                 pod.getMetadata().getCreationTimestamp(),
                 hasNodeSelector,
@@ -294,10 +229,6 @@ class PodEventsToDatabase {
                 p.STATUS,
                 p.NODE_NAME,
                 p.NAMESPACE,
-                p.CPU_REQUEST,
-                p.MEMORY_REQUEST,
-                p.EPHEMERAL_STORAGE_REQUEST,
-                p.PODS_REQUEST,
                 p.OWNER_NAME,
                 p.CREATION_TIMESTAMP,
                 p.HAS_NODE_SELECTOR_LABELS,
@@ -315,10 +246,6 @@ class PodEventsToDatabase {
                         pod.getStatus().getPhase(),
                         pod.getSpec().getNodeName(),
                         pod.getMetadata().getNamespace(),
-                        cpuRequest,
-                        memoryRequest,
-                        ephemeralStorageRequest,
-                        podsRequest,
                         ownerName,
                         pod.getMetadata().getCreationTimestamp(),
                         hasNodeSelector,
@@ -338,10 +265,6 @@ class PodEventsToDatabase {
                 .set(p.STATUS, pod.getStatus().getPhase())
                 .set(p.NODE_NAME, pod.getSpec().getNodeName())
                 .set(p.NAMESPACE, pod.getMetadata().getNamespace())
-                .set(p.CPU_REQUEST, cpuRequest)
-                .set(p.MEMORY_REQUEST, memoryRequest)
-                .set(p.EPHEMERAL_STORAGE_REQUEST, ephemeralStorageRequest)
-                .set(p.PODS_REQUEST, podsRequest)
 
                 // The first owner reference is used to break symmetries.
                 .set(p.OWNER_NAME, ownerName)
@@ -370,6 +293,25 @@ class PodEventsToDatabase {
         return inserts;
     }
 
+    private List<Insert<?>> updateResourceRequests(final Pod pod, final DSLContext conn) {
+        conn.deleteFrom(Tables.POD_RESOURCE_DEMANDS)
+                .where(Tables.POD_RESOURCE_DEMANDS.UID.eq(pod.getMetadata().getUid())).execute();
+        final List<Insert<?>> inserts = new ArrayList<>();
+        final Map<String, Long> resourceRequirements = pod.getSpec().getContainers().stream()
+                .map(Container::getResources)
+                .map(ResourceRequirements::getRequests)
+                .flatMap(e -> e.entrySet().stream())
+                .collect(Collectors.toMap(Map.Entry::getKey,
+                                          es -> convertUnit(es.getValue(), es.getKey()),
+                                          Long::sum));
+        resourceRequirements.putIfAbsent("pods", 1L);
+        resourceRequirements.forEach((resource, demand) -> inserts.add(
+                conn.insertInto(Tables.POD_RESOURCE_DEMANDS)
+                    .values(pod.getMetadata().getUid(), resource, demand)
+        ));
+        return inserts;
+    }
+
     private boolean hasNodeSelector(final Pod pod) {
         final PodSpec podSpec = pod.getSpec();
         return  (podSpec.getNodeSelector() != null && podSpec.getNodeSelector().size() > 0)
@@ -384,8 +326,22 @@ class PodEventsToDatabase {
 
     private List<Insert<?>> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
         final List<Insert<?>> inserts = new ArrayList<>();
+        conn.deleteFrom(Tables.POD_IMAGES)
+                .where(Tables.POD_IMAGES.POD_UID.eq(pod.getMetadata().getUid()))
+                .execute();
+        conn.deleteFrom(Tables.POD_PORTS_REQUEST)
+                .where(Tables.POD_PORTS_REQUEST.POD_UID.eq(pod.getMetadata().getUid()))
+                .execute();
+
+        // Record all unique images in the container
+        pod.getSpec().getContainers().stream()
+                .map(Container::getImage)
+                .distinct()
+                .forEach(image ->
+                    inserts.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getUid(), image))
+                );
+
         for (final Container container: pod.getSpec().getContainers()) {
-            inserts.add(conn.insertInto(Tables.POD_IMAGES).values(pod.getMetadata().getUid(), container.getImage()));
             if (container.getPorts() == null || container.getPorts().isEmpty()) {
                 continue;
             }
@@ -401,27 +357,6 @@ class PodEventsToDatabase {
             }
         }
         return inserts;
-    }
-
-    private List<Insert<PodNodeSelectorLabelsRecord>> updatePodNodeSelectorLabels(final Pod pod,
-                                                                                  final DSLContext conn) {
-        final List<Insert<PodNodeSelectorLabelsRecord>> podNodeSelectorLabels = new ArrayList<>();
-        // Update pod_node_selector_labels table
-        final Map<String, String> nodeSelector = pod.getSpec().getNodeSelector();
-        if (nodeSelector != null) {
-            // Using a node selector is equivalent to having a single node-selector term and a list of match expressions
-            final int term = 0;
-            final Object[] matchExpressions = nodeSelector.entrySet().stream()
-                                                .map(e -> toMatchExpressionId(conn, e.getKey(), Operators.In.toString(),
-                                                                              List.of(e.getValue())))
-                                                .toArray();
-            if (matchExpressions.length == 0) {
-                return podNodeSelectorLabels;
-            }
-            podNodeSelectorLabels.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                          .values(pod.getMetadata().getUid(), term, matchExpressions));
-        }
-        return podNodeSelectorLabels;
     }
 
     private List<Insert<PodLabelsRecord>> updatePodLabels(final DSLContext conn, final Pod pod) {
@@ -440,14 +375,16 @@ class PodEventsToDatabase {
         if (pod.getSpec().getTolerations() == null) {
             return Collections.emptyList();
         }
+        conn.deleteFrom(Tables.POD_TOLERATIONS)
+            .where(Tables.POD_TOLERATIONS.POD_UID.eq(pod.getMetadata().getUid())).execute();
         final List<Insert<PodTolerationsRecord>> inserts = new ArrayList<>();
         for (final Toleration toleration: pod.getSpec().getTolerations()) {
             inserts.add(conn.insertInto(Tables.POD_TOLERATIONS)
                     .values(pod.getMetadata().getUid(),
                             toleration.getKey(),
-                            toleration.getValue(),
-                            toleration.getEffect() == null ? "Equal" : toleration.getEffect(),
-                            toleration.getOperator()));
+                            toleration.getValue() == null ? "" : toleration.getValue(),
+                            toleration.getEffect(),
+                            toleration.getOperator() == null ? "Equal" : toleration.getOperator()));
         }
         return Collections.unmodifiableList(inserts);
     }
@@ -455,6 +392,15 @@ class PodEventsToDatabase {
     private List<Insert<?>> updatePodAffinity(final Pod pod, final DSLContext conn) {
         final List<Insert<?>> inserts = new ArrayList<>();
         final Affinity affinity = pod.getSpec().getAffinity();
+        conn.deleteFrom(Tables.POD_NODE_SELECTOR_LABELS)
+                .where(Tables.POD_NODE_SELECTOR_LABELS.POD_UID.eq(pod.getMetadata().getUid())).execute();
+        conn.deleteFrom(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
+                .where(Tables.POD_AFFINITY_MATCH_EXPRESSIONS.POD_UID.eq(pod.getMetadata().getUid())).execute();
+        conn.deleteFrom(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
+                .where(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS.POD_UID.eq(pod.getMetadata().getUid())).execute();
+
+        // also handled using the same POD_NODE_SELECTOR_LABELS table
+        inserts.addAll(updatePodNodeSelectorLabels(pod, conn));
         Optional.ofNullable(affinity)
                 .map(Affinity::getNodeAffinity)
                 .map(NodeAffinity::getRequiredDuringSchedulingIgnoredDuringExecution)
@@ -486,6 +432,27 @@ class PodEventsToDatabase {
                     insertPodAffinityTerms(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS, pod, podAntiAffinityTerm,
                                            conn)));
         return Collections.unmodifiableList(inserts);
+    }
+
+    private List<Insert<PodNodeSelectorLabelsRecord>> updatePodNodeSelectorLabels(final Pod pod,
+                                                                                  final DSLContext conn) {
+        final List<Insert<PodNodeSelectorLabelsRecord>> podNodeSelectorLabels = new ArrayList<>();
+        // Update pod_node_selector_labels table
+        final Map<String, String> nodeSelector = pod.getSpec().getNodeSelector();
+        if (nodeSelector != null) {
+            // Using a node selector is equivalent to having a single node-selector term and a list of match expressions
+            final int term = 0;
+            final Object[] matchExpressions = nodeSelector.entrySet().stream()
+                    .map(e -> toMatchExpressionId(conn, e.getKey(), Operators.In.toString(),
+                            List.of(e.getValue())))
+                    .toArray();
+            if (matchExpressions.length == 0) {
+                return podNodeSelectorLabels;
+            }
+            podNodeSelectorLabels.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                    .values(pod.getMetadata().getUid(), term, matchExpressions));
+        }
+        return podNodeSelectorLabels;
     }
 
     private List<Insert<?>> insertPodAffinityTerms(final Table<?> table, final Pod pod,

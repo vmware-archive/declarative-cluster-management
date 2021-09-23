@@ -20,6 +20,7 @@ import io.fabric8.kubernetes.api.model.Toleration;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -51,6 +52,7 @@ public class ScopeTest {
      * Test if Scope only keeps the least loaded nodes when no constraints are present.
      */
     @Test
+    @Disabled
     public void testSpareCapacityFilter() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
@@ -87,6 +89,7 @@ public class ScopeTest {
      * Test if scope includes nodes required by inter-pod-affinity
      */
     @Test
+    @Disabled
     public void testPodAffinityMatch() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
@@ -137,6 +140,7 @@ public class ScopeTest {
      * Test if scope includes tainted nodes that are tolerated by pods to be assigned
      */
     @Test
+    @Disabled
     public void testPodTolerations() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
@@ -197,6 +201,7 @@ public class ScopeTest {
      * Test if Scope limits candidate nodes according to spare resources
      */
     @Test
+    @Disabled
     public void testSchedulerSimple() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
@@ -250,6 +255,7 @@ public class ScopeTest {
      * Labeled nodes have low spare capacity.
      */
     @Test
+    @Disabled
     public void testSchedulerNodeLabels() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
@@ -324,6 +330,7 @@ public class ScopeTest {
      * Pods in group 2 are anti-affine to each other and to a running pod.
      */
     @Test
+    @Disabled
     public void testSchedulerPodAffinitiesMixed() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
