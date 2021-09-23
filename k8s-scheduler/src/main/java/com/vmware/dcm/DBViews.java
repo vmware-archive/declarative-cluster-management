@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,6 +42,7 @@ public class DBViews {
     static final String PREEMPTION_VIEW_NAME_SUFFIX = "_preempt";
     private static final ViewStatements INITIAL_PLACEMENT = new ViewStatements(INITIAL_PLACEMENT_VIEW_NAME_SUFFIX);
     private static final ViewStatements PREEMPTION = new ViewStatements(PREEMPTION_VIEW_NAME_SUFFIX);
+    private static final Set<String> INITIAL_PLACEMENT_VIEW_NAMES;
 
     static {
         allPendingPods(INITIAL_PLACEMENT);
@@ -59,6 +61,11 @@ public class DBViews {
             allowedNodes(viewStatements);
             interPodAffinityAndAntiAffinitySimple(viewStatements);
         });
+        INITIAL_PLACEMENT_VIEW_NAMES = INITIAL_PLACEMENT.asQuery.keySet();
+    }
+
+    static Set<String> initialPlacementViewNames() {
+        return INITIAL_PLACEMENT_VIEW_NAMES;
     }
 
     static List<String> getSchema() {
@@ -261,23 +268,29 @@ public class DBViews {
     private static void spareCapacityPerNode(final ViewStatements viewStatements) {
         final String name = "SPARE_CAPACITY_PER_NODE";
         final String query = """
-                SELECT name AS name,
-                      cpu_allocatable - cpu_allocated AS cpu_remaining,
-                      memory_allocatable - memory_allocated AS memory_remaining,
-                      ephemeral_storage_allocatable - ephemeral_storage_allocated AS ephemeral_storage_remaining,
-                      pods_allocatable - pods_allocated AS pods_remaining
+                SELECT node_info.name AS name,
+                       node_resources.resource,
+                       allocatable - ISNULL(CAST(sum(A.total_demand) as bigint), 0) as capacity
                 FROM node_info
+                JOIN node_resources
+                    ON node_info.uid = node_resources.uid
+                LEFT JOIN (SELECT pod_info.node_name,
+                             pod_resource_demands.resource,
+                             sum(pod_resource_demands.demand) AS total_demand
+                     FROM pod_info
+                     JOIN pod_resource_demands
+                       ON pod_resource_demands.uid = pod_info.uid
+                     GROUP BY pod_info.node_name, pod_resource_demands.resource) A
+                    ON A.node_name = node_info.name AND A.resource = node_resources.resource
                 WHERE unschedulable = false AND
                       memory_pressure = false AND
                       out_of_disk = false AND
                       disk_pressure = false AND
                       pid_pressure = false AND
                       network_unavailable = false AND
-                      ready = true AND
-                      cpu_allocated < cpu_allocatable AND
-                      memory_allocated <  memory_allocatable AND
-                      pods_allocated < pods_allocatable AND
-                      ephemeral_storage_allocated < ephemeral_storage_allocatable""";
+                      ready = true
+                GROUP BY node_info.name, node_resources.resource, node_resources.allocatable
+                """;
         viewStatements.addQuery(name, query);
     }
 

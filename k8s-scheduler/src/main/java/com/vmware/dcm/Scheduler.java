@@ -374,8 +374,14 @@ public final class Scheduler {
     Result<? extends Record> preempt() {
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated = preemption.solve("PODS_TO_ASSIGN",
-                table -> dbConnectionPool.getConnectionToDb()
-                                         .fetch(table(table.getName() + PREEMPTION_VIEW_NAME_SUFFIX)));
+                table -> {
+                    final DSLContext conn = dbConnectionPool.getConnectionToDb();
+                    // Make sure we use the preemption suffix only for views, not base tables
+                    if (DBViews.initialPlacementViewNames().contains(table.getName())) {
+                        return conn.fetch(table(table.getName() + PREEMPTION_VIEW_NAME_SUFFIX));
+                    }
+                    return conn.fetch(table);
+                });
         solveTimer.stop();
         return podsToAssignUpdated;
     }

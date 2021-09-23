@@ -12,6 +12,7 @@ import com.vmware.dcm.k8s.generated.tables.NodeInfo;
 import com.vmware.dcm.k8s.generated.tables.records.NodeImagesRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeInfoRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeLabelsRecord;
+import com.vmware.dcm.k8s.generated.tables.records.NodeResourcesRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeTaintsRecord;
 import io.fabric8.kubernetes.api.model.ContainerImage;
 import io.fabric8.kubernetes.api.model.Node;
@@ -33,6 +34,8 @@ import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+
+import static com.vmware.dcm.Utils.convertUnit;
 
 
 /**
@@ -76,6 +79,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
             queries.addAll(addNodeLabels(conn, node));
             queries.addAll(addNodeTaints(conn, node));
             queries.addAll(addNodeImages(conn, node));
+            queries.addAll(addNodeCapacities(conn, node));
             conn.batch(queries).execute();
         }
         LOG.info("{} node added in {}ms", node.getMetadata().getName(), (System.nanoTime() - now));
@@ -90,7 +94,6 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                 // TODO: relax this assumption by setting up update cascades for node_info.name FK references
                 Preconditions.checkArgument(newNode.getMetadata().getName().equals(oldNode.getMetadata().getName()));
                 queries.add(updateNodeRecord(newNode, conn));
-
                 if (!Optional.ofNullable(oldNode.getSpec().getTaints())
                         .equals(Optional.ofNullable(newNode.getSpec().getTaints()))) {
                     queries.add(
@@ -115,6 +118,13 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                                         .eq(oldNode.getMetadata().getName())));
                     queries.addAll(addNodeImages(conn, newNode));
                 }
+                if (!Optional.ofNullable(oldNode.getStatus().getCapacity())
+                        .equals(Optional.ofNullable(newNode.getStatus().getCapacity()))) {
+                    queries.add(
+                            conn.deleteFrom(Tables.NODE_RESOURCES)
+                                .where(Tables.NODE_RESOURCES.UID.eq(oldNode.getMetadata().getUid())));
+                    queries.addAll(addNodeCapacities(conn, newNode));
+                }
             }
             conn.batch(queries).execute();
         }
@@ -132,8 +142,6 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
 
     private Insert<NodeInfoRecord> updateNodeRecord(final Node node, final DSLContext conn) {
         final NodeStatus status = node.getStatus();
-        final Map<String, Quantity> capacity = status.getCapacity();
-        final Map<String, Quantity> allocatable = status.getAllocatable();
         boolean outOfDisk = false;
         boolean memoryPressure = false;
         boolean diskPressure = false;
@@ -154,19 +162,6 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                 default -> throw new IllegalStateException("Unknown condition type " + condition.getType());
             }
         }
-
-        // TODO: test unit conversions
-        final long cpuCapacity = Utils.convertUnit(capacity.get("cpu"), "cpu");
-        final long memoryCapacity = Utils.convertUnit(capacity.get("memory"), "memory");
-        final long ephemeralStorageCapacity = Utils.convertUnit(capacity.get("ephemeral-storage"),
-                                                                         "ephemeral-storage");
-        final long podCapacity = Long.parseLong(capacity.get("pods").getAmount());
-        final long cpuAllocatable =  Utils.convertUnit(allocatable.get("cpu"), "cpu");
-        final long memoryAllocatable = Utils.convertUnit(allocatable.get("memory"), "memory");
-        final long ephemeralStorageAllocatable = Utils.convertUnit(allocatable.get("ephemeral-storage"),
-                                                                         "ephemeral-storage");
-        final long podsAllocatable = Long.parseLong(allocatable.get("pods").getAmount());
-
         final NodeInfo n = Tables.NODE_INFO;
         return conn.insertInto(Tables.NODE_INFO,
                 n.UID,
@@ -177,19 +172,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                 n.DISK_PRESSURE,
                 n.PID_PRESSURE,
                 n.READY,
-                n.NETWORK_UNAVAILABLE,
-                n.CPU_CAPACITY,
-                n.MEMORY_CAPACITY,
-                n.EPHEMERAL_STORAGE_CAPACITY,
-                n.PODS_CAPACITY,
-                n.CPU_ALLOCATABLE,
-                n.MEMORY_ALLOCATABLE,
-                n.EPHEMERAL_STORAGE_ALLOCATABLE,
-                n.PODS_ALLOCATABLE,
-                n.CPU_ALLOCATED,
-                n.MEMORY_ALLOCATED,
-                n.EPHEMERAL_STORAGE_ALLOCATED,
-                n.PODS_ALLOCATED)
+                n.NETWORK_UNAVAILABLE)
             .values(node.getMetadata().getUid(),
                     node.getMetadata().getName(),
                     getUnschedulable,
@@ -198,19 +181,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                     diskPressure,
                     pidPressure,
                     ready,
-                    networkUnavailable,
-                    cpuCapacity,
-                    memoryCapacity,
-                    ephemeralStorageCapacity,
-                    podCapacity,
-                    cpuAllocatable,
-                    memoryAllocatable,
-                    ephemeralStorageAllocatable,
-                    podsAllocatable,
-                    0L, // cpu allocated default
-                    0L, // mem allocated default
-                    0L, // ephemeral storage allocated default
-                    0L // pods allocated default
+                    networkUnavailable
             )
             .onDuplicateKeyUpdate()
             .set(n.UID, node.getMetadata().getUid())
@@ -221,21 +192,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
             .set(n.DISK_PRESSURE, diskPressure)
             .set(n.PID_PRESSURE, pidPressure)
             .set(n.READY, ready)
-            .set(n.NETWORK_UNAVAILABLE, networkUnavailable)
-            .set(n.CPU_CAPACITY, cpuCapacity)
-            .set(n.MEMORY_CAPACITY, memoryCapacity)
-            .set(n.EPHEMERAL_STORAGE_CAPACITY, ephemeralStorageCapacity)
-            .set(n.PODS_CAPACITY, podCapacity)
-            .set(n.CPU_ALLOCATABLE, cpuAllocatable)
-            .set(n.MEMORY_ALLOCATABLE, memoryAllocatable)
-            .set(n.EPHEMERAL_STORAGE_ALLOCATABLE, ephemeralStorageAllocatable)
-            .set(n.PODS_ALLOCATABLE, podsAllocatable)
-
-            // These entries are updated by us on every pod arrival/departure
-            .set(n.CPU_ALLOCATED, n.CPU_ALLOCATED)
-            .set(n.MEMORY_ALLOCATED, n.MEMORY_ALLOCATED)
-            .set(n.EPHEMERAL_STORAGE_ALLOCATED, n.EPHEMERAL_STORAGE_ALLOCATED)
-            .set(n.PODS_ALLOCATED, n.PODS_ALLOCATED);
+            .set(n.NETWORK_UNAVAILABLE, networkUnavailable);
     }
 
     private boolean hasChanged(final Node oldNode, final Node newNode) {
@@ -270,6 +227,14 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         LOG.info("Node {} deleted", node.getMetadata().getName());
     }
 
+    private List<Insert<NodeResourcesRecord>> addNodeCapacities(final DSLContext conn, final Node node) {
+        final Map<String, Quantity> allocatable = node.getStatus().getAllocatable();
+        return allocatable.entrySet().stream().map(
+                (es) -> conn.insertInto(Tables.NODE_RESOURCES)
+                            .values(node.getMetadata().getUid(), es.getKey(), convertUnit(es.getValue(), es.getKey()))
+                ).collect(Collectors.toList());
+    }
+
     private List<Insert<NodeLabelsRecord>> addNodeLabels(final DSLContext conn, final Node node) {
         final Map<String, String> labels = node.getMetadata().getLabels();
         return labels.entrySet().stream().map(
@@ -286,7 +251,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
                     conn.insertInto(Tables.NODE_TAINTS)
                             .values(node.getMetadata().getName(),
                                     taint.getKey(),
-                                    taint.getValue(),
+                                    taint.getValue() == null ? "" : taint.getValue(),
                                     taint.getEffect())
                 ).collect(Collectors.toList());
     }

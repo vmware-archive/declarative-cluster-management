@@ -204,20 +204,18 @@ class Policies {
         // pod per node. If not, those nodes will lack a row in the spare_capacity_per_node view. This is fine for
         // Kubernetes, because there always some system pods running on each node.
         final List<String> views = new ArrayList<>();
-        final String hardConstraint = "create constraint constraint_pods_slack_per_node as " +
-            "select * " +
-            "from spare_capacity_per_node " +
-            "join pods_to_assign " +
-            "     on pods_to_assign.controllable__node_name = spare_capacity_per_node.name " +
-            "check capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
-            "                           pods_to_assign.cpu_request, spare_capacity_per_node.cpu_remaining) = true" +
-            " and capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
-            "                         pods_to_assign.memory_request, spare_capacity_per_node.memory_remaining) = true" +
-            " and capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
-            "                         pods_to_assign.pods_request, spare_capacity_per_node.pods_remaining) = true" +
-            " and capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name, " +
-            "                         pods_to_assign.ephemeral_storage_request, " +
-            "                         spare_capacity_per_node.ephemeral_storage_remaining) = true";
+        final String hardConstraint = """
+                CREATE CONSTRAINT constraint_pods_slack_per_node AS
+                SELECT *
+                FROM pods_to_assign
+                JOIN pod_resource_demands
+                    ON pod_resource_demands.uid = pods_to_assign.uid
+                JOIN spare_capacity_per_node
+                     ON pod_resource_demands.resource = spare_capacity_per_node.resource
+                GROUP BY spare_capacity_per_node.resource, pod_resource_demands.resource
+                CHECK capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name,
+                                          pod_resource_demands.demand, spare_capacity_per_node.capacity) = true
+                """;
         views.add(hardConstraint);
         // TODO: Add soft constraint only version as well
         return new Policy("CapacityConstraint", views);

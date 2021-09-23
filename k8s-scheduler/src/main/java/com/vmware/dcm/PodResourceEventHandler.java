@@ -11,6 +11,7 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -23,7 +24,12 @@ import java.util.function.Consumer;
  * batching these writes to the database.
  */
 
-record PodEvent(Action action, Pod pod) {
+record PodEvent(Action action, Pod pod, @Nullable Pod oldPod) {
+
+    PodEvent(final Action action, final Pod pod) {
+        this(action, pod, null);
+    }
+
     enum Action {
         ADDED,
         UPDATED,
@@ -63,7 +69,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
         assert oldPodScheduler.equals(newPodScheduler);
         LOG.trace("{} => {} (uid: {}) pod update received", oldPod.getMetadata().getName(),
                   newPod.getMetadata().getName(), newPod.getMetadata().getUid());
-        podEventNotification.accept(new PodEvent(PodEvent.Action.UPDATED, newPod));
+        podEventNotification.accept(new PodEvent(PodEvent.Action.UPDATED, newPod, oldPod));
     }
 
     public void onDeleteSync(final Pod pod, final boolean deletedFinalStateUnknown) {
