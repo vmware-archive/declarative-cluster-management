@@ -39,8 +39,16 @@ class DBConnectionPool {
     /**
      * Sets up a private, in-memory database.
      */
-    @VisibleForTesting
     DSLContext getConnectionToDb() {
         return using(ds, SQLDialect.H2, JOOQ_SETTING);
+    }
+
+    /**
+     * Used only for refreshing the DB state between tests
+     */
+    @VisibleForTesting
+    void refresh() {
+        getConnectionToDb().execute("drop all objects");
+        DBViews.getSchema().forEach(getConnectionToDb()::execute);
     }
 }
