@@ -37,7 +37,9 @@ class DebugUtils {
                                                         Tables.POD_TOLERATIONS,
                                                         Tables.NODE_IMAGES,
                                                         Tables.POD_IMAGES,
-                                                        Tables.MATCH_EXPRESSIONS);
+                                                        Tables.MATCH_EXPRESSIONS,
+                                                        Tables.POD_RESOURCE_DEMANDS,
+                                                        Tables.NODE_RESOURCES);
 
     static void dbDump(final DSLContext conn, final UUID uuid) {
         LOG.error("Creating DB dump with UUID: {}", uuid);

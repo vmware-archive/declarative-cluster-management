@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -87,49 +88,38 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
 
     public void onUpdateSync(final Node oldNode, final Node newNode) {
         final long now = System.nanoTime();
-        final boolean hasChanged = hasChanged(oldNode, newNode);
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> queries = new ArrayList<>();
-            if (hasChanged) {
-                // TODO: relax this assumption by setting up update cascades for node_info.name FK references
-                Preconditions.checkArgument(newNode.getMetadata().getName().equals(oldNode.getMetadata().getName()));
+            // TODO: relax this assumption by setting up update cascades for node_info.name FK references
+            Preconditions.checkArgument(newNode.getMetadata().getName().equals(oldNode.getMetadata().getName()));
+            if (!Objects.equals(oldNode.getSpec().getTaints(), newNode.getSpec().getTaints())) {
+                queries.add(conn.deleteFrom(Tables.NODE_TAINTS).where(Tables.NODE_TAINTS.NODE_NAME
+                                .eq(oldNode.getMetadata().getName())));
+                queries.addAll(addNodeTaints(conn, newNode));
+            }
+            if (!Objects.equals(oldNode.getMetadata().getLabels(), newNode.getMetadata().getLabels())) {
+                queries.add(conn.deleteFrom(Tables.NODE_LABELS).where(Tables.NODE_LABELS.NODE_NAME
+                                .eq(oldNode.getMetadata().getName())));
+                queries.addAll(addNodeLabels(conn, newNode));
+            }
+            if (!Objects.equals(oldNode.getStatus(), newNode.getStatus())) {
+                queries.add(conn.deleteFrom(Tables.NODE_RESOURCES).where(Tables.NODE_RESOURCES.UID
+                                .eq(oldNode.getMetadata().getUid())));
+                queries.add(conn.deleteFrom(Tables.NODE_IMAGES).where(Tables.NODE_IMAGES.NODE_NAME
+                                .eq(oldNode.getMetadata().getName())));
+                queries.addAll(addNodeCapacities(conn, newNode));
+                queries.addAll(addNodeImages(conn, newNode));
+            }
+            if (queries.size() > 0) {
                 queries.add(updateNodeRecord(newNode, conn));
-                if (!Optional.ofNullable(oldNode.getSpec().getTaints())
-                        .equals(Optional.ofNullable(newNode.getSpec().getTaints()))) {
-                    queries.add(
-                        conn.deleteFrom(Tables.NODE_TAINTS)
-                                .where(Tables.NODE_TAINTS.NODE_NAME
-                                        .eq(oldNode.getMetadata().getName()))
-                    );
-                    queries.addAll(addNodeTaints(conn, newNode));
-                }
-                if (!Optional.ofNullable(oldNode.getMetadata().getLabels())
-                        .equals(Optional.ofNullable(newNode.getMetadata().getLabels()))) {
-                    queries.add(conn.deleteFrom(Tables.NODE_LABELS)
-                            .where(Tables.NODE_LABELS.NODE_NAME
-                                    .eq(oldNode.getMetadata().getName())));
-                    queries.addAll(addNodeLabels(conn, newNode));
-                }
-                if (!Optional.ofNullable(oldNode.getStatus().getImages())
-                        .equals(Optional.ofNullable(newNode.getStatus().getImages()))) {
-                    queries.add(
-                        conn.deleteFrom(Tables.NODE_IMAGES)
-                                .where(Tables.NODE_IMAGES.NODE_NAME
-                                        .eq(oldNode.getMetadata().getName())));
-                    queries.addAll(addNodeImages(conn, newNode));
-                }
-                if (!Optional.ofNullable(oldNode.getStatus().getCapacity())
-                        .equals(Optional.ofNullable(newNode.getStatus().getCapacity()))) {
-                    queries.add(
-                            conn.deleteFrom(Tables.NODE_RESOURCES)
-                                .where(Tables.NODE_RESOURCES.UID.eq(oldNode.getMetadata().getUid())));
-                    queries.addAll(addNodeCapacities(conn, newNode));
-                }
+                LOG.info("{} => {} node {} in {}ns", oldNode.getMetadata().getName(), newNode.getMetadata().getName(),
+                        "updated", (System.nanoTime() - now));
+            } else {
+                LOG.info("{} => {} node {} in {}ns", oldNode.getMetadata().getName(), newNode.getMetadata().getName(),
+                        "not updated", (System.nanoTime() - now));
             }
             conn.batch(queries).execute();
         }
-        LOG.info("{} => {} node {} in {}ns", oldNode.getMetadata().getName(), newNode.getMetadata().getName(),
-                hasChanged ? "updated" : "not updated", (System.nanoTime() - now));
     }
 
     public void onDeleteSync(final Node node, final boolean b) {
@@ -194,31 +184,6 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
             .set(n.READY, ready)
             .set(n.NETWORK_UNAVAILABLE, networkUnavailable);
     }
-
-    private boolean hasChanged(final Node oldNode, final Node newNode) {
-        return !oldNode.getSpec().equals(newNode.getSpec())
-           || !oldNode.getMetadata().equals(newNode.getMetadata())
-           || !oldNode.getStatus().getCapacity().equals(newNode.getStatus().getCapacity())
-           || !oldNode.getStatus().getAllocatable().equals(newNode.getStatus().getAllocatable())
-           || !Optional.ofNullable(oldNode.getSpec().getUnschedulable())
-                .equals(Optional.ofNullable(newNode.getSpec().getUnschedulable()))
-           || haveConditionsChanged(oldNode, newNode);
-    }
-
-    private boolean haveConditionsChanged(final Node oldNode, final Node newNode) {
-        if (oldNode.getStatus().getConditions().size() != newNode.getStatus().getConditions().size()) {
-            return true;
-        }
-        final List<NodeCondition> oldConditions = oldNode.getStatus().getConditions();
-        final List<NodeCondition> newConditions = newNode.getStatus().getConditions();
-        for (int i = 0; i < oldNode.getStatus().getConditions().size(); i++) {
-            if (!oldConditions.get(i).getStatus().equals(newConditions.get(i).getStatus())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
 
     private void deleteNode(final Node node, final DSLContext conn) {
         conn.deleteFrom(Tables.NODE_INFO)
