@@ -657,6 +657,49 @@ public class SchedulerTest {
         );
     }
 
+    /*
+     * Test capacity constraints on custom resources
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("testCustomResourcesValues")
+    public void testCustomResources(final String displayName, final int capacity, final int demand,
+                                    final boolean feasible) {
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                Policies.disallowNullNodeSoft(),
+                Policies.capacityConstraint(true, true));
+        final var scenario = TestScenario.withPolicies(policies)
+                .withNodeGroup("n", 1,
+                               (node) -> {
+                                    if (capacity >= 0) {
+                                        node.getStatus().getCapacity().put("some-resource",
+                                                new Quantity(String.valueOf(capacity)));
+                                    }
+                               })
+                .withPodGroup("pods", 1,
+                               pod -> {
+                                   final Map<String, Quantity> resourceRequests = new HashMap<>();
+                                   if (demand >= 0) {
+                                       resourceRequests.put("some-resource", new Quantity(String.valueOf(demand)));
+                                   }
+                                   // Assumes that there is only one container
+                                   pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+                               });
+        if (feasible) {
+            scenario.runInitialPlacement().expect(nodesForPodGroup("pods"), EQUALS, nodeGroup("n"));
+        } else {
+            scenario.runInitialPlacement().expect(nodesForPodGroup("pods"), EQUALS, nodeGroup("NULL_NODE"));
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private static Stream<Arguments> testCustomResourcesValues() {
+        return Stream.of(Arguments.of("Custom resource does not exist on host", -1, 5, false),
+                         Arguments.of("Custom resource exists, but no capacity", 0, 5, false),
+                         Arguments.of("Custom resource exists, has enough capacity for demand ", 5, 5, true),
+                         Arguments.of("Custom resource exists, but not enough capacity for demand", 5, 6, false),
+                         Arguments.of("Custom resource exists, but is not demanded", 5, -1, true));
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("testTaintsAndTolerationsValues")
     public void testTaintsAndTolerations(final String displayName, final List<List<Toleration>> tolerations,
