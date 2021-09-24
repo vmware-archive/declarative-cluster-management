@@ -268,6 +268,7 @@ public class DBViews {
     private static void spareCapacityPerNode(final ViewStatements viewStatements) {
         final String name = "SPARE_CAPACITY_PER_NODE";
         final String query = """
+                -- For resources that are in use, compute the total spare capacity per node
                 SELECT node_info.name AS name,
                        node_resources.resource,
                        allocatable - ISNULL(CAST(sum(A.total_demand) as bigint), 0) as capacity
@@ -290,7 +291,17 @@ public class DBViews {
                       network_unavailable = false AND
                       ready = true
                 GROUP BY node_info.name, node_resources.resource, node_resources.allocatable
-                """;
+                
+                UNION
+                
+                -- For every resource X being requested that are not available on any node,
+                -- generate a row for each node with resource X and with 0 capacity
+                SELECT node_info.name, p.resource, 0
+                FROM node_info NATURAL JOIN node_resources
+                JOIN (SELECT distinct resource FROM $pendingPods pods_to_assign NATURAL JOIN pod_resource_demands) p
+                GROUP BY node_info.name, p.resource
+                HAVING NOT ANY(p.resource = node_resources.resource)
+                """.replace("$pendingPods", viewStatements.unfixedPods);
         viewStatements.addQuery(name, query);
     }
 
