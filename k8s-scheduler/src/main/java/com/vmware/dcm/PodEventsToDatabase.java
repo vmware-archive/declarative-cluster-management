@@ -156,17 +156,17 @@ class PodEventsToDatabase {
             LOG.trace("Updating pod {} (uid: {}, resourceVersion: {})", pod.getMetadata().getName(),
                       pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
             final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
-            if (!pod.getSpec().getContainers().equals(oldPod.getSpec().getContainers())) {
+            if (!Objects.equals(pod.getSpec().getContainers(), oldPod.getSpec().getContainers())) {
                 insertOrUpdate.addAll(updateContainerInfoForPod(pod, conn));
                 insertOrUpdate.addAll(updateResourceRequests(pod, conn));
             }
-            if (!pod.getMetadata().getLabels().equals(oldPod.getMetadata().getLabels())) {
+            if (!Objects.equals(pod.getMetadata().getLabels(), oldPod.getMetadata().getLabels())) {
                 insertOrUpdate.addAll(updatePodLabels(conn, pod));
             }
-            if (!pod.getSpec().getTolerations().equals(oldPod.getSpec().getTolerations())) {
+            if (!Objects.equals(pod.getSpec().getTolerations(), oldPod.getSpec().getTolerations())) {
                 insertOrUpdate.addAll(updatePodTolerations(pod, conn));
             }
-            if (!pod.getSpec().getAffinity().equals(oldPod.getSpec().getAffinity())) {
+            if (!Objects.equals(pod.getSpec().getAffinity(), oldPod.getSpec().getAffinity())) {
                 insertOrUpdate.addAll(updatePodAffinity(pod, conn));
             }
             conn.batch(insertOrUpdate).execute();
@@ -299,7 +299,9 @@ class PodEventsToDatabase {
         final List<Insert<?>> inserts = new ArrayList<>();
         final Map<String, Long> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
+                .filter(Objects::nonNull)
                 .map(ResourceRequirements::getRequests)
+                .filter(Objects::nonNull)
                 .flatMap(e -> e.entrySet().stream())
                 .collect(Collectors.toMap(Map.Entry::getKey,
                                           es -> convertUnit(es.getValue(), es.getKey()),
@@ -381,9 +383,9 @@ class PodEventsToDatabase {
         for (final Toleration toleration: pod.getSpec().getTolerations()) {
             inserts.add(conn.insertInto(Tables.POD_TOLERATIONS)
                     .values(pod.getMetadata().getUid(),
-                            toleration.getKey(),
+                            toleration.getKey() == null ? "" : toleration.getKey(),
                             toleration.getValue() == null ? "" : toleration.getValue(),
-                            toleration.getEffect(),
+                            toleration.getEffect() == null ? "" : toleration.getEffect(),
                             toleration.getOperator() == null ? "Equal" : toleration.getOperator()));
         }
         return Collections.unmodifiableList(inserts);

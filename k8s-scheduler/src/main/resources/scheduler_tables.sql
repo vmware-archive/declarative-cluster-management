@@ -81,7 +81,7 @@ create table pod_node_selector_labels
   pod_uid char(36) not null,
   term integer not null,
   match_expressions array not null,
-  primary key(pod_uid, term),
+  primary key(pod_uid, term, match_expressions),
   foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
