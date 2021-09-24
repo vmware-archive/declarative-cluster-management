@@ -658,11 +658,11 @@ public class SchedulerTest {
     }
 
     /*
-     * Test capacity constraints on custom resources
+     * Test capacity constraints on custom resources along with overheads.
      */
     @ParameterizedTest(name = "{0}")
     @MethodSource("testCustomResourcesValues")
-    public void testCustomResources(final String displayName, final int capacity, final int demand,
+    public void testCustomResources(final String displayName, final int capacity, final int demand, final int overhead,
                                     final boolean feasible) {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                 Policies.disallowNullNodeSoft(),
@@ -683,6 +683,11 @@ public class SchedulerTest {
                                    }
                                    // Assumes that there is only one container
                                    pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+                                   final Map<String, Quantity> overheads = new HashMap<>();
+                                   if (overhead >= 0) {
+                                       overheads.put("some-resource", new Quantity(String.valueOf(overhead)));
+                                       pod.getSpec().setOverhead(overheads);
+                                   }
                                });
         if (feasible) {
             scenario.runInitialPlacement().expect(nodesForPodGroup("pods"), EQUALS, nodeGroup("n"));
@@ -693,11 +698,13 @@ public class SchedulerTest {
 
     @SuppressWarnings("unused")
     private static Stream<Arguments> testCustomResourcesValues() {
-        return Stream.of(Arguments.of("Custom resource does not exist on host", -1, 5, false),
-                         Arguments.of("Custom resource exists, but no capacity", 0, 5, false),
-                         Arguments.of("Custom resource exists, has enough capacity for demand ", 5, 5, true),
-                         Arguments.of("Custom resource exists, but not enough capacity for demand", 5, 6, false),
-                         Arguments.of("Custom resource exists, but is not demanded", 5, -1, true));
+        return Stream.of(Arguments.of("Resource does not exist on host", -1, 5, -1, false),
+                Arguments.of("Resource exists, but no capacity", 0, 5, -1, false),
+                Arguments.of("Resource exists, has enough capacity for demand ", 5, 5, -1, true),
+                Arguments.of("Resource exists, has enough capacity for demand + overhead ", 5, 3, 2, true),
+                Arguments.of("Resource exists, but not enough capacity for demand", 5, 6, -1, false),
+                Arguments.of("Resource exists, has enough capacity for demand, but not overhead", 5, 3, 3, false),
+                Arguments.of("Resource exists, but is not demanded", 5, -1, -1, true));
     }
 
     @ParameterizedTest(name = "{0}")

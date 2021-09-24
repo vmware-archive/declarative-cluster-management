@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -306,10 +307,15 @@ class PodEventsToDatabase {
                 .collect(Collectors.toMap(Map.Entry::getKey,
                                           es -> convertUnit(es.getValue(), es.getKey()),
                                           Long::sum));
+        final Map<String, Long> overheads = pod.getSpec().getOverhead() != null ?
+                pod.getSpec().getOverhead().entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey,
+                                                  es -> convertUnit(es.getValue(), es.getKey()),
+                                                  Long::sum)) : new HashMap<>();
         resourceRequirements.putIfAbsent("pods", 1L);
         resourceRequirements.forEach((resource, demand) -> inserts.add(
                 conn.insertInto(Tables.POD_RESOURCE_DEMANDS)
-                    .values(pod.getMetadata().getUid(), resource, demand)
+                    .values(pod.getMetadata().getUid(), resource, demand + overheads.getOrDefault(resource, 0L))
         ));
         return inserts;
     }

@@ -181,7 +181,6 @@ create table pdb_match_expressions
   allowed_disruptions integer not null
 );
 
-
 create index pod_info_idx on pod_info (status, node_name);
 create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_uid);
 create index node_labels_idx on node_labels (label_key, label_value);
