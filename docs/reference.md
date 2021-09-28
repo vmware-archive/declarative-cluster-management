@@ -156,7 +156,7 @@ create table virtual_machine (
 ```
 
 Example usage in a view:
-<!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/DBViews.java#L97-L105 -->
+<!-- embedme ../k8s-scheduler/src/main/java/com/vmware/dcm/DBViews.java#L99-L107 -->
 ```sql
 final String query = """
                       SELECT pod_info.*, node_name AS controllable__node_name
