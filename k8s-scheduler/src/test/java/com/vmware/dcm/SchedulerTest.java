@@ -36,6 +36,7 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Taint;
 import io.fabric8.kubernetes.api.model.Toleration;
+import io.fabric8.kubernetes.api.model.TopologySpreadConstraint;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
@@ -943,6 +944,53 @@ public class SchedulerTest {
     private static ContainerPort port(final String hostPort) {
         final String[] hostPortArr = hostPort.split("/");
         return new ContainerPort(null, hostPortArr[0], Integer.parseInt(hostPortArr[1]), null, hostPortArr[2]);
+    }
+
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("testPodTopologySpread")
+    public void testPodTopologySpread(final String displayName, final int numNodes,
+                                      final List<List<TopologySpreadConstraint>> pendingPods,
+                                      final Predicate<List<String>> assertOn, final boolean feasible) {
+        final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
+                Policies.disallowNullNodeSoft(),
+                Policies.podTopologySpreadConstraints());
+        final Iterator<List<TopologySpreadConstraint>> pendingPodsIt = pendingPods.iterator();
+        final var result = TestScenario.withPolicies(policies)
+                .withNodeGroup("n", numNodes, node -> {
+                    node.getMetadata().setLabels(Map.of("some-label", node.getMetadata().getName() + "-label",
+                                                        "other-label", node.getMetadata().getName() + "-label"));
+                })
+                .withPodGroup("newPod", pendingPods.size(),
+                        pod -> {
+                            pod.getSpec().setTopologySpreadConstraints(pendingPodsIt.next());
+                            pod.getMetadata().setLabels(Map.of("k1", "v1"));
+                        })
+                .runInitialPlacement();
+        if (feasible) {
+            result.expect(nodesForPodGroup("newPod"), assertOn);
+        } else {
+            result.expect(nodesForPodGroup("newPod"), EQUALS, nodeGroup("NULL_NODE"));
+        }
+    }
+
+    private static Stream<Arguments> testPodTopologySpread() {
+        final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
+        return Stream.of(Arguments.of("test", 5,
+                                      List.of(List.of(spread(1)),
+                                              List.of(spread(1))),
+                                      onePodPerNode, true));
+    }
+
+    private static TopologySpreadConstraint spread(final int maxSkew) {
+        final TopologySpreadConstraint c = new TopologySpreadConstraint();
+        c.setMaxSkew(maxSkew);
+        c.setTopologyKey("some-label");
+        c.setWhenUnsatisfiable("DoNotSchedule");
+        final LabelSelector l = new LabelSelector();
+        l.setMatchLabels(Map.of("k1", "v1"));
+        c.setLabelSelector(l);
+        return c;
     }
 
     /*

@@ -216,6 +216,15 @@ public class Ops {
         return ret;
     }
 
+    public IntVar plus(final long left, final IntVar right) {
+        return plus(model.newConstant(left), right);
+    }
+
+    public IntVar plus(final IntVar left, final long right) {
+        return plus(model.newConstant(right), left
+        );
+    }
+
     public IntVar plus(final int left, final IntVar right) {
         return plus(model.newConstant(left), right);
     }

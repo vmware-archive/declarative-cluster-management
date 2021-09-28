@@ -422,5 +422,4 @@ public class OrToolsTest {
         }
         System.out.println(solver.responseStats());
     }
-
 }

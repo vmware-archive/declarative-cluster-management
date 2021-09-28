@@ -19,6 +19,7 @@ import com.vmware.dcm.k8s.generated.tables.records.PodTolerationsRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
+import io.fabric8.kubernetes.api.model.LabelSelector;
 import io.fabric8.kubernetes.api.model.NodeAffinity;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -49,6 +50,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.vmware.dcm.Utils.convertUnit;
 
@@ -100,11 +102,12 @@ class PodEventsToDatabase {
             final List<Query> inserts = new ArrayList<>();
             inserts.addAll(updatePodRecord(pod, conn));
             inserts.addAll(updateContainerInfoForPod(pod, conn));
-            inserts.addAll(updatePodLabels(conn, pod));
+            inserts.addAll(updatePodLabels(pod, conn));
             // updateVolumeInfoForPod(pod, pvcToPv, conn);
             inserts.addAll(updatePodTolerations(pod, conn));
             inserts.addAll(updatePodAffinity(pod, conn));
             inserts.addAll(updateResourceRequests(pod, conn));
+            inserts.addAll(updatePodTopologySpread(pod, conn));
             conn.batch(inserts).execute();
         }
     }
@@ -162,13 +165,17 @@ class PodEventsToDatabase {
                 insertOrUpdate.addAll(updateResourceRequests(pod, conn));
             }
             if (!Objects.equals(pod.getMetadata().getLabels(), oldPod.getMetadata().getLabels())) {
-                insertOrUpdate.addAll(updatePodLabels(conn, pod));
+                insertOrUpdate.addAll(updatePodLabels(pod, conn));
             }
             if (!Objects.equals(pod.getSpec().getTolerations(), oldPod.getSpec().getTolerations())) {
                 insertOrUpdate.addAll(updatePodTolerations(pod, conn));
             }
             if (!Objects.equals(pod.getSpec().getAffinity(), oldPod.getSpec().getAffinity())) {
                 insertOrUpdate.addAll(updatePodAffinity(pod, conn));
+            }
+            if (!Objects.equals(pod.getSpec().getTopologySpreadConstraints(),
+                                oldPod.getSpec().getTopologySpreadConstraints())) {
+                insertOrUpdate.addAll(updatePodTopologySpread(pod, conn));
             }
             conn.batch(insertOrUpdate).execute();
         }
@@ -188,26 +195,29 @@ class PodEventsToDatabase {
         boolean hasPodAffinityRequirements = false;
         boolean hasPodAntiAffinityRequirements = false;
         boolean hasNodePortRequirements = false;
+        boolean hasPodTopologySpreadConstraints = false;
 
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAffinity() != null) {
             hasPodAffinityRequirements = true;
         }
-
         if (pod.getSpec().getAffinity() != null && pod.getSpec().getAffinity().getPodAntiAffinity() != null) {
             hasPodAntiAffinityRequirements = true;
         }
-
         if (pod.getSpec().getContainers() != null
              && pod.getSpec().getContainers().stream()
                 .filter(c -> c.getPorts() != null).flatMap(c -> c.getPorts().stream())
                 .anyMatch(containerPort -> containerPort.getHostPort() != null)) {
             hasNodePortRequirements = true;
         }
+        if (pod.getSpec().getTopologySpreadConstraints() != null
+                && !pod.getSpec().getTopologySpreadConstraints().isEmpty()) {
+            hasPodTopologySpreadConstraints = true;
+        }
 
         final int priority = Math.min(pod.getSpec().getPriority() == null ? 10 : pod.getSpec().getPriority(), 100);
         final PodInfo p = Tables.POD_INFO;
         final long resourceVersion = Long.parseLong(pod.getMetadata().getResourceVersion());
-        LOG.info("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+        LOG.info("Insert/Update pod {}, {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
                 pod.getMetadata().getUid(),
                 pod.getMetadata().getName(),
                 pod.getStatus().getPhase(),
@@ -219,6 +229,7 @@ class PodEventsToDatabase {
                 hasPodAffinityRequirements,
                 hasPodAntiAffinityRequirements,
                 hasNodePortRequirements,
+                hasPodTopologySpreadConstraints,
                 priority,
                 pod.getSpec().getSchedulerName(),
                 equivalenceClassHash(pod),
@@ -236,6 +247,7 @@ class PodEventsToDatabase {
                 p.HAS_POD_AFFINITY_REQUIREMENTS,
                 p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
                 p.HAS_NODE_PORT_REQUIREMENTS,
+                p.HAS_TOPOLOGY_SPREAD_CONSTRAINTS,
                 p.PRIORITY,
                 p.SCHEDULERNAME,
                 p.EQUIVALENCE_CLASS,
@@ -253,6 +265,7 @@ class PodEventsToDatabase {
                         hasPodAffinityRequirements,
                         hasPodAntiAffinityRequirements,
                         hasNodePortRequirements,
+                        hasPodTopologySpreadConstraints,
                         priority,
                         pod.getSpec().getSchedulerName(),
                         equivalenceClassHash(pod),
@@ -274,6 +287,7 @@ class PodEventsToDatabase {
                 .set(p.HAS_POD_AFFINITY_REQUIREMENTS, hasPodAffinityRequirements)
                 .set(p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS, hasPodAntiAffinityRequirements)
                 .set(p.HAS_NODE_PORT_REQUIREMENTS, hasNodePortRequirements)
+                .set(p.HAS_TOPOLOGY_SPREAD_CONSTRAINTS, hasPodTopologySpreadConstraints)
 
                 // We cap the max priority to 100 to prevent overflow issues in the solver
                 .set(p.PRIORITY, priority)
@@ -367,7 +381,7 @@ class PodEventsToDatabase {
         return inserts;
     }
 
-    private List<Insert<PodLabelsRecord>> updatePodLabels(final DSLContext conn, final Pod pod) {
+    private List<Insert<PodLabelsRecord>> updatePodLabels(final Pod pod, final DSLContext conn) {
         // Update pod_labels table. This will be used for managing affinities, I think?
         final Map<String, String> labels = pod.getMetadata().getLabels();
         if (labels != null) {
@@ -463,6 +477,17 @@ class PodEventsToDatabase {
         return podNodeSelectorLabels;
     }
 
+    private Object[] selectorToMatchExpressions(final DSLContext conn, final LabelSelector selector) {
+        final Stream<Long> matchLabels = selector.getMatchLabels() == null ? Stream.empty() :
+                selector.getMatchLabels().entrySet().stream()
+                .map(e -> toMatchExpressionId(conn, e.getKey(), Operators.In.toString(), List.of(e.getValue())));
+        final Stream<Long> matchExpressions = selector.getMatchExpressions() == null ? Stream.empty() :
+                selector.getMatchExpressions().stream()
+                .map(expr -> toMatchExpressionId(conn, expr.getKey(), expr.getOperator(),
+                        expr.getValues()));
+        return Stream.concat(matchLabels, matchExpressions).toArray();
+    }
+
     private List<Insert<?>> insertPodAffinityTerms(final Table<?> table, final Pod pod,
                                                    final List<PodAffinityTerm> terms, final DSLContext conn) {
         final List<Insert<?>> inserts = new ArrayList<>();
@@ -475,6 +500,22 @@ class PodEventsToDatabase {
                             .values(pod.getMetadata().getUid(), termNumber, matchExpressions, term.getTopologyKey()));
             termNumber += 1;
         }
+        return inserts;
+    }
+
+    private List<Insert<?>> updatePodTopologySpread(final Pod pod, final DSLContext conn) {
+        conn.deleteFrom(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS)
+            .where(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS.UID.eq(pod.getMetadata().getUid())).execute();
+        if (pod.getSpec().getTopologySpreadConstraints() == null) {
+            return Collections.emptyList();
+        }
+        final List<Insert<?>> inserts = new ArrayList<>();
+        pod.getSpec().getTopologySpreadConstraints().forEach(c -> {
+            final Object[] matchedIds = selectorToMatchExpressions(conn, c.getLabelSelector());
+            inserts.add(conn.insertInto(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS)
+                    .values(pod.getMetadata().getUid(), c.getMaxSkew(), c.getWhenUnsatisfiable(),
+                            c.getTopologyKey(), matchedIds));
+        });
         return inserts;
     }
 
