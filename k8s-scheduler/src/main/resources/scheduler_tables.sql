@@ -27,6 +27,7 @@ create table pod_info
   has_pod_affinity_requirements boolean not null,
   has_pod_anti_affinity_requirements boolean not null,
   has_node_port_requirements boolean not null,
+  has_topology_spread_constraints boolean not null,
   equivalence_class bigint not null,
   qos_class varchar(10) not null,
   resourceVersion bigint not null,
@@ -61,6 +62,16 @@ create table match_expressions
   label_operator varchar(30) not null,
   label_values array not null,
   primary key (label_key, label_operator, label_values)
+);
+
+create table pod_topology_spread_constraints
+(
+  uid char(36) not null,
+  max_skew integer not null,
+  when_unsatisfiable varchar(14) not null,
+  topology_key varchar(317) not null,
+  match_expressions array not null,
+  foreign key(uid) references pod_info(uid) on delete cascade
 );
 
 -- This table tracks the "ContainerPorts" fields of each pod.

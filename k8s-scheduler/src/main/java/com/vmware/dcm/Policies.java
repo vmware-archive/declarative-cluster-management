@@ -29,6 +29,7 @@ class Policies {
         INITIAL_PLACEMENT_POLICIES.add(taintsAndTolerations());
         INITIAL_PLACEMENT_POLICIES.add(symmetryBreaking());
         INITIAL_PLACEMENT_POLICIES.add(podFitsNodePorts());
+        INITIAL_PLACEMENT_POLICIES.add(podTopologySpreadConstraints());
 
         PREEMPTION_POLICIES.add(preemption());
         PREEMPTION_POLICIES.addAll(new ArrayList<>(INITIAL_PLACEMENT_POLICIES));
@@ -246,6 +247,49 @@ class Policies {
                 "              where A.pod_uid  = pods_to_assign.uid" +
                 "                and A.node_name = pods_to_assign.controllable__node_name) = true";
         return new Policy("NodeTaintsPredicate", constraint);
+    }
+
+    /**
+     * Pod topology spread constraints
+     */
+    static Policy podTopologySpreadConstraints() {
+        // TODO: Expensive. Optimize later.
+        final String channel = """
+                    CREATE CONSTRAINT topology_key_channel AS
+                    SELECT *
+                    FROM pods_to_assign
+                    JOIN pod_to_topology_keys_pending
+                        ON pods_to_assign.uid = pod_to_topology_keys_pending.pod_uid
+                    CHECK (controllable__node_name != pod_to_topology_keys_pending.node_name
+                        OR controllable__topology_value = label_value)
+                """;
+        // for each (group_name, topology_key), compute total_demand + sum(controllable__topology_value = label_value)
+        final String intermediateView = """
+                    CREATE CONSTRAINT pod_topology_spread_terms AS
+                    SELECT pod_topology_spread_bounds.group_name,
+                           pod_topology_spread_bounds.topology_key,
+                           pod_topology_spread_bounds.label_value,
+                           pod_topology_spread_bounds.max_skew,
+                           pod_topology_spread_bounds.total_demand
+                           + sum(pod_to_topology_keys_pending.controllable__topology_value
+                                 = pod_topology_spread_bounds.label_value) as demand
+                    FROM pod_to_topology_keys_pending
+                    JOIN pod_topology_spread_bounds
+                      ON pod_to_topology_keys_pending.group_name = pod_topology_spread_bounds.group_name
+                    GROUP BY pod_topology_spread_bounds.group_name,
+                             pod_topology_spread_bounds.topology_key,
+                             pod_topology_spread_bounds.label_value,
+                             pod_topology_spread_bounds.max_skew,
+                             pod_topology_spread_bounds.total_demand
+                """;
+        final String constraint = """
+                    CREATE CONSTRAINT pod_topology_spread_constraint AS
+                    SELECT *
+                    FROM pod_topology_spread_terms
+                    GROUP BY group_name, topology_key, max_skew
+                    CHECK max(demand) <= min(demand) + max_skew
+                """;
+        return new Policy("PodTopologySpreadConstraint", List.of(channel, intermediateView, constraint));
     }
 
 

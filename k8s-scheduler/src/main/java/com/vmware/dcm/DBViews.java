@@ -59,7 +59,9 @@ public class DBViews {
             podsThatTolerateNodeTaints(viewStatements);
             nodesThatHaveTolerations(viewStatements);
             allowedNodes(viewStatements);
-            interPodAffinityAndAntiAffinitySimple(viewStatements);
+            interPodAffinityAndAntiAffinity(viewStatements);
+            topologyKeyChannels(viewStatements);
+            podTopologySpread(viewStatements);
         });
         INITIAL_PLACEMENT_VIEW_NAMES = INITIAL_PLACEMENT.asQuery.keySet();
     }
@@ -271,7 +273,7 @@ public class DBViews {
                 -- For resources that are in use, compute the total spare capacity per node
                 SELECT node_info.name AS name,
                        node_resources.resource,
-                       allocatable - ISNULL(CAST(sum(A.total_demand) as bigint), 0) as capacity
+                       allocatable - CAST(sum(ISNULL(A.total_demand, 0)) as bigint) as capacity
                 FROM node_info
                 JOIN node_resources
                     ON node_info.uid = node_resources.uid
@@ -297,8 +299,11 @@ public class DBViews {
                 -- For every resource X being requested that are not available on any node,
                 -- generate a row for each node with resource X and with 0 capacity
                 SELECT node_info.name, p.resource, 0
-                FROM node_info NATURAL JOIN node_resources
-                JOIN (SELECT distinct resource FROM $pendingPods pods_to_assign NATURAL JOIN pod_resource_demands) p
+                FROM node_info
+                CROSS JOIN (SELECT distinct resource
+                            FROM $pendingPods pods_to_assign
+                            NATURAL JOIN pod_resource_demands) p
+                JOIN node_resources ON node_info.uid = node_resources.uid
                 GROUP BY node_info.name, p.resource
                 HAVING NOT ANY(p.resource = node_resources.resource)
                 """.replace("$pendingPods", viewStatements.unfixedPods);
@@ -350,7 +355,7 @@ public class DBViews {
     /*
      * Inter-pod affinity and anti-affinity
      */
-    private static void interPodAffinityAndAntiAffinitySimple(final ViewStatements viewStatements) {
+    private static void interPodAffinityAndAntiAffinity(final ViewStatements viewStatements) {
         // The below query is simpler than it looks.
         //
         // All it does is the following:
@@ -395,6 +400,51 @@ public class DBViews {
         }
     }
 
+    private static void topologyKeyChannels(final ViewStatements viewStatements) {
+        final String queryPending = """
+                        SELECT DISTINCT
+                            GROUP_CONCAT(distinct pod_topology_spread_constraints.match_expressions) AS group_name,
+                            pods_to_assign.uid as pod_uid,
+                            node_labels.node_name,
+                            pod_topology_spread_constraints.topology_key,
+                            'topology_value_variable' AS controllable__topology_value,
+                            node_labels.label_value
+                        FROM $pendingPods AS pods_to_assign
+                        JOIN pod_topology_spread_constraints
+                            ON pod_topology_spread_constraints.uid = pods_to_assign.uid
+                        JOIN node_labels
+                            ON pod_topology_spread_constraints.topology_key = node_labels.label_key
+                        GROUP BY pod_topology_spread_constraints.match_expressions,
+                                 pods_to_assign.uid,
+                                 node_labels.node_name,
+                                 pod_topology_spread_constraints.topology_key,
+                                 node_labels.label_value
+                """.replace("$pendingPods", viewStatements.unfixedPods);
+        viewStatements.addQuery("POD_TO_TOPOLOGY_KEYS_PENDING", queryPending);
+    }
+
+    private static void podTopologySpread(final ViewStatements viewStatements) {
+        final String query = """
+                    SELECT GROUP_CONCAT(distinct ptsc.match_expressions) AS group_name,
+                           nl.node_name,
+                           nl.label_key,
+                           nl.label_value,
+                           ptsc.topology_key,
+                           ptsc.max_skew,
+                           COUNT(ptsc_outer.uid) AS total_demand
+                    FROM $fixedPods pi
+                    JOIN node_labels nl
+                        ON nl.node_name = pi.node_name
+                    JOIN pod_topology_spread_constraints ptsc
+                        ON ptsc.topology_key = nl.label_key
+                    LEFT JOIN pod_topology_spread_constraints ptsc_outer
+                        ON ptsc_outer.topology_key = nl.label_key
+                        AND pi.uid = ptsc_outer.uid
+                    GROUP BY ptsc.match_expressions, nl.node_name, nl.label_key, nl.label_value
+                """.replace("$fixedPods", viewStatements.fixedPods);
+        viewStatements.addQuery("POD_TOPOLOGY_SPREAD_BOUNDS", query);
+    }
+
     private static class ViewStatements {
         private final String unfixedPods;
         private final String fixedPods;
@@ -408,6 +458,9 @@ public class DBViews {
         }
 
         void addQuery(final String name, final String query) {
+            if (asQuery.containsKey(name)) {
+                throw new RuntimeException("Duplicate view " + name + " " + query);
+            }
             asQuery.put(name + viewNameSuffix, query);
         }
 
