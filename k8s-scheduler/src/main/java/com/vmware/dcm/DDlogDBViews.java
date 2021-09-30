@@ -33,6 +33,7 @@ import java.util.stream.Stream;
  * queried.
  */
 public class DDlogDBViews {
+    private static final String IDENTITY_VIEW_SUFFIX = "_view";
     private static final String UNFIXED_PODS_VIEW_NAME = "pods_to_assign";
     private static final String FIXED_PODS_VIEW_NAME = "assigned_pods";
     private static final String INITIAL_PLACEMENT_VIEW_NAME_SUFFIX = "";
@@ -71,8 +72,25 @@ public class DDlogDBViews {
                     .trimResults()
                     .omitEmptyStrings()
                     .splitToList(schemaAsString);
+
+            // Now create an identity view per table, so that we can query input relations (by querying the output view)
+            // in the DDlog backend.
+            final Pattern getTableName = Pattern.compile("create table (.+)");
+
+            final List<String> identityViews = baseTableList.stream().filter(s -> s.startsWith("create table"))
+                    .map(s -> {
+                        Matcher m = getTableName.matcher(s);
+                        if (m.find()) {
+                            String tmp = s.substring("create table ".length(), m.end());
+                            return String.format(
+                                    "create view %s as select distinct * from %s", tmp + IDENTITY_VIEW_SUFFIX, tmp);
+                        } else {
+                            throw new RuntimeException("help");
+                        }
+                    }).collect(Collectors.toList());
+
             schema.addAll(baseTableList);
-            // Temporarily comment the `create view` statements out.
+            schema.addAll(identityViews);
             schema.addAll(INITIAL_PLACEMENT.getViewStatements());
             //schema.addAll(PREEMPTION.getViewStatements());
             return schema;
