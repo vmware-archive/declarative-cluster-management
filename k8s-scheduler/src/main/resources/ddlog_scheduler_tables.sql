@@ -9,18 +9,6 @@ create table node_info
   pid_pressure boolean not null,
   ready boolean not null,
   network_unavailable boolean not null,
-  cpu_capacity bigint not null,
-  memory_capacity bigint not null,
-  ephemeral_storage_capacity bigint not null,
-  pods_capacity bigint not null,
-  cpu_allocatable bigint not null,
-  memory_allocatable bigint not null,
-  ephemeral_storage_allocatable bigint not null,
-  pods_allocatable bigint not null,
-  cpu_allocated bigint not null,
-  memory_allocated bigint not null,
-  ephemeral_storage_allocated bigint not null,
-  pods_allocated bigint not null,
   primary key(uid)
 );
 
@@ -31,10 +19,6 @@ create table pod_info
   status varchar(36) not null,
   node_name varchar(253) null,
   namespace varchar(253) not null,
-  cpu_request bigint not null,
-  memory_request bigint not null,
-  ephemeral_storage_request bigint not null,
-  pods_request bigint not null,
   owner_name varchar(100) not null,
   creation_timestamp varchar(100) not null,
   priority integer not null,
@@ -49,6 +33,24 @@ create table pod_info
   last_requeue bigint not null,
   primary key(uid),
   constraint uc_namespaced_pod_name unique (pod_name, namespace)
+);
+
+create table node_resources
+(
+  uid varchar(36) not null,
+  resource varchar(100) not null,
+  allocatable bigint not null
+  --primary key(uid)
+  --foreign key(uid) references node_info(uid) on delete cascade
+);
+
+create table pod_resource_demands
+(
+  uid varchar(36) not null,
+  resource varchar(100) not null,
+  demand bigint not null
+  --primary key(uid)
+  --foreign key(uid) references pod_info(uid) on delete cascade
 );
 
 create table match_expressions
@@ -68,7 +70,8 @@ create table pod_ports_request
   pod_uid varchar(36) not null,
   host_ip varchar(100) not null,
   host_port integer not null,
-  host_protocol varchar(10) not null
+  host_protocol varchar(10) not null,
+  primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
@@ -80,7 +83,8 @@ create table container_host_ports
   node_name varchar(253) not null,
   host_ip varchar(100) not null,
   host_port integer not null,
-  host_protocol varchar(10) not null
+  host_protocol varchar(10) not null,
+  primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade,
   --foreign key(node_name) references node_info(name) on delete cascade
 );
@@ -90,7 +94,8 @@ create table pod_node_selector_labels
 (
   pod_uid varchar(36) not null,
   term integer not null,
-  match_expressions bigint array not null
+  match_expressions bigint array not null,
+  primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
@@ -100,7 +105,8 @@ create table pod_affinity_match_expressions
   pod_uid varchar(36) not null,
   label_selector integer not null,
   match_expressions bigint array not null,
-  topology_key varchar(100) not null
+  topology_key varchar(100) not null,
+  primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
@@ -110,7 +116,8 @@ create table pod_anti_affinity_match_expressions
   pod_uid varchar(36) not null,
   label_selector integer not null,
   match_expressions bigint array not null,
-  topology_key varchar(100) not null
+  topology_key varchar(100) not null,
+  primary key(pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
@@ -121,7 +128,8 @@ create table pod_labels
 (
   pod_uid varchar(36) not null,
   label_key varchar(317) not null,
-  label_value varchar(63) not null
+  label_value varchar(63) not null,
+  primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade,
   --primary key(pod_uid, label_key, label_value)
 );
@@ -151,6 +159,7 @@ create table pod_by_service
 (
   pod_uid varchar(36) not null,
   service_name varchar(100) not null
+  --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
@@ -185,7 +194,8 @@ create table pod_tolerations
   tolerations_key varchar(317),
   tolerations_value varchar(63),
   tolerations_effect varchar(100),
-  tolerations_operator varchar(100)
+  tolerations_operator varchar(100),
+  primary key(pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 
@@ -203,7 +213,8 @@ create table node_images
 create table pod_images
 (
   pod_uid varchar(36) not null,
-  image_name varchar(200) not null
+  image_name varchar(200) not null,
+  primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 

@@ -123,7 +123,7 @@ class PodEventsToDatabase {
         }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             conn.deleteFrom(Tables.POD_INFO)
-                .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
         }
     }
 
@@ -363,7 +363,7 @@ class PodEventsToDatabase {
 
     private List<Insert<?>> updateResourceRequests(final Pod pod, final DSLContext conn) {
         conn.deleteFrom(Tables.POD_RESOURCE_DEMANDS)
-                .where(Tables.POD_RESOURCE_DEMANDS.UID.eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_RESOURCE_DEMANDS.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
         final List<Insert<?>> inserts = new ArrayList<>();
         final Map<String, Long> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
@@ -402,10 +402,10 @@ class PodEventsToDatabase {
     private List<Insert<?>> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
         final List<Insert<?>> inserts = new ArrayList<>();
         conn.deleteFrom(Tables.POD_IMAGES)
-                .where(Tables.POD_IMAGES.POD_UID.eq(pod.getMetadata().getUid()))
+                .where(DSL.field(Tables.POD_IMAGES.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()))
                 .execute();
         conn.deleteFrom(Tables.POD_PORTS_REQUEST)
-                .where(Tables.POD_PORTS_REQUEST.POD_UID.eq(pod.getMetadata().getUid()))
+                .where(DSL.field(Tables.POD_PORTS_REQUEST.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()))
                 .execute();
 
         // Record all unique images in the container
@@ -451,7 +451,7 @@ class PodEventsToDatabase {
             return Collections.emptyList();
         }
         conn.deleteFrom(Tables.POD_TOLERATIONS)
-            .where(Tables.POD_TOLERATIONS.POD_UID.eq(pod.getMetadata().getUid())).execute();
+            .where(DSL.field(Tables.POD_TOLERATIONS.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
         final List<Insert<PodTolerationsRecord>> inserts = new ArrayList<>();
         for (final Toleration toleration: pod.getSpec().getTolerations()) {
             inserts.add(conn.insertInto(Tables.POD_TOLERATIONS)
@@ -468,11 +468,11 @@ class PodEventsToDatabase {
         final List<Insert<?>> inserts = new ArrayList<>();
         final Affinity affinity = pod.getSpec().getAffinity();
         conn.deleteFrom(Tables.POD_NODE_SELECTOR_LABELS)
-                .where(Tables.POD_NODE_SELECTOR_LABELS.POD_UID.eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_NODE_SELECTOR_LABELS.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
         conn.deleteFrom(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
-                .where(Tables.POD_AFFINITY_MATCH_EXPRESSIONS.POD_UID.eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_AFFINITY_MATCH_EXPRESSIONS.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
         conn.deleteFrom(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
-                .where(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS.POD_UID.eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
 
         // also handled using the same POD_NODE_SELECTOR_LABELS table
         inserts.addAll(updatePodNodeSelectorLabels(pod, conn));
