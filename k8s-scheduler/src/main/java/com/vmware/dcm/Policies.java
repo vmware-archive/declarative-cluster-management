@@ -262,7 +262,17 @@ class Policies {
                         ON pods_to_assign.uid = pod_to_topology_keys_pending.pod_uid
                     CHECK (controllable__node_name != pod_to_topology_keys_pending.node_name
                         OR controllable__topology_value = label_value)
+                        AND (contains(domain, controllable__topology_value) = true
+                           OR controllable__topology_value = 'NULL')
                 """;
+        final String topologyKeyAllEqual = """
+                    CREATE CONSTRAINT topology_key_all_equal AS
+                    SELECT *
+                    FROM pod_to_topology_keys_pending
+                    GROUP BY group_name, pod_uid, topology_key
+                    CHECK ALL_EQUAL(controllable__topology_value)
+                """;
+
         // for each (group_name, topology_key), compute total_demand + sum(controllable__topology_value = label_value)
         final String intermediateView = """
                     CREATE CONSTRAINT pod_topology_spread_terms AS
@@ -273,9 +283,10 @@ class Policies {
                            pod_topology_spread_bounds.total_demand
                            + sum(pod_to_topology_keys_pending.controllable__topology_value
                                  = pod_topology_spread_bounds.label_value) as demand
-                    FROM pod_to_topology_keys_pending
-                    JOIN pod_topology_spread_bounds
+                    FROM pod_topology_spread_bounds
+                    JOIN pod_to_topology_keys_pending
                       ON pod_to_topology_keys_pending.group_name = pod_topology_spread_bounds.group_name
+                      AND pod_to_topology_keys_pending.node_name = pod_topology_spread_bounds.node_name
                     GROUP BY pod_topology_spread_bounds.group_name,
                              pod_topology_spread_bounds.topology_key,
                              pod_topology_spread_bounds.label_value,
@@ -289,7 +300,8 @@ class Policies {
                     GROUP BY group_name, topology_key, max_skew
                     CHECK max(demand) <= min(demand) + max_skew
                 """;
-        return new Policy("PodTopologySpreadConstraint", List.of(channel, intermediateView, constraint));
+        return new Policy("PodTopologySpreadConstraint", List.of(channel, topologyKeyAllEqual,
+                                                                       intermediateView, constraint));
     }
 
 
