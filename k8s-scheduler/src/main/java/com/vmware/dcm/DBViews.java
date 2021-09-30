@@ -133,7 +133,7 @@ public class DBViews {
         final String name = "PODS_TO_ASSIGN";
         final String query = """
                              (SELECT * FROM PODS_TO_ASSIGN)
-                             UNION ALL
+                             UNION
                              (SELECT *, node_name AS controllable__node_name FROM pod_info
                               WHERE node_name IS NOT NULL AND priority < (SELECT MAX(priority) FROM PODS_TO_ASSIGN))""";
         viewStatements.addQuery(name, query);
@@ -408,7 +408,11 @@ public class DBViews {
                             node_labels.node_name,
                             pod_topology_spread_constraints.topology_key,
                             'topology_value_variable' AS controllable__topology_value,
-                            node_labels.label_value
+                            node_labels.label_value,
+                            pod_topology_spread_constraints.max_skew,
+                            ARRAY_AGG(node_labels.label_value)
+                                OVER (PARTITION BY pod_topology_spread_constraints.match_expressions,
+                                                   pod_topology_spread_constraints.topology_key) AS domain
                         FROM $pendingPods AS pods_to_assign
                         JOIN pod_topology_spread_constraints
                             ON pod_topology_spread_constraints.uid = pods_to_assign.uid

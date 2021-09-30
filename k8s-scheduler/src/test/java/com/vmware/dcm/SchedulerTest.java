@@ -57,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -70,6 +71,8 @@ import static com.vmware.dcm.TestScenario.Op.NOT_IN;
 import static com.vmware.dcm.TestScenario.nodeGroup;
 import static com.vmware.dcm.TestScenario.nodesForPodGroup;
 import static com.vmware.dcm.TestScenario.podGroup;
+import static java.util.stream.Collectors.counting;
+import static java.util.stream.Collectors.groupingBy;
 import static org.jooq.impl.DSL.field;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -976,10 +979,20 @@ public class SchedulerTest {
 
     private static Stream<Arguments> testPodTopologySpread() {
         final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
+        final Predicate<List<String>> twoPerNode = nodes -> {
+            final Map<String, Long> counts = nodes.stream().collect(groupingBy(Function.identity(), counting()));
+            return new HashSet<>(counts.values()).equals(Set.of(2L));
+        };
         return Stream.of(Arguments.of("Pods should be placed on separate nodes", 5,
                                       List.of(List.of(spread(1)),
                                               List.of(spread(1))),
-                                      onePodPerNode, true));
+                                      onePodPerNode, true),
+                         Arguments.of("Pods should be evenly distributed across two nodes", 2,
+                                List.of(List.of(spread(1)),
+                                        List.of(spread(1)),
+                                        List.of(spread(1)),
+                                        List.of(spread(1))),
+                                 twoPerNode, true));
     }
 
     private static TopologySpreadConstraint spread(final int maxSkew) {
