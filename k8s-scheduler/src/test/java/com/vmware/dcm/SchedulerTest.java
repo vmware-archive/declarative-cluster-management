@@ -976,7 +976,7 @@ public class SchedulerTest {
 
     private static Stream<Arguments> testPodTopologySpread() {
         final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
-        return Stream.of(Arguments.of("test", 5,
+        return Stream.of(Arguments.of("Pods should be placed on separate nodes", 5,
                                       List.of(List.of(spread(1)),
                                               List.of(spread(1))),
                                       onePodPerNode, true));
