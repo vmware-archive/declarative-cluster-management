@@ -125,8 +125,8 @@ public final class Scheduler {
                     .setNumThreads(numThreads)
                     .setPrintDiagnostics(debugMode)
                     .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
-            this.initialPlacement = Model.build(connection.getConnectionToDb(), orToolsSolver,
-                                                initialPlacementPolicies);
+            this.initialPlacement = Model.build(connection.getDataConnectionToDb(), orToolsSolver,
+                                                initialPlacementPolicies, connection.getDataConnectionToDb());
             return this;
         }
 
@@ -140,8 +140,8 @@ public final class Scheduler {
                     .setNumThreads(numThreads)
                     .setPrintDiagnostics(debugMode)
                     .setMaxTimeInSeconds(solverMaxTimeInSeconds).build();
-            this.preemption = Model.build(connection.getConnectionToDb(), orToolsSolverPreemption,
-                                          preemptionPolicies);
+            this.preemption = Model.build(connection.getDataConnectionToDb(), orToolsSolverPreemption,
+                                          preemptionPolicies, connection.getDataConnectionToDb());
             return this;
         }
 
