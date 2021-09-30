@@ -22,7 +22,9 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         final MockConnection connection = new MockConnection(provider);
         return DSL.using(connection, SQLDialect.H2, new Settings()
                 .withExecuteLogging(false)
-                .withParamCastMode(ParamCastMode.NEVER));
+                .withParamCastMode(ParamCastMode.NEVER)
+                .withRenderCatalog(false)
+                .withRenderSchema(false));
     }
 
     @Override

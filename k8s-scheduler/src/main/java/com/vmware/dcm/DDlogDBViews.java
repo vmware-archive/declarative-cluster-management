@@ -13,10 +13,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -251,23 +250,41 @@ public class DDlogDBViews {
      */
     private static void spareCapacityPerNode(final ViewStatements viewStatements) {
         final String name = "SPARE_CAPACITY_PER_NODE";
-        final String query = "SELECT DISTINCT name AS name, " +
-                            "  cpu_allocatable - cpu_allocated AS cpu_remaining, " +
-                            "  memory_allocatable - memory_allocated AS memory_remaining, " +
-                            "  ephemeral_storage_allocatable - ephemeral_storage_allocated AS ephemeral_storage_remaining, " +
-                            "  pods_allocatable - pods_allocated AS pods_remaining " +
-                            "FROM node_info " +
-                            "WHERE unschedulable = false AND " +
-                            "      memory_pressure = false AND " +
-                            "      out_of_disk = false AND " +
-                            "      disk_pressure = false AND " +
-                            "      pid_pressure = false AND " +
-                            "      network_unavailable = false AND " +
-                            "      ready = true AND " +
-                            "      cpu_allocated < cpu_allocatable AND " +
-                            "      memory_allocated <  memory_allocatable AND " +
-                            "      pods_allocated < pods_allocatable AND " +
-                            "      ephemeral_storage_allocated < ephemeral_storage_allocatable";
+        final String query ="""
+                -- For resources that are in use, compute the total spare capacity per node
+                SELECT node_info.name AS name,
+                       node_resources.resource,
+                       node_resources.allocatable - CAST(sum(A.total_demand) as bigint) as capacity
+                FROM node_info
+                JOIN node_resources
+                    ON node_info.uid = node_resources.uid
+                LEFT JOIN (SELECT pod_info.node_name,
+                             pod_resource_demands.resource,
+                             sum(pod_resource_demands.demand) AS total_demand
+                     FROM pod_info
+                     JOIN pod_resource_demands
+                       ON pod_resource_demands.uid = pod_info.uid
+                     GROUP BY pod_info.node_name, pod_resource_demands.resource) A
+                    ON A.node_name = node_info.name AND A.resource = node_resources.resource
+                WHERE unschedulable = false AND
+                      memory_pressure = false AND
+                      out_of_disk = false AND
+                      disk_pressure = false AND
+                      pid_pressure = false AND
+                      network_unavailable = false AND
+                      ready = true
+                GROUP BY node_info.name, node_resources.resource, node_resources.allocatable
+                
+                UNION                
+                -- For every resource X being requested that are not available on any node,
+                -- generate a row for each node with resource X and with 0 capacity
+                (SELECT node_info.name, p.resource, p.zero as capacity
+                FROM node_info NATURAL JOIN node_resources
+                CROSS JOIN (SELECT distinct resource, CAST(0 as bigint) as zero FROM $pendingPods pods_to_assign NATURAL JOIN pod_resource_demands) p
+                GROUP BY node_info.name, p.resource, node_resources.resource, p.zero
+                HAVING p.resource NOT IN (node_resources.resource))
+                """
+                .replace("$pendingPods", viewStatements.unfixedPods);
         viewStatements.addQuery(name, query);
     }
 
@@ -334,7 +351,8 @@ public class DDlogDBViews {
                         "FROM " +
                         "  %2$s AS pods_to_assign " +
                         "  JOIN pod_%1$s_match_expressions ON " +
-                        "        pods_to_assign.uid = pod_%1$s_match_expressions.pod_uid " +
+                        "        pods_to_assign.uid " +
+                                "= pod_%1$s_match_expressions.pod_uid " +
                         "  JOIN matching_pods " +
                         "     ON array_contains(pod_%1$s_match_expressions.match_expressions, matching_pods.expr_id) " +
                         "  JOIN %3$s as other_pods ON " +
@@ -353,10 +371,10 @@ public class DDlogDBViews {
                                                                           viewStatements.unfixedPods);
             final String scheduledQuery = String.format(formatString, type, viewStatements.unfixedPods,
                                                                             viewStatements.fixedPods);
-            //viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_PENDING", type.toUpperCase(Locale.ROOT)),
-            //                 pendingQuery);
-            //viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_SCHEDULED", type.toUpperCase(Locale.ROOT)),
-            //                 scheduledQuery);
+            viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_PENDING", type.toUpperCase(Locale.ROOT)),
+                             pendingQuery);
+            viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_SCHEDULED", type.toUpperCase(Locale.ROOT)),
+                             scheduledQuery);
         }
     }
 
