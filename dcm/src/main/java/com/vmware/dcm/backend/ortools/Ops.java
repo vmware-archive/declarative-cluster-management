@@ -346,6 +346,10 @@ public class Ops {
         return left == right;
     }
 
+    public boolean eq(final Object[] left, final Object[] right) {
+        return Arrays.equals(left, right);
+    }
+
     public IntVar eq(final String left, final IntVar right) {
         return eq(right, left);
     }
