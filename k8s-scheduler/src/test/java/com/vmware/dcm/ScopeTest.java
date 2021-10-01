@@ -20,7 +20,6 @@ import io.fabric8.kubernetes.api.model.Toleration;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -33,6 +32,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.vmware.dcm.SchedulerTest.map;
 import static com.vmware.dcm.SchedulerTest.newNode;
@@ -52,8 +52,7 @@ public class ScopeTest {
      * Test if Scope only keeps the least loaded nodes when no constraints are present.
      */
     @Test
-    @Disabled
-    public void testSpareCapacityFilter() {
+    public void testSpareCapacityFilterSimple() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
@@ -63,15 +62,16 @@ public class ScopeTest {
         final Model model = buildModel(conn);
         final ScopedModel scopedModel = new ScopedModel(conn, model);
 
-        final int numNodes = 10;
+        final int numNodes = 50;
         final int numPods = 4;
 
         for (int i = 0; i < numNodes; i++) {
             final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
             // nodes have more spare capacity as i increases
             node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10 + i)));
-            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000)));
-            node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
+            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + i)));
+            node.getStatus().getCapacity().put("ephemeral-storage", new Quantity(String.valueOf(1000 + i)));
+            node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100 + i)));
             nodeResourceEventHandler.onAddSync(node);
         }
         for (int i = 0; i < numPods; i++) {
@@ -80,16 +80,80 @@ public class ScopeTest {
 
         final Set<String> scopedNodes = scopedModel.getScopedNodes();
 
+        // check that only the last, least cpu-loaded nodes are included
         assertEquals(numPods, scopedNodes.size());
-        // check that the last, least loaded nodes are selected
-        scopedNodes.forEach(n -> assertTrue(Integer.parseInt(n.substring(1)) >= numNodes - numPods));
+        final IntStream leastLoadedIds = IntStream.range(numNodes - numPods, numNodes);
+        leastLoadedIds.forEach(i -> assertTrue(scopedNodes.contains("n" + i)));
+    }
+
+    /*
+     * Test if Scope only keeps the least loaded nodes when there is imbalance in spare resources
+     */
+    @Test
+    public void testSpareCapacityFilterImbalance() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        final Model model = buildModel(conn);
+        final ScopedModel scopedModel = new ScopedModel(conn, model);
+
+        final int numNodes = 200;
+        final int numPods = 10;
+        final Set<Integer> randNodesCpu = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(numPods).boxed().collect(Collectors.toSet());
+        final Set<Integer> randNodesMem = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(numPods).boxed().collect(Collectors.toSet());
+        final Set<Integer> randNodesEph = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(numPods).boxed().collect(Collectors.toSet());
+        final Set<Integer> randNodesPod = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(numPods).boxed().collect(Collectors.toSet());
+
+        for (int i = 0; i < numNodes; i++) {
+            final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
+            // randomly selected nodes have more available resources
+            if (randNodesCpu.contains(i)) {
+                node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(20)));
+            } else {
+                node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10)));
+            }
+            if (randNodesMem.contains(i)) {
+                node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1500)));
+            } else {
+                node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + i)));
+            }
+            if (randNodesEph.contains(i)) {
+                node.getStatus().getCapacity().put("ephemeral-storage", new Quantity(String.valueOf(2000)));
+            } else {
+                node.getStatus().getCapacity().put("ephemeral-storage", new Quantity(String.valueOf(1000)));
+            }
+            if (randNodesPod.contains(i)) {
+                node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(110)));
+            } else {
+                node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
+            }
+            nodeResourceEventHandler.onAddSync(node);
+        }
+        for (int i = 0; i < numPods; i++) {
+            handler.onAddSync(newPod("p" + i));
+        }
+
+        final Set<String> scopedNodes = scopedModel.getScopedNodes();
+
+        assertTrue(numPods <= scopedNodes.size() && scopedNodes.size() < numNodes);
+        // only the nodes with more available resources can be included
+        scopedNodes.forEach(n -> assertTrue(randNodesCpu.contains(Integer.parseInt(n.substring(1)))
+                || randNodesMem.contains(Integer.parseInt(n.substring(1)))
+                || randNodesEph.contains(Integer.parseInt(n.substring(1)))
+                || randNodesPod.contains(Integer.parseInt(n.substring(1)))));
     }
 
     /*
      * Test if scope includes nodes required by inter-pod-affinity
      */
     @Test
-    @Disabled
     public void testPodAffinityMatch() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
@@ -132,6 +196,7 @@ public class ScopeTest {
 
         final Set<String> scopedNodes = scopedModel.getScopedNodes();
 
+        assertTrue(scopedNodes.size() < numNodes);
         // check that the loaded node containing the affine pod is included in the scope
         assertTrue(scopedNodes.contains("n" + randNode));
     }
@@ -140,7 +205,6 @@ public class ScopeTest {
      * Test if scope includes tainted nodes that are tolerated by pods to be assigned
      */
     @Test
-    @Disabled
     public void testPodTolerations() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
@@ -175,11 +239,11 @@ public class ScopeTest {
 
         // Add tainted nodes
         final int numNodes = 10;
-        final Set<Integer> randNodes = ThreadLocalRandom.current().ints(0, numNodes)
+        final Set<Integer> randToleratedNodes = ThreadLocalRandom.current().ints(0, numNodes)
                 .distinct().limit(2).boxed().collect(Collectors.toSet());
         for (int i = 0; i < numNodes; i++) {
             final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
-            if (randNodes.contains(i)) {
+            if (randToleratedNodes.contains(i)) {
                 // two of the nodes are tainted as taint:tolerated
                 node.getSpec().setTaints(List.of(taintTolerated));
             } else {
@@ -191,9 +255,40 @@ public class ScopeTest {
 
         final Set<String> scopedNodes = scopedModel.getScopedNodes();
 
-        // check that the scope contains the tainted nodes, plus at numPods other
-        assertTrue(scopedNodes.size() <= randNodes.size() + numPods);
-        assertTrue(scopedNodes.containsAll(randNodes.stream().map(x -> "n" + x).collect(Collectors.toSet())));
+        assertTrue(numPods <= scopedNodes.size() && scopedNodes.size() < numNodes);
+        // check that the scope contains the tolerated nodes
+        assertTrue(scopedNodes.containsAll(randToleratedNodes.stream().map(x -> "n" + x).collect(Collectors.toSet())));
+    }
+
+    @Test
+    public void testEmptyPodBatch() {
+        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final List<String> policies = Policies.getInitialPlacementPolicies();
+        final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
+        final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
+        final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
+
+        final int numNodes = 10;
+        for (int i = 0; i < numNodes; i++) {
+            final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
+            nodeResourceEventHandler.onAddSync(node);
+
+            // Add one system pod per node
+            final String podName = "system-pod-n" + i;
+            final Pod pod = newPod(podName, "Running");
+            pod.getSpec().setNodeName("n" + i);
+            handler.onAddSync(pod);
+        }
+
+        // Don't add any pending pods
+
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                .setInitialPlacementPolicies(policies)
+                .setScopedInitialPlacement(true)
+                .setDebugMode(true).build();
+        scheduler.initialPlacement();
+
+        // finished with no errors
     }
 
     /*
@@ -201,8 +296,7 @@ public class ScopeTest {
      * Test if Scope limits candidate nodes according to spare resources
      */
     @Test
-    @Disabled
-    public void testSchedulerSimple() {
+    public void testSchedulerCapacity() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getInitialPlacementPolicies();
@@ -211,15 +305,41 @@ public class ScopeTest {
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
-        final int numNodes = 100;
-        final int numPods = 40;
+        final int numNodes = 200;
+        final int numPods = 10;
+
+        final Set<Integer> randNodesCpu = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(numPods).boxed().collect(Collectors.toSet());
+        final Set<Integer> randNodesMem = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(numPods).boxed().collect(Collectors.toSet());
+        final Set<Integer> randNodesEph = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(numPods).boxed().collect(Collectors.toSet());
+        final Set<Integer> randNodesPod = ThreadLocalRandom.current().ints(0, numNodes)
+                .distinct().limit(numPods).boxed().collect(Collectors.toSet());
 
         for (int i = 0; i < numNodes; i++) {
             final Node node = newNode("n" + i, Collections.emptyMap(), Collections.emptyList());
-            // nodes have more spare capacity as i increases
-            node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10)));
-            node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + (1000 * i) / numNodes)));
-            node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
+            // randomly selected nodes have more available resources
+            if (randNodesCpu.contains(i)) {
+                node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(20)));
+            } else {
+                node.getStatus().getCapacity().put("cpu", new Quantity(String.valueOf(10)));
+            }
+            if (randNodesMem.contains(i)) {
+                node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1500)));
+            } else {
+                node.getStatus().getCapacity().put("memory", new Quantity(String.valueOf(1000 + i)));
+            }
+            if (randNodesEph.contains(i)) {
+                node.getStatus().getCapacity().put("ephemeral-storage", new Quantity(String.valueOf(2000)));
+            } else {
+                node.getStatus().getCapacity().put("ephemeral-storage", new Quantity(String.valueOf(1000)));
+            }
+            if (randNodesPod.contains(i)) {
+                node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(110)));
+            } else {
+                node.getStatus().getCapacity().put("pods", new Quantity(String.valueOf(100)));
+            }
             nodeResourceEventHandler.onAddSync(node);
 
             // Add one system pod per node
@@ -239,13 +359,17 @@ public class ScopeTest {
                                                  .setDebugMode(true).build();
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
 
+
         // Check that all pods have been scheduled to a node eligible by the scope filtering
         final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
         assertEquals(numNodes + numPods, fetch.size());
         fetch.forEach(e -> assertTrue(e.getNodeName() != null
                 && e.getNodeName().startsWith("n")
-                // check that new pods have been scheduled to the last, least loaded nodes
-                && (Integer.parseInt(e.getNodeName().substring(1)) >= numNodes - numPods
+                // check that new pods have been scheduled to a scoped node
+                && (randNodesCpu.contains(Integer.parseInt(e.getNodeName().substring(1)))
+                || randNodesMem.contains(Integer.parseInt(e.getNodeName().substring(1)))
+                || randNodesEph.contains(Integer.parseInt(e.getNodeName().substring(1)))
+                || randNodesPod.contains(Integer.parseInt(e.getNodeName().substring(1)))
                 || !e.getPodName().startsWith("p"))));
     }
 
@@ -255,7 +379,6 @@ public class ScopeTest {
      * Labeled nodes have low spare capacity.
      */
     @Test
-    @Disabled
     public void testSchedulerNodeLabels() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
@@ -330,7 +453,6 @@ public class ScopeTest {
      * Pods in group 2 are anti-affine to each other and to a running pod.
      */
     @Test
-    @Disabled
     public void testSchedulerPodAffinitiesMixed() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
