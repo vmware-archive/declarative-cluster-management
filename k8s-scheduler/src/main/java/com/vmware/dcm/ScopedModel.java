@@ -10,6 +10,7 @@ import com.google.common.collect.Sets;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record;
+import org.jooq.Record1;
 import org.jooq.Result;
 import org.jooq.SortField;
 import org.jooq.Table;
@@ -31,16 +32,13 @@ import static org.jooq.impl.DSL.table;
 /**
  * A Scope to reduce the Model's solver input.
  *
- * TODO: dynamically tune the now default parameters {LIMIT_TUNE, CPU_WEIGHT, MEM_WEIGHT}_DEFAULT
- *       maintain (three) different limitTune variables according to affinity
+ * TODO: maintain different limitTune variables according to affinity
  *       add extra limitPriority (provided as a hint)
  *       capture successful schedules history
  */
 public class ScopedModel {
     private static final Logger LOG = LoggerFactory.getLogger(ScopedModel.class);
     private static final double LIMIT_TUNE_DEFAULT = 1.0;
-    private static final double CPU_WEIGHT_DEFAULT = 0.8;
-    private static final double MEM_WEIGHT_DEFAULT = 0.2;
 
     private final DSLContext conn;
     private final Model model;
@@ -62,13 +60,12 @@ public class ScopedModel {
 
     /**
      * Computes a sorting expression for an ORDER BY clause, based on a sorting strategy.
-     * This sorting strategy sorts according to a weighted sum of nodes' spare cpu and memory.
+     * This sorting strategy favors nodes with more spare capacity of a defined resource.
      *
      * @return Sorting expression
      */
     private SortField<?> getSortingExpression() {
-        return field(CPU_WEIGHT_DEFAULT + " * cpu_remaining + "
-                + MEM_WEIGHT_DEFAULT + " * memory_remaining").desc();
+        return field("capacity").desc();
     }
 
     /**
@@ -80,7 +77,7 @@ public class ScopedModel {
      * @return Number of nodes to consider
      */
     private int getLimit(final int podCnt) {
-        return (int) Math.ceil(LIMIT_TUNE_DEFAULT * podCnt);
+        return podCnt == 0 ? 1 : (int) Math.ceil(LIMIT_TUNE_DEFAULT * podCnt);
     }
 
     /**
@@ -120,10 +117,6 @@ public class ScopedModel {
         );
     }
 
-    private Set<String> flattenObjectArray(final Set<Object[]> arrays) {
-        return arrays.stream().flatMap(Arrays::stream).map(Object::toString).collect(Collectors.toSet());
-    }
-
     /**
      * Returns the set of tainted nodes that are tolerated by pods to be assigned.
      *
@@ -134,20 +127,32 @@ public class ScopedModel {
         return toleratingPods.intoSet(field(name("PODS_THAT_TOLERATE_NODE_TAINTS", "NODE_NAME"), String.class));
     }
 
+    private Set<String> flattenObjectArray(final Set<Object[]> arrays) {
+        return arrays.stream().flatMap(Arrays::stream).map(Object::toString).collect(Collectors.toSet());
+    }
+
     /**
-     * Returns a set with the least loaded nodes.
+     * Returns a set including the least loaded nodes.
+     * This set is computed as the union the least loaded nodes across all resource types.
      * Load is defined by the sorting strategy in {@link #getSortingExpression()}.
-     * Set cardinality is defined by {@link #getLimit(int)}.
+     * Each resource's set cardinality is defined by {@link #getLimit(int)}.
      *
      * @return Set of least loaded nodes
      */
     private Set<String> getSpareNodes() {
         final int podsCnt = conn.fetchCount(selectFrom(table("PODS_TO_ASSIGN")));
-        final Result<?> spareNodes = conn.selectFrom(table("SPARE_CAPACITY_PER_NODE"))
-                .orderBy(getSortingExpression())
-                .limit(getLimit(podsCnt))
-                .fetch();
-        return spareNodes.intoSet(field(name("SPARE_CAPACITY_PER_NODE", "NAME"), String.class));
+
+        // find resource types available in nodes
+        final Result<? extends Record1<?>> resources = conn.selectDistinct(field("resource"))
+                .from(table("SPARE_CAPACITY_PER_NODE")).fetch();
+
+        return resources.stream().map((resource) ->
+                conn.selectFrom("SPARE_CAPACITY_PER_NODE")
+                        .where(field(name("SPARE_CAPACITY_PER_NODE", "RESOURCE")).eq(resource.value1().toString()))
+                        .orderBy(getSortingExpression())
+                        .limit(getLimit(podsCnt))
+                        .fetch().intoSet(name("SPARE_CAPACITY_PER_NODE", "NAME"), String.class)
+        ).flatMap(Set::stream).collect(Collectors.toSet());
     }
 
     /**
@@ -182,11 +187,11 @@ public class ScopedModel {
 
                 // TODO: Used only for log info. Remove if expensive to compute.
                 final int sizeUnfiltered = conn.selectFrom(table).fetch().size();
-                final int sizeFiltered = scopedFetcher.size();
+                final int sizeScoped = scopedFetcher.size();
                 LOG.info("Solver input size without scope: {}\n" +
                                 "solver input size with scope: {}\n" +
                                 "scope fraction: {}",
-                        sizeUnfiltered, sizeFiltered, (double) sizeFiltered / sizeUnfiltered);
+                        sizeUnfiltered, sizeScoped, (double) sizeScoped / sizeUnfiltered);
                 return scopedFetcher;
             } else {
                 return conn.fetch(table);
