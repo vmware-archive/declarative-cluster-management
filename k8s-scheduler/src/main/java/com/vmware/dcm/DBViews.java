@@ -403,7 +403,7 @@ public class DBViews {
     private static void topologyKeyChannels(final ViewStatements viewStatements) {
         final String queryPending = """
                         SELECT DISTINCT
-                            GROUP_CONCAT(distinct pod_topology_spread_constraints.match_expressions) AS group_name,
+                            pod_topology_spread_constraints.match_expressions AS group_name,
                             pods_to_assign.uid as pod_uid,
                             node_labels.node_name,
                             pod_topology_spread_constraints.topology_key,
@@ -429,7 +429,8 @@ public class DBViews {
 
     private static void podTopologySpread(final ViewStatements viewStatements) {
         final String query = """
-                    SELECT GROUP_CONCAT(distinct ptsc.match_expressions) AS group_name,
+                    SELECT DISTINCT
+                           ptsc.match_expressions AS group_name,
                            nl.node_name,
                            nl.label_key,
                            nl.label_value,
