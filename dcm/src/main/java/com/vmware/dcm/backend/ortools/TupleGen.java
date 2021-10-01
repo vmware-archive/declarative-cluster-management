@@ -13,7 +13,6 @@ import com.squareup.javapoet.TypeVariableName;
 import javax.lang.model.element.Modifier;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -74,7 +73,7 @@ class TupleGen {
                 .addAnnotation(Override.class)
                 .addModifiers(Modifier.PUBLIC)
                 .returns(int.class)
-                .addStatement("return $T.hash($L)", Objects.class, commaSeparatedParameters)
+                .addStatement("return $T.hash($L)", Ops.class, commaSeparatedParameters)
                 .build();
         final MethodSpec.Builder equals = MethodSpec.methodBuilder("equals")
                 .addAnnotation(Override.class)
@@ -91,7 +90,7 @@ class TupleGen {
                 .addCode("return ");
 
         final String returnValue = IntStream.range(0, numFields)
-                .mapToObj(i -> String.format("this.value%s().equals(that.value%s())", i, i))
+                .mapToObj(i -> String.format("Ops.equals(this.value%s(), that.value%s())", i, i))
                 .collect(Collectors.joining(" && "));
         equals.addCode("$L;\n", returnValue);
         final MethodSpec equalsMethod = equals.build();

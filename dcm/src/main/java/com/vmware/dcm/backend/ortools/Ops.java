@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -1001,5 +1002,28 @@ public class Ops {
             index.computeIfAbsent(key, (k) -> new ArrayList<>()).add(i);
         }
         return index;
+    }
+
+    // This method is the same as Arrays.hashCode(), except we call Objects.hash(element) instead of
+    // element.hashCode(). We do so to make sure that columns that have Object[] types get their contents used
+    // to compute the hashCode, not their identities.
+    public static int hash(final Object... a) {
+        if (a == null) {
+            return 0;
+        }
+        int result = 1;
+        for (final Object element : a) {
+            result = 31 * result + (element == null ? 0 :
+                    element instanceof Object[] ? Arrays.hashCode((Object[]) element) : element.hashCode());
+        }
+        return result;
+    }
+
+    // Analog to safeHash() above
+    public static boolean equals(final Object a, final Object b) {
+        if (a instanceof Object[] && b instanceof Object[]) {
+            return Arrays.equals((Object[]) a, (Object[]) b);
+        }
+        return Objects.equals(a, b);
     }
 }
