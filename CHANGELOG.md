@@ -1,9 +1,15 @@
 # Changelog
 
-## Ongoing: Release 0.13.0
+## October 5, 2021: Release 0.13.0
+
+* Public API changes:
+  * ortools-backend: `capacity_constraint` now uses optional intervals and does not interfere with core computations.
+  * ortools-backend: Bump ortools to 9.1.9490
 
 * Issues fixed:
-  * `capacity_constraint` now uses optional intervals and does not interfere with core computations.
+  * ortools-backend: `capacity_constraint` now uses optional intervals and does not interfere with core computations.
+  * ortools-backend: have tupleXX.hash()/equals() avoid identity-based hashes
+  * ortools-backend: add eq(Object[], Object[])
   * build: use gradle toolchains to always build dcm/ sub-project with JDK 11 and other sub-projects with
             more recent JDKs.
   
