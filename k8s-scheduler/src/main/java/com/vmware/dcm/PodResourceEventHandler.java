@@ -44,7 +44,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
     PodResourceEventHandler(final Consumer<PodEvent> podEventNotification) {
         this.podEventNotification = podEventNotification;
-        this.service = Executors.newFixedThreadPool(10);
+        this.service = Executors.newFixedThreadPool(1);
     }
 
     PodResourceEventHandler(final Consumer<PodEvent> podEventNotification, final ExecutorService service) {
