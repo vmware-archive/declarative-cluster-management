@@ -7,6 +7,7 @@
 package com.vmware.dcm;
 
 import com.google.common.base.Splitter;
+import com.vmware.ddlog.DDlogJooqProvider;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -33,7 +34,6 @@ import java.util.stream.Stream;
  * queried.
  */
 public class DDlogDBViews {
-    private static final String IDENTITY_VIEW_SUFFIX = "_view";
     private static final String UNFIXED_PODS_VIEW_NAME = "pods_to_assign";
     private static final String FIXED_PODS_VIEW_NAME = "assigned_pods";
     private static final String INITIAL_PLACEMENT_VIEW_NAME_SUFFIX = "";
@@ -57,6 +57,8 @@ public class DDlogDBViews {
             nodesThatHaveTolerations(viewStatements);
             allowedNodes(viewStatements);
             interPodAffinityAndAntiAffinitySimple(viewStatements);
+            //topologyKeyChannels(viewStatements);
+            //podTopologySpread(viewStatements);
         });
     }
 
@@ -83,7 +85,7 @@ public class DDlogDBViews {
                         if (m.find()) {
                             String tmp = s.substring("create table ".length(), m.end());
                             return String.format(
-                                    "create view %s as select distinct * from %s", tmp + IDENTITY_VIEW_SUFFIX, tmp);
+                                    "create view %s as select distinct * from %s", DDlogJooqProvider.toIdentityViewName(tmp), tmp);
                         } else {
                             throw new RuntimeException("help");
                         }
@@ -292,6 +294,8 @@ public class DDlogDBViews {
                       network_unavailable = false AND
                       ready = true
                 GROUP BY node_info.name, node_resources.resource, node_resources.allocatable
+                """
+                /*
                 
                 UNION                
                 -- For every resource X being requested that are not available on any node,
@@ -301,7 +305,7 @@ public class DDlogDBViews {
                 CROSS JOIN (SELECT distinct resource, CAST(0 as bigint) as zero FROM $pendingPods pods_to_assign NATURAL JOIN pod_resource_demands) p
                 GROUP BY node_info.name, p.resource, node_resources.resource, p.zero
                 HAVING p.resource NOT IN (node_resources.resource))
-                """
+                """*/
                 .replace("$pendingPods", viewStatements.unfixedPods);
         viewStatements.addQuery(name, query);
     }
@@ -394,6 +398,55 @@ public class DDlogDBViews {
             viewStatements.addQuery(String.format("INTER_POD_%s_MATCHES_SCHEDULED", type.toUpperCase(Locale.ROOT)),
                              scheduledQuery);
         }
+    }
+
+    private static void topologyKeyChannels(final ViewStatements viewStatements) {
+        final String queryPending = """
+                        SELECT DISTINCT
+                            GROUP_CONCAT(distinct pod_topology_spread_constraints.match_expressions) AS group_name,
+                            pods_to_assign.uid as pod_uid,
+                            node_labels.node_name,
+                            pod_topology_spread_constraints.topology_key,
+                            'topology_value_variable' AS controllable__topology_value,
+                            node_labels.label_value,
+                            pod_topology_spread_constraints.max_skew,
+                            ARRAY_AGG(node_labels.label_value)
+                                OVER (PARTITION BY pod_topology_spread_constraints.match_expressions,
+                                                   pod_topology_spread_constraints.topology_key) AS domain
+                        FROM $pendingPods AS pods_to_assign
+                        JOIN pod_topology_spread_constraints
+                            ON pod_topology_spread_constraints.uid = pods_to_assign.uid
+                        JOIN node_labels
+                            ON pod_topology_spread_constraints.topology_key = node_labels.label_key
+                        GROUP BY pod_topology_spread_constraints.match_expressions,
+                                 pods_to_assign.uid,
+                                 node_labels.node_name,
+                                 pod_topology_spread_constraints.topology_key,
+                                 node_labels.label_value
+                """.replace("$pendingPods", viewStatements.unfixedPods);
+        viewStatements.addQuery("POD_TO_TOPOLOGY_KEYS_PENDING", queryPending);
+    }
+
+    private static void podTopologySpread(final ViewStatements viewStatements) {
+        final String query = """
+                    SELECT GROUP_CONCAT(distinct ptsc.match_expressions) AS group_name,
+                           nl.node_name,
+                           nl.label_key,
+                           nl.label_value,
+                           ptsc.topology_key,
+                           ptsc.max_skew,
+                           COUNT(ptsc_outer.uid) AS total_demand
+                    FROM $fixedPods pi
+                    JOIN node_labels nl
+                        ON nl.node_name = pi.node_name
+                    JOIN pod_topology_spread_constraints ptsc
+                        ON ptsc.topology_key = nl.label_key
+                    LEFT JOIN pod_topology_spread_constraints ptsc_outer
+                        ON ptsc_outer.topology_key = nl.label_key
+                        AND pi.uid = ptsc_outer.uid
+                    GROUP BY ptsc.match_expressions, nl.node_name, nl.label_key, nl.label_value
+                """.replace("$fixedPods", viewStatements.fixedPods);
+        viewStatements.addQuery("POD_TOPOLOGY_SPREAD_BOUNDS", query);
     }
 
     private static class ViewStatements {

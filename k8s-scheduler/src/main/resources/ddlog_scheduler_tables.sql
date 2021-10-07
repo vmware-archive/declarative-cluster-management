@@ -27,6 +27,7 @@ create table pod_info
   has_pod_affinity_requirements boolean not null,
   has_pod_anti_affinity_requirements boolean not null,
   has_node_port_requirements boolean not null,
+  has_topology_spread_constraints boolean not null,
   equivalence_class bigint not null,
   qos_class varchar(10) not null,
   resourceVersion bigint not null,
@@ -34,6 +35,7 @@ create table pod_info
   primary key(uid),
   constraint uc_namespaced_pod_name unique (pod_name, namespace)
 );
+create index pod_info_idx on pod_info (status, node_name);
 
 create table node_resources
 (
@@ -52,6 +54,7 @@ create table pod_resource_demands
   --primary key(uid)
   --foreign key(uid) references pod_info(uid) on delete cascade
 );
+create index pod_resource_demands_by_uid on pod_resource_demands (uid);
 
 create table match_expressions
 (
@@ -62,6 +65,18 @@ create table match_expressions
   label_values varchar(63) array not null
   --primary key (label_key, label_operator, label_values) presto doesn't like composite keys
 );
+create index match_expressions_idx on match_expressions (label_key, label_operator, label_values);
+
+create table pod_topology_spread_constraints
+(
+  uid varchar(36) not null,
+  max_skew integer not null,
+  when_unsatisfiable varchar(14) not null,
+  topology_key varchar(317) not null,
+  match_expressions bigint array not null
+  --foreign key(uid) references pod_info(uid) on delete cascade
+);
+create index pod_topology_spread_constraints_idx on pod_topology_spread_constraints (uid);
 
 -- This table tracks the "ContainerPorts" fields of each pod.
 -- It is used to enforce the PodFitsHostPorts constraint.
@@ -74,20 +89,7 @@ create table pod_ports_request
   primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
-
--- This table tracks the set of hostports in use at each node.
--- Also used to enforce the PodFitsHostPorts constraint.
-create table container_host_ports
-(
-  pod_uid varchar(36) not null,
-  node_name varchar(253) not null,
-  host_ip varchar(100) not null,
-  host_port integer not null,
-  host_protocol varchar(10) not null,
-  primary key (pod_uid)
-  --foreign key(pod_uid) references pod_info(uid) on delete cascade,
-  --foreign key(node_name) references node_info(name) on delete cascade
-);
+create index pod_ports_request_by_uid on pod_ports_request (pod_uid);
 
 -- Tracks the set of node selector labels per pod.
 create table pod_node_selector_labels
@@ -98,6 +100,7 @@ create table pod_node_selector_labels
   primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
+create index pod_node_selector_labels_by_uid on pod_node_selector_labels (pod_uid);
 
 -- Tracks the set of pod affinity match expressions.
 create table pod_affinity_match_expressions
@@ -109,6 +112,7 @@ create table pod_affinity_match_expressions
   primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
+create index pod_affinity_match_expressions_labels_by_uid on pod_affinity_match_expressions (pod_uid);
 
 -- Tracks the set of pod anti-affinity match expressions.
 create table pod_anti_affinity_match_expressions
@@ -120,6 +124,7 @@ create table pod_anti_affinity_match_expressions
   primary key(pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
+create index pod_anti_affinity_match_expressions_labels_by_uid on pod_anti_affinity_match_expressions (pod_uid);
 
 
 -- Tracks the set of labels per pod, and indicates if
@@ -133,6 +138,8 @@ create table pod_labels
   --foreign key(pod_uid) references pod_info(uid) on delete cascade,
   --primary key(pod_uid, label_key, label_value)
 );
+create index pod_labels_by_uid on pod_labels (pod_uid);
+create index pod_labels_idx on pod_labels (label_key, label_value);
 
 -- Tracks the set of labels per node
 create table node_labels
@@ -143,6 +150,8 @@ create table node_labels
   --foreign key(node_name) references node_info(name) on delete cascade,
   --primary key(node_name, label_key, label_value)
 );
+create index node_labels_by_name on node_labels (node_name);
+create index node_labels_idx on node_labels (label_key, label_value);
 
 -- Volume labels
 create table volume_labels
@@ -186,6 +195,7 @@ create table node_taints
   taint_effect varchar(100) not null
   --foreign key(node_name) references node_info(name) on delete cascade
 );
+create index node_taints_by_name on node_taints (node_name);
 
 -- Pod taints.
 create table pod_tolerations
@@ -226,14 +236,3 @@ create table pdb_match_expressions
   max_unavailable integer not null,
   allowed_disruptions integer not null
 );
-
-
-create index pod_info_idx on pod_info (status, node_name);
-create index pod_node_selector_labels_fk_idx on pod_node_selector_labels (pod_uid);
-create index node_labels_idx on node_labels (label_key, label_value);
-
-create index pod_affinity_match_expressions_idx on pod_affinity_match_expressions (pod_uid);
-create index pod_anti_affinity_match_expressions_idx on pod_anti_affinity_match_expressions (pod_uid);
-create index pod_labels_idx on pod_labels (label_key, label_value);
-
-create index match_expressions_idx on match_expressions (label_key, label_operator, label_values);
