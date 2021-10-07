@@ -39,6 +39,7 @@ dependencies {
     implementation "com.google.ortools:ortools-java:${orToolsVersion}"
     implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
     testImplementation "com.h2database:h2:${h2Version}"
+    implementation ("org.apache.calcite:calcite-server:${calciteCoreVersion}")
 }
 
 pitest {
