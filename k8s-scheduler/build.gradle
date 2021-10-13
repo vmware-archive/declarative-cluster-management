@@ -13,6 +13,7 @@ apply plugin: 'nu.studer.jooq'
 apply plugin: "application"
 
 dependencies {
+    implementation 'org.apache.calcite:calcite-core:1.27.0'
     implementation project(':dcm')
     implementation "com.zaxxer:HikariCP:${hikariCPVersion}"
     implementation "io.fabric8:kubernetes-client:${fabricK8sClientVersion}"
