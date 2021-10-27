@@ -1,22 +1,10 @@
 package com.vmware.dcm;
 
-import com.vmware.dcm.backend.ortools.OrToolsSolver;
-import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
-import io.fabric8.kubernetes.api.model.Node;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodAffinity;
-import io.fabric8.kubernetes.api.model.PodAffinityTerm;
-import io.fabric8.kubernetes.api.model.PodAntiAffinity;
-import io.fabric8.kubernetes.api.model.Quantity;
-import io.fabric8.kubernetes.api.model.Taint;
-import io.fabric8.kubernetes.api.model.Toleration;
 import org.jooq.DSLContext;
-import org.jooq.Record;
-import org.jooq.Result;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -29,11 +17,15 @@ public class AutoScopeTest {
      */
     @Test
     public void testSetup() {
+        List<String> constraints = Policies.getInitialPlacementPolicies();
+        List<String> augmViews = AutoScope.augmentedViews(DBViews.getSchema(), constraints);
+        assertEquals(1, augmViews.size());
+
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
 
-        final AutoScope scopedModel = new AutoScope(conn, Policies.getInitialPlacementPolicies());
-        assertEquals(15, scopedModel.constraints.size());
+        augmViews.forEach(conn::execute);
+        var model = Model.build(conn, constraints);
     }
 
 }

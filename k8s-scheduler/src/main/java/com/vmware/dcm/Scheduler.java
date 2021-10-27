@@ -34,9 +34,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,6 +51,7 @@ import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
 import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
+import static com.vmware.dcm.DBViews.SCOPE_VIEW_NAME_SUFFIX;
 import static org.jooq.impl.DSL.table;
 
 /**
@@ -210,11 +212,22 @@ public final class Scheduler {
         }
         this.dbConnectionPool = dbConnectionPool;
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
-        final ScopedModel scopedModel = new ScopedModel(dbConnectionPool.getConnectionToDb(), initialPlacement);
         this.initialPlacement = initialPlacement;
-        this.initialPlacementFunction = scopedInitialPlacement ? scopedModel::solve :
-                                        (s) -> initialPlacement.solve(s,
-                                                (t) -> dbConnectionPool.getConnectionToDb().selectFrom(t).fetch());
+        final ScopedModel scopedModel = new ScopedModel(dbConnectionPool.getConnectionToDb(), initialPlacement);
+        // Automatic scoping
+        if (scopedInitialPlacement) {
+            final Map<String, String> views = AutoScope.augmentedViews(
+                    DBViews.getSchema(), Policies.getInitialPlacementPolicies());
+            final List<String> statements = AutoScope.getViewStatements(views);
+            statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
+            // New scoping
+            //this.initialPlacementFunction = (s) -> scopedFunction(views.keySet());
+            // Scoped Model
+            this.initialPlacementFunction = scopedModel::solve;
+        } else {
+            this.initialPlacementFunction = (s) -> initialPlacement.solve(s,
+                    (t) -> dbConnectionPool.getConnectionToDb().selectFrom(t).fetch());
+        }
         this.preemption = preemption;
         this.debugMode = debugMode;
         LOG.info("Initialized scheduler: {} {} {} {}", debugMode, numThreads, solverMaxTimeInSeconds,
@@ -375,6 +388,22 @@ public final class Scheduler {
     Result<? extends Record> initialPlacement(final Function<Table<?>, Result<? extends Record>> fetcher) {
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated = initialPlacement.solve("PODS_TO_ASSIGN", fetcher);
+        solveTimer.stop();
+        return podsToAssignUpdated;
+    }
+
+    Result<? extends Record> scopedFunction(final Set<String> augViews) {
+        final Timer.Context solveTimer = solveTimes.time();
+        final Result<? extends Record> podsToAssignUpdated = initialPlacement.solve(
+                "PODS_TO_ASSIGN", (t) -> {
+                    final DSLContext conn = dbConnectionPool.getConnectionToDb();
+                    final String augView = (t.getName() + SCOPE_VIEW_NAME_SUFFIX).toUpperCase();
+                    if (augViews.contains(augView)) {
+                        LOG.info(String.format("Scoping Optimization: Replace %s with %s", t.getName(), augView));
+                        return conn.fetch(table(augView));
+                    }
+                    return conn.fetch(t);
+                });
         solveTimer.stop();
         return podsToAssignUpdated;
     }
