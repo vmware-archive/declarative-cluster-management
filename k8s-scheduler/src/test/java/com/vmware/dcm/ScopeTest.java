@@ -285,7 +285,7 @@ public class ScopeTest {
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
                 .setInitialPlacementPolicies(policies)
                 .setScopedInitialPlacement(true)
-                .setDebugMode(true).build();
+                .setDebugMode(true).setLimit(numNodes).build();
         scheduler.initialPlacement();
 
         // finished with no errors
@@ -356,7 +356,7 @@ public class ScopeTest {
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
                                                  .setInitialPlacementPolicies(policies)
                                                  .setScopedInitialPlacement(true)
-                                                 .setDebugMode(true).build();
+                                                 .setDebugMode(true).setLimit(numPods).build();
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
 
 
@@ -429,7 +429,7 @@ public class ScopeTest {
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
                                                 .setInitialPlacementPolicies(policies)
                                                 .setScopedInitialPlacement(true)
-                                                .setDebugMode(true).build();
+                                                .setDebugMode(true).setLimit(numPods).build();
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
 
         // Check that all pods have been scheduled to a node eligible by the scope filtering
@@ -527,14 +527,15 @@ public class ScopeTest {
             handler.onAddSync(pod);
         }
 
+        final int numPods = group0Pods + group1Pods + group2Pods;
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
                                                 .setInitialPlacementPolicies(policies)
                                                 .setScopedInitialPlacement(true)
-                                                .setDebugMode(true).build();
+                                                .setDebugMode(true).setLimit(numPods).build();
         final Result<? extends Record> results = scheduler.initialPlacement();
 
         // All pods have been assigned to nodes
-        assertEquals(group0Pods + group1Pods + group2Pods, results.size());
+        assertEquals(numPods, results.size());
         results.forEach(r -> assertTrue(r.get("CONTROLLABLE__NODE_NAME") != null
                 && r.get("CONTROLLABLE__NODE_NAME", String.class).startsWith("n")));
 

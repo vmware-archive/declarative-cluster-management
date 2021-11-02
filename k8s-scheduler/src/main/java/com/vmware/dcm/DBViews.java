@@ -41,6 +41,7 @@ public class DBViews {
     private static final String INITIAL_PLACEMENT_VIEW_NAME_SUFFIX = "";
     static final String PREEMPTION_VIEW_NAME_SUFFIX = "_preempt";
     static final String SCOPE_VIEW_NAME_SUFFIX = "_augment";
+    static final String SORT_VIEW_NAME_SUFFIX = "_sorted";
     private static final ViewStatements INITIAL_PLACEMENT = new ViewStatements(INITIAL_PLACEMENT_VIEW_NAME_SUFFIX);
     private static final ViewStatements PREEMPTION = new ViewStatements(PREEMPTION_VIEW_NAME_SUFFIX);
     private static final Set<String> INITIAL_PLACEMENT_VIEW_NAMES;
