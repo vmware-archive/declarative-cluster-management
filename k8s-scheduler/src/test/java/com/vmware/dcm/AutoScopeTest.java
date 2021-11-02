@@ -1,14 +1,14 @@
 package com.vmware.dcm;
 
+import com.vmware.dcm.compiler.IRContext;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.Test;
 
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class AutoScopeTest {
@@ -17,15 +17,17 @@ public class AutoScopeTest {
      */
     @Test
     public void testSetup() {
-        List<String> constraints = Policies.getInitialPlacementPolicies();
-        List<String> augmViews = AutoScope.augmentedViews(DBViews.getSchema(), constraints);
-        assertEquals(1, augmViews.size());
-
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
+        final List<String> constraints = Policies.getInitialPlacementPolicies();
+        final Model model = Model.build(conn, constraints);
+        final IRContext irContext = model.getIrContext();
+        final Map<String, String> augmViews = AutoScope.augmentedViews(constraints, irContext, 20);
+        assertEquals(2, augmViews.size());
 
-        augmViews.forEach(conn::execute);
-        var model = Model.build(conn, constraints);
+        final List<String> statements = AutoScope.getViewStatements(augmViews);
+        statements.forEach(conn::execute);
+        // finish without error
     }
 
 }

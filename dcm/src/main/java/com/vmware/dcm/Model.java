@@ -13,6 +13,7 @@ import com.facebook.presto.sql.tree.Query;
 import com.google.common.annotations.VisibleForTesting;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
+import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.compiler.ModelCompiler;
 import com.vmware.dcm.generated.parser.DcmSqlParserImpl;
 import com.vmware.dcm.parser.SqlCreateConstraint;
@@ -55,6 +56,7 @@ public class Model {
     private final List<Table<? extends Record>> jooqTables;
     private final ISolverBackend backend;
     private final List<String> generatedCode;
+    private final IRContext irContext;
 
     private Model(final DSLContext dbCtx, final ISolverBackend backend, final List<Table<?>> tables,
                   final List<String> constraints) {
@@ -120,6 +122,11 @@ public class Model {
         jooqTables = augmentedTableList;
         final ModelCompiler compiler = new ModelCompiler();
         generatedCode = compiler.compile(augmentedTableList, constraintViews, backend);
+        this.irContext = compiler.getIrContext();
+    }
+
+    public IRContext getIrContext() {
+        return irContext;
     }
 
     /**

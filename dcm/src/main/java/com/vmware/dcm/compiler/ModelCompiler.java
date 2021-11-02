@@ -30,6 +30,8 @@ import java.util.Set;
 public class ModelCompiler {
     private static final Logger LOG = LoggerFactory.getLogger(Model.class);
 
+    private IRContext irContext;
+
     /**
      * Entry point to compile views into backend-specific code
      * @param tables a list of JOOQ Tables from the SQL Schema
@@ -42,6 +44,7 @@ public class ModelCompiler {
                                 final ISolverBackend backend) {
         final Map<String, IRTable> irTables = parseModel(tables);
         final IRContext irContext = new IRContext(irTables);
+        this.irContext = irContext;
 
         LOG.debug("Compiling the following views\n{}", views);
 
@@ -72,6 +75,10 @@ public class ModelCompiler {
 
         // Backend-specific code generation begins here.
         return backend.generateModelCode(irContext, irProgram);
+    }
+
+    public IRContext getIrContext() {
+        return irContext;
     }
 
     private Program<SqlCreateConstraint> toSqlProgram(final List<SqlCreateConstraint> viewsWithChecks) {
