@@ -41,6 +41,16 @@ public class IRContext {
     }
 
     /**
+     * Check whether IRContext contains the given table name
+     * @param tableName table name to be queried
+     * @return whether the table is in IRContext
+     */
+    public boolean containTable(final String tableName) {
+        final String tableNameCaps = tableName.toUpperCase(Locale.US);
+        return irTables.containsKey(tableNameCaps);
+    }
+
+    /**
      * Returns the IRColumn corresponding to a table name and field name
      *
      * @param tableName table name to be queried
