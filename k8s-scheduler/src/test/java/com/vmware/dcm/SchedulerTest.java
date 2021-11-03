@@ -46,6 +46,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junitpioneer.jupiter.CartesianProductTest;
+import org.junitpioneer.jupiter.CartesianValueSource;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -79,12 +81,25 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+
+
+
 /**
  * Tests for the scheduler
  */
 @ExtendWith({})
 @SuppressWarnings("unchecked")
 public class SchedulerTest {
+     record TestArguments(List<Object> args) {
+        public Object get(final int index) {
+            return args.get(index);
+        }
+
+        @Override
+        public String toString() {
+            return (String) args.get(0);
+        }
+    }
 
     /*
      * Test if multiple connections from our connection pool see each other's changes
@@ -123,9 +138,10 @@ public class SchedulerTest {
     /*
      * Verify that array types are correctly dumped/reloaded
      */
-    @Test
-    public void testDebugUtilsForArrays() {
-        final var result = TestScenario.withPolicies(Policies.getInitialPlacementPolicies())
+    @CartesianProductTest
+    @CartesianValueSource(booleans = { false, true })
+    public void testDebugUtilsForArrays(final boolean scope) {
+        final var result = TestScenario.withPolicies(Policies.getInitialPlacementPolicies(), scope)
                 .withNodeGroup("nodes", 3)
                 .withPodGroup("withConstraint", 3, (pod) -> {
                     pod.getMetadata().setLabels(Map.of("k1", "v1"));
@@ -230,12 +246,13 @@ public class SchedulerTest {
      * Evaluates the node predicates policy. One node is free of any node conditions, so all pod
      * assignments must go to that node.
      */
-    @ParameterizedTest
-    @MethodSource("conditions")
-    public void testSchedulerNodePredicates(final String type, final String status) {
+    @CartesianProductTest
+    public void testSchedulerNodePredicates(final List<String> condition, final boolean scope) {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft());
-        TestScenario.withPolicies(policies)
+        final String type = condition.get(0);
+        final String status = condition.get(1);
+        TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("badNodes", 5, (node) -> {
                     final NodeCondition badCondition = new NodeCondition();
                     badCondition.setStatus(status);
@@ -250,24 +267,27 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream<Arguments> conditions() {
-        return Stream.of(Arguments.of("OutOfDisk", "True"),
-                         Arguments.of("MemoryPressure", "True"),
-                         Arguments.of("DiskPressure", "True"),
-                         Arguments.of("PIDPressure", "True"),
-                         Arguments.of("NetworkUnavailable", "True"),
-                         Arguments.of("Ready", "False"));
+    private static CartesianProductTest.Sets testSchedulerNodePredicates() {
+        return new CartesianProductTest.Sets()
+                .add(Arrays.asList("OutOfDisk", "True"),
+                    Arrays.asList("MemoryPressure", "True"),
+                    Arrays.asList("DiskPressure", "True"),
+                    Arrays.asList("PIDPressure", "True"),
+                    Arrays.asList("NetworkUnavailable", "True"),
+                    Arrays.asList("Ready", "False"))
+                .add(true, false);
     }
 
     /*
      * Tests the pod_node_selector_matches view.
      */
-    @Test
-    public void testPodNodeSelector() {
+    @CartesianProductTest
+    @CartesianValueSource(booleans = { false, true })
+    public void testPodNodeSelector(final boolean scope) {
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
-        TestScenario.withPolicies(policies)
+        TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("noLabels", 5)
                 .withNodeGroup("fullMatch", 5,
                                (node) -> node.getMetadata().setLabels(Map.of("diskType", "ssd", "gpu", "true")))
@@ -289,16 +309,19 @@ public class SchedulerTest {
     /*
      * Tests the pod_node_selector_matches view.
      */
-    @ParameterizedTest
-    @MethodSource("testNodeAffinity")
-    public void testPodToNodeAffinity(final List<NodeSelectorTerm> terms, final Map<String, String> nodeLabelsInput,
-                                      final boolean shouldBeAffineToLabelledNodes,
-                                      final boolean shouldBeAffineToRemainingNodes) {
+    @CartesianProductTest
+    public void testPodToNodeAffinity(final List<Object> args, final boolean scope) {
+        // Unpack arguments
+        final List<NodeSelectorTerm> terms = (List<NodeSelectorTerm>) args.get(0);
+        final Map<String, String> nodeLabelsInput = (Map<String, String>) args.get(1);
+        final boolean shouldBeAffineToLabelledNodes = (boolean) args.get(2);
+        final boolean shouldBeAffineToRemainingNodes = (boolean) args.get(3);
+
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
         final Map<String, String> dummyLabels = Map.of("dummyKey1", "dummyValue1", "dummyKey2", "dummyValue2");
-        final var result = TestScenario.withPolicies(policies)
+        final var result = TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("providedLabels", 5, (node) -> node.getMetadata().setLabels(nodeLabelsInput))
                 .withNodeGroup("dummyLabels", 5, (node) -> node.getMetadata().setLabels(dummyLabels))
                 .withPodGroup("withConstraint", 3, (pod) -> {
@@ -323,69 +346,71 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream<Arguments> testNodeAffinity() {
+    private static CartesianProductTest.Sets testPodToNodeAffinity() {
         final List<NodeSelectorTerm> inTerm = List.of(term(nodeExpr("k1", "In", "l1", "l2")));
         final List<NodeSelectorTerm> existsTerm = List.of(term(nodeExpr("k1", "Exists", "l1", "l2")));
         final List<NodeSelectorTerm> notInTerm = List.of(term(nodeExpr("k1", "NotIn", "l1", "l2")));
         final List<NodeSelectorTerm> notExistsTerm = List.of(term(nodeExpr("k1", "DoesNotExist", "l1", "l2")));
-        return Stream.of(
-                // First, we test to see if all our operators work on their own
 
-                // In
-                Arguments.of(inTerm, map("k1", "l1"), true, false),
-                Arguments.of(inTerm, map("k1", "l2"), true, false),
-                Arguments.of(inTerm, map("k1", "l3"), false, false),
-                Arguments.of(inTerm, map("k", "l", "k1", "l1"), true, false),
-                Arguments.of(inTerm, map("k", "l", "k1", "l2"), true, false),
-                Arguments.of(inTerm, map("k", "l", "k1", "l3"), false, false),
+        return new CartesianProductTest.Sets()
+                .add(// First, we test to see if all our operators work on their own
+                    // In
+                    Arrays.asList(inTerm, map("k1", "l1"), true, false),
+                    Arrays.asList(inTerm, map("k1", "l2"), true, false),
+                    Arrays.asList(inTerm, map("k1", "l3"), false, false),
+                    Arrays.asList(inTerm, map("k", "l", "k1", "l1"), true, false),
+                    Arrays.asList(inTerm, map("k", "l", "k1", "l2"), true, false),
+                    Arrays.asList(inTerm, map("k", "l", "k1", "l3"), false, false),
 
-                // Exists
-                Arguments.of(existsTerm, map("k1", "l1"), true, false),
-                Arguments.of(existsTerm, map("k1", "l2"), true, false),
-                Arguments.of(existsTerm, map("k1", "l3"), true, false),
-                Arguments.of(existsTerm, map("k2", "l3"), false, false),
-                Arguments.of(existsTerm, map("k2", "l1"), false, false),
-                Arguments.of(existsTerm, map("k", "l", "k1", "l1"), true, false),
-                Arguments.of(existsTerm, map("k", "l", "k1", "l2"), true, false),
-                Arguments.of(existsTerm, map("k", "l", "k1", "l3"), true, false),
-                Arguments.of(existsTerm, map("k", "l", "k2", "l1"), false, false),
-                Arguments.of(existsTerm, map("k", "l", "k2", "l2"), false, false),
-                Arguments.of(existsTerm, map("k", "l", "k2", "l3"), false, false),
+                    // Exists
+                    Arrays.asList(existsTerm, map("k1", "l1"), true, false),
+                    Arrays.asList(existsTerm, map("k1", "l2"), true, false),
+                    Arrays.asList(existsTerm, map("k1", "l3"), true, false),
+                    Arrays.asList(existsTerm, map("k2", "l3"), false, false),
+                    Arrays.asList(existsTerm, map("k2", "l1"), false, false),
+                    Arrays.asList(existsTerm, map("k", "l", "k1", "l1"), true, false),
+                    Arrays.asList(existsTerm, map("k", "l", "k1", "l2"), true, false),
+                    Arrays.asList(existsTerm, map("k", "l", "k1", "l3"), true, false),
+                    Arrays.asList(existsTerm, map("k", "l", "k2", "l1"), false, false),
+                    Arrays.asList(existsTerm, map("k", "l", "k2", "l2"), false, false),
+                    Arrays.asList(existsTerm, map("k", "l", "k2", "l3"), false, false),
 
-                // NotIn
-                Arguments.of(notInTerm, map("k1", "l1"), false, true),
-                Arguments.of(notInTerm, map("k1", "l2"), false, true),
-                Arguments.of(notInTerm, map("k1", "l3"), true, true),
-                Arguments.of(notInTerm, map("k", "l", "k1", "l1"), false, true),
-                Arguments.of(notInTerm, map("k", "l", "k1", "l2"), false, true),
-                Arguments.of(notInTerm, map("k", "l", "k1", "l3"), true, true),
+                    // NotIn
+                    Arrays.asList(notInTerm, map("k1", "l1"), false, true),
+                    Arrays.asList(notInTerm, map("k1", "l2"), false, true),
+                    Arrays.asList(notInTerm, map("k1", "l3"), true, true),
+                    Arrays.asList(notInTerm, map("k", "l", "k1", "l1"), false, true),
+                    Arrays.asList(notInTerm, map("k", "l", "k1", "l2"), false, true),
+                    Arrays.asList(notInTerm, map("k", "l", "k1", "l3"), true, true),
 
-                // DoesNotExist
-                Arguments.of(notExistsTerm, map("k1", "l1"), false, true),
-                Arguments.of(notExistsTerm, map("k1", "l2"), false, true),
-                Arguments.of(notExistsTerm, map("k1", "l3"), false, true),
-                Arguments.of(notExistsTerm, map("k", "l", "k1", "l1"), false, true),
-                Arguments.of(notExistsTerm, map("k", "l", "k1", "l2"), false, true),
-                Arguments.of(notExistsTerm, map("k", "l", "k1", "l3"), false, true)
-        );
+                    // DoesNotExist
+                    Arrays.asList(notExistsTerm, map("k1", "l1"), false, true),
+                    Arrays.asList(notExistsTerm, map("k1", "l2"), false, true),
+                    Arrays.asList(notExistsTerm, map("k1", "l3"), false, true),
+                    Arrays.asList(notExistsTerm, map("k", "l", "k1", "l1"), false, true),
+                    Arrays.asList(notExistsTerm, map("k", "l", "k1", "l2"), false, true),
+                    Arrays.asList(notExistsTerm, map("k", "l", "k1", "l3"), false, true))
+                .add(false, true);
     }
 
 
     /*
      * Tests inter-pod affinity behavior
      */
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("testPodAffinity")
-    public void testPodToPodAffinity(final String label, final List<PodAffinityTerm> terms,
-                                     final Map<String, String> podLabelsInput,
-                                     final boolean affineToLabelledPods,
-                                     final boolean affineToRemainingPods,
-                                     final boolean cannotBePlacedAnywhere) {
+    @CartesianProductTest(name = "{0}")
+    public void testPodToPodAffinity(final TestArguments args, final boolean scope) {
+        // Unpack arguments
+        final List<PodAffinityTerm> terms = (List<PodAffinityTerm>) args.get(1);
+        final Map<String, String> podLabelsInput = (Map<String, String>) args.get(2);
+        final boolean affineToLabelledPods = (boolean) args.get(3);
+        final boolean affineToRemainingPods = (boolean) args.get(4);
+        final boolean cannotBePlacedAnywhere = (boolean) args.get(5);
+
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.podAffinityPredicate(),
                                                                            Policies.podAntiAffinityPredicate());
-        final var result = TestScenario.withPolicies(policies)
+        final var result = TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("nodes", 3)
                 .withPodGroup("withConstraint", 3, (pod) -> {
                     pod.getMetadata().setLabels(podLabelsInput);
@@ -413,7 +438,7 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream<Arguments> testPodAffinity() {
+    private static CartesianProductTest.Sets testPodToPodAffinity() {
         final String topologyKey = "kubernetes.io/hostname";
         final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
                                                        podExpr("k1", "In", "l1", "l2")));
@@ -423,7 +448,8 @@ public class SchedulerTest {
                                                           podExpr("k1", "NotIn", "l1", "l2")));
         final List<PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
                                                                    podExpr("k1", "DoesNotExist", "l1", "l2")));
-        return Stream.of(
+        return new CartesianProductTest.Sets()
+            .add(
                 // --------- Pod Affinity -----------
                 // In
                 argGen("Affinity", inTerm, map("k1", "l1"), true, false, false),
@@ -460,26 +486,28 @@ public class SchedulerTest {
                 argGen("Affinity", notExistsTerm, map("k1", "l3"), false, true, false),
                 argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
                 argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
-        );
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false))
+            .add(false, true);
     }
 
 
     /*
      * Tests inter-pod anti-affinity behavior
      */
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("testPodAntiAffinity")
-    public void testPodToPodAntiAffinity(final String label, final List<PodAffinityTerm> terms,
-                                         final Map<String, String> podLabelsInput,
-                                         final boolean antiAffineToLabelledPods,
-                                         final boolean antiAffineToRemainingPods,
-                                         final boolean cannotBePlacedAnywhere) {
+    @CartesianProductTest(name = "{0}")
+    public void testPodToPodAntiAffinity(final TestArguments args, final boolean scope) {
+        // Unpack arguments
+        final List<PodAffinityTerm> terms = (List<PodAffinityTerm>) args.get(1);
+        final Map<String, String> podLabelsInput = (Map<String, String>) args.get(2);
+        final boolean antiAffineToLabelledPods = (boolean) args.get(3);
+        final boolean antiAffineToRemainingPods = (boolean) args.get(4);
+        final boolean cannotBePlacedAnywhere = (boolean) args.get(5);
+
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                 Policies.disallowNullNodeSoft(),
                 Policies.podAffinityPredicate(),
                 Policies.podAntiAffinityPredicate());
-        final var result = TestScenario.withPolicies(policies)
+        final var result = TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("nodes", 3)
                 .withPodGroup("withConstraint", 3, (pod) -> {
                     pod.getMetadata().setLabels(podLabelsInput);
@@ -514,7 +542,7 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream<Arguments> testPodAntiAffinity() {
+    private static CartesianProductTest.Sets testPodToPodAntiAffinity() {
         final String topologyKey = "kubernetes.io/hostname";
         final List<PodAffinityTerm> inTerm = List.of(term(topologyKey,
                 podExpr("k1", "In", "l1", "l2")));
@@ -525,7 +553,8 @@ public class SchedulerTest {
         final List<PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
                 podExpr("k1", "DoesNotExist", "l1", "l2")));
 
-        return Stream.of(
+        return new CartesianProductTest.Sets()
+            .add(
                 // --------- Pod Anti Affinity -----------
                 // In
                 argGen("AntiAffinity", inTerm, map("k1", "l1"), true, false, false),
@@ -562,11 +591,11 @@ public class SchedulerTest {
                 argGen("AntiAffinity", notExistsTerm, map("k1", "l3"), false, true, false),
                 argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
                 argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false)
-        );
+                argGen("AntiAffinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false))
+            .add(false, true);
     }
 
-    private static Arguments argGen(final String scenario, final List<PodAffinityTerm> terms,
+    private static TestArguments argGen(final String scenario, final List<PodAffinityTerm> terms,
                                     final Map<String, String> podLabelsInput,
                                     final boolean shouldBeAffineToLabelledPods,
                                     final boolean shouldBeAffineToRemainingPods,
@@ -587,20 +616,24 @@ public class SchedulerTest {
                 .collect(Collectors.joining(" and "));
         final String label = String.format("%s: pods with term {%s} and labels %s, %s", scenario, termsString,
                 podLabelsInput, outcomeString);
-        return Arguments.of(label, terms, podLabelsInput, shouldBeAffineToLabelledPods,
-                            shouldBeAffineToRemainingPods, cannotBePlacedAnywhere);
+        return new TestArguments(Arrays.asList(label, terms, podLabelsInput, shouldBeAffineToLabelledPods,
+                            shouldBeAffineToRemainingPods, cannotBePlacedAnywhere));
     }
 
     /*
      * Capacity constraints
      */
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("spareCapacityValues")
-    public void testSpareCapacity(final String displayName, final List<Integer> cpuRequests,
-                                  final List<Integer> memoryRequests, final List<Integer> nodeCpuCapacities,
-                                  final List<Integer> nodeMemoryCapacities,
-                                  final boolean useHardConstraint, final boolean useSoftConstraint,
-                                  final Predicate<List<String>> assertOn) {
+    @CartesianProductTest(name = "{0}")
+    public void testSpareCapacity(final TestArguments args, final boolean scope) {
+        // Unpack arguments
+        final List<Integer> cpuRequests = (List<Integer>) args.get(1);
+        final List<Integer> memoryRequests = (List<Integer>) args.get(2);
+        final List<Integer> nodeCpuCapacities = (List<Integer>) args.get(3);
+        final List<Integer> nodeMemoryCapacities = (List<Integer>) args.get(4);
+        final boolean useHardConstraint = (boolean) args.get(5);
+        final boolean useSoftConstraint = (boolean) args.get(6);
+        final Predicate<List<String>> assertOn = (Predicate<List<String>>) args.get(7);
+
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                             Policies.disallowNullNodeSoft(),
                                             Policies.capacityConstraint(useHardConstraint, useSoftConstraint));
@@ -608,7 +641,7 @@ public class SchedulerTest {
         final Iterator<Integer> memCapIt = nodeMemoryCapacities.iterator();
         final Iterator<Integer> cpuReqIt = cpuRequests.iterator();
         final Iterator<Integer> memReqIt = memoryRequests.iterator();
-        final var scenario = TestScenario.withPolicies(policies)
+        final var scenario = TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("n", nodeCpuCapacities.size(), (node) -> {
                     node.getStatus().getCapacity().put("cpu",
                             new Quantity(String.valueOf(cpuCapIt.next())));
@@ -627,51 +660,57 @@ public class SchedulerTest {
 
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream<Arguments> spareCapacityValues() {
+    private static CartesianProductTest.Sets testSpareCapacity() {
         final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
         final Predicate<List<String>> n2MustNotBeAssignedNewPods = nodes -> !nodes.contains("n-2");
         final Predicate<List<String>> onlyN3MustBeAssignedNewPods = nodes -> Set.of("n-3").equals(Set.copyOf(nodes));
         final Predicate<List<String>> p1CannotBePlaced = nodes -> nodes.stream()
                                                                  .filter(e -> e.equals("NULL_NODE")).count() == 1;
-        return Stream.of(
-                Arguments.of("One pod per node",
+        return new CartesianProductTest.Sets()
+            .add(
+                new TestArguments(Arrays.asList("One pod per node",
                              List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10),
                              List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
-                             onePodPerNode),
+                             onePodPerNode)),
 
-                Arguments.of("p1 cannot be placed",
+                new TestArguments(Arrays.asList("p1 cannot be placed",
                         List.of(10, 11, 10, 10, 10), List.of(10, 10, 10, 10, 10),
                         List.of(10, 10, 10, 10, 10), List.of(10, 10, 10, 10, 10), true, false,
-                        p1CannotBePlaced),
+                        p1CannotBePlaced)),
 
-                Arguments.of("n2 does not have sufficient CPU capacity and should not host any new pods",
+                new TestArguments(Arrays.asList(
+                        "n2 does not have sufficient CPU capacity and should not host any new pods",
                         List.of(5, 5, 10, 10, 10), List.of(10, 10, 10, 10, 10),
                         List.of(10, 10, 1, 10, 10), List.of(20, 20, 20, 20, 20), true, false,
-                        n2MustNotBeAssignedNewPods),
+                        n2MustNotBeAssignedNewPods)),
 
-                Arguments.of("Only memory requests, and all pods must go to n3",
+                new TestArguments(Arrays.asList("Only memory requests, and all pods must go to n3",
                         List.of(0, 0, 0, 0, 0), List.of(10, 10, 10, 10, 10),
                         List.of(1, 1, 1, 1, 1), List.of(1, 1, 1, 50, 1), true, false,
-                        onlyN3MustBeAssignedNewPods),
+                        onlyN3MustBeAssignedNewPods)),
 
-                Arguments.of("Only memory requests, only soft constraints, pods must be spread out",
+                new TestArguments(Arrays.asList("Only memory requests, only soft constraints, pods must be spread out",
                         List.of(0, 0, 0), List.of(10, 10, 10),
                         List.of(1, 1, 1, 1, 1), List.of(100, 100, 100, 100, 100), false, true,
-                        onePodPerNode)
-        );
+                        onePodPerNode)))
+            .add(false, true);
     }
 
     /*
      * Test capacity constraints on custom resources along with overheads.
      */
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("testCustomResourcesValues")
-    public void testCustomResources(final String displayName, final int capacity, final int demand, final int overhead,
-                                    final boolean feasible) {
+    @CartesianProductTest(name = "{0}")
+    public void testCustomResources(final TestArguments args, final boolean scope) {
+        // Unpack arguments
+        final int capacity = (int) args.get(1);
+        final int demand = (int) args.get(2);
+        final int overhead = (int) args.get(3);
+        final boolean feasible = (boolean) args.get(4);
+
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                 Policies.disallowNullNodeSoft(),
                 Policies.capacityConstraint(true, true));
-        final var scenario = TestScenario.withPolicies(policies)
+        final var scenario = TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("n", 1,
                                (node) -> {
                                     if (capacity >= 0) {
@@ -701,27 +740,40 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("unused")
-    private static Stream<Arguments> testCustomResourcesValues() {
-        return Stream.of(Arguments.of("Resource does not exist on host", -1, 5, -1, false),
-                Arguments.of("Resource exists, but no capacity", 0, 5, -1, false),
-                Arguments.of("Resource exists, has enough capacity for demand ", 5, 5, -1, true),
-                Arguments.of("Resource exists, has enough capacity for demand + overhead ", 5, 3, 2, true),
-                Arguments.of("Resource exists, but not enough capacity for demand", 5, 6, -1, false),
-                Arguments.of("Resource exists, has enough capacity for demand, but not overhead", 5, 3, 3, false),
-                Arguments.of("Resource exists, but is not demanded", 5, -1, -1, true));
+    private static CartesianProductTest.Sets testCustomResources() {
+        return new CartesianProductTest.Sets()
+            .add(
+                new TestArguments(
+                        Arrays.asList("Resource does not exist on host", -1, 5, -1, false)),
+                new TestArguments(
+                        Arrays.asList("Resource exists, but no capacity", 0, 5, -1, false)),
+                new TestArguments(
+                        Arrays.asList("Resource exists, has enough capacity for demand ", 5, 5, -1, true)),
+                new TestArguments(
+                        Arrays.asList("Resource exists, has enough capacity for demand + overhead ", 5, 3, 2, true)),
+                new TestArguments(
+                        Arrays.asList("Resource exists, but not enough capacity for demand", 5, 6, -1, false)),
+                new TestArguments(
+                    Arrays.asList("Resource exists, has enough capacity for demand, but not overhead", 5, 3, 3, false)),
+                new TestArguments(
+                    Arrays.asList("Resource exists, but is not demanded", 5, -1, -1, true)))
+            .add(false, true);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("testTaintsAndTolerationsValues")
-    public void testTaintsAndTolerations(final String displayName, final List<List<Toleration>> tolerations,
-                                         final List<List<Taint>> taints, final Predicate<List<String>> assertOn,
-                                         final boolean feasible) {
+    @CartesianProductTest(name = "{0}")
+    public void testTaintsAndTolerations(final TestArguments args, final boolean scope) {
+        // Unpack arguments
+        final List<List<Toleration>> tolerations = (List<List<Toleration>>) args.get(1);
+        final List<List<Taint>> taints = (List<List<Taint>>) args.get(2);
+        final Predicate<List<String>> assertOn = (Predicate<List<String>>) args.get(3);
+        final boolean feasible = (boolean) args.get(4);
+
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                    Policies.disallowNullNodeSoft(),
                                                                    Policies.taintsAndTolerations());
         final Iterator<List<Toleration>> tolerationsIt = tolerations.iterator();
         final Iterator<List<Taint>> taintsIt = taints.iterator();
-        final var result = TestScenario.withPolicies(policies)
+        final var result = TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("n", taints.size(), node -> node.getSpec().setTaints(taintsIt.next()))
                 .withPodGroup("pods", tolerations.size(), pod -> {
                     final List<Toleration> t = tolerationsIt.next();
@@ -739,7 +791,7 @@ public class SchedulerTest {
 
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream<Arguments> testTaintsAndTolerationsValues() {
+    private static CartesianProductTest.Sets testTaintsAndTolerations() {
         final Toleration tolerateK1Equals = new Toleration();
         tolerateK1Equals.setKey("k1");
         tolerateK1Equals.setOperator("Equal");
@@ -790,80 +842,97 @@ public class SchedulerTest {
                 nodes -> nodes.size() == 2 && nodes.get(0).equals("n-1") && nodes.get(1).equals("n-0");
         final Predicate<List<String>> p0goesToN1andP1GoesToN1 =
                 nodes -> nodes.size() == 2 && nodes.get(0).equals("n-1") && nodes.get(1).equals("n-1");
-        return Stream.of(
-                Arguments.of("No toleration => cannot match taint k1:v1",
+        return new CartesianProductTest.Sets()
+            .add(
+                new TestArguments(
+                    Arrays.asList("No toleration => cannot match taint k1:v1",
                         List.of(List.of()), List.of(List.of(taintK1)),
-                        null, false),
+                        null, false)),
 
-                Arguments.of("toleration k1=v1 matches taint k1:v1",
-                             List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1)),
-                             P0GoesToN0, true),
+                new TestArguments(
+                    Arrays.asList("toleration k1=v1 matches taint k1:v1",
+                         List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1)),
+                         P0GoesToN0, true)),
 
-                Arguments.of("toleration exists(k1) matches taint k1:v1",
+                new TestArguments(
+                    Arrays.asList("toleration exists(k1) matches taint k1:v1",
                         List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK2V4)),
-                        P0GoesToN0, true),
+                        P0GoesToN0, true)),
 
-                Arguments.of("toleration k1=v1 does not match taint k1:v2",
+                new TestArguments(
+                    Arrays.asList("toleration k1=v1 does not match taint k1:v2",
                         List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1V2)),
-                        null, false),
+                        null, false)),
 
-                Arguments.of("toleration exists(k1) does not match taint k1:v1",
+                new TestArguments(
+                    Arrays.asList("toleration exists(k1) does not match taint k1:v1",
                         List.of(List.of(tolerateK2Exists)), List.of(List.of(taintK1)),
-                        null, false),
+                        null, false)),
 
-                Arguments.of("toleration k1=v1 does not match taints [k1:v1, k2:v4]",
+                new TestArguments(
+                    Arrays.asList("toleration k1=v1 does not match taints [k1:v1, k2:v4]",
                         List.of(List.of(tolerateK1Equals)), List.of(List.of(taintK1, taintK2V4)),
-                        null, false),
+                        null, false)),
 
-                Arguments.of("toleration [k1=v1, exists(k2)] matches taints [k1:v1, k2:v4]",
+                new TestArguments(
+                    Arrays.asList("toleration [k1=v1, exists(k2)] matches taints [k1:v1, k2:v4]",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists)), List.of(List.of(taintK1, taintK2V4)),
-                        P0GoesToN0, true),
+                        P0GoesToN0, true)),
 
-                Arguments.of("toleration [k1=v1, exists(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
+                new TestArguments(
+                    Arrays.asList("toleration [k1=v1, exists(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists)),
                         List.of(List.of(taintK1, taintK1V2, taintK2V4)),
-                        null, false),
+                        null, false)),
 
-                Arguments.of("toleration [exists(k1), exists(k2)] matches taints [k1:v1, k1:v2, k2:v4]",
+                new TestArguments(
+                    Arrays.asList("toleration [exists(k1), exists(k2)] matches taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Exists, tolerateK2Exists)),
                         List.of(List.of(taintK1, taintK1V2, taintK2V4)),
-                        P0GoesToN0, true),
+                        P0GoesToN0, true)),
 
-                Arguments.of("toleration [exists(k1), exists_noexec(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
+                new TestArguments(
+                    Arrays.asList(
+                        "toleration [exists(k1), exists_noexec(k2)] does not match taints [k1:v1, k1:v2, k2:v4]",
                         List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)),
                         List.of(List.of(taintK1, taintK1V2, taintK2V4)),
-                        null, false),
+                        null, false)),
 
-                Arguments.of("toleration [exists(k1), exists_noexec(k2)] matches taints [k1:v1]",
+                new TestArguments(
+                    Arrays.asList("toleration [exists(k1), exists_noexec(k2)] matches taints [k1:v1]",
                         List.of(List.of(tolerateK1Exists, tolerateK1ExistsNoExecute)), List.of(List.of(taintK1)),
-                        P0GoesToN0, true),
+                        P0GoesToN0, true)),
 
-                Arguments.of("Multi node: p0 should go to n1 and p1 to n0.",
+                new TestArguments(
+                    Arrays.asList("Multi node: p0 should go to n1 and p1 to n0.",
                         List.of(List.of(tolerateK1Equals, tolerateK2Exists),   // pod-0
                                 List.of(tolerateK1ExistsNoExecute)),             // pod-1
                         List.of(List.of(taintK1NoExecute),                     // node-0
                                 List.of(taintK1)),                             // node-1
-                        p0goesToN1andP1GoesToN0, true),
+                        p0goesToN1andP1GoesToN0, true)),
 
-                Arguments.of("Multi node: p0 and p1 cannot tolerate n0 so they go to n1",
+                new TestArguments(Arrays.asList("Multi node: p0 and p1 cannot tolerate n0 so they go to n1",
                         List.of(List.of(),                                       // pod-0
                                 List.of()),                                      // pod-1
                         List.of(List.of(taintK1NullValue, taintK1),            // node-0
                                 List.of()),                                      // node-1
-                        p0goesToN1andP1GoesToN1, true)
-        );
+                        p0goesToN1andP1GoesToN1, true)))
+            .add(false, true);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("testHostPortsValues")
-    public void testHostPorts(final String displayName, final List<List<ContainerPort>> runningPods,
-                              final List<List<ContainerPort>> podContainers, final boolean feasible) {
+    @CartesianProductTest(name = "{0}")
+    public void testHostPorts(final TestArguments args, final boolean scope) {
+        // Unpack arguments
+        final List<List<ContainerPort>> runningPods = (List<List<ContainerPort>>) args.get(1);
+        final List<List<ContainerPort>> podContainers = (List<List<ContainerPort>>) args.get(2);
+        final boolean feasible = (boolean) args.get(3);
+
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                 Policies.disallowNullNodeSoft(),
                 Policies.podFitsNodePorts());
         final Iterator<List<ContainerPort>> nodeContainersIt = runningPods.iterator();
         final Iterator<List<ContainerPort>> podContainersIt = podContainers.iterator();
-        final var result = TestScenario.withPolicies(policies)
+        final var result = TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("n", 1)
                 .withPodGroup("runningPods", runningPods.size(), (pod) -> {
                     pod.getSpec().setNodeName("n-0");
@@ -896,52 +965,54 @@ public class SchedulerTest {
     }
 
     @SuppressWarnings("UnusedMethod")
-    private static Stream<Arguments> testHostPortsValues() {
-        return Stream.of(Arguments.of("Conflicting IP, port and TCP protocol",
-                                List.of(List.of(port("127.0.0.1/8080/UDP"))),
-                                List.of(List.of(port("127.0.0.1/8080/UDP"))),
-                                false),
-                         Arguments.of("Conflicting IP, port and TCP protocol",
-                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
-                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
-                                false),
-                         Arguments.of("Same IP, port but different protocol",
-                                List.of(List.of(port("127.0.0.1/8080/UDP"))),
-                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
-                                true),
-                         Arguments.of("Different IP, but port and protocol",
-                                List.of(List.of(port("127.0.0.2/8080/UDP"))),
-                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
-                                true),
-                         Arguments.of("Same IP, different port, same protocol",
-                                List.of(List.of(port("127.0.0.1/8082/UDP"))),
-                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
-                                true),
-                         Arguments.of("0.0.0.0 IP, same port, different protocol",
-                                List.of(List.of(port("0.0.0.0/8080/UDP"))),
-                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
-                                true),
-                         Arguments.of("0.0.0.0 IP, same port, same protocol",
-                                List.of(List.of(port("0.0.0.0/8080/TCP"))),
-                                List.of(List.of(port("127.0.0.1/8080/TCP"))),
-                                false),
-                        Arguments.of("0.0.0.0 IP, same port, same protocol",
-                                List.of(List.of(port("14.0.10.30/8081/UDP"))),
-                                List.of(List.of(port("0.0.0.0/8081/UDP"))),
-                                false),
-                        Arguments.of("0.0.0.0 IP, different port, same protocol",
-                                List.of(List.of(port("14.0.10.30/8081/UDP"))),
-                                List.of(List.of(port("0.0.0.0/8083/UDP"))),
-                                true),
-                        Arguments.of("Multiple pending containers, first one conflicts",
-                                List.of(List.of(port("14.0.10.30/8081/UDP"), port("14.0.10.30/8082/UDP"))),
-                                List.of(List.of(port("0.0.0.0/8083/UDP"), port("0.0.0.0/8081/UDP"))),
-                                false),
-                        Arguments.of("Multiple pending containers, second one conflicts",
-                                List.of(List.of(port("14.0.10.30/8081/UDP"), port("14.0.10.30/8082/UDP"))),
-                                List.of(List.of(port("0.0.0.0/8082/UDP"), port("0.0.0.0/8084/UDP"))),
-                                false)
-                    );
+    private static CartesianProductTest.Sets testHostPorts() {
+        return new CartesianProductTest.Sets()
+            .add(
+                new TestArguments(Arrays.asList("Conflicting IP, port and TCP protocol",
+                            List.of(List.of(port("127.0.0.1/8080/UDP"))),
+                            List.of(List.of(port("127.0.0.1/8080/UDP"))),
+                            false)),
+                new TestArguments(Arrays.asList("Conflicting IP, port and TCP protocol",
+                            List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                            List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                            false)),
+                new TestArguments(Arrays.asList("Same IP, port but different protocol",
+                            List.of(List.of(port("127.0.0.1/8080/UDP"))),
+                            List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                            true)),
+                new TestArguments(Arrays.asList("Different IP, but port and protocol",
+                            List.of(List.of(port("127.0.0.2/8080/UDP"))),
+                            List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                            true)),
+                new TestArguments(Arrays.asList("Same IP, different port, same protocol",
+                            List.of(List.of(port("127.0.0.1/8082/UDP"))),
+                            List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                            true)),
+                new TestArguments(Arrays.asList("0.0.0.0 IP, same port, different protocol",
+                            List.of(List.of(port("0.0.0.0/8080/UDP"))),
+                            List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                            true)),
+                new TestArguments(Arrays.asList("0.0.0.0 IP, same port, same protocol",
+                            List.of(List.of(port("0.0.0.0/8080/TCP"))),
+                            List.of(List.of(port("127.0.0.1/8080/TCP"))),
+                            false)),
+                new TestArguments(Arrays.asList("0.0.0.0 IP, same port, same protocol",
+                            List.of(List.of(port("14.0.10.30/8081/UDP"))),
+                            List.of(List.of(port("0.0.0.0/8081/UDP"))),
+                            false)),
+                new TestArguments(Arrays.asList("0.0.0.0 IP, different port, same protocol",
+                            List.of(List.of(port("14.0.10.30/8081/UDP"))),
+                            List.of(List.of(port("0.0.0.0/8083/UDP"))),
+                            true)),
+                new TestArguments(Arrays.asList("Multiple pending containers, first one conflicts",
+                            List.of(List.of(port("14.0.10.30/8081/UDP"), port("14.0.10.30/8082/UDP"))),
+                            List.of(List.of(port("0.0.0.0/8083/UDP"), port("0.0.0.0/8081/UDP"))),
+                            false)),
+                new TestArguments(Arrays.asList("Multiple pending containers, second one conflicts",
+                            List.of(List.of(port("14.0.10.30/8081/UDP"), port("14.0.10.30/8082/UDP"))),
+                            List.of(List.of(port("0.0.0.0/8082/UDP"), port("0.0.0.0/8084/UDP"))),
+                            false)))
+            .add(false, true);
     }
 
     private static ContainerPort port(final String hostPort) {
@@ -950,16 +1021,19 @@ public class SchedulerTest {
     }
 
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("testPodTopologySpread")
-    public void testPodTopologySpread(final String displayName, final int numNodes,
-                                      final List<List<TopologySpreadConstraint>> pendingPods,
-                                      final Predicate<List<String>> assertOn, final boolean feasible) {
+    @CartesianProductTest(name = "{0}")
+    public void testPodTopologySpread(final TestArguments args, final boolean scope) {
+        // Unpack arguments
+        final int numNodes = (int) args.get(1);
+        final List<List<TopologySpreadConstraint>> pendingPods = (List<List<TopologySpreadConstraint>>) args.get(2);
+        final Predicate<List<String>> assertOn = (Predicate<List<String>>) args.get(3);
+        final boolean feasible = (boolean) args.get(4);
+
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                 Policies.disallowNullNodeSoft(),
                 Policies.podTopologySpreadConstraints());
         final Iterator<List<TopologySpreadConstraint>> pendingPodsIt = pendingPods.iterator();
-        final var result = TestScenario.withPolicies(policies)
+        final var result = TestScenario.withPolicies(policies, scope)
                 .withNodeGroup("n", numNodes, node -> {
                     node.getMetadata().setLabels(Map.of("some-label", node.getMetadata().getName() + "-label",
                                                         "other-label", node.getMetadata().getName() + "-label"));
@@ -977,22 +1051,26 @@ public class SchedulerTest {
         }
     }
 
-    private static Stream<Arguments> testPodTopologySpread() {
+    @SuppressWarnings("UnusedMethod")
+    private static CartesianProductTest.Sets testPodTopologySpread() {
         final Predicate<List<String>> onePodPerNode = nodes -> nodes.size() == Set.copyOf(nodes).size();
         final Predicate<List<String>> twoPerNode = nodes -> {
             final Map<String, Long> counts = nodes.stream().collect(groupingBy(Function.identity(), counting()));
             return new HashSet<>(counts.values()).equals(Set.of(2L));
         };
-        return Stream.of(Arguments.of("Pods should be placed on separate nodes", 5,
-                                      List.of(List.of(spread(1)),
-                                              List.of(spread(1))),
-                                      onePodPerNode, true),
-                         Arguments.of("Pods should be evenly distributed across two nodes", 2,
-                                List.of(List.of(spread(1)),
-                                        List.of(spread(1)),
-                                        List.of(spread(1)),
-                                        List.of(spread(1))),
-                                 twoPerNode, true));
+        return new CartesianProductTest.Sets()
+            .add(
+                new TestArguments(Arrays.asList("Pods should be placed on separate nodes", 5,
+                                  List.of(List.of(spread(1)),
+                                          List.of(spread(1))),
+                                  onePodPerNode, true)),
+                new TestArguments(Arrays.asList("Pods should be evenly distributed across two nodes", 2,
+                        List.of(List.of(spread(1)),
+                                List.of(spread(1)),
+                                List.of(spread(1)),
+                                List.of(spread(1))),
+                         twoPerNode, true)))
+            .add(false, true);
     }
 
     private static TopologySpreadConstraint spread(final int maxSkew) {

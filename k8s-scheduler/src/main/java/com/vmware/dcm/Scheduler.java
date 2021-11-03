@@ -231,7 +231,6 @@ public final class Scheduler {
             final IRContext irContext = initialPlacement.getIrContext();
             final Map<String, String> views = AutoScope.augmentedViews(
                     Policies.getInitialPlacementPolicies(), irContext, limit);
-            final DSLContext conn = dbConnectionPool.getConnectionToDb();
             // Create custom sort views
             List<String> statements = AutoScope.getSuffixViewStatements(views, DBViews.SORT_VIEW_NAME_SUFFIX);
             statements.forEach(dbConnectionPool.getConnectionToDb()::execute);

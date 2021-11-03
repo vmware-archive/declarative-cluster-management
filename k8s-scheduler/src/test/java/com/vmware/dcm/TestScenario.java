@@ -82,6 +82,24 @@ class TestScenario {
         return scenario;
     }
 
+    static TestScenario withPolicies(final List<String> initialPlacement, final boolean scoped) {
+        // Re-use already compiled models across tests to reduce test time
+        if (BUILDER_CACHE.containsKey(initialPlacement)) {
+            final var schedulerBuilder = BUILDER_CACHE.get(initialPlacement);
+            schedulerBuilder.connection.refresh();
+            schedulerBuilder.setScopedInitialPlacement(scoped);
+            final var scenario = new TestScenario(schedulerBuilder.connection, schedulerBuilder);
+            scenario.scheduler = schedulerBuilder.build();
+            return scenario;
+        }
+        final var scenario = new TestScenario(new DBConnectionPool());
+        scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
+        scenario.schedulerBuilder.setScopedInitialPlacement(scoped);
+        scenario.scheduler = scenario.schedulerBuilder.build();
+        BUILDER_CACHE.put(initialPlacement, scenario.schedulerBuilder);
+        return scenario;
+    }
+
     static TestScenario withPolicies(final List<String> initialPlacement, final List<String> preemption) {
         final var scenario = new TestScenario(new DBConnectionPool());
         scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);

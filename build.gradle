@@ -36,6 +36,7 @@ subprojects {
         implementation "org.jooq:jooq-meta:${jooqVersion}"
         implementation "com.google.guava:guava:${guavaVersion}"
         testImplementation "org.junit.jupiter:junit-jupiter:${junitJupiterVersion}"
+        testImplementation "org.junit-pioneer:junit-pioneer:${junitPioneerVersion}"
         spotbugs "com.github.spotbugs:spotbugs:${spotbugsVersion}"
         compileOnly "com.github.spotbugs:spotbugs-annotations:${spotbugsVersion}"
         errorprone "com.google.errorprone:error_prone_core:${errorproneVersion}"

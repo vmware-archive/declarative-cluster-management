@@ -62,9 +62,11 @@ public class AutoScope {
      */
     public static List<String> getSuffixViewStatements(final Map<String, String> views, final String suffix) {
         final List<String> statements = new ArrayList<>();
-        for (final String name : views.keySet()) {
+        for (final var entry : views.entrySet()) {
+            final String name = entry.getKey();
+            final String statement = entry.getValue();
             if (name.contains(suffix.toUpperCase())) {
-                statements.add(String.format("%nCREATE VIEW %s AS %s%n", name, views.get(name)));
+                statements.add(String.format("%nCREATE VIEW %s AS %s%n", name, statement));
             }
         }
         return statements;
@@ -113,12 +115,17 @@ public class AutoScope {
         views.put((BASE_TABLE + DBViews.SORT_VIEW_NAME_SUFFIX).toUpperCase(), sortView);
 
         // Union of domain restricted queries
-        for (final String var : selectClause.keySet()) {
-            final Map<String, String> clause = selectClause.get(var);
+        for (final var e : selectClause.entrySet()) {
+            final String var = e.getKey();
+            final Map<String, String> clause = e.getValue();
             final List<String> queries = new ArrayList<>();
             for (final Map.Entry<String, String> entry : clause.entrySet()) {
                 final String tableName = entry.getKey();
                 final String fieldName = entry.getValue();
+                // Check if table name is in IRContext
+                if (!irContext.containTable(tableName)) {
+                    continue;
+                }
                 if (!tableName.toLowerCase().equals(BASE_TABLE)) {
                     // IN field is an array: flatten array
                     if (irContext.getColumn(tableName, fieldName).getType() == FieldType.ARRAY) {
