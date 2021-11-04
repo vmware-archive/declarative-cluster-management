@@ -8,6 +8,15 @@ package com.vmware.dcm;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.trace.TraceReplayer;
+import com.vmware.ddlog.DDlogJooqProvider;
+import com.vmware.ddlog.ir.DDlogProgram;
+import com.vmware.ddlog.translator.Translator;
+import com.vmware.ddlog.util.sql.CalciteSqlStatement;
+import com.vmware.ddlog.util.sql.CalciteToH2Translator;
+import com.vmware.ddlog.util.sql.CalciteToPrestoTranslator;
+import com.vmware.ddlog.util.sql.H2SqlStatement;
+import ddlogapi.DDlogAPI;
+import ddlogapi.DDlogException;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
@@ -29,14 +38,18 @@ import org.apache.commons.cli.Options;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 
 /**
@@ -45,11 +58,65 @@ import java.util.concurrent.ThreadFactory;
 class EmulatedCluster {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedCluster.class);
 
+    public static void compileAndLoad(final List<CalciteSqlStatement> ddl, final List<String> createIndexStatements)
+            throws IOException, DDlogException {
+        final Translator t = new Translator(null);
+        CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
+        ddl.forEach(x -> t.translateSqlStatement(ctopTranslator.toPresto(x)));
+        createIndexStatements.forEach(t::translateCreateIndexStatement);
+
+        final DDlogProgram dDlogProgram = t.getDDlogProgram();
+        final String fileName = "/tmp/program.dl";
+        File tmp = new File(fileName);
+        BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
+        bw.write(dDlogProgram.toString());
+        bw.close();
+        DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
+        final String ddlogHome = System.getenv("DDLOG_HOME");
+        assertNotNull(ddlogHome);
+        DDlogAPI.compileDDlogProgram(fileName, result, ddlogHome + "/lib", ddlogHome + "/sql/lib");
+        if (!result.isSuccess())
+            throw new RuntimeException("Failed to compile ddlog program");
+        DDlogAPI.loadDDlog();
+    }
+
+    public static DDlogDBConnectionPool setupDDlog() {
+        try {
+            List<String> tables = DDlogDBViews.getSchema();
+            CalciteToH2Translator translator = new CalciteToH2Translator();
+
+            // The `create index` statements are for H2 and not for the DDlog backend
+            List<String> createIndexStatements = new ArrayList<>();
+            List<CalciteSqlStatement> tablesInCalcite = new ArrayList<>();
+
+            tables.forEach(x -> {
+                if (x.startsWith("create index")) {
+                    createIndexStatements.add(x);
+                } else {
+                    tablesInCalcite.add(new CalciteSqlStatement((x)));
+                }
+            });
+
+            compileAndLoad(tablesInCalcite, createIndexStatements);
+
+            final DDlogAPI dDlogAPI = new DDlogAPI(1, false);
+
+            // Initialise the data provider
+            final DDlogJooqProvider provider = new DDlogJooqProvider(dDlogAPI,
+                    Stream.concat(
+                            tablesInCalcite.stream().map(translator::toH2),
+                            createIndexStatements.stream().map(H2SqlStatement::new)).collect(Collectors.toList()));
+            return new DDlogDBConnectionPool(provider);
+        } catch (Exception e) {
+            throw new RuntimeException("Could not set up DDlog backend: " + e.getMessage());
+        }
+    }
+
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
                                 final int affinityRequirementsProportion, final boolean scopeOn)
             throws Exception {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final IConnectionPool dbConnectionPool = setupDDlog(); // new DBConnectionPool();
 
         final ThreadFactory namedThreadFactory =
                 new ThreadFactoryBuilder().setNameFormat("flowable-thread-%d").build();

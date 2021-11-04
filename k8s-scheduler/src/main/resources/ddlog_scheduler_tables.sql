@@ -96,8 +96,8 @@ create table pod_node_selector_labels
 (
   pod_uid varchar(36) not null,
   term integer not null,
-  match_expressions bigint array not null,
-  primary key (pod_uid)
+  match_expressions bigint array not null
+  --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 create index pod_node_selector_labels_by_uid on pod_node_selector_labels (pod_uid);
@@ -108,8 +108,8 @@ create table pod_affinity_match_expressions
   pod_uid varchar(36) not null,
   label_selector integer not null,
   match_expressions bigint array not null,
-  topology_key varchar(100) not null,
-  primary key (pod_uid)
+  topology_key varchar(100) not null
+  --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 create index pod_affinity_match_expressions_labels_by_uid on pod_affinity_match_expressions (pod_uid);

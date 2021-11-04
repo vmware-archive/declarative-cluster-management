@@ -14,6 +14,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.ddlog.DDlogJooqProvider;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.commons.cli.CommandLine;
@@ -240,9 +241,17 @@ public final class Scheduler {
             // New scoping
             this.initialPlacementFunction = (s) -> scopedFunction(views.keySet());
         } else {
-            this.initialPlacementFunction = (s) -> initialPlacement.solve(s,
-                    (t) -> dbConnectionPool.getConnectionToDb().selectFrom(t).fetch());
+            this.initialPlacementFunction =
+                    (s) -> initialPlacement.solve(s,
+                            (t) -> {
+                                if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+                                    return ((DDlogDBConnectionPool) dbConnectionPool).getProvider().fetchTable(t.getName());
+                                } else {
+                                    return dbConnectionPool.getConnectionToDb().selectFrom(t).fetch();
+                                }
+                            });
         }
+
         this.preemption = preemption;
         this.debugMode = debugMode;
         LOG.info("Initialized scheduler: {} {} {} {}", debugMode, numThreads, solverMaxTimeInSeconds,
@@ -282,8 +291,18 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
+        /*ystem.out.println(dbConnectionPool.getConnectionToDb().fetch(table("PODS_TO_ASSIGN_NO_LIMIT_COUNT")));
+        System.out.println(dbConnectionPool.getConnectionToDb().fetch(table("PODS_TO_ASSIGN_NO_LIMIT")));
+        System.out.println(dbConnectionPool.getConnectionToDb().fetch(table("POD_INFO")));*/
+
         final IntSupplier numPending =
-                () -> dbConnectionPool.getConnectionToDb().fetchCount(table("PODS_TO_ASSIGN_NO_LIMIT"));
+                () -> {
+                    List<Integer> res = dbConnectionPool.getConnectionToDb().fetch(table("PODS_TO_ASSIGN_NO_LIMIT_COUNT"))
+                            .getValues(0, Integer.class);
+                    return res.size() == 0 ? 0 : res.get(0);
+                };
+                        //fetchCount(table("PODS_TO_ASSIGN_NO_LIMIT"));
+
         int fetchCount = numPending.getAsInt();
         while (fetchCount > 0) {
             LOG.info("Fetchcount is {}", fetchCount);

@@ -57,6 +57,7 @@ public class DDlogDBViews {
             nodesThatHaveTolerations(viewStatements);
             allowedNodes(viewStatements);
             interPodAffinityAndAntiAffinitySimple(viewStatements);
+            getCount(viewStatements);
             //topologyKeyChannels(viewStatements);
             //podTopologySpread(viewStatements);
         });
@@ -109,6 +110,12 @@ public class DDlogDBViews {
         final String query = "SELECT DISTINCT pod_info.*, node_name AS controllable__node_name " +
                              "FROM pod_info " +
                              "WHERE status = 'Pending' AND node_name IS NULL AND scheduler_name = 'dcm-scheduler'";
+        viewStatements.addQuery(name, query);
+    }
+
+    private static void getCount(final ViewStatements viewStatements) {
+        final String name = "PODS_TO_ASSIGN_NO_LIMIT_COUNT";
+        final String query = "SELECT COUNT(*) from PODS_TO_ASSIGN_NO_LIMIT";
         viewStatements.addQuery(name, query);
     }
 

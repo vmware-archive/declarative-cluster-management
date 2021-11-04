@@ -31,4 +31,8 @@ public class DDlogDBConnectionPool implements IConnectionPool {
     public DSLContext getDataConnectionToDb() {
         return provider.getDslContext();
     }
+
+    public DDlogJooqProvider getProvider() {
+        return provider;
+    }
 }
