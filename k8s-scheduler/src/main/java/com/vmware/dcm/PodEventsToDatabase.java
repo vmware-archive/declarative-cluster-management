@@ -39,13 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -252,8 +246,6 @@ class PodEventsToDatabase {
                 p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
                 p.HAS_NODE_PORT_REQUIREMENTS,
                 p.HAS_TOPOLOGY_SPREAD_CONSTRAINTS,
-                p.PRIORITY,
-                p.SCHEDULERNAME,
                 p.EQUIVALENCE_CLASS,
                 p.QOS_CLASS,
                 p.RESOURCEVERSION,
@@ -484,7 +476,7 @@ class PodEventsToDatabase {
                     selector.getNodeSelectorTerms().forEach(term -> {
                             final Object[] exprIds = term.getMatchExpressions().stream()
                                     .map(expr -> toMatchExpressionId(conn, expr.getKey(), expr.getOperator(),
-                                                                     expr.getValues())).toArray();
+                                                                     expr.getValues())).toList().toArray(new Long[0]);
                             inserts.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
                                             .values(pod.getMetadata().getUid(), termNumber, exprIds));
                             termNumber.incrementAndGet();
@@ -517,10 +509,10 @@ class PodEventsToDatabase {
         if (nodeSelector != null) {
             // Using a node selector is equivalent to having a single node-selector term and a list of match expressions
             final int term = 0;
-            final Object[] matchExpressions = nodeSelector.entrySet().stream()
+            final Long[] matchExpressions = nodeSelector.entrySet().stream()
                     .map(e -> toMatchExpressionId(conn, e.getKey(), Operators.In.toString(),
                             List.of(e.getValue())))
-                    .toArray();
+                    .collect(Collectors.toList()).toArray(new Long[0]);
             if (matchExpressions.length == 0) {
                 return podNodeSelectorLabels;
             }
@@ -548,7 +540,7 @@ class PodEventsToDatabase {
         for (final PodAffinityTerm term: terms) {
             final Object[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
                     .map(e -> toMatchExpressionId(conn, e.getKey(), e.getOperator(), e.getValues()))
-                    .toArray();
+                    .toList().toArray(new Long[0]);
             inserts.add(conn.insertInto(table)
                             .values(pod.getMetadata().getUid(), termNumber, matchExpressions, term.getTopologyKey()));
             termNumber += 1;
@@ -558,7 +550,7 @@ class PodEventsToDatabase {
 
     private List<Insert<?>> updatePodTopologySpread(final Pod pod, final DSLContext conn) {
         conn.deleteFrom(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS)
-            .where(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS.UID.eq(pod.getMetadata().getUid())).execute();
+            .where(DSL.field(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
         if (pod.getSpec().getTopologySpreadConstraints() == null) {
             return Collections.emptyList();
         }
@@ -580,7 +572,8 @@ class PodEventsToDatabase {
             // Ideally, we'd use an auto-incrementing field on the expression_id column to handle this
             // in a single insert/returning statement. But we keep the ID incrementing outside the database
             // in anticipation of using ddlog, which does not yet support auto-incrementing IDs.
-            final MatchExpressionsRecord record = conn.selectFrom(me)
+            final MatchExpressionsRecord record =
+                    conn.selectFrom(me)
                     .where(DSL.field(me.LABEL_KEY.getUnqualifiedName()).eq(key)
                             .and(DSL.field(me.LABEL_OPERATOR.getUnqualifiedName()).eq(operator))
                             .and(DSL.field(me.LABEL_VALUES.getUnqualifiedName()).eq(valuesArray)))

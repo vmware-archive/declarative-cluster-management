@@ -49,7 +49,6 @@ class TestScenario {
     private final Map<Node, Pod> systemPods = new HashMap<>();
     private final Scheduler.Builder schedulerBuilder;
     @Nullable private Scheduler scheduler;
-    private boolean built = false; // Just a temporary add, sometimes we want to inspect the DB after it's built.
 
     TestScenario() {
         this(new DBConnectionPool());
@@ -219,7 +218,6 @@ class TestScenario {
         Collections.shuffle(nodes);
         nodes.forEach(nodeResourceEventHandler::onAddSync);
         pods.forEach(podResourceEventHandler::onAddSync);
-        built = true;
         return this;
     }
 
@@ -228,9 +226,7 @@ class TestScenario {
      * artifacts from database insertion order in the test results.
      */
     TestResult runInitialPlacement() {
-        if (!built) {
-            build();
-        }
+        build();
         assertNotNull(scheduler);
         return new TestResult(scheduler.initialPlacement(), nodes);
     }
