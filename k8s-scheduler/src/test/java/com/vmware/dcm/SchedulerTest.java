@@ -128,12 +128,18 @@ public class SchedulerTest {
         CalciteToH2Translator translator = new CalciteToH2Translator();
 
         // The `create index` statements are for H2 and not for the DDlog backend
-        List<CalciteSqlStatement> tablesInCalcite =
-                tables.stream().filter(x -> !x.startsWith("create index"))
-                        .map(CalciteSqlStatement::new)
-                        .collect(Collectors.toList());
+        List<String> createIndexStatements = new ArrayList<>();
+        List<CalciteSqlStatement> tablesInCalcite = new ArrayList<>();
 
-        compileAndLoad(tablesInCalcite);
+        tables.forEach(x -> {
+            if (x.startsWith("create index")) {
+                createIndexStatements.add(x);
+            } else {
+                tablesInCalcite.add(new CalciteSqlStatement((x)));
+            }
+        });
+
+        compileAndLoad(tablesInCalcite, createIndexStatements);
         final DDlogAPI dDlogAPI = new DDlogAPI(1, false);
 
         // Initialise the data provider
@@ -143,10 +149,13 @@ public class SchedulerTest {
     }
 
 
-    public static void compileAndLoad(final List<CalciteSqlStatement> ddl) throws IOException, DDlogException {
+    public static void compileAndLoad(final List<CalciteSqlStatement> ddl, final List<String> createIndexStatements)
+            throws IOException, DDlogException {
         final Translator t = new Translator(null);
         CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
         ddl.forEach(x -> t.translateSqlStatement(ctopTranslator.toPresto(x)));
+        createIndexStatements.forEach(t::translateCreateIndexStatement);
+
         final DDlogProgram dDlogProgram = t.getDDlogProgram();
         final String fileName = "/tmp/program.dl";
         File tmp = new File(fileName);
@@ -168,18 +177,26 @@ public class SchedulerTest {
             CalciteToH2Translator translator = new CalciteToH2Translator();
 
             // The `create index` statements are for H2 and not for the DDlog backend
-            List<CalciteSqlStatement> tablesInCalcite =
-                    tables.stream().filter(x -> !x.startsWith("create index"))
-                            .map(CalciteSqlStatement::new)
-                            .collect(Collectors.toList());
+            List<String> createIndexStatements = new ArrayList<>();
+            List<CalciteSqlStatement> tablesInCalcite = new ArrayList<>();
 
-            compileAndLoad(tablesInCalcite);
+            tables.forEach(x -> {
+                if (x.startsWith("create index")) {
+                    createIndexStatements.add(x);
+                } else {
+                    tablesInCalcite.add(new CalciteSqlStatement((x)));
+                }
+            });
+
+            compileAndLoad(tablesInCalcite, createIndexStatements);
 
             final DDlogAPI dDlogAPI = new DDlogAPI(1, false);
 
             // Initialise the data provider
             final DDlogJooqProvider provider = new DDlogJooqProvider(dDlogAPI,
-                    tablesInCalcite.stream().map(translator::toH2).collect(Collectors.toList()));
+                    Stream.concat(
+                    tablesInCalcite.stream().map(translator::toH2),
+                            createIndexStatements.stream().map(H2SqlStatement::new)).collect(Collectors.toList()));
             return new DDlogDBConnectionPool(provider);
         } catch (Exception e) {
             throw new RuntimeException("Could not set up DDlog backend: " + e.getMessage());
@@ -398,17 +415,17 @@ public class SchedulerTest {
      */
     @CartesianProductTest
     public void testPodToNodeAffinity(final List<Object> args, final boolean scope) {
+        final IConnectionPool dbConnectionPool = setupDDlog();
         // Unpack arguments
         final List<NodeSelectorTerm> terms = (List<NodeSelectorTerm>) args.get(0);
         final Map<String, String> nodeLabelsInput = (Map<String, String>) args.get(1);
         final boolean shouldBeAffineToLabelledNodes = (boolean) args.get(2);
         final boolean shouldBeAffineToRemainingNodes = (boolean) args.get(3);
-
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.nodeSelectorPredicate());
         final Map<String, String> dummyLabels = Map.of("dummyKey1", "dummyValue1", "dummyKey2", "dummyValue2");
-        final var result = TestScenario.withPolicies(policies, scope)
+        final var result = TestScenario.withPolicies(policies, scope, dbConnectionPool)
                 .withNodeGroup("providedLabels", 5, (node) -> node.getMetadata().setLabels(nodeLabelsInput))
                 .withNodeGroup("dummyLabels", 5, (node) -> node.getMetadata().setLabels(dummyLabels))
                 .withPodGroup("withConstraint", 3, (pod) -> {
@@ -486,6 +503,7 @@ public class SchedulerTest {
      */
     @CartesianProductTest(name = "{0}")
     public void testPodToPodAffinity(final TestArguments args, final boolean scope) {
+        final IConnectionPool dbConnectionPool = setupDDlog();
         // Unpack arguments
         final List<PodAffinityTerm> terms = (List<PodAffinityTerm>) args.get(1);
         final Map<String, String> podLabelsInput = (Map<String, String>) args.get(2);
@@ -497,7 +515,7 @@ public class SchedulerTest {
                                                                            Policies.disallowNullNodeSoft(),
                                                                            Policies.podAffinityPredicate(),
                                                                            Policies.podAntiAffinityPredicate());
-        final var result = TestScenario.withPolicies(policies, scope)
+        final var result = TestScenario.withPolicies(policies, scope, dbConnectionPool)
                 .withNodeGroup("nodes", 3)
                 .withPodGroup("withConstraint", 3, (pod) -> {
                     pod.getMetadata().setLabels(podLabelsInput);

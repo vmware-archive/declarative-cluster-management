@@ -24,13 +24,13 @@ class Policies {
         INITIAL_PLACEMENT_POLICIES.add(nodePredicates());
         INITIAL_PLACEMENT_POLICIES.add(nodeSelectorPredicate());
         // Uncomment these when we have added the affinity views back to DDlogDBViews
-        //INITIAL_PLACEMENT_POLICIES.add(podAffinityPredicate());
-        //INITIAL_PLACEMENT_POLICIES.add(podAntiAffinityPredicate());
+        INITIAL_PLACEMENT_POLICIES.add(podAffinityPredicate());
+        INITIAL_PLACEMENT_POLICIES.add(podAntiAffinityPredicate());
         INITIAL_PLACEMENT_POLICIES.add(capacityConstraint(true, true));
         INITIAL_PLACEMENT_POLICIES.add(taintsAndTolerations());
         INITIAL_PLACEMENT_POLICIES.add(symmetryBreaking());
         INITIAL_PLACEMENT_POLICIES.add(podFitsNodePorts());
-        INITIAL_PLACEMENT_POLICIES.add(podTopologySpreadConstraints());
+        //INITIAL_PLACEMENT_POLICIES.add(podTopologySpreadConstraints());
 
         PREEMPTION_POLICIES.add(preemption());
         PREEMPTION_POLICIES.addAll(new ArrayList<>(INITIAL_PLACEMENT_POLICIES));
