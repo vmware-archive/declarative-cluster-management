@@ -13,7 +13,17 @@ apply plugin: 'nu.studer.jooq'
 apply plugin: "application"
 
 dependencies {
-    implementation 'org.apache.calcite:calcite-core:1.27.0'
+    implementation ("org.apache.calcite:calcite-core:${calciteCoreVersion}") {
+        exclude group: "org.apache.httpcomponents"
+        exclude group: "org.apache.logging"
+        exclude group: "org.yaml"
+        exclude group: "com.fasterxml.jackson.core"
+        exclude group: "net.minidev"
+        exclude group: "com.yahoo.datasketches"
+        exclude group: "org.codehaus.janino"
+        exclude group: "com.google.guava"
+        exclude group: "com.google.protobuf"
+    }
     implementation project(':dcm')
     implementation "com.zaxxer:HikariCP:${hikariCPVersion}"
     implementation "io.fabric8:kubernetes-client:${fabricK8sClientVersion}"

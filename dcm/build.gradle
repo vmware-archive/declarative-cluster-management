@@ -29,6 +29,7 @@ dependencies {
         exclude group: "com.yahoo.datasketches"
         exclude group: "org.codehaus.janino"
         exclude group: "com.google.guava"
+        exclude group: "com.google.protobuf"
     }
     implementation "org.freemarker:freemarker:${freemarkerVersion}"
     implementation ("com.facebook.presto:presto-parser:${prestoParserVersion}") {
