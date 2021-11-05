@@ -388,7 +388,7 @@ public class ScopeTest {
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
 
-        final int numNodes = 1000;
+        final int numNodes = 100;
         final int numPods = 20;
 
         final List<Integer> gpuNodesIdx = List.of(0, 1);

@@ -275,17 +275,16 @@ public class DBViews {
                 -- For resources that are in use, compute the total spare capacity per node
                 SELECT node_info.name AS name,
                        node_resources.resource,
-                       allocatable - CAST(sum(ISNULL(A.total_demand, 0)) as bigint) as capacity
+                       allocatable - CAST(sum(ISNULL(A.demand, 0)) as bigint) as capacity
                 FROM node_info
                 JOIN node_resources
                     ON node_info.uid = node_resources.uid
                 LEFT JOIN (SELECT pod_info.node_name,
                              pod_resource_demands.resource,
-                             sum(pod_resource_demands.demand) AS total_demand
+                             pod_resource_demands.demand
                      FROM pod_info
                      JOIN pod_resource_demands
-                       ON pod_resource_demands.uid = pod_info.uid
-                     GROUP BY pod_info.node_name, pod_resource_demands.resource) A
+                       ON pod_resource_demands.uid = pod_info.uid) A
                     ON A.node_name = node_info.name AND A.resource = node_resources.resource
                 WHERE unschedulable = false AND
                       memory_pressure = false AND
