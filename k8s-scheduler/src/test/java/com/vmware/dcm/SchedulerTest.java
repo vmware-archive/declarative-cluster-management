@@ -172,35 +172,9 @@ public class SchedulerTest {
     }
 
     public static DDlogDBConnectionPool setupDDlog() {
-        try {
-            List<String> tables = DDlogDBViews.getSchema();
-            CalciteToH2Translator translator = new CalciteToH2Translator();
-
-            // The `create index` statements are for H2 and not for the DDlog backend
-            List<String> createIndexStatements = new ArrayList<>();
-            List<CalciteSqlStatement> tablesInCalcite = new ArrayList<>();
-
-            tables.forEach(x -> {
-                if (x.startsWith("create index")) {
-                    createIndexStatements.add(x);
-                } else {
-                    tablesInCalcite.add(new CalciteSqlStatement((x)));
-                }
-            });
-
-            compileAndLoad(tablesInCalcite, createIndexStatements);
-
-            final DDlogAPI dDlogAPI = new DDlogAPI(1, false);
-
-            // Initialise the data provider
-            final DDlogJooqProvider provider = new DDlogJooqProvider(dDlogAPI,
-                    Stream.concat(
-                    tablesInCalcite.stream().map(translator::toH2),
-                            createIndexStatements.stream().map(H2SqlStatement::new)).collect(Collectors.toList()));
-            return new DDlogDBConnectionPool(provider);
-        } catch (Exception e) {
-            throw new RuntimeException("Could not set up DDlog backend: " + e.getMessage());
-        }
+        DDlogDBConnectionPool dbConnectionPool = new DDlogDBConnectionPool();
+        dbConnectionPool.buildDDlog();
+        return dbConnectionPool;
     }
 
     /*

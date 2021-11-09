@@ -11,10 +11,7 @@ import org.apache.calcite.sql.validate.SqlConformanceEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
@@ -25,7 +22,7 @@ public class AutoScope {
     private static final String[] RESOURCE_TYPE = new String[]{"cpu", "memory", "pods", "ephemeral-storage"};
     private static final String BASE_COL = "name";
     private static final String VIEW_TEMPLATE = """
-            SELECT name, resource, capacity FROM (%s)
+            SELECT DISTINCT name, resource, capacity FROM %s
             """;
 
     public static Map<String, String> augmentedViews(final List<String> constraints,
@@ -66,7 +63,7 @@ public class AutoScope {
             final String name = entry.getKey();
             final String statement = entry.getValue();
             if (name.contains(suffix.toUpperCase())) {
-                statements.add(String.format("%nCREATE VIEW %s AS %s%n", name, statement));
+                statements.add(String.format("%nCREATE VIEW %s AS (%s)%n", name, statement));
             }
         }
         return statements;
@@ -88,11 +85,12 @@ public class AutoScope {
      * @return SQL query that selects top K nodes for each resource
      */
     private static String customSort(final int limit) {
-        final String template = """
-                (SELECT name FROM %s WHERE resource = '%s'
-                ORDER BY capacity DESC
-                LIMIT %d)
-                """;
+        final String template = "" +
+                "(SELECT distinct name FROM %s WHERE resource = '%s'" +
+                //" ORDER BY capacity DESC " +
+                ")" +
+                //LIMIT %d)
+                "";
         final List<String> queries = new ArrayList<>();
         for (final String resource : RESOURCE_TYPE) {
             queries.add(String.format(template, BASE_TABLE, resource, limit));
@@ -129,24 +127,29 @@ public class AutoScope {
                 if (!tableName.toLowerCase().equals(BASE_TABLE)) {
                     // IN field is an array: flatten array
                     if (irContext.getColumn(tableName, fieldName).getType() == FieldType.ARRAY) {
-                        queries.add(String.format("SELECT DISTINCT name,resource,capacity FROM" +
-                                        "(%s JOIN %s ON ARRAY_CONTAINS(%s.%s, %s.%s))",
-                                BASE_TABLE, tableName, tableName, fieldName, BASE_TABLE, BASE_COL));
+                        queries.add(String.format("(SELECT DISTINCT name,resource,capacity FROM" +
+                                        " %s JOIN %s ON ARRAY_CONTAINS(%s.%s, %s.%s))",
+                                BASE_TABLE, tableName.toLowerCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT), fieldName.toLowerCase(Locale.ROOT), BASE_TABLE, BASE_COL));
                     } else {
-                        queries.add(String.format("SELECT name,resource,capacity FROM %s " +
-                                        "WHERE %s IN (SELECT %s FROM %s)",
-                                BASE_TABLE, BASE_COL, fieldName, tableName));
+                        queries.add(String.format(
+                                "(SELECT DISTINCT %s.name as name, %s.resource as resource ,%s.capacity as capacity " +
+                                        "FROM %s " +
+                                        " JOIN %s ON %s.%s = %s.%s)",
+                                BASE_TABLE, BASE_TABLE, BASE_TABLE,
+                                BASE_TABLE, tableName, BASE_TABLE, BASE_COL, tableName, fieldName));
                     }
                 } else { // sort and truncate base table
                     final String view = BASE_TABLE + DBViews.SORT_VIEW_NAME_SUFFIX;
-                    queries.add(String.format("SELECT name,resource,capacity FROM %s " +
-                            "WHERE %s in (SELECT %s FROM %s)",
-                            BASE_TABLE, BASE_COL, BASE_COL, view));
+                    queries.add(String.format(
+                            "(SELECT DISTINCT %s.name as name, %s.resource as resource ,%s.capacity as capacity " +
+                                    "FROM %s " +
+                            " JOIN %s ON %s.%s = %s.%s)",
+                            BASE_TABLE, BASE_TABLE, BASE_TABLE,
+                            BASE_TABLE, view, BASE_TABLE, BASE_COL, view, BASE_COL));
                 }
             }
             final String query = String.join(" UNION ", queries);
-            final String view = String.format(VIEW_TEMPLATE, query);
-            views.put((BASE_TABLE + DBViews.SCOPE_VIEW_NAME_SUFFIX).toUpperCase(), view);
+            views.put((BASE_TABLE + DBViews.SCOPE_VIEW_NAME_SUFFIX).toUpperCase(), query);
         }
         return views;
     }
