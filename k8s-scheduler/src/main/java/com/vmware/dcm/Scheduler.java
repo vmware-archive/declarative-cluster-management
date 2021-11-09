@@ -36,11 +36,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -234,10 +230,20 @@ public final class Scheduler {
                     Policies.getInitialPlacementPolicies(), irContext, limit);
             // Create custom sort views
             List<String> statements = AutoScope.getSuffixViewStatements(views, DBViews.SORT_VIEW_NAME_SUFFIX);
-            statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
+            if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+                DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
+                ddlogPool.addScopedViews(statements);
+            } else {
+                statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
+            }
             // Create filtering views
             statements = AutoScope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX);
-            statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
+            if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+                DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
+                ddlogPool.addScopedViews(statements);
+            } else {
+                statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
+            }
             // New scoping
             this.initialPlacementFunction = (s) -> scopedFunction(views.keySet());
         } else {
@@ -250,6 +256,10 @@ public final class Scheduler {
                                     return dbConnectionPool.getConnectionToDb().selectFrom(t).fetch();
                                 }
                             });
+        }
+
+        if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog();
         }
 
         this.preemption = preemption;
@@ -454,7 +464,7 @@ public final class Scheduler {
                     final DSLContext conn = dbConnectionPool.getConnectionToDb();
                     // Make sure we use the preemption suffix only for views, not base tables
                     if (DBViews.initialPlacementViewNames().contains(table.getName())) {
-                        return conn.fetch(table(table.getName() + PREEMPTION_VIEW_NAME_SUFFIX));
+                        return conn.fetch(table((table.getName() + PREEMPTION_VIEW_NAME_SUFFIX).toLowerCase(Locale.ROOT)));
                     }
                     return conn.fetch(table);
                 });
