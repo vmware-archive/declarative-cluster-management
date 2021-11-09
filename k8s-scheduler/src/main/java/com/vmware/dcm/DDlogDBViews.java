@@ -45,6 +45,7 @@ public class DDlogDBViews {
         allPendingPods(INITIAL_PLACEMENT);
         initialPlacementInputPods(INITIAL_PLACEMENT);
         initialPlacementFixedPods(INITIAL_PLACEMENT);
+        helperView(PREEMPTION);
         preemptionInputPods(PREEMPTION);
         preemptionFixedPods(PREEMPTION);
         Stream.of(INITIAL_PLACEMENT, PREEMPTION).forEach(viewStatements -> {
@@ -95,7 +96,7 @@ public class DDlogDBViews {
             schema.addAll(baseTableList);
             schema.addAll(identityViews);
             schema.addAll(INITIAL_PLACEMENT.getViewStatements());
-            //schema.addAll(PREEMPTION.getViewStatements());
+            schema.addAll(PREEMPTION.getViewStatements());
             return schema;
         } catch (final IOException e) {
             throw new RuntimeException(e);
@@ -137,15 +138,47 @@ public class DDlogDBViews {
         viewStatements.addQuery(name, query);
     }
 
+    private static void helperView(final ViewStatements viewStatements) {
+        final String name = "HELPER_VIEW";
+        final String query = "SELECT DISTINCT node_name," +
+                " MAX(pods_to_assign.priority) as m " +
+                " FROM pods_to_assign" +
+                " GROUP BY node_name";
+
+        viewStatements.addQuery(name, query);
+    }
+
+
     /*
      * Select all pods that need to be scheduled and pods of comparatively lower priority that could be reassigned.
      */
     private static void preemptionInputPods(final ViewStatements viewStatements) {
         final String name = "PODS_TO_ASSIGN";
         final String query = "(SELECT DISTINCT * FROM PODS_TO_ASSIGN) " +
-                             "UNION ALL " +
-                             "(SELECT *, node_name AS controllable__node_name FROM pod_info " +
-                             " WHERE node_name IS NOT NULL AND priority < (SELECT MAX(priority) FROM PODS_TO_ASSIGN))";
+                             "UNION  " +
+                             "(" + "SELECT DISTINCT pod_info.uid, pod_info.pod_name," +
+                "pod_info.status," +
+                "pod_info.node_name," +
+                "pod_info.namespace," +
+                "pod_info.owner_name," +
+                "pod_info.creation_timestamp," +
+                "pod_info.priority," +
+                "pod_info.scheduler_name," +
+                "pod_info.has_node_selector_labels," +
+                "pod_info.has_pod_affinity_requirements," +
+                "pod_info.has_pod_anti_affinity_requirements," +
+                "pod_info.has_node_port_requirements," +
+                "pod_info.has_topology_spread_constraints," +
+                "pod_info.equivalence_class," +
+                "pod_info.qos_class," +
+                "pod_info.resourceversion," +
+                "pod_info.last_requeue," +
+                "pod_info.node_name as controllable__node_name " +
+                " FROM pod_info JOIN helper_view_preempt ON" +
+                " pod_info.node_name = helper_view_preempt.node_name " +
+                " WHERE pod_info.node_name IS NOT NULL AND pod_info.priority < helper_view_preempt.m" +
+                ")";
+                //" GROUP BY pod_info.node_name " + ")" ;
         viewStatements.addQuery(name, query);
     }
 
@@ -154,8 +187,28 @@ public class DDlogDBViews {
      */
     private static void preemptionFixedPods(final ViewStatements viewStatements) {
         final String name = "ASSIGNED_PODS";
-        final String query = "SELECT DISTINCT *, node_name AS controllable__node_name FROM pod_info " +
-                             " WHERE node_name IS NOT NULL AND priority >= (SELECT MAX(priority) FROM PODS_TO_ASSIGN)";
+        final String query = "SELECT DISTINCT pod_info.uid, pod_info.pod_name," +
+                "pod_info.status," +
+                "pod_info.node_name," +
+                "pod_info.namespace," +
+                "pod_info.owner_name," +
+                "pod_info.creation_timestamp," +
+                "pod_info.priority," +
+                "pod_info.scheduler_name," +
+                "pod_info.has_node_selector_labels," +
+                "pod_info.has_pod_affinity_requirements," +
+                "pod_info.has_pod_anti_affinity_requirements," +
+                "pod_info.has_node_port_requirements," +
+                "pod_info.has_topology_spread_constraints," +
+                "pod_info.equivalence_class," +
+                "pod_info.qos_class," +
+                "pod_info.resourceversion," +
+                "pod_info.last_requeue," +
+                "pod_info.node_name as controllable__node_name " +
+                " FROM pod_info JOIN helper_view_preempt ON" +
+                " pod_info.node_name = helper_view_preempt.node_name " +
+                " WHERE pod_info.node_name IS NOT NULL AND pod_info.priority >= helper_view_preempt.m";
+
         viewStatements.addQuery(name, query);
     }
 
