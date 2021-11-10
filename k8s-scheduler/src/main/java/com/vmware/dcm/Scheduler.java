@@ -259,7 +259,7 @@ public final class Scheduler {
         }
 
         if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog();
+            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog(true);
         }
 
         this.preemption = preemption;
