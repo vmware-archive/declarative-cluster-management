@@ -79,6 +79,14 @@ def integrationTest = tasks.register("integrationTest2", Test) {
     shouldRunAfter test
 }
 
+def experiment = tasks.register("experiment", Test) {
+    logging.captureStandardOutput LogLevel.INFO
+    useJUnitPlatform {
+        includeTags "experiment"
+    }
+    shouldRunAfter test
+}
+
 
 application {
     mainClass = 'com.vmware.dcm.Scheduler'
