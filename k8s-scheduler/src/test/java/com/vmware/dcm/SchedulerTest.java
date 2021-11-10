@@ -173,7 +173,7 @@ public class SchedulerTest {
 
     public static DDlogDBConnectionPool setupDDlog() {
         DDlogDBConnectionPool dbConnectionPool = new DDlogDBConnectionPool();
-        dbConnectionPool.buildDDlog();
+        dbConnectionPool.buildDDlog(true);
         return dbConnectionPool;
     }
 

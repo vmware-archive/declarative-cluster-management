@@ -83,7 +83,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         DDlogAPI.loadDDlog();
     }
 
-    private void setupDDlog() {
+    private void setupDDlog(boolean seal) {
         try {
             List<String> tables = DDlogDBViews.getSchema();
             CalciteToH2Translator translator = new CalciteToH2Translator();
@@ -102,12 +102,15 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
             scopedViews.forEach(x -> tablesInCalcite.add(new CalciteSqlStatement(x)));
 
-            compileAndLoad(tablesInCalcite, createIndexStatements);
+            DDlogAPI ddlogAPI = null;
+            if (seal) {
+                compileAndLoad(tablesInCalcite, createIndexStatements);
 
-            final DDlogAPI dDlogAPI = new DDlogAPI(1, false);
+                ddlogAPI = new DDlogAPI(1, false);
+            }
 
             // Initialise the data provider
-            final DDlogJooqProvider provider = new DDlogJooqProvider(dDlogAPI,
+            final DDlogJooqProvider provider = new DDlogJooqProvider(ddlogAPI,
                     Stream.concat(
                             tablesInCalcite.stream().map(translator::toH2),
                             createIndexStatements.stream().map(H2SqlStatement::new)).collect(Collectors.toList()));
@@ -116,8 +119,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
             throw new RuntimeException("Could not set up DDlog backend: " + e.getMessage());
         }
     }
-
-    public void buildDDlog() {
-        setupDDlog();
+    public void buildDDlog(boolean seal) {
+        setupDDlog(seal);
     }
 }

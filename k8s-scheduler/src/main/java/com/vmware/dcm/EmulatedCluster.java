@@ -55,7 +55,7 @@ class EmulatedCluster {
             throws Exception {
         final IConnectionPool dbConnectionPool = new DDlogDBConnectionPool(); // new DBConnectionPool();
         if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog();
+            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog(false);
         }
 
         final ThreadFactory namedThreadFactory =
