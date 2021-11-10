@@ -81,6 +81,12 @@ def integrationTest = tasks.register("integrationTest2", Test) {
 
 def experiment = tasks.register("experiment", Test) {
     logging.captureStandardOutput LogLevel.INFO
+    systemProperty "schedulerName", System.getProperty("schedulerName")
+    systemProperty "cpuScaleDown", System.getProperty("cpuScaleDown")
+    systemProperty "memScaleDown", System.getProperty("memScaleDown")
+    systemProperty "timeScaleDown", System.getProperty("timeScaleDown")
+    systemProperty "startTimeCutOff", System.getProperty("startTimeCutOff")
+    systemProperty "affinityProportion", System.getProperty("affinityProportion")
     useJUnitPlatform {
         includeTags "experiment"
     }
