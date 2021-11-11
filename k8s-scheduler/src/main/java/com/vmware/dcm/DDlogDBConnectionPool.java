@@ -75,9 +75,14 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         if (ddlogFile != null) {
             // don't compile, instead use this ddlogFile
             // Copy ddlogFile contents to fileName
-            FileUtils.copyFile(new File(ddlogFile), new File(fileName));
+            try {
+                FileUtils.copyFile(new File(
+                        DDlogDBConnectionPool.class.getResource(ddlogFile).toURI()), new File(fileName));
+            } catch (Exception e) {
+                throw new DDlogException(e.getMessage());
+            }
         } else {
-            final Translator t = new Translator(null);
+            final Translator t = new Translator();
             CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
             ddl.forEach(x -> t.translateSqlStatement(ctopTranslator.toPresto(x)));
             createIndexStatements.forEach(t::translateCreateIndexStatement);
