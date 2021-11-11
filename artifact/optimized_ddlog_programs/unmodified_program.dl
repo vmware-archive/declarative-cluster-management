@@ -1,0 +1,1006 @@
+import fp
+import time
+import sql
+import sqlop
+
+typedef Tnode_info = Tnode_info{uid:string, name:string, unschedulable:bool, out_of_disk:bool, memory_pressure:bool, disk_pressure:bool, pid_pressure:bool, ready:bool, network_unavailable:bool}
+typedef Tpod_info = Tpod_info{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint}
+typedef Tnode_resources = Tnode_resources{uid:string, resource:string, allocatable:bigint}
+typedef Tpod_resource_demands = Tpod_resource_demands{uid:string, resource:string, demand:bigint}
+typedef Tmatch_expressions = Tmatch_expressions{expr_id:bigint, label_key:string, label_operator:string, label_values:Vec<string>}
+typedef Tpod_topology_spread_constraints = Tpod_topology_spread_constraints{uid:string, max_skew:signed<64>, when_unsatisfiable:string, topology_key:string, match_expressions:Vec<bigint>}
+typedef Tpod_ports_request = Tpod_ports_request{pod_uid:string, host_ip:string, host_port:signed<64>, host_protocol:string}
+typedef Tpod_node_selector_labels = Tpod_node_selector_labels{pod_uid:string, term:signed<64>, match_expressions:Vec<bigint>}
+typedef Tpod_affinity_match_expressions = Tpod_affinity_match_expressions{pod_uid:string, label_selector:signed<64>, match_expressions:Vec<bigint>, topology_key:string}
+typedef Tpod_labels = Tpod_labels{pod_uid:string, label_key:string, label_value:string}
+typedef Tnode_labels = Tnode_labels{node_name:string, label_key:string, label_value:string}
+typedef Tvolume_labels = Tvolume_labels{volume_name:string, pod_uid:string, label_key:string, label_value:string}
+typedef Tpod_by_service = Tpod_by_service{pod_uid:string, service_name:string}
+typedef Tservice_affinity_labels = Tservice_affinity_labels{label_key:string}
+typedef Tlabels_to_check_for_presence = Tlabels_to_check_for_presence{label_key:string, present:bool}
+typedef Tnode_taints = Tnode_taints{node_name:string, taint_key:string, taint_value:Option<string>, taint_effect:string}
+typedef Tpod_tolerations = Tpod_tolerations{pod_uid:string, tolerations_key:Option<string>, tolerations_value:Option<string>, tolerations_effect:Option<string>, tolerations_operator:Option<string>}
+typedef Tnode_images = Tnode_images{node_name:string, image_name:string, image_size:bigint}
+typedef Tpod_images = Tpod_images{pod_uid:string, image_name:string}
+typedef Tpdb_match_expressions = Tpdb_match_expressions{pdb_name:string, min_available:signed<64>, max_unavailable:signed<64>, allowed_disruptions:signed<64>}
+typedef TRtmp20 = TRtmp20{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>}
+typedef Ttmp = Ttmp{expr_id:bigint, label_key:string, label_operator:string, label_values:Vec<string>, node_name:string, label_key0:string, label_value:string}
+typedef TRtmp23 = TRtmp23{expr_id:bigint, node_name:string}
+typedef Tagg = Tagg{col:bool}
+typedef Ttmp24 = Ttmp24{expr_id:bigint, label_key:string, label_operator:string, label_values:Vec<string>, pod_uid:string, label_key0:string, label_value:string}
+typedef TRtmp25 = TRtmp25{expr_id:bigint, label_operator:string, pod_uid:string}
+typedef Ttmp27 = Ttmp27{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, host_ip:string, host_port:signed<64>, host_protocol:string}
+typedef Ttmp28 = Ttmp28{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, host_ip:string, host_port:signed<64>, host_protocol:string, pod_uid0:string, host_ip0:string, host_port0:signed<64>, host_protocol0:string}
+typedef Ttmp29 = Ttmp29{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, host_ip:string, host_port:signed<64>, host_protocol:string, pod_uid0:string, host_ip0:string, host_port0:signed<64>, host_protocol0:string, uid0:string, pod_name0:string, status0:string, node_name0:Option<string>, namespace0:string, owner_name0:string, creation_timestamp0:string, priority0:signed<64>, scheduler_name0:Option<string>, has_node_selector_labels0:bool, has_pod_affinity_requirements0:bool, has_pod_anti_affinity_requirements0:bool, has_node_port_requirements0:bool, has_topology_spread_constraints0:bool, equivalence_class0:bigint, qos_class0:string, resourceversion0:bigint, last_requeue0:bigint, controllable__node_name0:Option<string>}
+typedef TRtmp30 = TRtmp30{tmp:string, tmp7:Option<string>, gb:string, gb6:string, pod_uid:string}
+typedef TRtmp31 = TRtmp31{gb:string, array_agg:Vec<string>}
+typedef Tagg32 = Tagg32{array_agg:Vec<string>}
+typedef TRtmp34 = TRtmp34{gb6:string, array_agg8:Vec<Option<string>>}
+typedef Tagg35 = Tagg35{array_agg8:Vec<Option<string>>}
+typedef Ttmp36 = Ttmp36{tmp:string, tmp7:Option<string>, gb:string, gb6:string, pod_uid:string, array_agg:Vec<string>}
+typedef Ttmp37 = Ttmp37{tmp:string, tmp7:Option<string>, gb:string, gb6:string, pod_uid:string, array_agg:Vec<string>, array_agg8:Vec<Option<string>>}
+typedef TRtmp38 = TRtmp38{pod_uid:string, pod_matches:Vec<string>, node_matches:Vec<Option<string>>}
+typedef Ttmp39 = Ttmp39{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, host_ip:string, host_port:signed<64>, host_protocol:string, pod_uid0:string, host_ip0:string, host_port0:signed<64>, host_protocol0:string, uid0:string, pod_name0:string, status0:string, node_name0:Option<string>, namespace0:string, owner_name0:string, creation_timestamp0:string, priority0:signed<64>, scheduler_name0:Option<string>, has_node_selector_labels0:bool, has_pod_affinity_requirements0:bool, has_pod_anti_affinity_requirements0:bool, has_node_port_requirements0:bool, has_topology_spread_constraints0:bool, equivalence_class0:bigint, qos_class0:string, resourceversion0:bigint, last_requeue0:bigint}
+typedef Ttmp49 = Ttmp49{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, term:signed<64>, match_expressions:Vec<bigint>}
+typedef Ttmp50 = Ttmp50{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, term:signed<64>, match_expressions:Vec<bigint>, expr_id:bigint, node_name0:string}
+typedef TRtmp52 = TRtmp52{tmp:string, gb7:string, pod_uid:string}
+typedef TRtmp55 = TRtmp55{gb7:string, array_agg:Vec<string>}
+typedef Ttmp57 = Ttmp57{tmp:string, gb7:string, pod_uid:string, array_agg:Vec<string>}
+typedef TRtmp58 = TRtmp58{pod_uid:string, node_matches:Vec<string>}
+typedef Ttmp59 = Ttmp59{uid:string, name:string, unschedulable:bool, out_of_disk:bool, memory_pressure:bool, disk_pressure:bool, pid_pressure:bool, ready:bool, network_unavailable:bool, uid0:string, resource:string, allocatable:bigint}
+typedef Ttmp60 = Ttmp60{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, uid0:string, resource:string, demand:bigint}
+typedef TRtmp61 = TRtmp61{node_name:Option<string>, resource:string, total_demand:bigint}
+typedef Tagg62 = Tagg62{total_demand:bigint}
+typedef Ttmp64 = Ttmp64{uid:string, name:string, unschedulable:bool, out_of_disk:bool, memory_pressure:bool, disk_pressure:bool, pid_pressure:bool, ready:bool, network_unavailable:bool, uid0:string, resource:string, allocatable:bigint, node_name:Option<string>, resource0:string, total_demand:bigint}
+typedef TRtmp65 = TRtmp65{name:string, resource:string, capacity:bigint}
+typedef Tagg66 = Tagg66{capacity:bigint}
+typedef Ttmp67 = Ttmp67{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, tolerations_key:Option<string>, tolerations_value:Option<string>, tolerations_effect:Option<string>, tolerations_operator:Option<string>}
+typedef TRtmp69 = TRtmp69{gb:string, node_name:string, taint_key:string, taint_value:Option<string>, taint_effect:string}
+typedef TRtmp71 = TRtmp71{gb:string, count:signed<64>}
+typedef Tagg72 = Tagg72{count:signed<64>}
+typedef Ttmp73 = Ttmp73{gb:string, node_name:string, taint_key:string, taint_value:Option<string>, taint_effect:string, count:signed<64>}
+typedef TRtmp74 = TRtmp74{node_name:string, taint_key:string, taint_value:Option<string>, taint_effect:string, num_taints:signed<64>}
+typedef Ttmp76 = Ttmp76{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, tolerations_key:Option<string>, tolerations_value:Option<string>, tolerations_effect:Option<string>, tolerations_operator:Option<string>, node_name0:string, taint_key:string, taint_value:Option<string>, taint_effect:string, num_taints:signed<64>}
+typedef TRtmp77 = TRtmp77{pod_uid:string, node_name:string}
+typedef TRtmp79 = TRtmp79{node_name:string}
+typedef TRtmp80 = TRtmp80{name:string}
+typedef Ttmp81 = Ttmp81{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, label_selector:signed<64>, match_expressions:Vec<bigint>, topology_key:string}
+typedef Ttmp82 = Ttmp82{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, label_selector:signed<64>, match_expressions:Vec<bigint>, topology_key:string, expr_id:bigint, label_operator:string, pod_uid0:string}
+typedef Ttmp83 = Ttmp83{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, label_selector:signed<64>, match_expressions:Vec<bigint>, topology_key:string, expr_id:bigint, label_operator:string, pod_uid0:string, uid0:string, pod_name0:string, status0:string, node_name0:Option<string>, namespace0:string, owner_name0:string, creation_timestamp0:string, priority0:signed<64>, scheduler_name0:Option<string>, has_node_selector_labels0:bool, has_pod_affinity_requirements0:bool, has_pod_anti_affinity_requirements0:bool, has_node_port_requirements0:bool, has_topology_spread_constraints0:bool, equivalence_class0:bigint, qos_class0:string, resourceversion0:bigint, last_requeue0:bigint, controllable__node_name0:Option<string>}
+typedef TRtmp85 = TRtmp85{tmp:string, tmp13:Option<string>, gb11:string, gb12:string, pod_uid:string}
+typedef TRtmp88 = TRtmp88{gb11:string, array_agg:Vec<string>}
+typedef TRtmp91 = TRtmp91{gb12:string, array_agg14:Vec<Option<string>>}
+typedef Tagg92 = Tagg92{array_agg14:Vec<Option<string>>}
+typedef Ttmp93 = Ttmp93{tmp:string, tmp13:Option<string>, gb11:string, gb12:string, pod_uid:string, array_agg:Vec<string>}
+typedef Ttmp94 = Ttmp94{tmp:string, tmp13:Option<string>, gb11:string, gb12:string, pod_uid:string, array_agg:Vec<string>, array_agg14:Vec<Option<string>>}
+typedef Ttmp96 = Ttmp96{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, controllable__node_name:Option<string>, pod_uid:string, label_selector:signed<64>, match_expressions:Vec<bigint>, topology_key:string, expr_id:bigint, label_operator:string, pod_uid0:string, uid0:string, pod_name0:string, status0:string, node_name0:Option<string>, namespace0:string, owner_name0:string, creation_timestamp0:string, priority0:signed<64>, scheduler_name0:Option<string>, has_node_selector_labels0:bool, has_pod_affinity_requirements0:bool, has_pod_anti_affinity_requirements0:bool, has_node_port_requirements0:bool, has_topology_spread_constraints0:bool, equivalence_class0:bigint, qos_class0:string, resourceversion0:bigint, last_requeue0:bigint}
+typedef TRtmp127 = TRtmp127{col0:signed<64>}
+typedef TRtmp129 = TRtmp129{node_name:Option<string>, m:signed<64>}
+typedef Tagg130 = Tagg130{m:signed<64>}
+typedef Ttmp133 = Ttmp133{uid:string, pod_name:string, status:string, node_name:Option<string>, namespace:string, owner_name:string, creation_timestamp:string, priority:signed<64>, scheduler_name:Option<string>, has_node_selector_labels:bool, has_pod_affinity_requirements:bool, has_pod_anti_affinity_requirements:bool, has_node_port_requirements:bool, has_topology_spread_constraints:bool, equivalence_class:bigint, qos_class:string, resourceversion:bigint, last_requeue:bigint, node_name0:Option<string>, m:signed<64>}
+function agg(g: Group<(string, bigint, string, string, string, Vec<string>, string), (Tmatch_expressions, Tnode_labels)>):Tagg {
+(var gb, var gb2, var gb3, var gb4, var gb5, var gb6, var gb7) = group_key(g);
+(for ((i, _) in g) {
+var v = i.0;
+(var v0 = i.1)}
+);
+(Tagg{.col = if ((gb3 == "NotIn")) {
+((not vec_contains(vec_push_imm(vec_empty(), gb), gb5)) and sql_array_contains(gb6, gb7))} else {
+if ((gb3 == "DoesNotExist")) {
+(not vec_contains(vec_push_imm(vec_empty(), gb), gb5))} else {
+(64'sd1 == 64'sd1)}}})
+}
+
+function agg26(g: Group<(bigint, string, string, string, string, Vec<string>, string), (Tmatch_expressions, Tpod_labels)>):Tagg {
+(var gb, var gb2, var gb3, var gb4, var gb5, var gb6, var gb7) = group_key(g);
+(for ((i, _) in g) {
+var v = i.0;
+(var v0 = i.1)}
+);
+(Tagg{.col = if ((gb2 == "NotIn")) {
+((not vec_contains(vec_push_imm(vec_empty(), gb4), gb5)) and sql_array_contains(gb6, gb7))} else {
+if ((gb2 == "DoesNotExist")) {
+(not vec_contains(vec_push_imm(vec_empty(), gb4), gb5))} else {
+(64'sd1 == 64'sd1)}}})
+}
+
+function agg32(g: Group<string, TRtmp30>):Tagg32 {
+(var gb19) = group_key(g);
+(var array_agg20 = vec_empty(): Vec<string>);
+(for ((i, _) in g) {
+var v18 = i;
+(var incr = v18.tmp);
+(vec_push(array_agg20, incr))}
+);
+(Tagg32{.array_agg = array_agg20})
+}
+
+function agg35(g25: Group<string, TRtmp30>):Tagg35 {
+(var gb24) = group_key(g25);
+(var array_agg28 = vec_empty(): Vec<Option<string>>);
+(for ((i26, _) in g25) {
+var v23 = i26;
+(var incr27 = v23.tmp7);
+(vec_push(array_agg28, incr27))}
+);
+(Tagg35{.array_agg8 = array_agg28})
+}
+
+function agg44(g: Group<string, TRtmp30>):Tagg32 {
+(var gb19) = group_key(g);
+(var array_agg20 = vec_empty(): Vec<string>);
+(for ((i, _) in g) {
+var v18 = i;
+(var incr = v18.tmp);
+(vec_push(array_agg20, incr))}
+);
+(Tagg32{.array_agg = array_agg20})
+}
+
+function agg47(g25: Group<string, TRtmp30>):Tagg35 {
+(var gb24) = group_key(g25);
+(var array_agg28 = vec_empty(): Vec<Option<string>>);
+(for ((i26, _) in g25) {
+var v23 = i26;
+(var incr27 = v23.tmp7);
+(vec_push(array_agg28, incr27))}
+);
+(Tagg35{.array_agg8 = array_agg28})
+}
+
+function agg53(g: Group<(string, Vec<bigint>, signed<64>, string), (TRtmp20, Tpod_node_selector_labels, TRtmp23)>):Tagg {
+(var gb13, var gb14, var gb15, var gb16) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v8 = i.0;
+(var v9 = i.1);
+(var v11 = i.2);
+(var incr = v11.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb14) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg56(g21: Group<string, TRtmp52>):Tagg32 {
+(var gb20) = group_key(g21);
+(var array_agg24 = vec_empty(): Vec<string>);
+(for ((i22, _) in g21) {
+var v19 = i22;
+(var incr23 = v19.tmp);
+(vec_push(array_agg24, incr23))}
+);
+(Tagg32{.array_agg = array_agg24})
+}
+
+function agg62(g: Group<(Option<string>, string), (Tpod_info, Tpod_resource_demands)>):Tagg62 {
+(var gb, var gb5) = group_key(g);
+(var sum = 0: bigint);
+(for ((i, _) in g) {
+var v2 = i.0;
+(var v3 = i.1);
+(var incr = v3.demand);
+(sum = agg_sum_int_R(sum, incr))}
+);
+(Tagg62{.total_demand = sum})
+}
+
+function agg66(g12: Group<(string, string, bigint), (Tnode_info, Tnode_resources, TRtmp61)>):Tagg66 {
+(var gb9, var gb10, var gb11) = group_key(g12);
+(var sum15 = 0: bigint);
+(for ((i13, _) in g12) {
+var v = i13.0;
+(var v0 = i13.1);
+(var v7 = i13.2);
+(var incr14 = v7.total_demand);
+(sum15 = agg_sum_int_R(sum15, incr14))}
+);
+(Tagg66{.capacity = (gb11 - sum15 as bigint)})
+}
+
+function agg72(g: Group<string, TRtmp69>):Tagg72 {
+(var gb7) = group_key(g);
+(var count8 = 64'sd0: signed<64>);
+(for ((i, _) in g) {
+var v6 = i;
+(count8 = agg_count_R(count8, 64'sd1))}
+);
+(Tagg72{.count = count8})
+}
+
+function agg78(g20: Group<(string, string, signed<64>), (TRtmp20, Tpod_tolerations, TRtmp74)>):Tagg {
+(var gb17, var gb18, var gb19) = group_key(g20);
+(var count22 = 64'sd0: signed<64>);
+(for ((i21, _) in g20) {
+var v = i21.0;
+(var v0 = i21.1);
+(var v15 = i21.2);
+(count22 = agg_count_R(count22, 64'sd1))}
+);
+(Tagg{.col = (count22 == gb19)})
+}
+
+function agg86(g: Group<(string, string, signed<64>, string, Vec<bigint>, Option<string>), (TRtmp20, Tpod_affinity_match_expressions, TRtmp25, TRtmp20)>):Tagg {
+(var gb22, var gb23, var gb24, var gb25, var gb26, var gb27) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v15 = i.0;
+(var v16 = i.1);
+(var v18 = i.2);
+(var v20 = i.3);
+(var incr = v18.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb26) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg89(g32: Group<string, TRtmp85>):Tagg32 {
+(var gb31) = group_key(g32);
+(var array_agg35 = vec_empty(): Vec<string>);
+(for ((i33, _) in g32) {
+var v30 = i33;
+(var incr34 = v30.tmp);
+(vec_push(array_agg35, incr34))}
+);
+(Tagg32{.array_agg = array_agg35})
+}
+
+function agg92(g42: Group<string, TRtmp85>):Tagg92 {
+(var gb41) = group_key(g42);
+(var array_agg45 = vec_empty(): Vec<Option<string>>);
+(for ((i43, _) in g42) {
+var v40 = i43;
+(var incr44 = v40.tmp13);
+(vec_push(array_agg45, incr44))}
+);
+(Tagg92{.array_agg14 = array_agg45})
+}
+
+function agg99(g: Group<(string, string, signed<64>, string, Vec<bigint>, Option<string>), (TRtmp20, Tpod_affinity_match_expressions, TRtmp25, Tpod_info)>):Tagg {
+(var gb22, var gb23, var gb24, var gb25, var gb26, var gb27) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v15 = i.0;
+(var v16 = i.1);
+(var v18 = i.2);
+(var v20 = i.3);
+(var incr = v18.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb26) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg102(g32: Group<string, TRtmp85>):Tagg32 {
+(var gb31) = group_key(g32);
+(var array_agg35 = vec_empty(): Vec<string>);
+(for ((i33, _) in g32) {
+var v30 = i33;
+(var incr34 = v30.tmp);
+(vec_push(array_agg35, incr34))}
+);
+(Tagg32{.array_agg = array_agg35})
+}
+
+function agg105(g42: Group<string, TRtmp85>):Tagg92 {
+(var gb41) = group_key(g42);
+(var array_agg45 = vec_empty(): Vec<Option<string>>);
+(for ((i43, _) in g42) {
+var v40 = i43;
+(var incr44 = v40.tmp13);
+(vec_push(array_agg45, incr44))}
+);
+(Tagg92{.array_agg14 = array_agg45})
+}
+
+function agg109(g: Group<(string, string, signed<64>, string, Vec<bigint>, Option<string>), (TRtmp20, Tpod_affinity_match_expressions, TRtmp25, TRtmp20)>):Tagg {
+(var gb22, var gb23, var gb24, var gb25, var gb26, var gb27) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v15 = i.0;
+(var v16 = i.1);
+(var v18 = i.2);
+(var v20 = i.3);
+(var incr = v18.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb26) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg112(g32: Group<string, TRtmp85>):Tagg32 {
+(var gb31) = group_key(g32);
+(var array_agg35 = vec_empty(): Vec<string>);
+(for ((i33, _) in g32) {
+var v30 = i33;
+(var incr34 = v30.tmp);
+(vec_push(array_agg35, incr34))}
+);
+(Tagg32{.array_agg = array_agg35})
+}
+
+function agg115(g42: Group<string, TRtmp85>):Tagg92 {
+(var gb41) = group_key(g42);
+(var array_agg45 = vec_empty(): Vec<Option<string>>);
+(for ((i43, _) in g42) {
+var v40 = i43;
+(var incr44 = v40.tmp13);
+(vec_push(array_agg45, incr44))}
+);
+(Tagg92{.array_agg14 = array_agg45})
+}
+
+function agg119(g: Group<(string, string, signed<64>, string, Vec<bigint>, Option<string>), (TRtmp20, Tpod_affinity_match_expressions, TRtmp25, Tpod_info)>):Tagg {
+(var gb22, var gb23, var gb24, var gb25, var gb26, var gb27) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v15 = i.0;
+(var v16 = i.1);
+(var v18 = i.2);
+(var v20 = i.3);
+(var incr = v18.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb26) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg122(g32: Group<string, TRtmp85>):Tagg32 {
+(var gb31) = group_key(g32);
+(var array_agg35 = vec_empty(): Vec<string>);
+(for ((i33, _) in g32) {
+var v30 = i33;
+(var incr34 = v30.tmp);
+(vec_push(array_agg35, incr34))}
+);
+(Tagg32{.array_agg = array_agg35})
+}
+
+function agg125(g42: Group<string, TRtmp85>):Tagg92 {
+(var gb41) = group_key(g42);
+(var array_agg45 = vec_empty(): Vec<Option<string>>);
+(for ((i43, _) in g42) {
+var v40 = i43;
+(var incr44 = v40.tmp13);
+(vec_push(array_agg45, incr44))}
+);
+(Tagg92{.array_agg14 = array_agg45})
+}
+
+function agg128(g: Group<(), TRtmp20>):TRtmp127 {
+var count = 64'sd0: signed<64>;
+(for ((i, _) in g) {
+var v = i;
+(count = agg_count_R(count, 64'sd1))}
+);
+(TRtmp127{.col0 = count})
+}
+
+function agg130(g: Group<Option<string>, TRtmp20>):Tagg130 {
+(var gb) = group_key(g);
+(var max = (true, 64'sd0): (bool, signed<64>));
+(for ((i, _) in g) {
+var v = i;
+(var incr = v.priority);
+(max = agg_max_R(max, incr))}
+);
+(Tagg130{.m = max.1})
+}
+
+function agg138(g: Group<(string, bigint, string, string, string, Vec<string>, string), (Tmatch_expressions, Tnode_labels)>):Tagg {
+(var gb, var gb2, var gb3, var gb4, var gb5, var gb6, var gb7) = group_key(g);
+(for ((i, _) in g) {
+var v = i.0;
+(var v0 = i.1)}
+);
+(Tagg{.col = if ((gb3 == "NotIn")) {
+((not vec_contains(vec_push_imm(vec_empty(), gb), gb5)) and sql_array_contains(gb6, gb7))} else {
+if ((gb3 == "DoesNotExist")) {
+(not vec_contains(vec_push_imm(vec_empty(), gb), gb5))} else {
+(64'sd1 == 64'sd1)}}})
+}
+
+function agg140(g: Group<(bigint, string, string, string, string, Vec<string>, string), (Tmatch_expressions, Tpod_labels)>):Tagg {
+(var gb, var gb2, var gb3, var gb4, var gb5, var gb6, var gb7) = group_key(g);
+(for ((i, _) in g) {
+var v = i.0;
+(var v0 = i.1)}
+);
+(Tagg{.col = if ((gb2 == "NotIn")) {
+((not vec_contains(vec_push_imm(vec_empty(), gb4), gb5)) and sql_array_contains(gb6, gb7))} else {
+if ((gb2 == "DoesNotExist")) {
+(not vec_contains(vec_push_imm(vec_empty(), gb4), gb5))} else {
+(64'sd1 == 64'sd1)}}})
+}
+
+function agg145(g: Group<string, TRtmp30>):Tagg32 {
+(var gb19) = group_key(g);
+(var array_agg20 = vec_empty(): Vec<string>);
+(for ((i, _) in g) {
+var v18 = i;
+(var incr = v18.tmp);
+(vec_push(array_agg20, incr))}
+);
+(Tagg32{.array_agg = array_agg20})
+}
+
+function agg148(g25: Group<string, TRtmp30>):Tagg35 {
+(var gb24) = group_key(g25);
+(var array_agg28 = vec_empty(): Vec<Option<string>>);
+(for ((i26, _) in g25) {
+var v23 = i26;
+(var incr27 = v23.tmp7);
+(vec_push(array_agg28, incr27))}
+);
+(Tagg35{.array_agg8 = array_agg28})
+}
+
+function agg154(g: Group<string, TRtmp30>):Tagg32 {
+(var gb19) = group_key(g);
+(var array_agg20 = vec_empty(): Vec<string>);
+(for ((i, _) in g) {
+var v18 = i;
+(var incr = v18.tmp);
+(vec_push(array_agg20, incr))}
+);
+(Tagg32{.array_agg = array_agg20})
+}
+
+function agg157(g25: Group<string, TRtmp30>):Tagg35 {
+(var gb24) = group_key(g25);
+(var array_agg28 = vec_empty(): Vec<Option<string>>);
+(for ((i26, _) in g25) {
+var v23 = i26;
+(var incr27 = v23.tmp7);
+(vec_push(array_agg28, incr27))}
+);
+(Tagg35{.array_agg8 = array_agg28})
+}
+
+function agg161(g: Group<(string, Vec<bigint>, signed<64>, string), (TRtmp20, Tpod_node_selector_labels, TRtmp23)>):Tagg {
+(var gb13, var gb14, var gb15, var gb16) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v8 = i.0;
+(var v9 = i.1);
+(var v11 = i.2);
+(var incr = v11.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb14) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg164(g21: Group<string, TRtmp52>):Tagg32 {
+(var gb20) = group_key(g21);
+(var array_agg24 = vec_empty(): Vec<string>);
+(for ((i22, _) in g21) {
+var v19 = i22;
+(var incr23 = v19.tmp);
+(vec_push(array_agg24, incr23))}
+);
+(Tagg32{.array_agg = array_agg24})
+}
+
+function agg167(g: Group<(Option<string>, string), (Tpod_info, Tpod_resource_demands)>):Tagg62 {
+(var gb, var gb5) = group_key(g);
+(var sum = 0: bigint);
+(for ((i, _) in g) {
+var v2 = i.0;
+(var v3 = i.1);
+(var incr = v3.demand);
+(sum = agg_sum_int_R(sum, incr))}
+);
+(Tagg62{.total_demand = sum})
+}
+
+function agg170(g12: Group<(string, string, bigint), (Tnode_info, Tnode_resources, TRtmp61)>):Tagg66 {
+(var gb9, var gb10, var gb11) = group_key(g12);
+(var sum15 = 0: bigint);
+(for ((i13, _) in g12) {
+var v = i13.0;
+(var v0 = i13.1);
+(var v7 = i13.2);
+(var incr14 = v7.total_demand);
+(sum15 = agg_sum_int_R(sum15, incr14))}
+);
+(Tagg66{.capacity = (gb11 - sum15 as bigint)})
+}
+
+function agg175(g: Group<string, TRtmp69>):Tagg72 {
+(var gb7) = group_key(g);
+(var count8 = 64'sd0: signed<64>);
+(for ((i, _) in g) {
+var v6 = i;
+(count8 = agg_count_R(count8, 64'sd1))}
+);
+(Tagg72{.count = count8})
+}
+
+function agg179(g20: Group<(string, string, signed<64>), (TRtmp20, Tpod_tolerations, TRtmp74)>):Tagg {
+(var gb17, var gb18, var gb19) = group_key(g20);
+(var count22 = 64'sd0: signed<64>);
+(for ((i21, _) in g20) {
+var v = i21.0;
+(var v0 = i21.1);
+(var v15 = i21.2);
+(count22 = agg_count_R(count22, 64'sd1))}
+);
+(Tagg{.col = (count22 == gb19)})
+}
+
+function agg184(g: Group<(string, string, signed<64>, string, Vec<bigint>, Option<string>), (TRtmp20, Tpod_affinity_match_expressions, TRtmp25, TRtmp20)>):Tagg {
+(var gb22, var gb23, var gb24, var gb25, var gb26, var gb27) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v15 = i.0;
+(var v16 = i.1);
+(var v18 = i.2);
+(var v20 = i.3);
+(var incr = v18.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb26) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg187(g32: Group<string, TRtmp85>):Tagg32 {
+(var gb31) = group_key(g32);
+(var array_agg35 = vec_empty(): Vec<string>);
+(for ((i33, _) in g32) {
+var v30 = i33;
+(var incr34 = v30.tmp);
+(vec_push(array_agg35, incr34))}
+);
+(Tagg32{.array_agg = array_agg35})
+}
+
+function agg190(g42: Group<string, TRtmp85>):Tagg92 {
+(var gb41) = group_key(g42);
+(var array_agg45 = vec_empty(): Vec<Option<string>>);
+(for ((i43, _) in g42) {
+var v40 = i43;
+(var incr44 = v40.tmp13);
+(vec_push(array_agg45, incr44))}
+);
+(Tagg92{.array_agg14 = array_agg45})
+}
+
+function agg194(g: Group<(string, string, signed<64>, string, Vec<bigint>, Option<string>), (TRtmp20, Tpod_affinity_match_expressions, TRtmp25, TRtmp20)>):Tagg {
+(var gb22, var gb23, var gb24, var gb25, var gb26, var gb27) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v15 = i.0;
+(var v16 = i.1);
+(var v18 = i.2);
+(var v20 = i.3);
+(var incr = v18.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb26) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg197(g32: Group<string, TRtmp85>):Tagg32 {
+(var gb31) = group_key(g32);
+(var array_agg35 = vec_empty(): Vec<string>);
+(for ((i33, _) in g32) {
+var v30 = i33;
+(var incr34 = v30.tmp);
+(vec_push(array_agg35, incr34))}
+);
+(Tagg32{.array_agg = array_agg35})
+}
+
+function agg200(g42: Group<string, TRtmp85>):Tagg92 {
+(var gb41) = group_key(g42);
+(var array_agg45 = vec_empty(): Vec<Option<string>>);
+(for ((i43, _) in g42) {
+var v40 = i43;
+(var incr44 = v40.tmp13);
+(vec_push(array_agg45, incr44))}
+);
+(Tagg92{.array_agg14 = array_agg45})
+}
+
+function agg204(g: Group<(string, string, signed<64>, string, Vec<bigint>, Option<string>), (TRtmp20, Tpod_affinity_match_expressions, TRtmp25, TRtmp20)>):Tagg {
+(var gb22, var gb23, var gb24, var gb25, var gb26, var gb27) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v15 = i.0;
+(var v16 = i.1);
+(var v18 = i.2);
+(var v20 = i.3);
+(var incr = v18.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb26) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg207(g32: Group<string, TRtmp85>):Tagg32 {
+(var gb31) = group_key(g32);
+(var array_agg35 = vec_empty(): Vec<string>);
+(for ((i33, _) in g32) {
+var v30 = i33;
+(var incr34 = v30.tmp);
+(vec_push(array_agg35, incr34))}
+);
+(Tagg32{.array_agg = array_agg35})
+}
+
+function agg210(g42: Group<string, TRtmp85>):Tagg92 {
+(var gb41) = group_key(g42);
+(var array_agg45 = vec_empty(): Vec<Option<string>>);
+(for ((i43, _) in g42) {
+var v40 = i43;
+(var incr44 = v40.tmp13);
+(vec_push(array_agg45, incr44))}
+);
+(Tagg92{.array_agg14 = array_agg45})
+}
+
+function agg214(g: Group<(string, string, signed<64>, string, Vec<bigint>, Option<string>), (TRtmp20, Tpod_affinity_match_expressions, TRtmp25, TRtmp20)>):Tagg {
+(var gb22, var gb23, var gb24, var gb25, var gb26, var gb27) = group_key(g);
+(var count_distinct = set_empty(): Set<bigint>);
+(for ((i, _) in g) {
+var v15 = i.0;
+(var v16 = i.1);
+(var v18 = i.2);
+(var v20 = i.3);
+(var incr = v18.expr_id);
+(set_insert(count_distinct, incr))}
+);
+(Tagg{.col = (sql_array_length(gb26) == set_size(count_distinct) as signed<64>)})
+}
+
+function agg217(g32: Group<string, TRtmp85>):Tagg32 {
+(var gb31) = group_key(g32);
+(var array_agg35 = vec_empty(): Vec<string>);
+(for ((i33, _) in g32) {
+var v30 = i33;
+(var incr34 = v30.tmp);
+(vec_push(array_agg35, incr34))}
+);
+(Tagg32{.array_agg = array_agg35})
+}
+
+function agg220(g42: Group<string, TRtmp85>):Tagg92 {
+(var gb41) = group_key(g42);
+(var array_agg45 = vec_empty(): Vec<Option<string>>);
+(for ((i43, _) in g42) {
+var v40 = i43;
+(var incr44 = v40.tmp13);
+(vec_push(array_agg45, incr44))}
+);
+(Tagg92{.array_agg14 = array_agg45})
+}
+
+function agg223(g: Group<(), TRtmp20>):TRtmp127 {
+var count = 64'sd0: signed<64>;
+(for ((i, _) in g) {
+var v = i;
+(count = agg_count_R(count, 64'sd1))}
+);
+(TRtmp127{.col0 = count})
+}
+
+input relation Rnode_info[Tnode_info] primary key (row) (row.uid)
+input relation Rpod_info[Tpod_info] primary key (row) (row.uid)
+input relation Rnode_resources[Tnode_resources]
+input relation Rpod_resource_demands[Tpod_resource_demands]
+input relation Rmatch_expressions[Tmatch_expressions]
+input relation Rpod_topology_spread_constraints[Tpod_topology_spread_constraints]
+input relation Rpod_ports_request[Tpod_ports_request] primary key (row) (row.pod_uid)
+input relation Rpod_node_selector_labels[Tpod_node_selector_labels]
+input relation Rpod_affinity_match_expressions[Tpod_affinity_match_expressions]
+input relation Rpod_anti_affinity_match_expressions[Tpod_affinity_match_expressions] primary key (row) (row.pod_uid)
+input relation Rpod_labels[Tpod_labels] primary key (row) (row.pod_uid)
+input relation Rnode_labels[Tnode_labels]
+input relation Rvolume_labels[Tvolume_labels]
+input relation Rpod_by_service[Tpod_by_service]
+input relation Rservice_affinity_labels[Tservice_affinity_labels]
+input relation Rlabels_to_check_for_presence[Tlabels_to_check_for_presence]
+input relation Rnode_taints[Tnode_taints]
+input relation Rpod_tolerations[Tpod_tolerations] primary key (row) (row.pod_uid)
+input relation Rnode_images[Tnode_images]
+input relation Rpod_images[Tpod_images] primary key (row) (row.pod_uid)
+input relation Rpdb_match_expressions[Tpdb_match_expressions]
+output relation Rnode_info__view[Tnode_info]
+output relation Rpod_info__view[Tpod_info]
+output relation Rnode_resources__view[Tnode_resources]
+output relation Rpod_resource_demands__view[Tpod_resource_demands]
+output relation Rmatch_expressions__view[Tmatch_expressions]
+output relation Rpod_topology_spread_constraints__view[Tpod_topology_spread_constraints]
+output relation Rpod_ports_request__view[Tpod_ports_request]
+output relation Rpod_node_selector_labels__view[Tpod_node_selector_labels]
+output relation Rpod_affinity_match_expressions__view[Tpod_affinity_match_expressions]
+output relation Rpod_anti_affinity_match_expressions__view[Tpod_affinity_match_expressions]
+output relation Rpod_labels__view[Tpod_labels]
+output relation Rnode_labels__view[Tnode_labels]
+output relation Rvolume_labels__view[Tvolume_labels]
+output relation Rpod_by_service__view[Tpod_by_service]
+output relation Rservice_affinity_labels__view[Tservice_affinity_labels]
+output relation Rlabels_to_check_for_presence__view[Tlabels_to_check_for_presence]
+output relation Rnode_taints__view[Tnode_taints]
+output relation Rpod_tolerations__view[Tpod_tolerations]
+output relation Rnode_images__view[Tnode_images]
+output relation Rpod_images__view[Tpod_images]
+output relation Rpdb_match_expressions__view[Tpdb_match_expressions]
+relation Rtmp20[TRtmp20]
+output relation Rpods_to_assign_no_limit[TRtmp20]
+output relation Rpods_to_assign[TRtmp20]
+output relation Rassigned_pods[Tpod_info]
+relation Rtmp23[TRtmp23]
+output relation Rmatching_nodes[TRtmp23]
+relation Rtmp25[TRtmp25]
+output relation Rmatching_pods[TRtmp25]
+relation Rtmp30[TRtmp30]
+relation Roverinput[TRtmp30]
+relation Rtmp31[TRtmp31]
+relation Rover[TRtmp31]
+relation Rtmp34[TRtmp34]
+relation Rover33[TRtmp34]
+relation Rtmp38[TRtmp38]
+output relation Rpods_with_port_requests_pending[TRtmp38]
+relation Rtmp41[TRtmp30]
+relation Roverinput40[TRtmp30]
+relation Rtmp43[TRtmp31]
+relation Rover42[TRtmp31]
+relation Rtmp46[TRtmp34]
+relation Rover45[TRtmp34]
+relation Rtmp48[TRtmp38]
+output relation Rpods_with_port_requests_scheduled[TRtmp38]
+relation Rtmp52[TRtmp52]
+relation Roverinput51[TRtmp52]
+relation Rtmp55[TRtmp55]
+relation Rover54[TRtmp55]
+relation Rtmp58[TRtmp58]
+output relation Rpod_node_selector_matches[TRtmp58]
+relation Rtmp61[TRtmp61]
+relation Rtmp63[TRtmp61]
+relation Rtmp65[TRtmp65]
+output relation Rspare_capacity_per_node[TRtmp65]
+relation Rtmp69[TRtmp69]
+relation Roverinput68[TRtmp69]
+relation Rtmp71[TRtmp71]
+relation Rover70[TRtmp71]
+relation Rtmp74[TRtmp74]
+relation Rtmp75[TRtmp74]
+relation Rtmp77[TRtmp77]
+output relation Rpods_that_tolerate_node_taints[TRtmp77]
+relation Rtmp79[TRtmp79]
+output relation Rnodes_that_have_tolerations[TRtmp79]
+relation Rtmp80[TRtmp80]
+output relation Rallowed_nodes[TRtmp80]
+relation Rtmp85[TRtmp85]
+relation Roverinput84[TRtmp85]
+relation Rtmp88[TRtmp88]
+relation Rover87[TRtmp88]
+relation Rtmp91[TRtmp91]
+relation Rover90[TRtmp91]
+relation Rtmp95[TRtmp38]
+output relation Rinter_pod_affinity_matches_pending[TRtmp38]
+relation Rtmp98[TRtmp85]
+relation Roverinput97[TRtmp85]
+relation Rtmp101[TRtmp88]
+relation Rover100[TRtmp88]
+relation Rtmp104[TRtmp91]
+relation Rover103[TRtmp91]
+relation Rtmp106[TRtmp38]
+output relation Rinter_pod_affinity_matches_scheduled[TRtmp38]
+relation Rtmp108[TRtmp85]
+relation Roverinput107[TRtmp85]
+relation Rtmp111[TRtmp88]
+relation Rover110[TRtmp88]
+relation Rtmp114[TRtmp91]
+relation Rover113[TRtmp91]
+relation Rtmp116[TRtmp38]
+output relation Rinter_pod_anti_affinity_matches_pending[TRtmp38]
+relation Rtmp118[TRtmp85]
+relation Roverinput117[TRtmp85]
+relation Rtmp121[TRtmp88]
+relation Rover120[TRtmp88]
+relation Rtmp124[TRtmp91]
+relation Rover123[TRtmp91]
+relation Rtmp126[TRtmp38]
+output relation Rinter_pod_anti_affinity_matches_scheduled[TRtmp38]
+relation Rtmp127[TRtmp127]
+output relation Rpods_to_assign_no_limit_count[TRtmp127]
+relation Rtmp129[TRtmp129]
+output relation Rhelper_view_preempt[TRtmp129]
+relation Rtmp132[TRtmp20]
+relation Rtmp134[TRtmp20]
+relation Rtmp135[TRtmp20]
+relation Runion[TRtmp20]
+output relation Rpods_to_assign_preempt[TRtmp20]
+relation Rtmp136[TRtmp20]
+output relation Rassigned_pods_preempt[TRtmp20]
+relation Rtmp137[TRtmp23]
+output relation Rmatching_nodes_preempt[TRtmp23]
+relation Rtmp139[TRtmp25]
+output relation Rmatching_pods_preempt[TRtmp25]
+relation Rtmp142[TRtmp30]
+relation Roverinput141[TRtmp30]
+relation Rtmp144[TRtmp31]
+relation Rover143[TRtmp31]
+relation Rtmp147[TRtmp34]
+relation Rover146[TRtmp34]
+relation Rtmp149[TRtmp38]
+output relation Rpods_with_port_requests_pending_preempt[TRtmp38]
+relation Rtmp151[TRtmp30]
+relation Roverinput150[TRtmp30]
+relation Rtmp153[TRtmp31]
+relation Rover152[TRtmp31]
+relation Rtmp156[TRtmp34]
+relation Rover155[TRtmp34]
+relation Rtmp158[TRtmp38]
+output relation Rpods_with_port_requests_scheduled_preempt[TRtmp38]
+relation Rtmp160[TRtmp52]
+relation Roverinput159[TRtmp52]
+relation Rtmp163[TRtmp55]
+relation Rover162[TRtmp55]
+relation Rtmp165[TRtmp58]
+output relation Rpod_node_selector_matches_preempt[TRtmp58]
+relation Rtmp166[TRtmp61]
+relation Rtmp168[TRtmp61]
+relation Rtmp169[TRtmp65]
+output relation Rspare_capacity_per_node_preempt[TRtmp65]
+relation Rtmp172[TRtmp69]
+relation Roverinput171[TRtmp69]
+relation Rtmp174[TRtmp71]
+relation Rover173[TRtmp71]
+relation Rtmp176[TRtmp74]
+relation Rtmp177[TRtmp74]
+relation Rtmp178[TRtmp77]
+output relation Rpods_that_tolerate_node_taints_preempt[TRtmp77]
+relation Rtmp180[TRtmp79]
+output relation Rnodes_that_have_tolerations_preempt[TRtmp79]
+relation Rtmp181[TRtmp80]
+output relation Rallowed_nodes_preempt[TRtmp80]
+relation Rtmp183[TRtmp85]
+relation Roverinput182[TRtmp85]
+relation Rtmp186[TRtmp88]
+relation Rover185[TRtmp88]
+relation Rtmp189[TRtmp91]
+relation Rover188[TRtmp91]
+relation Rtmp191[TRtmp38]
+output relation Rinter_pod_affinity_matches_pending_preempt[TRtmp38]
+relation Rtmp193[TRtmp85]
+relation Roverinput192[TRtmp85]
+relation Rtmp196[TRtmp88]
+relation Rover195[TRtmp88]
+relation Rtmp199[TRtmp91]
+relation Rover198[TRtmp91]
+relation Rtmp201[TRtmp38]
+output relation Rinter_pod_affinity_matches_scheduled_preempt[TRtmp38]
+relation Rtmp203[TRtmp85]
+relation Roverinput202[TRtmp85]
+relation Rtmp206[TRtmp88]
+relation Rover205[TRtmp88]
+relation Rtmp209[TRtmp91]
+relation Rover208[TRtmp91]
+relation Rtmp211[TRtmp38]
+output relation Rinter_pod_anti_affinity_matches_pending_preempt[TRtmp38]
+relation Rtmp213[TRtmp85]
+relation Roverinput212[TRtmp85]
+relation Rtmp216[TRtmp88]
+relation Rover215[TRtmp88]
+relation Rtmp219[TRtmp91]
+relation Rover218[TRtmp91]
+relation Rtmp221[TRtmp38]
+output relation Rinter_pod_anti_affinity_matches_scheduled_preempt[TRtmp38]
+relation Rtmp222[TRtmp127]
+output relation Rpods_to_assign_no_limit_count_preempt[TRtmp127]
+Rnode_info__view[v0] :- Rnode_info[v],var v0 = v.
+Rpod_info__view[v0] :- Rpod_info[v],var v0 = v.
+Rnode_resources__view[v0] :- Rnode_resources[v],var v0 = v.
+Rpod_resource_demands__view[v0] :- Rpod_resource_demands[v],var v0 = v.
+Rmatch_expressions__view[v0] :- Rmatch_expressions[v],var v0 = v.
+Rpod_topology_spread_constraints__view[v0] :- Rpod_topology_spread_constraints[v],var v0 = v.
+Rpod_ports_request__view[v0] :- Rpod_ports_request[v],var v0 = v.
+Rpod_node_selector_labels__view[v0] :- Rpod_node_selector_labels[v],var v0 = v.
+Rpod_affinity_match_expressions__view[v0] :- Rpod_affinity_match_expressions[v],var v0 = v.
+Rpod_anti_affinity_match_expressions__view[v0] :- Rpod_anti_affinity_match_expressions[v],var v0 = v.
+Rpod_labels__view[v0] :- Rpod_labels[v],var v0 = v.
+Rnode_labels__view[v0] :- Rnode_labels[v],var v0 = v.
+Rvolume_labels__view[v0] :- Rvolume_labels[v],var v0 = v.
+Rpod_by_service__view[v0] :- Rpod_by_service[v],var v0 = v.
+Rservice_affinity_labels__view[v0] :- Rservice_affinity_labels[v],var v0 = v.
+Rlabels_to_check_for_presence__view[v0] :- Rlabels_to_check_for_presence[v],var v0 = v.
+Rnode_taints__view[v0] :- Rnode_taints[v],var v0 = v.
+Rpod_tolerations__view[v0] :- Rpod_tolerations[v],var v0 = v.
+Rnode_images__view[v0] :- Rnode_images[v],var v0 = v.
+Rpod_images__view[v0] :- Rpod_images[v],var v0 = v.
+Rpdb_match_expressions__view[v0] :- Rpdb_match_expressions[v],var v0 = v.
+Rpods_to_assign_no_limit[v1] :- Rpod_info[v],unwrapBool(b_and_RN(((v.status == "Pending") and is_null(v.node_name)), s_eq_NR(v.scheduler_name, "dcm-scheduler"))),var v0 = TRtmp20{.uid = v.uid,.pod_name = v.pod_name,.status = v.status,.node_name = v.node_name,.namespace = v.namespace,.owner_name = v.owner_name,.creation_timestamp = v.creation_timestamp,.priority = v.priority,.scheduler_name = v.scheduler_name,.has_node_selector_labels = v.has_node_selector_labels,.has_pod_affinity_requirements = v.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v.has_pod_anti_affinity_requirements,.has_node_port_requirements = v.has_node_port_requirements,.has_topology_spread_constraints = v.has_topology_spread_constraints,.equivalence_class = v.equivalence_class,.qos_class = v.qos_class,.resourceversion = v.resourceversion,.last_requeue = v.last_requeue,.controllable__node_name = v.node_name},var v1 = v0.
+Rpods_to_assign[v0] :- Rpods_to_assign_no_limit[v],var v0 = v.
+Rassigned_pods[v0] :- Rpod_info[v],(not is_null(v.node_name)),var v0 = v.
+Rmatching_nodes[v9] :- Rmatch_expressions[v],Rnode_labels[v0],((((((v.label_operator == "In") and (v.label_key == v0.label_key)) and sql_array_contains(v.label_values, v0.label_value)) or ((v.label_operator == "Exists") and (v.label_key == v0.label_key))) or (v.label_operator == "NotIn")) or (v.label_operator == "DoesNotExist")),true,var v1 = Ttmp{.expr_id = v.expr_id,.label_key = v.label_key,.label_operator = v.label_operator,.label_values = v.label_values,.node_name = v0.node_name,.label_key0 = v0.label_key,.label_value = v0.label_value},var gb = v0.label_key,var gb2 = v.expr_id,var gb3 = v.label_operator,var gb4 = v0.node_name,var gb5 = v.label_key,var gb6 = v.label_values,var gb7 = v0.label_value,var groupResult = (v, v0).group_by((gb, gb2, gb3, gb4, gb5, gb6, gb7)),var aggResult = agg(groupResult),var v8 = TRtmp23{.expr_id = gb2,.node_name = gb4},aggResult.col,var v9 = v8.
+Rmatching_pods[v9] :- Rmatch_expressions[v],Rpod_labels[v0],((((((v.label_operator == "In") and (v.label_key == v0.label_key)) and sql_array_contains(v.label_values, v0.label_value)) or ((v.label_operator == "Exists") and (v.label_key == v0.label_key))) or (v.label_operator == "NotIn")) or (v.label_operator == "DoesNotExist")),true,var v1 = Ttmp24{.expr_id = v.expr_id,.label_key = v.label_key,.label_operator = v.label_operator,.label_values = v.label_values,.pod_uid = v0.pod_uid,.label_key0 = v0.label_key,.label_value = v0.label_value},var gb = v.expr_id,var gb2 = v.label_operator,var gb3 = v0.pod_uid,var gb4 = v.label_key,var gb5 = v0.label_key,var gb6 = v.label_values,var gb7 = v0.label_value,var groupResult = (v, v0).group_by((gb, gb2, gb3, gb4, gb5, gb6, gb7)),var aggResult = agg26(groupResult),var v8 = TRtmp25{.expr_id = gb,.label_operator = gb2,.pod_uid = gb3},aggResult.col,var v9 = v8.
+Roverinput[v17] :- Rpods_to_assign[v9],Rpod_ports_request[v10],(v9.uid == v10.pod_uid),true,var v11 = Ttmp27{.uid = v9.uid,.pod_name = v9.pod_name,.status = v9.status,.node_name = v9.node_name,.namespace = v9.namespace,.owner_name = v9.owner_name,.creation_timestamp = v9.creation_timestamp,.priority = v9.priority,.scheduler_name = v9.scheduler_name,.has_node_selector_labels = v9.has_node_selector_labels,.has_pod_affinity_requirements = v9.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v9.has_pod_anti_affinity_requirements,.has_node_port_requirements = v9.has_node_port_requirements,.has_topology_spread_constraints = v9.has_topology_spread_constraints,.equivalence_class = v9.equivalence_class,.qos_class = v9.qos_class,.resourceversion = v9.resourceversion,.last_requeue = v9.last_requeue,.controllable__node_name = v9.controllable__node_name,.pod_uid = v10.pod_uid,.host_ip = v10.host_ip,.host_port = v10.host_port,.host_protocol = v10.host_protocol},Rpod_ports_request[v12],((((v9.uid != v12.pod_uid) and (v10.host_port == v12.host_port)) and (v10.host_protocol == v12.host_protocol)) and (((v10.host_ip == v12.host_ip) or (v10.host_ip == "0.0.0.0")) or (v12.host_ip == "0.0.0.0"))),true,var v13 = Ttmp28{.uid = v11.uid,.pod_name = v11.pod_name,.status = v11.status,.node_name = v11.node_name,.namespace = v11.namespace,.owner_name = v11.owner_name,.creation_timestamp = v11.creation_timestamp,.priority = v11.priority,.scheduler_name = v11.scheduler_name,.has_node_selector_labels = v11.has_node_selector_labels,.has_pod_affinity_requirements = v11.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v11.has_pod_anti_affinity_requirements,.has_node_port_requirements = v11.has_node_port_requirements,.has_topology_spread_constraints = v11.has_topology_spread_constraints,.equivalence_class = v11.equivalence_class,.qos_class = v11.qos_class,.resourceversion = v11.resourceversion,.last_requeue = v11.last_requeue,.controllable__node_name = v11.controllable__node_name,.pod_uid = v11.pod_uid,.host_ip = v11.host_ip,.host_port = v11.host_port,.host_protocol = v11.host_protocol,.pod_uid0 = v12.pod_uid,.host_ip0 = v12.host_ip,.host_port0 = v12.host_port,.host_protocol0 = v12.host_protocol},Rpods_to_assign[v14],(v14.uid == v12.pod_uid),true,var v15 = Ttmp29{.uid = v13.uid,.pod_name = v13.pod_name,.status = v13.status,.node_name = v13.node_name,.namespace = v13.namespace,.owner_name = v13.owner_name,.creation_timestamp = v13.creation_timestamp,.priority = v13.priority,.scheduler_name = v13.scheduler_name,.has_node_selector_labels = v13.has_node_selector_labels,.has_pod_affinity_requirements = v13.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v13.has_pod_anti_affinity_requirements,.has_node_port_requirements = v13.has_node_port_requirements,.has_topology_spread_constraints = v13.has_topology_spread_constraints,.equivalence_class = v13.equivalence_class,.qos_class = v13.qos_class,.resourceversion = v13.resourceversion,.last_requeue = v13.last_requeue,.controllable__node_name = v13.controllable__node_name,.pod_uid = v13.pod_uid,.host_ip = v13.host_ip,.host_port = v13.host_port,.host_protocol = v13.host_protocol,.pod_uid0 = v13.pod_uid0,.host_ip0 = v13.host_ip0,.host_port0 = v13.host_port0,.host_protocol0 = v13.host_protocol0,.uid0 = v14.uid,.pod_name0 = v14.pod_name,.status0 = v14.status,.node_name0 = v14.node_name,.namespace0 = v14.namespace,.owner_name0 = v14.owner_name,.creation_timestamp0 = v14.creation_timestamp,.priority0 = v14.priority,.scheduler_name0 = v14.scheduler_name,.has_node_selector_labels0 = v14.has_node_selector_labels,.has_pod_affinity_requirements0 = v14.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v14.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v14.has_node_port_requirements,.has_topology_spread_constraints0 = v14.has_topology_spread_constraints,.equivalence_class0 = v14.equivalence_class,.qos_class0 = v14.qos_class,.resourceversion0 = v14.resourceversion,.last_requeue0 = v14.last_requeue,.controllable__node_name0 = v14.controllable__node_name},var v16 = TRtmp30{.tmp = v14.uid,.tmp7 = v14.node_name,.gb = v9.uid,.gb6 = v9.uid,.pod_uid = v9.uid},var v17 = v16.
+Rover[v22] :- Roverinput[v18],var gb19 = v18.gb,var groupResult = (v18).group_by((gb19)),var aggResult = agg32(groupResult),var v21 = TRtmp31{.gb = gb19,.array_agg = aggResult.array_agg},var v22 = v21.
+Rover33[v32] :- Roverinput[v23],var gb24 = v23.gb6,var groupResult31 = (v23).group_by((gb24)),var aggResult30 = agg35(groupResult31),var v29 = TRtmp34{.gb6 = gb24,.array_agg8 = aggResult30.array_agg8},var v32 = v29.
+Rpods_with_port_requests_pending[v39] :- Roverinput[v33],Rover[v34],(true and (v33.gb == v34.gb)),var v35 = Ttmp36{.tmp = v33.tmp,.tmp7 = v33.tmp7,.gb = v33.gb,.gb6 = v33.gb6,.pod_uid = v33.pod_uid,.array_agg = v34.array_agg},Rover33[v36],(true and (v35.gb6 == v36.gb6)),var v37 = Ttmp37{.tmp = v35.tmp,.tmp7 = v35.tmp7,.gb = v35.gb,.gb6 = v35.gb6,.pod_uid = v35.pod_uid,.array_agg = v35.array_agg,.array_agg8 = v36.array_agg8},var v38 = TRtmp38{.pod_uid = v33.pod_uid,.pod_matches = v34.array_agg,.node_matches = v36.array_agg8},var v39 = v38.
+Roverinput40[v17] :- Rpods_to_assign[v9],Rpod_ports_request[v10],(v9.uid == v10.pod_uid),true,var v11 = Ttmp27{.uid = v9.uid,.pod_name = v9.pod_name,.status = v9.status,.node_name = v9.node_name,.namespace = v9.namespace,.owner_name = v9.owner_name,.creation_timestamp = v9.creation_timestamp,.priority = v9.priority,.scheduler_name = v9.scheduler_name,.has_node_selector_labels = v9.has_node_selector_labels,.has_pod_affinity_requirements = v9.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v9.has_pod_anti_affinity_requirements,.has_node_port_requirements = v9.has_node_port_requirements,.has_topology_spread_constraints = v9.has_topology_spread_constraints,.equivalence_class = v9.equivalence_class,.qos_class = v9.qos_class,.resourceversion = v9.resourceversion,.last_requeue = v9.last_requeue,.controllable__node_name = v9.controllable__node_name,.pod_uid = v10.pod_uid,.host_ip = v10.host_ip,.host_port = v10.host_port,.host_protocol = v10.host_protocol},Rpod_ports_request[v12],((((v9.uid != v12.pod_uid) and (v10.host_port == v12.host_port)) and (v10.host_protocol == v12.host_protocol)) and (((v10.host_ip == v12.host_ip) or (v10.host_ip == "0.0.0.0")) or (v12.host_ip == "0.0.0.0"))),true,var v13 = Ttmp28{.uid = v11.uid,.pod_name = v11.pod_name,.status = v11.status,.node_name = v11.node_name,.namespace = v11.namespace,.owner_name = v11.owner_name,.creation_timestamp = v11.creation_timestamp,.priority = v11.priority,.scheduler_name = v11.scheduler_name,.has_node_selector_labels = v11.has_node_selector_labels,.has_pod_affinity_requirements = v11.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v11.has_pod_anti_affinity_requirements,.has_node_port_requirements = v11.has_node_port_requirements,.has_topology_spread_constraints = v11.has_topology_spread_constraints,.equivalence_class = v11.equivalence_class,.qos_class = v11.qos_class,.resourceversion = v11.resourceversion,.last_requeue = v11.last_requeue,.controllable__node_name = v11.controllable__node_name,.pod_uid = v11.pod_uid,.host_ip = v11.host_ip,.host_port = v11.host_port,.host_protocol = v11.host_protocol,.pod_uid0 = v12.pod_uid,.host_ip0 = v12.host_ip,.host_port0 = v12.host_port,.host_protocol0 = v12.host_protocol},Rassigned_pods[v14],(v14.uid == v12.pod_uid),true,var v15 = Ttmp39{.uid = v13.uid,.pod_name = v13.pod_name,.status = v13.status,.node_name = v13.node_name,.namespace = v13.namespace,.owner_name = v13.owner_name,.creation_timestamp = v13.creation_timestamp,.priority = v13.priority,.scheduler_name = v13.scheduler_name,.has_node_selector_labels = v13.has_node_selector_labels,.has_pod_affinity_requirements = v13.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v13.has_pod_anti_affinity_requirements,.has_node_port_requirements = v13.has_node_port_requirements,.has_topology_spread_constraints = v13.has_topology_spread_constraints,.equivalence_class = v13.equivalence_class,.qos_class = v13.qos_class,.resourceversion = v13.resourceversion,.last_requeue = v13.last_requeue,.controllable__node_name = v13.controllable__node_name,.pod_uid = v13.pod_uid,.host_ip = v13.host_ip,.host_port = v13.host_port,.host_protocol = v13.host_protocol,.pod_uid0 = v13.pod_uid0,.host_ip0 = v13.host_ip0,.host_port0 = v13.host_port0,.host_protocol0 = v13.host_protocol0,.uid0 = v14.uid,.pod_name0 = v14.pod_name,.status0 = v14.status,.node_name0 = v14.node_name,.namespace0 = v14.namespace,.owner_name0 = v14.owner_name,.creation_timestamp0 = v14.creation_timestamp,.priority0 = v14.priority,.scheduler_name0 = v14.scheduler_name,.has_node_selector_labels0 = v14.has_node_selector_labels,.has_pod_affinity_requirements0 = v14.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v14.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v14.has_node_port_requirements,.has_topology_spread_constraints0 = v14.has_topology_spread_constraints,.equivalence_class0 = v14.equivalence_class,.qos_class0 = v14.qos_class,.resourceversion0 = v14.resourceversion,.last_requeue0 = v14.last_requeue},var v16 = TRtmp30{.tmp = v14.uid,.tmp7 = v14.node_name,.gb = v9.uid,.gb6 = v9.uid,.pod_uid = v9.uid},var v17 = v16.
+Rover42[v22] :- Roverinput40[v18],var gb19 = v18.gb,var groupResult = (v18).group_by((gb19)),var aggResult = agg44(groupResult),var v21 = TRtmp31{.gb = gb19,.array_agg = aggResult.array_agg},var v22 = v21.
+Rover45[v32] :- Roverinput40[v23],var gb24 = v23.gb6,var groupResult31 = (v23).group_by((gb24)),var aggResult30 = agg47(groupResult31),var v29 = TRtmp34{.gb6 = gb24,.array_agg8 = aggResult30.array_agg8},var v32 = v29.
+Rpods_with_port_requests_scheduled[v39] :- Roverinput40[v33],Rover42[v34],(true and (v33.gb == v34.gb)),var v35 = Ttmp36{.tmp = v33.tmp,.tmp7 = v33.tmp7,.gb = v33.gb,.gb6 = v33.gb6,.pod_uid = v33.pod_uid,.array_agg = v34.array_agg},Rover45[v36],(true and (v35.gb6 == v36.gb6)),var v37 = Ttmp37{.tmp = v35.tmp,.tmp7 = v35.tmp7,.gb = v35.gb,.gb6 = v35.gb6,.pod_uid = v35.pod_uid,.array_agg = v35.array_agg,.array_agg8 = v36.array_agg8},var v38 = TRtmp38{.pod_uid = v33.pod_uid,.pod_matches = v34.array_agg,.node_matches = v36.array_agg8},var v39 = v38.
+Roverinput51[v18] :- Rpods_to_assign[v8],Rpod_node_selector_labels[v9],(v8.uid == v9.pod_uid),true,var v10 = Ttmp49{.uid = v8.uid,.pod_name = v8.pod_name,.status = v8.status,.node_name = v8.node_name,.namespace = v8.namespace,.owner_name = v8.owner_name,.creation_timestamp = v8.creation_timestamp,.priority = v8.priority,.scheduler_name = v8.scheduler_name,.has_node_selector_labels = v8.has_node_selector_labels,.has_pod_affinity_requirements = v8.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v8.has_pod_anti_affinity_requirements,.has_node_port_requirements = v8.has_node_port_requirements,.has_topology_spread_constraints = v8.has_topology_spread_constraints,.equivalence_class = v8.equivalence_class,.qos_class = v8.qos_class,.resourceversion = v8.resourceversion,.last_requeue = v8.last_requeue,.controllable__node_name = v8.controllable__node_name,.pod_uid = v9.pod_uid,.term = v9.term,.match_expressions = v9.match_expressions},Rmatching_nodes[v11],sql_array_contains(v9.match_expressions, v11.expr_id),true,var v12 = Ttmp50{.uid = v10.uid,.pod_name = v10.pod_name,.status = v10.status,.node_name = v10.node_name,.namespace = v10.namespace,.owner_name = v10.owner_name,.creation_timestamp = v10.creation_timestamp,.priority = v10.priority,.scheduler_name = v10.scheduler_name,.has_node_selector_labels = v10.has_node_selector_labels,.has_pod_affinity_requirements = v10.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v10.has_pod_anti_affinity_requirements,.has_node_port_requirements = v10.has_node_port_requirements,.has_topology_spread_constraints = v10.has_topology_spread_constraints,.equivalence_class = v10.equivalence_class,.qos_class = v10.qos_class,.resourceversion = v10.resourceversion,.last_requeue = v10.last_requeue,.controllable__node_name = v10.controllable__node_name,.pod_uid = v10.pod_uid,.term = v10.term,.match_expressions = v10.match_expressions,.expr_id = v11.expr_id,.node_name0 = v11.node_name},(v8.has_node_selector_labels == true),var gb13 = v8.uid,var gb14 = v9.match_expressions,var gb15 = v9.term,var gb16 = v11.node_name,var groupResult = (v8, v9, v11).group_by((gb13, gb14, gb15, gb16)),var aggResult = agg53(groupResult),var v17 = TRtmp52{.gb7 = gb13,.pod_uid = gb13,.tmp = gb16},aggResult.col,var v18 = v17.
+Rover54[v28] :- Roverinput51[v19],var gb20 = v19.gb7,var groupResult27 = (v19).group_by((gb20)),var aggResult26 = agg56(groupResult27),var v25 = TRtmp55{.gb7 = gb20,.array_agg = aggResult26.array_agg},var v28 = v25.
+Rpod_node_selector_matches[v33] :- Roverinput51[v29],Rover54[v30],(true and (v29.gb7 == v30.gb7)),var v31 = Ttmp57{.tmp = v29.tmp,.gb7 = v29.gb7,.pod_uid = v29.pod_uid,.array_agg = v30.array_agg},var v32 = TRtmp58{.pod_uid = v29.pod_uid,.node_matches = v30.array_agg},var v33 = v32.
+Rtmp63[v7] :- Rpod_info[v2],Rpod_resource_demands[v3],(v3.uid == v2.uid),true,var v4 = Ttmp60{.uid = v2.uid,.pod_name = v2.pod_name,.status = v2.status,.node_name = v2.node_name,.namespace = v2.namespace,.owner_name = v2.owner_name,.creation_timestamp = v2.creation_timestamp,.priority = v2.priority,.scheduler_name = v2.scheduler_name,.has_node_selector_labels = v2.has_node_selector_labels,.has_pod_affinity_requirements = v2.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v2.has_pod_anti_affinity_requirements,.has_node_port_requirements = v2.has_node_port_requirements,.has_topology_spread_constraints = v2.has_topology_spread_constraints,.equivalence_class = v2.equivalence_class,.qos_class = v2.qos_class,.resourceversion = v2.resourceversion,.last_requeue = v2.last_requeue,.uid0 = v3.uid,.resource = v3.resource,.demand = v3.demand},var gb = v2.node_name,var gb5 = v3.resource,var groupResult = (v2, v3).group_by((gb, gb5)),var aggResult = agg62(groupResult),var v6 = TRtmp61{.node_name = gb,.resource = gb5,.total_demand = aggResult.total_demand},var v7 = v6.
+Rspare_capacity_per_node[v19] :- Rnode_info[v],Rnode_resources[v0],(v.uid == v0.uid),true,var v1 = Ttmp59{.uid = v.uid,.name = v.name,.unschedulable = v.unschedulable,.out_of_disk = v.out_of_disk,.memory_pressure = v.memory_pressure,.disk_pressure = v.disk_pressure,.pid_pressure = v.pid_pressure,.ready = v.ready,.network_unavailable = v.network_unavailable,.uid0 = v0.uid,.resource = v0.resource,.allocatable = v0.allocatable},Rtmp63[v7],unwrapBool(b_and_NR(s_eq_NR(v7.node_name, v.name), (v7.resource == v0.resource))),true,var v8 = Ttmp64{.uid = v1.uid,.name = v1.name,.unschedulable = v1.unschedulable,.out_of_disk = v1.out_of_disk,.memory_pressure = v1.memory_pressure,.disk_pressure = v1.disk_pressure,.pid_pressure = v1.pid_pressure,.ready = v1.ready,.network_unavailable = v1.network_unavailable,.uid0 = v1.uid0,.resource = v1.resource,.allocatable = v1.allocatable,.node_name = v7.node_name,.resource0 = v7.resource,.total_demand = v7.total_demand},(((((((v.unschedulable == false) and (v.memory_pressure == false)) and (v.out_of_disk == false)) and (v.disk_pressure == false)) and (v.pid_pressure == false)) and (v.network_unavailable == false)) and (v.ready == true)),var gb9 = v.name,var gb10 = v0.resource,var gb11 = v0.allocatable,var groupResult18 = (v, v0, v7).group_by((gb9, gb10, gb11)),var aggResult17 = agg66(groupResult18),var v16 = TRtmp65{.name = gb9,.resource = gb10,.capacity = aggResult17.capacity},var v19 = v16.
+Roverinput68[v5] :- Rnode_taints[v3],var v4 = TRtmp69{.gb = v3.node_name,.node_name = v3.node_name,.taint_key = v3.taint_key,.taint_value = v3.taint_value,.taint_effect = v3.taint_effect},var v5 = v4.
+Rover70[v10] :- Roverinput68[v6],var gb7 = v6.gb,var groupResult = (v6).group_by((gb7)),var aggResult = agg72(groupResult),var v9 = TRtmp71{.gb = gb7,.count = aggResult.count},var v10 = v9.
+Rtmp75[v15] :- Roverinput68[v11],Rover70[v12],(true and (v11.gb == v12.gb)),var v13 = Ttmp73{.gb = v11.gb,.node_name = v11.node_name,.taint_key = v11.taint_key,.taint_value = v11.taint_value,.taint_effect = v11.taint_effect,.count = v12.count},var v14 = TRtmp74{.node_name = v11.node_name,.taint_key = v11.taint_key,.taint_value = v11.taint_value,.taint_effect = v11.taint_effect,.num_taints = v12.count},var v15 = v14.
+Rpods_that_tolerate_node_taints[v26] :- Rpods_to_assign[v],Rpod_tolerations[v0],(v.uid == v0.pod_uid),true,var v1 = Ttmp67{.uid = v.uid,.pod_name = v.pod_name,.status = v.status,.node_name = v.node_name,.namespace = v.namespace,.owner_name = v.owner_name,.creation_timestamp = v.creation_timestamp,.priority = v.priority,.scheduler_name = v.scheduler_name,.has_node_selector_labels = v.has_node_selector_labels,.has_pod_affinity_requirements = v.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v.has_pod_anti_affinity_requirements,.has_node_port_requirements = v.has_node_port_requirements,.has_topology_spread_constraints = v.has_topology_spread_constraints,.equivalence_class = v.equivalence_class,.qos_class = v.qos_class,.resourceversion = v.resourceversion,.last_requeue = v.last_requeue,.controllable__node_name = v.controllable__node_name,.pod_uid = v0.pod_uid,.tolerations_key = v0.tolerations_key,.tolerations_value = v0.tolerations_value,.tolerations_effect = v0.tolerations_effect,.tolerations_operator = v0.tolerations_operator},Rtmp75[v15],unwrapBool(b_and_NN(b_and_NN(s_eq_NR(v0.tolerations_key, v15.taint_key), b_or_NN(s_eq_NN(v0.tolerations_effect, None{}: Option<string>), s_eq_NR(v0.tolerations_effect, v15.taint_effect))), b_or_NN(s_eq_NR(v0.tolerations_operator, "Exists"), s_eq_NN(v0.tolerations_value, v15.taint_value)))),true,var v16 = Ttmp76{.uid = v1.uid,.pod_name = v1.pod_name,.status = v1.status,.node_name = v1.node_name,.namespace = v1.namespace,.owner_name = v1.owner_name,.creation_timestamp = v1.creation_timestamp,.priority = v1.priority,.scheduler_name = v1.scheduler_name,.has_node_selector_labels = v1.has_node_selector_labels,.has_pod_affinity_requirements = v1.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v1.has_pod_anti_affinity_requirements,.has_node_port_requirements = v1.has_node_port_requirements,.has_topology_spread_constraints = v1.has_topology_spread_constraints,.equivalence_class = v1.equivalence_class,.qos_class = v1.qos_class,.resourceversion = v1.resourceversion,.last_requeue = v1.last_requeue,.controllable__node_name = v1.controllable__node_name,.pod_uid = v1.pod_uid,.tolerations_key = v1.tolerations_key,.tolerations_value = v1.tolerations_value,.tolerations_effect = v1.tolerations_effect,.tolerations_operator = v1.tolerations_operator,.node_name0 = v15.node_name,.taint_key = v15.taint_key,.taint_value = v15.taint_value,.taint_effect = v15.taint_effect,.num_taints = v15.num_taints},var gb17 = v0.pod_uid,var gb18 = v15.node_name,var gb19 = v15.num_taints,var groupResult25 = (v, v0, v15).group_by((gb17, gb18, gb19)),var aggResult24 = agg78(groupResult25),var v23 = TRtmp77{.pod_uid = gb17,.node_name = gb18},aggResult24.col,var v26 = v23.
+Rnodes_that_have_tolerations[v1] :- Rnode_taints[v],var v0 = TRtmp79{.node_name = v.node_name},var v1 = v0.
+Rallowed_nodes[v1] :- Rspare_capacity_per_node[v],var v0 = TRtmp80{.name = v.name},var v1 = v0.
+Roverinput84[v29] :- Rpods_to_assign[v15],Rpod_affinity_match_expressions[v16],(v15.uid == v16.pod_uid),true,var v17 = Ttmp81{.uid = v15.uid,.pod_name = v15.pod_name,.status = v15.status,.node_name = v15.node_name,.namespace = v15.namespace,.owner_name = v15.owner_name,.creation_timestamp = v15.creation_timestamp,.priority = v15.priority,.scheduler_name = v15.scheduler_name,.has_node_selector_labels = v15.has_node_selector_labels,.has_pod_affinity_requirements = v15.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v15.has_pod_anti_affinity_requirements,.has_node_port_requirements = v15.has_node_port_requirements,.has_topology_spread_constraints = v15.has_topology_spread_constraints,.equivalence_class = v15.equivalence_class,.qos_class = v15.qos_class,.resourceversion = v15.resourceversion,.last_requeue = v15.last_requeue,.controllable__node_name = v15.controllable__node_name,.pod_uid = v16.pod_uid,.label_selector = v16.label_selector,.match_expressions = v16.match_expressions,.topology_key = v16.topology_key},Rmatching_pods[v18],sql_array_contains(v16.match_expressions, v18.expr_id),true,var v19 = Ttmp82{.uid = v17.uid,.pod_name = v17.pod_name,.status = v17.status,.node_name = v17.node_name,.namespace = v17.namespace,.owner_name = v17.owner_name,.creation_timestamp = v17.creation_timestamp,.priority = v17.priority,.scheduler_name = v17.scheduler_name,.has_node_selector_labels = v17.has_node_selector_labels,.has_pod_affinity_requirements = v17.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v17.has_pod_anti_affinity_requirements,.has_node_port_requirements = v17.has_node_port_requirements,.has_topology_spread_constraints = v17.has_topology_spread_constraints,.equivalence_class = v17.equivalence_class,.qos_class = v17.qos_class,.resourceversion = v17.resourceversion,.last_requeue = v17.last_requeue,.controllable__node_name = v17.controllable__node_name,.pod_uid = v17.pod_uid,.label_selector = v17.label_selector,.match_expressions = v17.match_expressions,.topology_key = v17.topology_key,.expr_id = v18.expr_id,.label_operator = v18.label_operator,.pod_uid0 = v18.pod_uid},Rpods_to_assign[v20],((v18.pod_uid == v20.uid) and (v15.uid != v20.uid)),true,var v21 = Ttmp83{.uid = v19.uid,.pod_name = v19.pod_name,.status = v19.status,.node_name = v19.node_name,.namespace = v19.namespace,.owner_name = v19.owner_name,.creation_timestamp = v19.creation_timestamp,.priority = v19.priority,.scheduler_name = v19.scheduler_name,.has_node_selector_labels = v19.has_node_selector_labels,.has_pod_affinity_requirements = v19.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v19.has_pod_anti_affinity_requirements,.has_node_port_requirements = v19.has_node_port_requirements,.has_topology_spread_constraints = v19.has_topology_spread_constraints,.equivalence_class = v19.equivalence_class,.qos_class = v19.qos_class,.resourceversion = v19.resourceversion,.last_requeue = v19.last_requeue,.controllable__node_name = v19.controllable__node_name,.pod_uid = v19.pod_uid,.label_selector = v19.label_selector,.match_expressions = v19.match_expressions,.topology_key = v19.topology_key,.expr_id = v19.expr_id,.label_operator = v19.label_operator,.pod_uid0 = v19.pod_uid0,.uid0 = v20.uid,.pod_name0 = v20.pod_name,.status0 = v20.status,.node_name0 = v20.node_name,.namespace0 = v20.namespace,.owner_name0 = v20.owner_name,.creation_timestamp0 = v20.creation_timestamp,.priority0 = v20.priority,.scheduler_name0 = v20.scheduler_name,.has_node_selector_labels0 = v20.has_node_selector_labels,.has_pod_affinity_requirements0 = v20.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v20.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v20.has_node_port_requirements,.has_topology_spread_constraints0 = v20.has_topology_spread_constraints,.equivalence_class0 = v20.equivalence_class,.qos_class0 = v20.qos_class,.resourceversion0 = v20.resourceversion,.last_requeue0 = v20.last_requeue,.controllable__node_name0 = v20.controllable__node_name},(v15.has_pod_affinity_requirements == true),var gb22 = v15.uid,var gb23 = v18.pod_uid,var gb24 = v16.label_selector,var gb25 = v16.topology_key,var gb26 = v16.match_expressions,var gb27 = v20.node_name,var groupResult = (v15, v16, v18, v20).group_by((gb22, gb23, gb24, gb25, gb26, gb27)),var aggResult = agg86(groupResult),var v28 = TRtmp85{.gb11 = gb22,.gb12 = gb22,.pod_uid = gb22,.tmp = gb23,.tmp13 = gb27},aggResult.col,var v29 = v28.
+Rover87[v39] :- Roverinput84[v30],var gb31 = v30.gb11,var groupResult38 = (v30).group_by((gb31)),var aggResult37 = agg89(groupResult38),var v36 = TRtmp88{.gb11 = gb31,.array_agg = aggResult37.array_agg},var v39 = v36.
+Rover90[v49] :- Roverinput84[v40],var gb41 = v40.gb12,var groupResult48 = (v40).group_by((gb41)),var aggResult47 = agg92(groupResult48),var v46 = TRtmp91{.gb12 = gb41,.array_agg14 = aggResult47.array_agg14},var v49 = v46.
+Rinter_pod_affinity_matches_pending[v56] :- Roverinput84[v50],Rover87[v51],(true and (v50.gb11 == v51.gb11)),var v52 = Ttmp93{.tmp = v50.tmp,.tmp13 = v50.tmp13,.gb11 = v50.gb11,.gb12 = v50.gb12,.pod_uid = v50.pod_uid,.array_agg = v51.array_agg},Rover90[v53],(true and (v52.gb12 == v53.gb12)),var v54 = Ttmp94{.tmp = v52.tmp,.tmp13 = v52.tmp13,.gb11 = v52.gb11,.gb12 = v52.gb12,.pod_uid = v52.pod_uid,.array_agg = v52.array_agg,.array_agg14 = v53.array_agg14},var v55 = TRtmp38{.pod_uid = v50.pod_uid,.pod_matches = v51.array_agg,.node_matches = v53.array_agg14},var v56 = v55.
+Roverinput97[v29] :- Rpods_to_assign[v15],Rpod_affinity_match_expressions[v16],(v15.uid == v16.pod_uid),true,var v17 = Ttmp81{.uid = v15.uid,.pod_name = v15.pod_name,.status = v15.status,.node_name = v15.node_name,.namespace = v15.namespace,.owner_name = v15.owner_name,.creation_timestamp = v15.creation_timestamp,.priority = v15.priority,.scheduler_name = v15.scheduler_name,.has_node_selector_labels = v15.has_node_selector_labels,.has_pod_affinity_requirements = v15.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v15.has_pod_anti_affinity_requirements,.has_node_port_requirements = v15.has_node_port_requirements,.has_topology_spread_constraints = v15.has_topology_spread_constraints,.equivalence_class = v15.equivalence_class,.qos_class = v15.qos_class,.resourceversion = v15.resourceversion,.last_requeue = v15.last_requeue,.controllable__node_name = v15.controllable__node_name,.pod_uid = v16.pod_uid,.label_selector = v16.label_selector,.match_expressions = v16.match_expressions,.topology_key = v16.topology_key},Rmatching_pods[v18],sql_array_contains(v16.match_expressions, v18.expr_id),true,var v19 = Ttmp82{.uid = v17.uid,.pod_name = v17.pod_name,.status = v17.status,.node_name = v17.node_name,.namespace = v17.namespace,.owner_name = v17.owner_name,.creation_timestamp = v17.creation_timestamp,.priority = v17.priority,.scheduler_name = v17.scheduler_name,.has_node_selector_labels = v17.has_node_selector_labels,.has_pod_affinity_requirements = v17.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v17.has_pod_anti_affinity_requirements,.has_node_port_requirements = v17.has_node_port_requirements,.has_topology_spread_constraints = v17.has_topology_spread_constraints,.equivalence_class = v17.equivalence_class,.qos_class = v17.qos_class,.resourceversion = v17.resourceversion,.last_requeue = v17.last_requeue,.controllable__node_name = v17.controllable__node_name,.pod_uid = v17.pod_uid,.label_selector = v17.label_selector,.match_expressions = v17.match_expressions,.topology_key = v17.topology_key,.expr_id = v18.expr_id,.label_operator = v18.label_operator,.pod_uid0 = v18.pod_uid},Rassigned_pods[v20],((v18.pod_uid == v20.uid) and (v15.uid != v20.uid)),true,var v21 = Ttmp96{.uid = v19.uid,.pod_name = v19.pod_name,.status = v19.status,.node_name = v19.node_name,.namespace = v19.namespace,.owner_name = v19.owner_name,.creation_timestamp = v19.creation_timestamp,.priority = v19.priority,.scheduler_name = v19.scheduler_name,.has_node_selector_labels = v19.has_node_selector_labels,.has_pod_affinity_requirements = v19.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v19.has_pod_anti_affinity_requirements,.has_node_port_requirements = v19.has_node_port_requirements,.has_topology_spread_constraints = v19.has_topology_spread_constraints,.equivalence_class = v19.equivalence_class,.qos_class = v19.qos_class,.resourceversion = v19.resourceversion,.last_requeue = v19.last_requeue,.controllable__node_name = v19.controllable__node_name,.pod_uid = v19.pod_uid,.label_selector = v19.label_selector,.match_expressions = v19.match_expressions,.topology_key = v19.topology_key,.expr_id = v19.expr_id,.label_operator = v19.label_operator,.pod_uid0 = v19.pod_uid0,.uid0 = v20.uid,.pod_name0 = v20.pod_name,.status0 = v20.status,.node_name0 = v20.node_name,.namespace0 = v20.namespace,.owner_name0 = v20.owner_name,.creation_timestamp0 = v20.creation_timestamp,.priority0 = v20.priority,.scheduler_name0 = v20.scheduler_name,.has_node_selector_labels0 = v20.has_node_selector_labels,.has_pod_affinity_requirements0 = v20.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v20.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v20.has_node_port_requirements,.has_topology_spread_constraints0 = v20.has_topology_spread_constraints,.equivalence_class0 = v20.equivalence_class,.qos_class0 = v20.qos_class,.resourceversion0 = v20.resourceversion,.last_requeue0 = v20.last_requeue},(v15.has_pod_affinity_requirements == true),var gb22 = v15.uid,var gb23 = v18.pod_uid,var gb24 = v16.label_selector,var gb25 = v16.topology_key,var gb26 = v16.match_expressions,var gb27 = v20.node_name,var groupResult = (v15, v16, v18, v20).group_by((gb22, gb23, gb24, gb25, gb26, gb27)),var aggResult = agg99(groupResult),var v28 = TRtmp85{.gb11 = gb22,.gb12 = gb22,.pod_uid = gb22,.tmp = gb23,.tmp13 = gb27},aggResult.col,var v29 = v28.
+Rover100[v39] :- Roverinput97[v30],var gb31 = v30.gb11,var groupResult38 = (v30).group_by((gb31)),var aggResult37 = agg102(groupResult38),var v36 = TRtmp88{.gb11 = gb31,.array_agg = aggResult37.array_agg},var v39 = v36.
+Rover103[v49] :- Roverinput97[v40],var gb41 = v40.gb12,var groupResult48 = (v40).group_by((gb41)),var aggResult47 = agg105(groupResult48),var v46 = TRtmp91{.gb12 = gb41,.array_agg14 = aggResult47.array_agg14},var v49 = v46.
+Rinter_pod_affinity_matches_scheduled[v56] :- Roverinput97[v50],Rover100[v51],(true and (v50.gb11 == v51.gb11)),var v52 = Ttmp93{.tmp = v50.tmp,.tmp13 = v50.tmp13,.gb11 = v50.gb11,.gb12 = v50.gb12,.pod_uid = v50.pod_uid,.array_agg = v51.array_agg},Rover103[v53],(true and (v52.gb12 == v53.gb12)),var v54 = Ttmp94{.tmp = v52.tmp,.tmp13 = v52.tmp13,.gb11 = v52.gb11,.gb12 = v52.gb12,.pod_uid = v52.pod_uid,.array_agg = v52.array_agg,.array_agg14 = v53.array_agg14},var v55 = TRtmp38{.pod_uid = v50.pod_uid,.pod_matches = v51.array_agg,.node_matches = v53.array_agg14},var v56 = v55.
+Roverinput107[v29] :- Rpods_to_assign[v15],Rpod_anti_affinity_match_expressions[v16],(v15.uid == v16.pod_uid),true,var v17 = Ttmp81{.uid = v15.uid,.pod_name = v15.pod_name,.status = v15.status,.node_name = v15.node_name,.namespace = v15.namespace,.owner_name = v15.owner_name,.creation_timestamp = v15.creation_timestamp,.priority = v15.priority,.scheduler_name = v15.scheduler_name,.has_node_selector_labels = v15.has_node_selector_labels,.has_pod_affinity_requirements = v15.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v15.has_pod_anti_affinity_requirements,.has_node_port_requirements = v15.has_node_port_requirements,.has_topology_spread_constraints = v15.has_topology_spread_constraints,.equivalence_class = v15.equivalence_class,.qos_class = v15.qos_class,.resourceversion = v15.resourceversion,.last_requeue = v15.last_requeue,.controllable__node_name = v15.controllable__node_name,.pod_uid = v16.pod_uid,.label_selector = v16.label_selector,.match_expressions = v16.match_expressions,.topology_key = v16.topology_key},Rmatching_pods[v18],sql_array_contains(v16.match_expressions, v18.expr_id),true,var v19 = Ttmp82{.uid = v17.uid,.pod_name = v17.pod_name,.status = v17.status,.node_name = v17.node_name,.namespace = v17.namespace,.owner_name = v17.owner_name,.creation_timestamp = v17.creation_timestamp,.priority = v17.priority,.scheduler_name = v17.scheduler_name,.has_node_selector_labels = v17.has_node_selector_labels,.has_pod_affinity_requirements = v17.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v17.has_pod_anti_affinity_requirements,.has_node_port_requirements = v17.has_node_port_requirements,.has_topology_spread_constraints = v17.has_topology_spread_constraints,.equivalence_class = v17.equivalence_class,.qos_class = v17.qos_class,.resourceversion = v17.resourceversion,.last_requeue = v17.last_requeue,.controllable__node_name = v17.controllable__node_name,.pod_uid = v17.pod_uid,.label_selector = v17.label_selector,.match_expressions = v17.match_expressions,.topology_key = v17.topology_key,.expr_id = v18.expr_id,.label_operator = v18.label_operator,.pod_uid0 = v18.pod_uid},Rpods_to_assign[v20],((v18.pod_uid == v20.uid) and (v15.uid != v20.uid)),true,var v21 = Ttmp83{.uid = v19.uid,.pod_name = v19.pod_name,.status = v19.status,.node_name = v19.node_name,.namespace = v19.namespace,.owner_name = v19.owner_name,.creation_timestamp = v19.creation_timestamp,.priority = v19.priority,.scheduler_name = v19.scheduler_name,.has_node_selector_labels = v19.has_node_selector_labels,.has_pod_affinity_requirements = v19.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v19.has_pod_anti_affinity_requirements,.has_node_port_requirements = v19.has_node_port_requirements,.has_topology_spread_constraints = v19.has_topology_spread_constraints,.equivalence_class = v19.equivalence_class,.qos_class = v19.qos_class,.resourceversion = v19.resourceversion,.last_requeue = v19.last_requeue,.controllable__node_name = v19.controllable__node_name,.pod_uid = v19.pod_uid,.label_selector = v19.label_selector,.match_expressions = v19.match_expressions,.topology_key = v19.topology_key,.expr_id = v19.expr_id,.label_operator = v19.label_operator,.pod_uid0 = v19.pod_uid0,.uid0 = v20.uid,.pod_name0 = v20.pod_name,.status0 = v20.status,.node_name0 = v20.node_name,.namespace0 = v20.namespace,.owner_name0 = v20.owner_name,.creation_timestamp0 = v20.creation_timestamp,.priority0 = v20.priority,.scheduler_name0 = v20.scheduler_name,.has_node_selector_labels0 = v20.has_node_selector_labels,.has_pod_affinity_requirements0 = v20.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v20.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v20.has_node_port_requirements,.has_topology_spread_constraints0 = v20.has_topology_spread_constraints,.equivalence_class0 = v20.equivalence_class,.qos_class0 = v20.qos_class,.resourceversion0 = v20.resourceversion,.last_requeue0 = v20.last_requeue,.controllable__node_name0 = v20.controllable__node_name},(v15.has_pod_anti_affinity_requirements == true),var gb22 = v15.uid,var gb23 = v18.pod_uid,var gb24 = v16.label_selector,var gb25 = v16.topology_key,var gb26 = v16.match_expressions,var gb27 = v20.node_name,var groupResult = (v15, v16, v18, v20).group_by((gb22, gb23, gb24, gb25, gb26, gb27)),var aggResult = agg109(groupResult),var v28 = TRtmp85{.gb11 = gb22,.gb12 = gb22,.pod_uid = gb22,.tmp = gb23,.tmp13 = gb27},aggResult.col,var v29 = v28.
+Rover110[v39] :- Roverinput107[v30],var gb31 = v30.gb11,var groupResult38 = (v30).group_by((gb31)),var aggResult37 = agg112(groupResult38),var v36 = TRtmp88{.gb11 = gb31,.array_agg = aggResult37.array_agg},var v39 = v36.
+Rover113[v49] :- Roverinput107[v40],var gb41 = v40.gb12,var groupResult48 = (v40).group_by((gb41)),var aggResult47 = agg115(groupResult48),var v46 = TRtmp91{.gb12 = gb41,.array_agg14 = aggResult47.array_agg14},var v49 = v46.
+Rinter_pod_anti_affinity_matches_pending[v56] :- Roverinput107[v50],Rover110[v51],(true and (v50.gb11 == v51.gb11)),var v52 = Ttmp93{.tmp = v50.tmp,.tmp13 = v50.tmp13,.gb11 = v50.gb11,.gb12 = v50.gb12,.pod_uid = v50.pod_uid,.array_agg = v51.array_agg},Rover113[v53],(true and (v52.gb12 == v53.gb12)),var v54 = Ttmp94{.tmp = v52.tmp,.tmp13 = v52.tmp13,.gb11 = v52.gb11,.gb12 = v52.gb12,.pod_uid = v52.pod_uid,.array_agg = v52.array_agg,.array_agg14 = v53.array_agg14},var v55 = TRtmp38{.pod_uid = v50.pod_uid,.pod_matches = v51.array_agg,.node_matches = v53.array_agg14},var v56 = v55.
+Roverinput117[v29] :- Rpods_to_assign[v15],Rpod_anti_affinity_match_expressions[v16],(v15.uid == v16.pod_uid),true,var v17 = Ttmp81{.uid = v15.uid,.pod_name = v15.pod_name,.status = v15.status,.node_name = v15.node_name,.namespace = v15.namespace,.owner_name = v15.owner_name,.creation_timestamp = v15.creation_timestamp,.priority = v15.priority,.scheduler_name = v15.scheduler_name,.has_node_selector_labels = v15.has_node_selector_labels,.has_pod_affinity_requirements = v15.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v15.has_pod_anti_affinity_requirements,.has_node_port_requirements = v15.has_node_port_requirements,.has_topology_spread_constraints = v15.has_topology_spread_constraints,.equivalence_class = v15.equivalence_class,.qos_class = v15.qos_class,.resourceversion = v15.resourceversion,.last_requeue = v15.last_requeue,.controllable__node_name = v15.controllable__node_name,.pod_uid = v16.pod_uid,.label_selector = v16.label_selector,.match_expressions = v16.match_expressions,.topology_key = v16.topology_key},Rmatching_pods[v18],sql_array_contains(v16.match_expressions, v18.expr_id),true,var v19 = Ttmp82{.uid = v17.uid,.pod_name = v17.pod_name,.status = v17.status,.node_name = v17.node_name,.namespace = v17.namespace,.owner_name = v17.owner_name,.creation_timestamp = v17.creation_timestamp,.priority = v17.priority,.scheduler_name = v17.scheduler_name,.has_node_selector_labels = v17.has_node_selector_labels,.has_pod_affinity_requirements = v17.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v17.has_pod_anti_affinity_requirements,.has_node_port_requirements = v17.has_node_port_requirements,.has_topology_spread_constraints = v17.has_topology_spread_constraints,.equivalence_class = v17.equivalence_class,.qos_class = v17.qos_class,.resourceversion = v17.resourceversion,.last_requeue = v17.last_requeue,.controllable__node_name = v17.controllable__node_name,.pod_uid = v17.pod_uid,.label_selector = v17.label_selector,.match_expressions = v17.match_expressions,.topology_key = v17.topology_key,.expr_id = v18.expr_id,.label_operator = v18.label_operator,.pod_uid0 = v18.pod_uid},Rassigned_pods[v20],((v18.pod_uid == v20.uid) and (v15.uid != v20.uid)),true,var v21 = Ttmp96{.uid = v19.uid,.pod_name = v19.pod_name,.status = v19.status,.node_name = v19.node_name,.namespace = v19.namespace,.owner_name = v19.owner_name,.creation_timestamp = v19.creation_timestamp,.priority = v19.priority,.scheduler_name = v19.scheduler_name,.has_node_selector_labels = v19.has_node_selector_labels,.has_pod_affinity_requirements = v19.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v19.has_pod_anti_affinity_requirements,.has_node_port_requirements = v19.has_node_port_requirements,.has_topology_spread_constraints = v19.has_topology_spread_constraints,.equivalence_class = v19.equivalence_class,.qos_class = v19.qos_class,.resourceversion = v19.resourceversion,.last_requeue = v19.last_requeue,.controllable__node_name = v19.controllable__node_name,.pod_uid = v19.pod_uid,.label_selector = v19.label_selector,.match_expressions = v19.match_expressions,.topology_key = v19.topology_key,.expr_id = v19.expr_id,.label_operator = v19.label_operator,.pod_uid0 = v19.pod_uid0,.uid0 = v20.uid,.pod_name0 = v20.pod_name,.status0 = v20.status,.node_name0 = v20.node_name,.namespace0 = v20.namespace,.owner_name0 = v20.owner_name,.creation_timestamp0 = v20.creation_timestamp,.priority0 = v20.priority,.scheduler_name0 = v20.scheduler_name,.has_node_selector_labels0 = v20.has_node_selector_labels,.has_pod_affinity_requirements0 = v20.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v20.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v20.has_node_port_requirements,.has_topology_spread_constraints0 = v20.has_topology_spread_constraints,.equivalence_class0 = v20.equivalence_class,.qos_class0 = v20.qos_class,.resourceversion0 = v20.resourceversion,.last_requeue0 = v20.last_requeue},(v15.has_pod_anti_affinity_requirements == true),var gb22 = v15.uid,var gb23 = v18.pod_uid,var gb24 = v16.label_selector,var gb25 = v16.topology_key,var gb26 = v16.match_expressions,var gb27 = v20.node_name,var groupResult = (v15, v16, v18, v20).group_by((gb22, gb23, gb24, gb25, gb26, gb27)),var aggResult = agg119(groupResult),var v28 = TRtmp85{.gb11 = gb22,.gb12 = gb22,.pod_uid = gb22,.tmp = gb23,.tmp13 = gb27},aggResult.col,var v29 = v28.
+Rover120[v39] :- Roverinput117[v30],var gb31 = v30.gb11,var groupResult38 = (v30).group_by((gb31)),var aggResult37 = agg122(groupResult38),var v36 = TRtmp88{.gb11 = gb31,.array_agg = aggResult37.array_agg},var v39 = v36.
+Rover123[v49] :- Roverinput117[v40],var gb41 = v40.gb12,var groupResult48 = (v40).group_by((gb41)),var aggResult47 = agg125(groupResult48),var v46 = TRtmp91{.gb12 = gb41,.array_agg14 = aggResult47.array_agg14},var v49 = v46.
+Rinter_pod_anti_affinity_matches_scheduled[v56] :- Roverinput117[v50],Rover120[v51],(true and (v50.gb11 == v51.gb11)),var v52 = Ttmp93{.tmp = v50.tmp,.tmp13 = v50.tmp13,.gb11 = v50.gb11,.gb12 = v50.gb12,.pod_uid = v50.pod_uid,.array_agg = v51.array_agg},Rover123[v53],(true and (v52.gb12 == v53.gb12)),var v54 = Ttmp94{.tmp = v52.tmp,.tmp13 = v52.tmp13,.gb11 = v52.gb11,.gb12 = v52.gb12,.pod_uid = v52.pod_uid,.array_agg = v52.array_agg,.array_agg14 = v53.array_agg14},var v55 = TRtmp38{.pod_uid = v50.pod_uid,.pod_matches = v51.array_agg,.node_matches = v53.array_agg14},var v56 = v55.
+Rpods_to_assign_no_limit_count[v2] :- Rpods_to_assign_no_limit[v],var groupResult = (v).group_by(()),var aggResult = agg128(groupResult),var v1 = aggResult,var v2 = v1.
+Rhelper_view_preempt[v1] :- Rpods_to_assign[v],var gb = v.node_name,var groupResult = (v).group_by((gb)),var aggResult = agg130(groupResult),var v0 = TRtmp129{.node_name = gb,.m = aggResult.m},var v1 = v0.
+Rtmp132[v0] :- Rpods_to_assign[v],var v0 = v.
+Rtmp135[v5] :- Rpod_info[v1],Rhelper_view_preempt[v2],unwrapBool(s_eq_NN(v1.node_name, v2.node_name)),true,var v3 = Ttmp133{.uid = v1.uid,.pod_name = v1.pod_name,.status = v1.status,.node_name = v1.node_name,.namespace = v1.namespace,.owner_name = v1.owner_name,.creation_timestamp = v1.creation_timestamp,.priority = v1.priority,.scheduler_name = v1.scheduler_name,.has_node_selector_labels = v1.has_node_selector_labels,.has_pod_affinity_requirements = v1.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v1.has_pod_anti_affinity_requirements,.has_node_port_requirements = v1.has_node_port_requirements,.has_topology_spread_constraints = v1.has_topology_spread_constraints,.equivalence_class = v1.equivalence_class,.qos_class = v1.qos_class,.resourceversion = v1.resourceversion,.last_requeue = v1.last_requeue,.node_name0 = v2.node_name,.m = v2.m},((not is_null(v1.node_name)) and (v1.priority < v2.m)),var v4 = TRtmp20{.uid = v1.uid,.pod_name = v1.pod_name,.status = v1.status,.node_name = v1.node_name,.namespace = v1.namespace,.owner_name = v1.owner_name,.creation_timestamp = v1.creation_timestamp,.priority = v1.priority,.scheduler_name = v1.scheduler_name,.has_node_selector_labels = v1.has_node_selector_labels,.has_pod_affinity_requirements = v1.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v1.has_pod_anti_affinity_requirements,.has_node_port_requirements = v1.has_node_port_requirements,.has_topology_spread_constraints = v1.has_topology_spread_constraints,.equivalence_class = v1.equivalence_class,.qos_class = v1.qos_class,.resourceversion = v1.resourceversion,.last_requeue = v1.last_requeue,.controllable__node_name = v1.node_name},var v5 = v4.
+Runion[v6] :- Rtmp132[v0],var v6 = v0.
+Runion[v6] :- Rtmp135[v5],var v6 = v5.
+Rpods_to_assign_preempt[v7] :- Runion[v6],var v7 = v6.
+Rassigned_pods_preempt[v3] :- Rpod_info[v],Rhelper_view_preempt[v0],unwrapBool(s_eq_NN(v.node_name, v0.node_name)),true,var v1 = Ttmp133{.uid = v.uid,.pod_name = v.pod_name,.status = v.status,.node_name = v.node_name,.namespace = v.namespace,.owner_name = v.owner_name,.creation_timestamp = v.creation_timestamp,.priority = v.priority,.scheduler_name = v.scheduler_name,.has_node_selector_labels = v.has_node_selector_labels,.has_pod_affinity_requirements = v.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v.has_pod_anti_affinity_requirements,.has_node_port_requirements = v.has_node_port_requirements,.has_topology_spread_constraints = v.has_topology_spread_constraints,.equivalence_class = v.equivalence_class,.qos_class = v.qos_class,.resourceversion = v.resourceversion,.last_requeue = v.last_requeue,.node_name0 = v0.node_name,.m = v0.m},((not is_null(v.node_name)) and (v.priority >= v0.m)),var v2 = TRtmp20{.uid = v.uid,.pod_name = v.pod_name,.status = v.status,.node_name = v.node_name,.namespace = v.namespace,.owner_name = v.owner_name,.creation_timestamp = v.creation_timestamp,.priority = v.priority,.scheduler_name = v.scheduler_name,.has_node_selector_labels = v.has_node_selector_labels,.has_pod_affinity_requirements = v.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v.has_pod_anti_affinity_requirements,.has_node_port_requirements = v.has_node_port_requirements,.has_topology_spread_constraints = v.has_topology_spread_constraints,.equivalence_class = v.equivalence_class,.qos_class = v.qos_class,.resourceversion = v.resourceversion,.last_requeue = v.last_requeue,.controllable__node_name = v.node_name},var v3 = v2.
+Rmatching_nodes_preempt[v9] :- Rmatch_expressions[v],Rnode_labels[v0],((((((v.label_operator == "In") and (v.label_key == v0.label_key)) and sql_array_contains(v.label_values, v0.label_value)) or ((v.label_operator == "Exists") and (v.label_key == v0.label_key))) or (v.label_operator == "NotIn")) or (v.label_operator == "DoesNotExist")),true,var v1 = Ttmp{.expr_id = v.expr_id,.label_key = v.label_key,.label_operator = v.label_operator,.label_values = v.label_values,.node_name = v0.node_name,.label_key0 = v0.label_key,.label_value = v0.label_value},var gb = v0.label_key,var gb2 = v.expr_id,var gb3 = v.label_operator,var gb4 = v0.node_name,var gb5 = v.label_key,var gb6 = v.label_values,var gb7 = v0.label_value,var groupResult = (v, v0).group_by((gb, gb2, gb3, gb4, gb5, gb6, gb7)),var aggResult = agg138(groupResult),var v8 = TRtmp23{.expr_id = gb2,.node_name = gb4},aggResult.col,var v9 = v8.
+Rmatching_pods_preempt[v9] :- Rmatch_expressions[v],Rpod_labels[v0],((((((v.label_operator == "In") and (v.label_key == v0.label_key)) and sql_array_contains(v.label_values, v0.label_value)) or ((v.label_operator == "Exists") and (v.label_key == v0.label_key))) or (v.label_operator == "NotIn")) or (v.label_operator == "DoesNotExist")),true,var v1 = Ttmp24{.expr_id = v.expr_id,.label_key = v.label_key,.label_operator = v.label_operator,.label_values = v.label_values,.pod_uid = v0.pod_uid,.label_key0 = v0.label_key,.label_value = v0.label_value},var gb = v.expr_id,var gb2 = v.label_operator,var gb3 = v0.pod_uid,var gb4 = v.label_key,var gb5 = v0.label_key,var gb6 = v.label_values,var gb7 = v0.label_value,var groupResult = (v, v0).group_by((gb, gb2, gb3, gb4, gb5, gb6, gb7)),var aggResult = agg140(groupResult),var v8 = TRtmp25{.expr_id = gb,.label_operator = gb2,.pod_uid = gb3},aggResult.col,var v9 = v8.
+Roverinput141[v17] :- Rpods_to_assign_preempt[v9],Rpod_ports_request[v10],(v9.uid == v10.pod_uid),true,var v11 = Ttmp27{.uid = v9.uid,.pod_name = v9.pod_name,.status = v9.status,.node_name = v9.node_name,.namespace = v9.namespace,.owner_name = v9.owner_name,.creation_timestamp = v9.creation_timestamp,.priority = v9.priority,.scheduler_name = v9.scheduler_name,.has_node_selector_labels = v9.has_node_selector_labels,.has_pod_affinity_requirements = v9.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v9.has_pod_anti_affinity_requirements,.has_node_port_requirements = v9.has_node_port_requirements,.has_topology_spread_constraints = v9.has_topology_spread_constraints,.equivalence_class = v9.equivalence_class,.qos_class = v9.qos_class,.resourceversion = v9.resourceversion,.last_requeue = v9.last_requeue,.controllable__node_name = v9.controllable__node_name,.pod_uid = v10.pod_uid,.host_ip = v10.host_ip,.host_port = v10.host_port,.host_protocol = v10.host_protocol},Rpod_ports_request[v12],((((v9.uid != v12.pod_uid) and (v10.host_port == v12.host_port)) and (v10.host_protocol == v12.host_protocol)) and (((v10.host_ip == v12.host_ip) or (v10.host_ip == "0.0.0.0")) or (v12.host_ip == "0.0.0.0"))),true,var v13 = Ttmp28{.uid = v11.uid,.pod_name = v11.pod_name,.status = v11.status,.node_name = v11.node_name,.namespace = v11.namespace,.owner_name = v11.owner_name,.creation_timestamp = v11.creation_timestamp,.priority = v11.priority,.scheduler_name = v11.scheduler_name,.has_node_selector_labels = v11.has_node_selector_labels,.has_pod_affinity_requirements = v11.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v11.has_pod_anti_affinity_requirements,.has_node_port_requirements = v11.has_node_port_requirements,.has_topology_spread_constraints = v11.has_topology_spread_constraints,.equivalence_class = v11.equivalence_class,.qos_class = v11.qos_class,.resourceversion = v11.resourceversion,.last_requeue = v11.last_requeue,.controllable__node_name = v11.controllable__node_name,.pod_uid = v11.pod_uid,.host_ip = v11.host_ip,.host_port = v11.host_port,.host_protocol = v11.host_protocol,.pod_uid0 = v12.pod_uid,.host_ip0 = v12.host_ip,.host_port0 = v12.host_port,.host_protocol0 = v12.host_protocol},Rpods_to_assign_preempt[v14],(v14.uid == v12.pod_uid),true,var v15 = Ttmp29{.uid = v13.uid,.pod_name = v13.pod_name,.status = v13.status,.node_name = v13.node_name,.namespace = v13.namespace,.owner_name = v13.owner_name,.creation_timestamp = v13.creation_timestamp,.priority = v13.priority,.scheduler_name = v13.scheduler_name,.has_node_selector_labels = v13.has_node_selector_labels,.has_pod_affinity_requirements = v13.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v13.has_pod_anti_affinity_requirements,.has_node_port_requirements = v13.has_node_port_requirements,.has_topology_spread_constraints = v13.has_topology_spread_constraints,.equivalence_class = v13.equivalence_class,.qos_class = v13.qos_class,.resourceversion = v13.resourceversion,.last_requeue = v13.last_requeue,.controllable__node_name = v13.controllable__node_name,.pod_uid = v13.pod_uid,.host_ip = v13.host_ip,.host_port = v13.host_port,.host_protocol = v13.host_protocol,.pod_uid0 = v13.pod_uid0,.host_ip0 = v13.host_ip0,.host_port0 = v13.host_port0,.host_protocol0 = v13.host_protocol0,.uid0 = v14.uid,.pod_name0 = v14.pod_name,.status0 = v14.status,.node_name0 = v14.node_name,.namespace0 = v14.namespace,.owner_name0 = v14.owner_name,.creation_timestamp0 = v14.creation_timestamp,.priority0 = v14.priority,.scheduler_name0 = v14.scheduler_name,.has_node_selector_labels0 = v14.has_node_selector_labels,.has_pod_affinity_requirements0 = v14.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v14.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v14.has_node_port_requirements,.has_topology_spread_constraints0 = v14.has_topology_spread_constraints,.equivalence_class0 = v14.equivalence_class,.qos_class0 = v14.qos_class,.resourceversion0 = v14.resourceversion,.last_requeue0 = v14.last_requeue,.controllable__node_name0 = v14.controllable__node_name},var v16 = TRtmp30{.tmp = v14.uid,.tmp7 = v14.node_name,.gb = v9.uid,.gb6 = v9.uid,.pod_uid = v9.uid},var v17 = v16.
+Rover143[v22] :- Roverinput141[v18],var gb19 = v18.gb,var groupResult = (v18).group_by((gb19)),var aggResult = agg145(groupResult),var v21 = TRtmp31{.gb = gb19,.array_agg = aggResult.array_agg},var v22 = v21.
+Rover146[v32] :- Roverinput141[v23],var gb24 = v23.gb6,var groupResult31 = (v23).group_by((gb24)),var aggResult30 = agg148(groupResult31),var v29 = TRtmp34{.gb6 = gb24,.array_agg8 = aggResult30.array_agg8},var v32 = v29.
+Rpods_with_port_requests_pending_preempt[v39] :- Roverinput141[v33],Rover143[v34],(true and (v33.gb == v34.gb)),var v35 = Ttmp36{.tmp = v33.tmp,.tmp7 = v33.tmp7,.gb = v33.gb,.gb6 = v33.gb6,.pod_uid = v33.pod_uid,.array_agg = v34.array_agg},Rover146[v36],(true and (v35.gb6 == v36.gb6)),var v37 = Ttmp37{.tmp = v35.tmp,.tmp7 = v35.tmp7,.gb = v35.gb,.gb6 = v35.gb6,.pod_uid = v35.pod_uid,.array_agg = v35.array_agg,.array_agg8 = v36.array_agg8},var v38 = TRtmp38{.pod_uid = v33.pod_uid,.pod_matches = v34.array_agg,.node_matches = v36.array_agg8},var v39 = v38.
+Roverinput150[v17] :- Rpods_to_assign_preempt[v9],Rpod_ports_request[v10],(v9.uid == v10.pod_uid),true,var v11 = Ttmp27{.uid = v9.uid,.pod_name = v9.pod_name,.status = v9.status,.node_name = v9.node_name,.namespace = v9.namespace,.owner_name = v9.owner_name,.creation_timestamp = v9.creation_timestamp,.priority = v9.priority,.scheduler_name = v9.scheduler_name,.has_node_selector_labels = v9.has_node_selector_labels,.has_pod_affinity_requirements = v9.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v9.has_pod_anti_affinity_requirements,.has_node_port_requirements = v9.has_node_port_requirements,.has_topology_spread_constraints = v9.has_topology_spread_constraints,.equivalence_class = v9.equivalence_class,.qos_class = v9.qos_class,.resourceversion = v9.resourceversion,.last_requeue = v9.last_requeue,.controllable__node_name = v9.controllable__node_name,.pod_uid = v10.pod_uid,.host_ip = v10.host_ip,.host_port = v10.host_port,.host_protocol = v10.host_protocol},Rpod_ports_request[v12],((((v9.uid != v12.pod_uid) and (v10.host_port == v12.host_port)) and (v10.host_protocol == v12.host_protocol)) and (((v10.host_ip == v12.host_ip) or (v10.host_ip == "0.0.0.0")) or (v12.host_ip == "0.0.0.0"))),true,var v13 = Ttmp28{.uid = v11.uid,.pod_name = v11.pod_name,.status = v11.status,.node_name = v11.node_name,.namespace = v11.namespace,.owner_name = v11.owner_name,.creation_timestamp = v11.creation_timestamp,.priority = v11.priority,.scheduler_name = v11.scheduler_name,.has_node_selector_labels = v11.has_node_selector_labels,.has_pod_affinity_requirements = v11.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v11.has_pod_anti_affinity_requirements,.has_node_port_requirements = v11.has_node_port_requirements,.has_topology_spread_constraints = v11.has_topology_spread_constraints,.equivalence_class = v11.equivalence_class,.qos_class = v11.qos_class,.resourceversion = v11.resourceversion,.last_requeue = v11.last_requeue,.controllable__node_name = v11.controllable__node_name,.pod_uid = v11.pod_uid,.host_ip = v11.host_ip,.host_port = v11.host_port,.host_protocol = v11.host_protocol,.pod_uid0 = v12.pod_uid,.host_ip0 = v12.host_ip,.host_port0 = v12.host_port,.host_protocol0 = v12.host_protocol},Rassigned_pods_preempt[v14],(v14.uid == v12.pod_uid),true,var v15 = Ttmp29{.uid = v13.uid,.pod_name = v13.pod_name,.status = v13.status,.node_name = v13.node_name,.namespace = v13.namespace,.owner_name = v13.owner_name,.creation_timestamp = v13.creation_timestamp,.priority = v13.priority,.scheduler_name = v13.scheduler_name,.has_node_selector_labels = v13.has_node_selector_labels,.has_pod_affinity_requirements = v13.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v13.has_pod_anti_affinity_requirements,.has_node_port_requirements = v13.has_node_port_requirements,.has_topology_spread_constraints = v13.has_topology_spread_constraints,.equivalence_class = v13.equivalence_class,.qos_class = v13.qos_class,.resourceversion = v13.resourceversion,.last_requeue = v13.last_requeue,.controllable__node_name = v13.controllable__node_name,.pod_uid = v13.pod_uid,.host_ip = v13.host_ip,.host_port = v13.host_port,.host_protocol = v13.host_protocol,.pod_uid0 = v13.pod_uid0,.host_ip0 = v13.host_ip0,.host_port0 = v13.host_port0,.host_protocol0 = v13.host_protocol0,.uid0 = v14.uid,.pod_name0 = v14.pod_name,.status0 = v14.status,.node_name0 = v14.node_name,.namespace0 = v14.namespace,.owner_name0 = v14.owner_name,.creation_timestamp0 = v14.creation_timestamp,.priority0 = v14.priority,.scheduler_name0 = v14.scheduler_name,.has_node_selector_labels0 = v14.has_node_selector_labels,.has_pod_affinity_requirements0 = v14.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v14.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v14.has_node_port_requirements,.has_topology_spread_constraints0 = v14.has_topology_spread_constraints,.equivalence_class0 = v14.equivalence_class,.qos_class0 = v14.qos_class,.resourceversion0 = v14.resourceversion,.last_requeue0 = v14.last_requeue,.controllable__node_name0 = v14.controllable__node_name},var v16 = TRtmp30{.tmp = v14.uid,.tmp7 = v14.node_name,.gb = v9.uid,.gb6 = v9.uid,.pod_uid = v9.uid},var v17 = v16.
+Rover152[v22] :- Roverinput150[v18],var gb19 = v18.gb,var groupResult = (v18).group_by((gb19)),var aggResult = agg154(groupResult),var v21 = TRtmp31{.gb = gb19,.array_agg = aggResult.array_agg},var v22 = v21.
+Rover155[v32] :- Roverinput150[v23],var gb24 = v23.gb6,var groupResult31 = (v23).group_by((gb24)),var aggResult30 = agg157(groupResult31),var v29 = TRtmp34{.gb6 = gb24,.array_agg8 = aggResult30.array_agg8},var v32 = v29.
+Rpods_with_port_requests_scheduled_preempt[v39] :- Roverinput150[v33],Rover152[v34],(true and (v33.gb == v34.gb)),var v35 = Ttmp36{.tmp = v33.tmp,.tmp7 = v33.tmp7,.gb = v33.gb,.gb6 = v33.gb6,.pod_uid = v33.pod_uid,.array_agg = v34.array_agg},Rover155[v36],(true and (v35.gb6 == v36.gb6)),var v37 = Ttmp37{.tmp = v35.tmp,.tmp7 = v35.tmp7,.gb = v35.gb,.gb6 = v35.gb6,.pod_uid = v35.pod_uid,.array_agg = v35.array_agg,.array_agg8 = v36.array_agg8},var v38 = TRtmp38{.pod_uid = v33.pod_uid,.pod_matches = v34.array_agg,.node_matches = v36.array_agg8},var v39 = v38.
+Roverinput159[v18] :- Rpods_to_assign_preempt[v8],Rpod_node_selector_labels[v9],(v8.uid == v9.pod_uid),true,var v10 = Ttmp49{.uid = v8.uid,.pod_name = v8.pod_name,.status = v8.status,.node_name = v8.node_name,.namespace = v8.namespace,.owner_name = v8.owner_name,.creation_timestamp = v8.creation_timestamp,.priority = v8.priority,.scheduler_name = v8.scheduler_name,.has_node_selector_labels = v8.has_node_selector_labels,.has_pod_affinity_requirements = v8.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v8.has_pod_anti_affinity_requirements,.has_node_port_requirements = v8.has_node_port_requirements,.has_topology_spread_constraints = v8.has_topology_spread_constraints,.equivalence_class = v8.equivalence_class,.qos_class = v8.qos_class,.resourceversion = v8.resourceversion,.last_requeue = v8.last_requeue,.controllable__node_name = v8.controllable__node_name,.pod_uid = v9.pod_uid,.term = v9.term,.match_expressions = v9.match_expressions},Rmatching_nodes[v11],sql_array_contains(v9.match_expressions, v11.expr_id),true,var v12 = Ttmp50{.uid = v10.uid,.pod_name = v10.pod_name,.status = v10.status,.node_name = v10.node_name,.namespace = v10.namespace,.owner_name = v10.owner_name,.creation_timestamp = v10.creation_timestamp,.priority = v10.priority,.scheduler_name = v10.scheduler_name,.has_node_selector_labels = v10.has_node_selector_labels,.has_pod_affinity_requirements = v10.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v10.has_pod_anti_affinity_requirements,.has_node_port_requirements = v10.has_node_port_requirements,.has_topology_spread_constraints = v10.has_topology_spread_constraints,.equivalence_class = v10.equivalence_class,.qos_class = v10.qos_class,.resourceversion = v10.resourceversion,.last_requeue = v10.last_requeue,.controllable__node_name = v10.controllable__node_name,.pod_uid = v10.pod_uid,.term = v10.term,.match_expressions = v10.match_expressions,.expr_id = v11.expr_id,.node_name0 = v11.node_name},(v8.has_node_selector_labels == true),var gb13 = v8.uid,var gb14 = v9.match_expressions,var gb15 = v9.term,var gb16 = v11.node_name,var groupResult = (v8, v9, v11).group_by((gb13, gb14, gb15, gb16)),var aggResult = agg161(groupResult),var v17 = TRtmp52{.gb7 = gb13,.pod_uid = gb13,.tmp = gb16},aggResult.col,var v18 = v17.
+Rover162[v28] :- Roverinput159[v19],var gb20 = v19.gb7,var groupResult27 = (v19).group_by((gb20)),var aggResult26 = agg164(groupResult27),var v25 = TRtmp55{.gb7 = gb20,.array_agg = aggResult26.array_agg},var v28 = v25.
+Rpod_node_selector_matches_preempt[v33] :- Roverinput159[v29],Rover162[v30],(true and (v29.gb7 == v30.gb7)),var v31 = Ttmp57{.tmp = v29.tmp,.gb7 = v29.gb7,.pod_uid = v29.pod_uid,.array_agg = v30.array_agg},var v32 = TRtmp58{.pod_uid = v29.pod_uid,.node_matches = v30.array_agg},var v33 = v32.
+Rtmp168[v7] :- Rpod_info[v2],Rpod_resource_demands[v3],(v3.uid == v2.uid),true,var v4 = Ttmp60{.uid = v2.uid,.pod_name = v2.pod_name,.status = v2.status,.node_name = v2.node_name,.namespace = v2.namespace,.owner_name = v2.owner_name,.creation_timestamp = v2.creation_timestamp,.priority = v2.priority,.scheduler_name = v2.scheduler_name,.has_node_selector_labels = v2.has_node_selector_labels,.has_pod_affinity_requirements = v2.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v2.has_pod_anti_affinity_requirements,.has_node_port_requirements = v2.has_node_port_requirements,.has_topology_spread_constraints = v2.has_topology_spread_constraints,.equivalence_class = v2.equivalence_class,.qos_class = v2.qos_class,.resourceversion = v2.resourceversion,.last_requeue = v2.last_requeue,.uid0 = v3.uid,.resource = v3.resource,.demand = v3.demand},var gb = v2.node_name,var gb5 = v3.resource,var groupResult = (v2, v3).group_by((gb, gb5)),var aggResult = agg167(groupResult),var v6 = TRtmp61{.node_name = gb,.resource = gb5,.total_demand = aggResult.total_demand},var v7 = v6.
+Rspare_capacity_per_node_preempt[v19] :- Rnode_info[v],Rnode_resources[v0],(v.uid == v0.uid),true,var v1 = Ttmp59{.uid = v.uid,.name = v.name,.unschedulable = v.unschedulable,.out_of_disk = v.out_of_disk,.memory_pressure = v.memory_pressure,.disk_pressure = v.disk_pressure,.pid_pressure = v.pid_pressure,.ready = v.ready,.network_unavailable = v.network_unavailable,.uid0 = v0.uid,.resource = v0.resource,.allocatable = v0.allocatable},Rtmp168[v7],unwrapBool(b_and_NR(s_eq_NR(v7.node_name, v.name), (v7.resource == v0.resource))),true,var v8 = Ttmp64{.uid = v1.uid,.name = v1.name,.unschedulable = v1.unschedulable,.out_of_disk = v1.out_of_disk,.memory_pressure = v1.memory_pressure,.disk_pressure = v1.disk_pressure,.pid_pressure = v1.pid_pressure,.ready = v1.ready,.network_unavailable = v1.network_unavailable,.uid0 = v1.uid0,.resource = v1.resource,.allocatable = v1.allocatable,.node_name = v7.node_name,.resource0 = v7.resource,.total_demand = v7.total_demand},(((((((v.unschedulable == false) and (v.memory_pressure == false)) and (v.out_of_disk == false)) and (v.disk_pressure == false)) and (v.pid_pressure == false)) and (v.network_unavailable == false)) and (v.ready == true)),var gb9 = v.name,var gb10 = v0.resource,var gb11 = v0.allocatable,var groupResult18 = (v, v0, v7).group_by((gb9, gb10, gb11)),var aggResult17 = agg170(groupResult18),var v16 = TRtmp65{.name = gb9,.resource = gb10,.capacity = aggResult17.capacity},var v19 = v16.
+Roverinput171[v5] :- Rnode_taints[v3],var v4 = TRtmp69{.gb = v3.node_name,.node_name = v3.node_name,.taint_key = v3.taint_key,.taint_value = v3.taint_value,.taint_effect = v3.taint_effect},var v5 = v4.
+Rover173[v10] :- Roverinput171[v6],var gb7 = v6.gb,var groupResult = (v6).group_by((gb7)),var aggResult = agg175(groupResult),var v9 = TRtmp71{.gb = gb7,.count = aggResult.count},var v10 = v9.
+Rtmp177[v15] :- Roverinput171[v11],Rover173[v12],(true and (v11.gb == v12.gb)),var v13 = Ttmp73{.gb = v11.gb,.node_name = v11.node_name,.taint_key = v11.taint_key,.taint_value = v11.taint_value,.taint_effect = v11.taint_effect,.count = v12.count},var v14 = TRtmp74{.node_name = v11.node_name,.taint_key = v11.taint_key,.taint_value = v11.taint_value,.taint_effect = v11.taint_effect,.num_taints = v12.count},var v15 = v14.
+Rpods_that_tolerate_node_taints_preempt[v26] :- Rpods_to_assign_preempt[v],Rpod_tolerations[v0],(v.uid == v0.pod_uid),true,var v1 = Ttmp67{.uid = v.uid,.pod_name = v.pod_name,.status = v.status,.node_name = v.node_name,.namespace = v.namespace,.owner_name = v.owner_name,.creation_timestamp = v.creation_timestamp,.priority = v.priority,.scheduler_name = v.scheduler_name,.has_node_selector_labels = v.has_node_selector_labels,.has_pod_affinity_requirements = v.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v.has_pod_anti_affinity_requirements,.has_node_port_requirements = v.has_node_port_requirements,.has_topology_spread_constraints = v.has_topology_spread_constraints,.equivalence_class = v.equivalence_class,.qos_class = v.qos_class,.resourceversion = v.resourceversion,.last_requeue = v.last_requeue,.controllable__node_name = v.controllable__node_name,.pod_uid = v0.pod_uid,.tolerations_key = v0.tolerations_key,.tolerations_value = v0.tolerations_value,.tolerations_effect = v0.tolerations_effect,.tolerations_operator = v0.tolerations_operator},Rtmp177[v15],unwrapBool(b_and_NN(b_and_NN(s_eq_NR(v0.tolerations_key, v15.taint_key), b_or_NN(s_eq_NN(v0.tolerations_effect, None{}: Option<string>), s_eq_NR(v0.tolerations_effect, v15.taint_effect))), b_or_NN(s_eq_NR(v0.tolerations_operator, "Exists"), s_eq_NN(v0.tolerations_value, v15.taint_value)))),true,var v16 = Ttmp76{.uid = v1.uid,.pod_name = v1.pod_name,.status = v1.status,.node_name = v1.node_name,.namespace = v1.namespace,.owner_name = v1.owner_name,.creation_timestamp = v1.creation_timestamp,.priority = v1.priority,.scheduler_name = v1.scheduler_name,.has_node_selector_labels = v1.has_node_selector_labels,.has_pod_affinity_requirements = v1.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v1.has_pod_anti_affinity_requirements,.has_node_port_requirements = v1.has_node_port_requirements,.has_topology_spread_constraints = v1.has_topology_spread_constraints,.equivalence_class = v1.equivalence_class,.qos_class = v1.qos_class,.resourceversion = v1.resourceversion,.last_requeue = v1.last_requeue,.controllable__node_name = v1.controllable__node_name,.pod_uid = v1.pod_uid,.tolerations_key = v1.tolerations_key,.tolerations_value = v1.tolerations_value,.tolerations_effect = v1.tolerations_effect,.tolerations_operator = v1.tolerations_operator,.node_name0 = v15.node_name,.taint_key = v15.taint_key,.taint_value = v15.taint_value,.taint_effect = v15.taint_effect,.num_taints = v15.num_taints},var gb17 = v0.pod_uid,var gb18 = v15.node_name,var gb19 = v15.num_taints,var groupResult25 = (v, v0, v15).group_by((gb17, gb18, gb19)),var aggResult24 = agg179(groupResult25),var v23 = TRtmp77{.pod_uid = gb17,.node_name = gb18},aggResult24.col,var v26 = v23.
+Rnodes_that_have_tolerations_preempt[v1] :- Rnode_taints[v],var v0 = TRtmp79{.node_name = v.node_name},var v1 = v0.
+Rallowed_nodes_preempt[v1] :- Rspare_capacity_per_node[v],var v0 = TRtmp80{.name = v.name},var v1 = v0.
+Roverinput182[v29] :- Rpods_to_assign_preempt[v15],Rpod_affinity_match_expressions[v16],(v15.uid == v16.pod_uid),true,var v17 = Ttmp81{.uid = v15.uid,.pod_name = v15.pod_name,.status = v15.status,.node_name = v15.node_name,.namespace = v15.namespace,.owner_name = v15.owner_name,.creation_timestamp = v15.creation_timestamp,.priority = v15.priority,.scheduler_name = v15.scheduler_name,.has_node_selector_labels = v15.has_node_selector_labels,.has_pod_affinity_requirements = v15.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v15.has_pod_anti_affinity_requirements,.has_node_port_requirements = v15.has_node_port_requirements,.has_topology_spread_constraints = v15.has_topology_spread_constraints,.equivalence_class = v15.equivalence_class,.qos_class = v15.qos_class,.resourceversion = v15.resourceversion,.last_requeue = v15.last_requeue,.controllable__node_name = v15.controllable__node_name,.pod_uid = v16.pod_uid,.label_selector = v16.label_selector,.match_expressions = v16.match_expressions,.topology_key = v16.topology_key},Rmatching_pods[v18],sql_array_contains(v16.match_expressions, v18.expr_id),true,var v19 = Ttmp82{.uid = v17.uid,.pod_name = v17.pod_name,.status = v17.status,.node_name = v17.node_name,.namespace = v17.namespace,.owner_name = v17.owner_name,.creation_timestamp = v17.creation_timestamp,.priority = v17.priority,.scheduler_name = v17.scheduler_name,.has_node_selector_labels = v17.has_node_selector_labels,.has_pod_affinity_requirements = v17.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v17.has_pod_anti_affinity_requirements,.has_node_port_requirements = v17.has_node_port_requirements,.has_topology_spread_constraints = v17.has_topology_spread_constraints,.equivalence_class = v17.equivalence_class,.qos_class = v17.qos_class,.resourceversion = v17.resourceversion,.last_requeue = v17.last_requeue,.controllable__node_name = v17.controllable__node_name,.pod_uid = v17.pod_uid,.label_selector = v17.label_selector,.match_expressions = v17.match_expressions,.topology_key = v17.topology_key,.expr_id = v18.expr_id,.label_operator = v18.label_operator,.pod_uid0 = v18.pod_uid},Rpods_to_assign_preempt[v20],((v18.pod_uid == v20.uid) and (v15.uid != v20.uid)),true,var v21 = Ttmp83{.uid = v19.uid,.pod_name = v19.pod_name,.status = v19.status,.node_name = v19.node_name,.namespace = v19.namespace,.owner_name = v19.owner_name,.creation_timestamp = v19.creation_timestamp,.priority = v19.priority,.scheduler_name = v19.scheduler_name,.has_node_selector_labels = v19.has_node_selector_labels,.has_pod_affinity_requirements = v19.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v19.has_pod_anti_affinity_requirements,.has_node_port_requirements = v19.has_node_port_requirements,.has_topology_spread_constraints = v19.has_topology_spread_constraints,.equivalence_class = v19.equivalence_class,.qos_class = v19.qos_class,.resourceversion = v19.resourceversion,.last_requeue = v19.last_requeue,.controllable__node_name = v19.controllable__node_name,.pod_uid = v19.pod_uid,.label_selector = v19.label_selector,.match_expressions = v19.match_expressions,.topology_key = v19.topology_key,.expr_id = v19.expr_id,.label_operator = v19.label_operator,.pod_uid0 = v19.pod_uid0,.uid0 = v20.uid,.pod_name0 = v20.pod_name,.status0 = v20.status,.node_name0 = v20.node_name,.namespace0 = v20.namespace,.owner_name0 = v20.owner_name,.creation_timestamp0 = v20.creation_timestamp,.priority0 = v20.priority,.scheduler_name0 = v20.scheduler_name,.has_node_selector_labels0 = v20.has_node_selector_labels,.has_pod_affinity_requirements0 = v20.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v20.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v20.has_node_port_requirements,.has_topology_spread_constraints0 = v20.has_topology_spread_constraints,.equivalence_class0 = v20.equivalence_class,.qos_class0 = v20.qos_class,.resourceversion0 = v20.resourceversion,.last_requeue0 = v20.last_requeue,.controllable__node_name0 = v20.controllable__node_name},(v15.has_pod_affinity_requirements == true),var gb22 = v15.uid,var gb23 = v18.pod_uid,var gb24 = v16.label_selector,var gb25 = v16.topology_key,var gb26 = v16.match_expressions,var gb27 = v20.node_name,var groupResult = (v15, v16, v18, v20).group_by((gb22, gb23, gb24, gb25, gb26, gb27)),var aggResult = agg184(groupResult),var v28 = TRtmp85{.gb11 = gb22,.gb12 = gb22,.pod_uid = gb22,.tmp = gb23,.tmp13 = gb27},aggResult.col,var v29 = v28.
+Rover185[v39] :- Roverinput182[v30],var gb31 = v30.gb11,var groupResult38 = (v30).group_by((gb31)),var aggResult37 = agg187(groupResult38),var v36 = TRtmp88{.gb11 = gb31,.array_agg = aggResult37.array_agg},var v39 = v36.
+Rover188[v49] :- Roverinput182[v40],var gb41 = v40.gb12,var groupResult48 = (v40).group_by((gb41)),var aggResult47 = agg190(groupResult48),var v46 = TRtmp91{.gb12 = gb41,.array_agg14 = aggResult47.array_agg14},var v49 = v46.
+Rinter_pod_affinity_matches_pending_preempt[v56] :- Roverinput182[v50],Rover185[v51],(true and (v50.gb11 == v51.gb11)),var v52 = Ttmp93{.tmp = v50.tmp,.tmp13 = v50.tmp13,.gb11 = v50.gb11,.gb12 = v50.gb12,.pod_uid = v50.pod_uid,.array_agg = v51.array_agg},Rover188[v53],(true and (v52.gb12 == v53.gb12)),var v54 = Ttmp94{.tmp = v52.tmp,.tmp13 = v52.tmp13,.gb11 = v52.gb11,.gb12 = v52.gb12,.pod_uid = v52.pod_uid,.array_agg = v52.array_agg,.array_agg14 = v53.array_agg14},var v55 = TRtmp38{.pod_uid = v50.pod_uid,.pod_matches = v51.array_agg,.node_matches = v53.array_agg14},var v56 = v55.
+Roverinput192[v29] :- Rpods_to_assign_preempt[v15],Rpod_affinity_match_expressions[v16],(v15.uid == v16.pod_uid),true,var v17 = Ttmp81{.uid = v15.uid,.pod_name = v15.pod_name,.status = v15.status,.node_name = v15.node_name,.namespace = v15.namespace,.owner_name = v15.owner_name,.creation_timestamp = v15.creation_timestamp,.priority = v15.priority,.scheduler_name = v15.scheduler_name,.has_node_selector_labels = v15.has_node_selector_labels,.has_pod_affinity_requirements = v15.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v15.has_pod_anti_affinity_requirements,.has_node_port_requirements = v15.has_node_port_requirements,.has_topology_spread_constraints = v15.has_topology_spread_constraints,.equivalence_class = v15.equivalence_class,.qos_class = v15.qos_class,.resourceversion = v15.resourceversion,.last_requeue = v15.last_requeue,.controllable__node_name = v15.controllable__node_name,.pod_uid = v16.pod_uid,.label_selector = v16.label_selector,.match_expressions = v16.match_expressions,.topology_key = v16.topology_key},Rmatching_pods[v18],sql_array_contains(v16.match_expressions, v18.expr_id),true,var v19 = Ttmp82{.uid = v17.uid,.pod_name = v17.pod_name,.status = v17.status,.node_name = v17.node_name,.namespace = v17.namespace,.owner_name = v17.owner_name,.creation_timestamp = v17.creation_timestamp,.priority = v17.priority,.scheduler_name = v17.scheduler_name,.has_node_selector_labels = v17.has_node_selector_labels,.has_pod_affinity_requirements = v17.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v17.has_pod_anti_affinity_requirements,.has_node_port_requirements = v17.has_node_port_requirements,.has_topology_spread_constraints = v17.has_topology_spread_constraints,.equivalence_class = v17.equivalence_class,.qos_class = v17.qos_class,.resourceversion = v17.resourceversion,.last_requeue = v17.last_requeue,.controllable__node_name = v17.controllable__node_name,.pod_uid = v17.pod_uid,.label_selector = v17.label_selector,.match_expressions = v17.match_expressions,.topology_key = v17.topology_key,.expr_id = v18.expr_id,.label_operator = v18.label_operator,.pod_uid0 = v18.pod_uid},Rassigned_pods_preempt[v20],((v18.pod_uid == v20.uid) and (v15.uid != v20.uid)),true,var v21 = Ttmp83{.uid = v19.uid,.pod_name = v19.pod_name,.status = v19.status,.node_name = v19.node_name,.namespace = v19.namespace,.owner_name = v19.owner_name,.creation_timestamp = v19.creation_timestamp,.priority = v19.priority,.scheduler_name = v19.scheduler_name,.has_node_selector_labels = v19.has_node_selector_labels,.has_pod_affinity_requirements = v19.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v19.has_pod_anti_affinity_requirements,.has_node_port_requirements = v19.has_node_port_requirements,.has_topology_spread_constraints = v19.has_topology_spread_constraints,.equivalence_class = v19.equivalence_class,.qos_class = v19.qos_class,.resourceversion = v19.resourceversion,.last_requeue = v19.last_requeue,.controllable__node_name = v19.controllable__node_name,.pod_uid = v19.pod_uid,.label_selector = v19.label_selector,.match_expressions = v19.match_expressions,.topology_key = v19.topology_key,.expr_id = v19.expr_id,.label_operator = v19.label_operator,.pod_uid0 = v19.pod_uid0,.uid0 = v20.uid,.pod_name0 = v20.pod_name,.status0 = v20.status,.node_name0 = v20.node_name,.namespace0 = v20.namespace,.owner_name0 = v20.owner_name,.creation_timestamp0 = v20.creation_timestamp,.priority0 = v20.priority,.scheduler_name0 = v20.scheduler_name,.has_node_selector_labels0 = v20.has_node_selector_labels,.has_pod_affinity_requirements0 = v20.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v20.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v20.has_node_port_requirements,.has_topology_spread_constraints0 = v20.has_topology_spread_constraints,.equivalence_class0 = v20.equivalence_class,.qos_class0 = v20.qos_class,.resourceversion0 = v20.resourceversion,.last_requeue0 = v20.last_requeue,.controllable__node_name0 = v20.controllable__node_name},(v15.has_pod_affinity_requirements == true),var gb22 = v15.uid,var gb23 = v18.pod_uid,var gb24 = v16.label_selector,var gb25 = v16.topology_key,var gb26 = v16.match_expressions,var gb27 = v20.node_name,var groupResult = (v15, v16, v18, v20).group_by((gb22, gb23, gb24, gb25, gb26, gb27)),var aggResult = agg194(groupResult),var v28 = TRtmp85{.gb11 = gb22,.gb12 = gb22,.pod_uid = gb22,.tmp = gb23,.tmp13 = gb27},aggResult.col,var v29 = v28.
+Rover195[v39] :- Roverinput192[v30],var gb31 = v30.gb11,var groupResult38 = (v30).group_by((gb31)),var aggResult37 = agg197(groupResult38),var v36 = TRtmp88{.gb11 = gb31,.array_agg = aggResult37.array_agg},var v39 = v36.
+Rover198[v49] :- Roverinput192[v40],var gb41 = v40.gb12,var groupResult48 = (v40).group_by((gb41)),var aggResult47 = agg200(groupResult48),var v46 = TRtmp91{.gb12 = gb41,.array_agg14 = aggResult47.array_agg14},var v49 = v46.
+Rinter_pod_affinity_matches_scheduled_preempt[v56] :- Roverinput192[v50],Rover195[v51],(true and (v50.gb11 == v51.gb11)),var v52 = Ttmp93{.tmp = v50.tmp,.tmp13 = v50.tmp13,.gb11 = v50.gb11,.gb12 = v50.gb12,.pod_uid = v50.pod_uid,.array_agg = v51.array_agg},Rover198[v53],(true and (v52.gb12 == v53.gb12)),var v54 = Ttmp94{.tmp = v52.tmp,.tmp13 = v52.tmp13,.gb11 = v52.gb11,.gb12 = v52.gb12,.pod_uid = v52.pod_uid,.array_agg = v52.array_agg,.array_agg14 = v53.array_agg14},var v55 = TRtmp38{.pod_uid = v50.pod_uid,.pod_matches = v51.array_agg,.node_matches = v53.array_agg14},var v56 = v55.
+Roverinput202[v29] :- Rpods_to_assign_preempt[v15],Rpod_anti_affinity_match_expressions[v16],(v15.uid == v16.pod_uid),true,var v17 = Ttmp81{.uid = v15.uid,.pod_name = v15.pod_name,.status = v15.status,.node_name = v15.node_name,.namespace = v15.namespace,.owner_name = v15.owner_name,.creation_timestamp = v15.creation_timestamp,.priority = v15.priority,.scheduler_name = v15.scheduler_name,.has_node_selector_labels = v15.has_node_selector_labels,.has_pod_affinity_requirements = v15.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v15.has_pod_anti_affinity_requirements,.has_node_port_requirements = v15.has_node_port_requirements,.has_topology_spread_constraints = v15.has_topology_spread_constraints,.equivalence_class = v15.equivalence_class,.qos_class = v15.qos_class,.resourceversion = v15.resourceversion,.last_requeue = v15.last_requeue,.controllable__node_name = v15.controllable__node_name,.pod_uid = v16.pod_uid,.label_selector = v16.label_selector,.match_expressions = v16.match_expressions,.topology_key = v16.topology_key},Rmatching_pods[v18],sql_array_contains(v16.match_expressions, v18.expr_id),true,var v19 = Ttmp82{.uid = v17.uid,.pod_name = v17.pod_name,.status = v17.status,.node_name = v17.node_name,.namespace = v17.namespace,.owner_name = v17.owner_name,.creation_timestamp = v17.creation_timestamp,.priority = v17.priority,.scheduler_name = v17.scheduler_name,.has_node_selector_labels = v17.has_node_selector_labels,.has_pod_affinity_requirements = v17.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v17.has_pod_anti_affinity_requirements,.has_node_port_requirements = v17.has_node_port_requirements,.has_topology_spread_constraints = v17.has_topology_spread_constraints,.equivalence_class = v17.equivalence_class,.qos_class = v17.qos_class,.resourceversion = v17.resourceversion,.last_requeue = v17.last_requeue,.controllable__node_name = v17.controllable__node_name,.pod_uid = v17.pod_uid,.label_selector = v17.label_selector,.match_expressions = v17.match_expressions,.topology_key = v17.topology_key,.expr_id = v18.expr_id,.label_operator = v18.label_operator,.pod_uid0 = v18.pod_uid},Rpods_to_assign_preempt[v20],((v18.pod_uid == v20.uid) and (v15.uid != v20.uid)),true,var v21 = Ttmp83{.uid = v19.uid,.pod_name = v19.pod_name,.status = v19.status,.node_name = v19.node_name,.namespace = v19.namespace,.owner_name = v19.owner_name,.creation_timestamp = v19.creation_timestamp,.priority = v19.priority,.scheduler_name = v19.scheduler_name,.has_node_selector_labels = v19.has_node_selector_labels,.has_pod_affinity_requirements = v19.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v19.has_pod_anti_affinity_requirements,.has_node_port_requirements = v19.has_node_port_requirements,.has_topology_spread_constraints = v19.has_topology_spread_constraints,.equivalence_class = v19.equivalence_class,.qos_class = v19.qos_class,.resourceversion = v19.resourceversion,.last_requeue = v19.last_requeue,.controllable__node_name = v19.controllable__node_name,.pod_uid = v19.pod_uid,.label_selector = v19.label_selector,.match_expressions = v19.match_expressions,.topology_key = v19.topology_key,.expr_id = v19.expr_id,.label_operator = v19.label_operator,.pod_uid0 = v19.pod_uid0,.uid0 = v20.uid,.pod_name0 = v20.pod_name,.status0 = v20.status,.node_name0 = v20.node_name,.namespace0 = v20.namespace,.owner_name0 = v20.owner_name,.creation_timestamp0 = v20.creation_timestamp,.priority0 = v20.priority,.scheduler_name0 = v20.scheduler_name,.has_node_selector_labels0 = v20.has_node_selector_labels,.has_pod_affinity_requirements0 = v20.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v20.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v20.has_node_port_requirements,.has_topology_spread_constraints0 = v20.has_topology_spread_constraints,.equivalence_class0 = v20.equivalence_class,.qos_class0 = v20.qos_class,.resourceversion0 = v20.resourceversion,.last_requeue0 = v20.last_requeue,.controllable__node_name0 = v20.controllable__node_name},(v15.has_pod_anti_affinity_requirements == true),var gb22 = v15.uid,var gb23 = v18.pod_uid,var gb24 = v16.label_selector,var gb25 = v16.topology_key,var gb26 = v16.match_expressions,var gb27 = v20.node_name,var groupResult = (v15, v16, v18, v20).group_by((gb22, gb23, gb24, gb25, gb26, gb27)),var aggResult = agg204(groupResult),var v28 = TRtmp85{.gb11 = gb22,.gb12 = gb22,.pod_uid = gb22,.tmp = gb23,.tmp13 = gb27},aggResult.col,var v29 = v28.
+Rover205[v39] :- Roverinput202[v30],var gb31 = v30.gb11,var groupResult38 = (v30).group_by((gb31)),var aggResult37 = agg207(groupResult38),var v36 = TRtmp88{.gb11 = gb31,.array_agg = aggResult37.array_agg},var v39 = v36.
+Rover208[v49] :- Roverinput202[v40],var gb41 = v40.gb12,var groupResult48 = (v40).group_by((gb41)),var aggResult47 = agg210(groupResult48),var v46 = TRtmp91{.gb12 = gb41,.array_agg14 = aggResult47.array_agg14},var v49 = v46.
+Rinter_pod_anti_affinity_matches_pending_preempt[v56] :- Roverinput202[v50],Rover205[v51],(true and (v50.gb11 == v51.gb11)),var v52 = Ttmp93{.tmp = v50.tmp,.tmp13 = v50.tmp13,.gb11 = v50.gb11,.gb12 = v50.gb12,.pod_uid = v50.pod_uid,.array_agg = v51.array_agg},Rover208[v53],(true and (v52.gb12 == v53.gb12)),var v54 = Ttmp94{.tmp = v52.tmp,.tmp13 = v52.tmp13,.gb11 = v52.gb11,.gb12 = v52.gb12,.pod_uid = v52.pod_uid,.array_agg = v52.array_agg,.array_agg14 = v53.array_agg14},var v55 = TRtmp38{.pod_uid = v50.pod_uid,.pod_matches = v51.array_agg,.node_matches = v53.array_agg14},var v56 = v55.
+Roverinput212[v29] :- Rpods_to_assign_preempt[v15],Rpod_anti_affinity_match_expressions[v16],(v15.uid == v16.pod_uid),true,var v17 = Ttmp81{.uid = v15.uid,.pod_name = v15.pod_name,.status = v15.status,.node_name = v15.node_name,.namespace = v15.namespace,.owner_name = v15.owner_name,.creation_timestamp = v15.creation_timestamp,.priority = v15.priority,.scheduler_name = v15.scheduler_name,.has_node_selector_labels = v15.has_node_selector_labels,.has_pod_affinity_requirements = v15.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v15.has_pod_anti_affinity_requirements,.has_node_port_requirements = v15.has_node_port_requirements,.has_topology_spread_constraints = v15.has_topology_spread_constraints,.equivalence_class = v15.equivalence_class,.qos_class = v15.qos_class,.resourceversion = v15.resourceversion,.last_requeue = v15.last_requeue,.controllable__node_name = v15.controllable__node_name,.pod_uid = v16.pod_uid,.label_selector = v16.label_selector,.match_expressions = v16.match_expressions,.topology_key = v16.topology_key},Rmatching_pods[v18],sql_array_contains(v16.match_expressions, v18.expr_id),true,var v19 = Ttmp82{.uid = v17.uid,.pod_name = v17.pod_name,.status = v17.status,.node_name = v17.node_name,.namespace = v17.namespace,.owner_name = v17.owner_name,.creation_timestamp = v17.creation_timestamp,.priority = v17.priority,.scheduler_name = v17.scheduler_name,.has_node_selector_labels = v17.has_node_selector_labels,.has_pod_affinity_requirements = v17.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v17.has_pod_anti_affinity_requirements,.has_node_port_requirements = v17.has_node_port_requirements,.has_topology_spread_constraints = v17.has_topology_spread_constraints,.equivalence_class = v17.equivalence_class,.qos_class = v17.qos_class,.resourceversion = v17.resourceversion,.last_requeue = v17.last_requeue,.controllable__node_name = v17.controllable__node_name,.pod_uid = v17.pod_uid,.label_selector = v17.label_selector,.match_expressions = v17.match_expressions,.topology_key = v17.topology_key,.expr_id = v18.expr_id,.label_operator = v18.label_operator,.pod_uid0 = v18.pod_uid},Rassigned_pods_preempt[v20],((v18.pod_uid == v20.uid) and (v15.uid != v20.uid)),true,var v21 = Ttmp83{.uid = v19.uid,.pod_name = v19.pod_name,.status = v19.status,.node_name = v19.node_name,.namespace = v19.namespace,.owner_name = v19.owner_name,.creation_timestamp = v19.creation_timestamp,.priority = v19.priority,.scheduler_name = v19.scheduler_name,.has_node_selector_labels = v19.has_node_selector_labels,.has_pod_affinity_requirements = v19.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements = v19.has_pod_anti_affinity_requirements,.has_node_port_requirements = v19.has_node_port_requirements,.has_topology_spread_constraints = v19.has_topology_spread_constraints,.equivalence_class = v19.equivalence_class,.qos_class = v19.qos_class,.resourceversion = v19.resourceversion,.last_requeue = v19.last_requeue,.controllable__node_name = v19.controllable__node_name,.pod_uid = v19.pod_uid,.label_selector = v19.label_selector,.match_expressions = v19.match_expressions,.topology_key = v19.topology_key,.expr_id = v19.expr_id,.label_operator = v19.label_operator,.pod_uid0 = v19.pod_uid0,.uid0 = v20.uid,.pod_name0 = v20.pod_name,.status0 = v20.status,.node_name0 = v20.node_name,.namespace0 = v20.namespace,.owner_name0 = v20.owner_name,.creation_timestamp0 = v20.creation_timestamp,.priority0 = v20.priority,.scheduler_name0 = v20.scheduler_name,.has_node_selector_labels0 = v20.has_node_selector_labels,.has_pod_affinity_requirements0 = v20.has_pod_affinity_requirements,.has_pod_anti_affinity_requirements0 = v20.has_pod_anti_affinity_requirements,.has_node_port_requirements0 = v20.has_node_port_requirements,.has_topology_spread_constraints0 = v20.has_topology_spread_constraints,.equivalence_class0 = v20.equivalence_class,.qos_class0 = v20.qos_class,.resourceversion0 = v20.resourceversion,.last_requeue0 = v20.last_requeue,.controllable__node_name0 = v20.controllable__node_name},(v15.has_pod_anti_affinity_requirements == true),var gb22 = v15.uid,var gb23 = v18.pod_uid,var gb24 = v16.label_selector,var gb25 = v16.topology_key,var gb26 = v16.match_expressions,var gb27 = v20.node_name,var groupResult = (v15, v16, v18, v20).group_by((gb22, gb23, gb24, gb25, gb26, gb27)),var aggResult = agg214(groupResult),var v28 = TRtmp85{.gb11 = gb22,.gb12 = gb22,.pod_uid = gb22,.tmp = gb23,.tmp13 = gb27},aggResult.col,var v29 = v28.
+Rover215[v39] :- Roverinput212[v30],var gb31 = v30.gb11,var groupResult38 = (v30).group_by((gb31)),var aggResult37 = agg217(groupResult38),var v36 = TRtmp88{.gb11 = gb31,.array_agg = aggResult37.array_agg},var v39 = v36.
+Rover218[v49] :- Roverinput212[v40],var gb41 = v40.gb12,var groupResult48 = (v40).group_by((gb41)),var aggResult47 = agg220(groupResult48),var v46 = TRtmp91{.gb12 = gb41,.array_agg14 = aggResult47.array_agg14},var v49 = v46.
+Rinter_pod_anti_affinity_matches_scheduled_preempt[v56] :- Roverinput212[v50],Rover215[v51],(true and (v50.gb11 == v51.gb11)),var v52 = Ttmp93{.tmp = v50.tmp,.tmp13 = v50.tmp13,.gb11 = v50.gb11,.gb12 = v50.gb12,.pod_uid = v50.pod_uid,.array_agg = v51.array_agg},Rover218[v53],(true and (v52.gb12 == v53.gb12)),var v54 = Ttmp94{.tmp = v52.tmp,.tmp13 = v52.tmp13,.gb11 = v52.gb11,.gb12 = v52.gb12,.pod_uid = v52.pod_uid,.array_agg = v52.array_agg,.array_agg14 = v53.array_agg14},var v55 = TRtmp38{.pod_uid = v50.pod_uid,.pod_matches = v51.array_agg,.node_matches = v53.array_agg14},var v56 = v55.
+Rpods_to_assign_no_limit_count_preempt[v2] :- Rpods_to_assign_no_limit[v],var groupResult = (v).group_by(()),var aggResult = agg223(groupResult),var v1 = aggResult,var v2 = v1.
+index Ipod_info_idx(status:string,node_name:Option<string>) on Rpod_info[Tpod_info{_,_,status,node_name,_,_,_,_,_,_,_,_,_,_,_,_,_,_}]
+index Ipod_resource_demands_by_uid(uid:string) on Rpod_resource_demands[Tpod_resource_demands{uid,_,_}]
+index Imatch_expressions_idx(label_key:string,label_operator:string,label_values:Vec<string>) on Rmatch_expressions[Tmatch_expressions{_,label_key,label_operator,label_values}]
+index Ipod_topology_spread_constraints_idx(uid:string) on Rpod_topology_spread_constraints[Tpod_topology_spread_constraints{uid,_,_,_,_}]
+index Ipod_ports_request_by_uid(pod_uid:string) on Rpod_ports_request[Tpod_ports_request{pod_uid,_,_,_}]
+index Ipod_node_selector_labels_by_uid(pod_uid:string) on Rpod_node_selector_labels[Tpod_node_selector_labels{pod_uid,_,_}]
+index Ipod_affinity_match_expressions_labels_by_uid(pod_uid:string) on Rpod_affinity_match_expressions[Tpod_affinity_match_expressions{pod_uid,_,_,_}]
+index Ipod_anti_affinity_match_expressions_labels_by_uid(pod_uid:string) on Rpod_anti_affinity_match_expressions[Tpod_affinity_match_expressions{pod_uid,_,_,_}]
+index Ipod_labels_by_uid(pod_uid:string) on Rpod_labels[Tpod_labels{pod_uid,_,_}]
+index Ipod_labels_idx(label_key:string,label_value:string) on Rpod_labels[Tpod_labels{_,label_key,label_value}]
+index Inode_labels_by_name(node_name:string) on Rnode_labels[Tnode_labels{node_name,_,_}]
+index Inode_labels_idx(label_key:string,label_value:string) on Rnode_labels[Tnode_labels{_,label_key,label_value}]
+index Inode_taints_by_name(node_name:string) on Rnode_taints[Tnode_taints{node_name,_,_,_}]
