@@ -92,6 +92,7 @@ class PodEventsToDatabase {
                       pod.getMetadata().getResourceVersion());
             return;
         }
+        final long start = System.nanoTime();
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> inserts = new ArrayList<>();
             inserts.addAll(updatePodRecord(pod, conn));
@@ -104,6 +105,8 @@ class PodEventsToDatabase {
             inserts.addAll(updatePodTopologySpread(pod, conn));
             conn.batch(inserts).execute();
         }
+        final long end = System.nanoTime();
+        LOG.info("{} pod added in {}ns", pod.getMetadata().getName(), (end - start));
     }
 
     private void deletePod(final Pod pod) {

@@ -73,7 +73,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     }
 
     public void onAddSync(final Node node) {
-        final long now = System.nanoTime();
+        final long start = System.nanoTime();
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> queries = new ArrayList<>();
             queries.add(updateNodeRecord(node, conn));
@@ -83,7 +83,8 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
             queries.addAll(addNodeCapacities(conn, node));
             conn.batch(queries).execute();
         }
-        LOG.info("{} node added in {}ms", node.getMetadata().getName(), (System.nanoTime() - now));
+        final long end = System.nanoTime();
+        LOG.info("{} node added in {}ns", node.getMetadata().getName(), (end - start));
     }
 
     public void onUpdateSync(final Node oldNode, final Node newNode) {
