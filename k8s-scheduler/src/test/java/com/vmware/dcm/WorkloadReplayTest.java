@@ -12,7 +12,8 @@ public class WorkloadReplayTest {
     @Test
     public void runTest() throws Exception {
         final String[] args =
-                {"-n", "500", "-f", "test-data.txt", "-c", "100", "-m", "200", "-t", "100", "-s", "1000"};
+                {"-n", "500", "-f", "test-data.txt", "-c", "100", "-m", "200", "-t", "100", "-s", "1000", "-df",
+                "../artifacts/optimized_ddlog_programs/preempt_program.dl.dl"};
         EmulatedCluster.runWorkload(args);
     }
 

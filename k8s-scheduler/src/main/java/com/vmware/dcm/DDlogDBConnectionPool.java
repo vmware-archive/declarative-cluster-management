@@ -9,6 +9,7 @@ import com.vmware.ddlog.util.sql.CalciteToPrestoTranslator;
 import com.vmware.ddlog.util.sql.H2SqlStatement;
 import ddlogapi.DDlogAPI;
 import ddlogapi.DDlogException;
+import org.apache.commons.io.FileUtils;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.conf.ParamCastMode;
@@ -17,10 +18,9 @@ import org.jooq.conf.Settings;
 import org.jooq.impl.DSL;
 import org.jooq.tools.jdbc.MockConnection;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import javax.annotation.Nullable;
+import java.io.*;
+import java.nio.Buffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -33,9 +33,16 @@ public class DDlogDBConnectionPool implements IConnectionPool {
     private final List<String> scopedViews;
 
     private DDlogJooqProvider provider;
+    private final String ddlogFile;
 
     public DDlogDBConnectionPool() {
+        this.ddlogFile = null;
         scopedViews = new ArrayList<>();
+    }
+
+    public DDlogDBConnectionPool(String ddlogFile) {
+        this.ddlogFile = ddlogFile;
+        this.scopedViews = new ArrayList<>();
     }
 
     @Override
@@ -61,19 +68,26 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         scopedViews.addAll(statements);
     }
 
-    private static void compileAndLoad(final List<CalciteSqlStatement> ddl, final List<String> createIndexStatements)
+    private static void compileAndLoad(final List<CalciteSqlStatement> ddl, final List<String> createIndexStatements,
+                                       final String ddlogFile)
             throws IOException, DDlogException {
-        final Translator t = new Translator(null);
-        CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
-        ddl.forEach(x -> t.translateSqlStatement(ctopTranslator.toPresto(x)));
-        createIndexStatements.forEach(t::translateCreateIndexStatement);
-
-        final DDlogProgram dDlogProgram = t.getDDlogProgram();
         final String fileName = "/tmp/program.dl";
-        File tmp = new File(fileName);
-        BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
-        bw.write(dDlogProgram.toString());
-        bw.close();
+        if (ddlogFile != null) {
+            // don't compile, instead use this ddlogFile
+            // Copy ddlogFile contents to fileName
+            FileUtils.copyFile(new File(ddlogFile), new File(fileName));
+        } else {
+            final Translator t = new Translator(null);
+            CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
+            ddl.forEach(x -> t.translateSqlStatement(ctopTranslator.toPresto(x)));
+            createIndexStatements.forEach(t::translateCreateIndexStatement);
+
+            final DDlogProgram dDlogProgram = t.getDDlogProgram();
+            File tmp = new File(fileName);
+            BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
+            bw.write(dDlogProgram.toString());
+            bw.close();
+        }
         DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
         final String ddlogHome = System.getenv("DDLOG_HOME");
         assertNotNull(ddlogHome);
@@ -104,7 +118,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
             DDlogAPI ddlogAPI = null;
             if (seal) {
-                compileAndLoad(tablesInCalcite, createIndexStatements);
+                compileAndLoad(tablesInCalcite, createIndexStatements, ddlogFile);
 
                 ddlogAPI = new DDlogAPI(1, false);
             }
