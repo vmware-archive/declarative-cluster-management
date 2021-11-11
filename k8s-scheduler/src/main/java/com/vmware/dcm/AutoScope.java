@@ -93,7 +93,7 @@ public class AutoScope {
                 "";
         final List<String> queries = new ArrayList<>();
         for (final String resource : RESOURCE_TYPE) {
-            queries.add(String.format(template, BASE_TABLE, resource, limit));
+            queries.add(String.format(template, BASE_TABLE, resource)); //, limit));
         }
         return String.join(" UNION ", queries);
     }
