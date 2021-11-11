@@ -243,9 +243,9 @@ class Policies {
                 "from pods_to_assign " +
                 "join nodes_that_have_tolerations" +
                 "    on pods_to_assign.controllable__node_name = nodes_that_have_tolerations.node_name " +
-                "check exists(select * from pods_that_tolerate_node_taints as A " +
-                "              where A.pod_uid  = pods_to_assign.uid" +
-                "                and A.node_name = pods_to_assign.controllable__node_name) = true";
+                "check pods_to_assign.controllable__node_name IN " +
+                "    (select node_name from pods_that_tolerate_node_taints AS A " +
+                "        where A.pod_uid  = pods_to_assign.uid)";
         return new Policy("NodeTaintsPredicate", constraint);
     }
 

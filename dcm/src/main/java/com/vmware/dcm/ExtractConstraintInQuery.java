@@ -6,6 +6,7 @@
 
 package com.vmware.dcm;
 
+import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -67,6 +68,16 @@ public class ExtractConstraintInQuery extends SqlBasicVisitor<Void> {
         }
     }
 
+    private String getTableName(final SqlNode from) {
+        final SqlIdentifier id;
+        if (from.getKind() == SqlKind.AS) {
+            id = ((SqlBasicCall) from).operand(0);
+        } else {
+            id = ((SqlIdentifier) from);
+        }
+        return id.getSimple();
+    }
+
     private void parseSelect(final String var, final SqlSelect select) {
         final SqlNode from = select.getFrom();
         final SqlNodeList names = select.getSelectList();
@@ -80,8 +91,8 @@ public class ExtractConstraintInQuery extends SqlBasicVisitor<Void> {
         }
 
         // Extract table and field name
-        if (from.getKind() == SqlKind.IDENTIFIER) {
-            final String tableName = ((SqlIdentifier) from).getSimple();
+        if (from.getKind() == SqlKind.IDENTIFIER || from.getKind() == SqlKind.AS) {
+            final String tableName = getTableName(from);
             final SqlIdentifier name = (SqlIdentifier) names.get(0);
             String fieldName = "";
             if (name.isSimple()) {
