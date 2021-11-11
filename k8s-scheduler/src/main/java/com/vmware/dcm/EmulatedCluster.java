@@ -51,9 +51,9 @@ class EmulatedCluster {
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
-                                final int affinityRequirementsProportion, final boolean scopeOn)
+                                final int affinityRequirementsProportion, final boolean scopeOn, final String ddlogFile)
             throws Exception {
-        final IConnectionPool dbConnectionPool = new DDlogDBConnectionPool(); // new DBConnectionPool();
+        final IConnectionPool dbConnectionPool = new DDlogDBConnectionPool(ddlogFile); // new DBConnectionPool();
         if (dbConnectionPool instanceof DDlogDBConnectionPool) {
             ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog(false);
         }
@@ -184,6 +184,8 @@ class EmulatedCluster {
                 "P, from 0 to 100, indicating the proportion of pods that have affinity requirements");
         options.addOption("S", "scopeOn", false,
                 "enable auto-scope in scheduler");
+        options.addOption("df", "ddlogFile", true,
+                "specify which ddlog program.dl to use");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
         final int numNodes = Integer.parseInt(cmd.getOptionValue("numNodes"));
@@ -195,13 +197,15 @@ class EmulatedCluster {
         final int affinityRequirementsProportion = Integer.parseInt(cmd.hasOption("proportion") ?
                 cmd.getOptionValue("proportion") : "0");
         final boolean scopeOn = cmd.hasOption("scopeOn");
+        final String ddlogFile = cmd.getOptionValue("ddlogFile");
+
         assert affinityRequirementsProportion >= 0 && affinityRequirementsProportion <= 100;
         LOG.info("Running experiment with parameters: numNodes: {}, traceFile: {}, cpuScaleDown: {}, " +
                         "memScaleDown: {}, timeScaleDown: {}, startTimeCutOff: {}, proportion: {}, scopeOn: {}",
                 numNodes, traceFile, cpuScaleDown, memScaleDown,
                 timeScaleDown, startTimeCutOff, affinityRequirementsProportion, scopeOn);
         emulatedCluster.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
-                startTimeCutOff, affinityRequirementsProportion, scopeOn);
+                startTimeCutOff, affinityRequirementsProportion, scopeOn, ddlogFile);
     }
 
     public static void main(final String[] args) throws Exception {
