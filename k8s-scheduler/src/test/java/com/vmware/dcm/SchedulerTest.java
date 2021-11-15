@@ -151,7 +151,7 @@ public class SchedulerTest {
 
     public static void compileAndLoad(final List<CalciteSqlStatement> ddl, final List<String> createIndexStatements)
             throws IOException, DDlogException {
-        final Translator t = new Translator(null);
+        final Translator t = new Translator();
         CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
         ddl.forEach(x -> t.translateSqlStatement(ctopTranslator.toPresto(x)));
         createIndexStatements.forEach(t::translateCreateIndexStatement);
