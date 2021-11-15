@@ -17,9 +17,9 @@ import org.slf4j.LoggerFactory;
  */
 public class PdbResourceEventHandler implements ResourceEventHandler<PodDisruptionBudget> {
     private static final Logger LOG = LoggerFactory.getLogger(PdbResourceEventHandler.class);
-    private final DBConnectionPool dbConnectionPool;
+    private final IConnectionPool dbConnectionPool;
 
-    PdbResourceEventHandler(final DBConnectionPool dbConnectionPool) {
+    PdbResourceEventHandler(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
     }
 

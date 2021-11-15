@@ -485,15 +485,37 @@ public final class Scheduler {
                 "Enable additional debug information");
         options.addOption("rqd", "requeue-delay", true,
                 "Delay before a pod is reconsidered for scheduling");
+        options.addOption("ddl", "use-ddlog", false,
+                "Enable ddlog as the view maintenance engine");
+        options.addOption("df", "ddlogFile", true,
+                "specify which ddlog program.dl to use");
+        options.addOption("ddlc", "ddlog-compile-only", false,
+                "Don't run the Scheduler in ddlog mode; only compile the DDlog program");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
 
-        final DBConnectionPool conn = new DBConnectionPool();
+        final boolean useDDlog = cmd.hasOption("use-ddlog");
+        final boolean ddlogCompileOnly = cmd.hasOption("ddlog-compile-only");
+        final String ddlogFile = cmd.getOptionValue("ddlogFile");
+        IConnectionPool conn;
+        if (useDDlog) {
+            conn = new DDlogDBConnectionPool(ddlogFile);
+            ((DDlogDBConnectionPool) conn).buildDDlog(false);
+        } else {
+            conn = new DBConnectionPool();
+        }
+
         final Scheduler scheduler = new Scheduler.Builder(conn)
                 .setDebugMode(Boolean.parseBoolean(cmd.getOptionValue("debug-mode")))
                 .setNumThreads(Integer.parseInt(cmd.getOptionValue("num-threads")))
                 .setRetryIntervalMs(Long.parseLong(cmd.getOptionValue("requeue-delay")))
                 .build();
+
+        if (useDDlog && ddlogCompileOnly) {
+            // End the test
+            System.exit(0);
+        }
+
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",
                  kubernetesClient.getConfiguration().getMasterUrl());

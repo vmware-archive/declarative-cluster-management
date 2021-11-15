@@ -34,7 +34,7 @@ class KubernetesStateSync {
         this.sharedInformerFactory = client.informers();
     }
 
-    void setupInformersAndPodEventStream(final DBConnectionPool dbConnectionPool,
+    void setupInformersAndPodEventStream(final IConnectionPool dbConnectionPool,
                                          final Consumer<PodEvent> podEventNotification) {
         final SharedIndexInformer<Node> nodeSharedIndexInformer = sharedInformerFactory
                 .sharedIndexInformerFor(Node.class, 30000);
