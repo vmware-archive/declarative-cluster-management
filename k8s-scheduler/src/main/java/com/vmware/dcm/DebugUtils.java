@@ -47,7 +47,7 @@ class DebugUtils {
         for (final TableImpl<?> table: TABLES) {
             try {
                 FileUtils.writeStringToFile(new File("/tmp/debug_" + uuid, table.getName() + ".json"),
-                        conn.selectFrom(table).fetch().formatJSON(),
+                        conn.fetch("select * from " + table.getName()).formatJSON(),
                         StandardCharsets.UTF_8);
             } catch (final IOException e) {
                 LOG.error("Could not create db-dump for table {} because of exception:", table.getName(), e);
