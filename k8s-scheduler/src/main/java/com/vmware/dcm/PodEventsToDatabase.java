@@ -31,15 +31,22 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
 import org.jooq.DSLContext;
-import org.h2.api.Trigger;
-import org.jooq.*;
-import org.jooq.exception.DataAccessException;
+import org.jooq.Insert;
+import org.jooq.InsertOnDuplicateStep;
+import org.jooq.Query;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -360,7 +367,8 @@ class PodEventsToDatabase {
 
     private List<Insert<?>> updateResourceRequests(final Pod pod, final DSLContext conn) {
         conn.deleteFrom(Tables.POD_RESOURCE_DEMANDS)
-                .where(DSL.field(Tables.POD_RESOURCE_DEMANDS.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_RESOURCE_DEMANDS.UID.getUnqualifiedName())
+                        .eq(pod.getMetadata().getUid())).execute();
         final List<Insert<?>> inserts = new ArrayList<>();
         final Map<String, Long> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
@@ -448,7 +456,8 @@ class PodEventsToDatabase {
             return Collections.emptyList();
         }
         conn.deleteFrom(Tables.POD_TOLERATIONS)
-            .where(DSL.field(Tables.POD_TOLERATIONS.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
+            .where(DSL.field(Tables.POD_TOLERATIONS.POD_UID.getUnqualifiedName())
+                    .eq(pod.getMetadata().getUid())).execute();
         final List<Insert<PodTolerationsRecord>> inserts = new ArrayList<>();
         for (final Toleration toleration: pod.getSpec().getTolerations()) {
             inserts.add(conn.insertInto(Tables.POD_TOLERATIONS)
@@ -465,11 +474,14 @@ class PodEventsToDatabase {
         final List<Insert<?>> inserts = new ArrayList<>();
         final Affinity affinity = pod.getSpec().getAffinity();
         conn.deleteFrom(Tables.POD_NODE_SELECTOR_LABELS)
-                .where(DSL.field(Tables.POD_NODE_SELECTOR_LABELS.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_NODE_SELECTOR_LABELS.POD_UID.getUnqualifiedName())
+                        .eq(pod.getMetadata().getUid())).execute();
         conn.deleteFrom(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
-                .where(DSL.field(Tables.POD_AFFINITY_MATCH_EXPRESSIONS.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_AFFINITY_MATCH_EXPRESSIONS.POD_UID.getUnqualifiedName())
+                        .eq(pod.getMetadata().getUid())).execute();
         conn.deleteFrom(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
-                .where(DSL.field(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
+                .where(DSL.field(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS.POD_UID.getUnqualifiedName())
+                        .eq(pod.getMetadata().getUid())).execute();
 
         // also handled using the same POD_NODE_SELECTOR_LABELS table
         inserts.addAll(updatePodNodeSelectorLabels(pod, conn));
@@ -555,7 +567,8 @@ class PodEventsToDatabase {
 
     private List<Insert<?>> updatePodTopologySpread(final Pod pod, final DSLContext conn) {
         conn.deleteFrom(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS)
-            .where(DSL.field(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
+            .where(DSL.field(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS.UID.getUnqualifiedName())
+                    .eq(pod.getMetadata().getUid())).execute();
         if (pod.getSpec().getTopologySpreadConstraints() == null) {
             return Collections.emptyList();
         }

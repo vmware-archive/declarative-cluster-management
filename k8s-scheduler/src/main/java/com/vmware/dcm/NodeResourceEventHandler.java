@@ -219,6 +219,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
 
     private List<Insert<NodeResourcesRecord>> addNodeCapacities(final DSLContext conn, final Node node) {
         final Map<String, Quantity> allocatable = node.getStatus().getAllocatable();
+        LOG.info("Allocatable for node {} is {}", node.getMetadata().getName(), allocatable);
         return allocatable.entrySet().stream().map(
                 (es) -> conn.insertInto(Tables.NODE_RESOURCES)
                             .values(node.getMetadata().getUid(), es.getKey(), convertUnit(es.getValue(), es.getKey()))

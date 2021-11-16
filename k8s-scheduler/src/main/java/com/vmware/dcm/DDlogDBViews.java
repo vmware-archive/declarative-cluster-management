@@ -14,7 +14,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -83,11 +87,12 @@ public class DDlogDBViews {
 
             final List<String> identityViews = baseTableList.stream().filter(s -> s.startsWith("create table"))
                     .map(s -> {
-                        Matcher m = getTableName.matcher(s);
+                        final Matcher m = getTableName.matcher(s);
                         if (m.find()) {
-                            String tmp = s.substring("create table ".length(), m.end());
+                            final String tmp = s.substring("create table ".length(), m.end());
                             return String.format(
-                                    "create view %s as select distinct * from %s", DDlogJooqProvider.toIdentityViewName(tmp), tmp);
+                                    "create view %s as select distinct * from %s",
+                                    DDlogJooqProvider.toIdentityViewName(tmp), tmp);
                         } else {
                             throw new RuntimeException("help");
                         }
@@ -218,19 +223,19 @@ public class DDlogDBViews {
     private static void podsWithPortRequests(final ViewStatements viewStatements) {
         final String name = "PODS_WITH_PORT_REQUESTS";
         String baseQuery = "SELECT DISTINCT pods_to_assign.uid as pod_uid, \n" +
-                "                       ARRAY_AGG(other_pods.uid) OVER (PARTITION BY pods_to_assign.uid) AS pod_matches, \n" +
-                "                       ARRAY_AGG(other_pods.node_name) OVER (PARTITION BY pods_to_assign.uid) AS node_matches  \n" +
-                "                FROM $herp AS pods_to_assign\n" +
-                "                JOIN pod_ports_request AS ppr1 ON pods_to_assign.uid = ppr1.pod_uid\n" +
-                "                JOIN pod_ports_request AS ppr2\n" +
-                "                    ON pods_to_assign.uid != ppr2.pod_uid\n" +
-                "                    AND ppr1.host_port = ppr2.host_port\n" +
-                "                    AND ppr1.host_protocol = ppr2.host_protocol\n" +
-                "                    AND (ppr1.host_ip = ppr2.host_ip\n" +
-                "                         OR ppr1.host_ip = '0.0.0.0'\n" +
-                "                         OR ppr2.host_ip = '0.0.0.0')\n" +
-                "                JOIN $otherPods AS other_pods\n" +
-                "                    ON other_pods.uid = ppr2.pod_uid";
+                "          ARRAY_AGG(other_pods.uid) OVER (PARTITION BY pods_to_assign.uid) AS pod_matches, \n" +
+                "          ARRAY_AGG(other_pods.node_name) OVER (PARTITION BY pods_to_assign.uid) AS node_matches  \n" +
+                "     FROM $herp AS pods_to_assign\n" +
+                "     JOIN pod_ports_request AS ppr1 ON pods_to_assign.uid = ppr1.pod_uid\n" +
+                "     JOIN pod_ports_request AS ppr2\n" +
+                "         ON pods_to_assign.uid != ppr2.pod_uid\n" +
+                "         AND ppr1.host_port = ppr2.host_port\n" +
+                "         AND ppr1.host_protocol = ppr2.host_protocol\n" +
+                "         AND (ppr1.host_ip = ppr2.host_ip\n" +
+                "              OR ppr1.host_ip = '0.0.0.0'\n" +
+                "              OR ppr2.host_ip = '0.0.0.0')\n" +
+                "     JOIN $otherPods AS other_pods\n" +
+                "         ON other_pods.uid = ppr2.pod_uid";
         baseQuery = baseQuery.replace("$herp", viewStatements.unfixedPods);
         final String pendingQuery = baseQuery.replace("$otherPods", viewStatements.unfixedPods);
         final String scheduledQuery = baseQuery.replace("$otherPods", viewStatements.fixedPods);
@@ -330,7 +335,7 @@ public class DDlogDBViews {
      */
     private static void spareCapacityPerNode(final ViewStatements viewStatements) {
         final String name = "SPARE_CAPACITY_PER_NODE";
-        final String query ="""
+        final String query = """
                 -- For resources that are in use, compute the total spare capacity per node
                 SELECT node_info.name AS name,
                        node_resources.resource,
@@ -362,7 +367,8 @@ public class DDlogDBViews {
                 -- generate a row for each node with resource X and with 0 capacity
                 (SELECT node_info.name, p.resource, p.zero as capacity
                 FROM node_info NATURAL JOIN node_resources
-                CROSS JOIN (SELECT distinct resource, CAST(0 as bigint) as zero FROM $pendingPods pods_to_assign NATURAL JOIN pod_resource_demands) p
+                CROSS JOIN (SELECT distinct resource, CAST(0 as bigint) as zero
+                            FROM $pendingPods pods_to_assign NATURAL JOIN pod_resource_demands) p
                 GROUP BY node_info.name, p.resource, node_resources.resource, p.zero
                 HAVING p.resource NOT IN (node_resources.resource))
                 """*/

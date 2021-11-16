@@ -13,14 +13,16 @@ import org.apache.commons.io.FileUtils;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.conf.ParamCastMode;
-import org.jooq.conf.RenderQuotedNames;
 import org.jooq.conf.Settings;
 import org.jooq.impl.DSL;
 import org.jooq.tools.jdbc.MockConnection;
 
 import javax.annotation.Nullable;
-import java.io.*;
-import java.nio.Buffer;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -32,15 +34,15 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
     private final List<String> scopedViews;
 
-    private DDlogJooqProvider provider;
-    private final String ddlogFile;
+    @Nullable private DDlogJooqProvider provider;
+    @Nullable private final String ddlogFile;
 
     public DDlogDBConnectionPool() {
         this.ddlogFile = null;
         scopedViews = new ArrayList<>();
     }
 
-    public DDlogDBConnectionPool(String ddlogFile) {
+    public DDlogDBConnectionPool(final String ddlogFile) {
         this.ddlogFile = ddlogFile;
         this.scopedViews = new ArrayList<>();
     }
@@ -64,12 +66,12 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         return provider;
     }
 
-    public void addScopedViews(List<String> statements) {
+    public void addScopedViews(final List<String> statements) {
         scopedViews.addAll(statements);
     }
 
     private static void compileAndLoad(final List<CalciteSqlStatement> ddl, final List<String> createIndexStatements,
-                                       final String ddlogFile)
+                                       @Nullable final String ddlogFile)
             throws IOException, DDlogException {
         final String fileName = "/tmp/program.dl";
         if (ddlogFile != null) {
@@ -78,44 +80,46 @@ public class DDlogDBConnectionPool implements IConnectionPool {
             try {
                 FileUtils.copyFile(new File(
                         DDlogDBConnectionPool.class.getResource(ddlogFile).toURI()), new File(fileName));
-            } catch (Exception e) {
+            } catch (final IOException | URISyntaxException e) {
                 throw new DDlogException(e.getMessage());
             }
         } else {
             final Translator t = new Translator();
-            CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
+            final CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
             ddl.forEach(x -> t.translateSqlStatement(ctopTranslator.toPresto(x)));
             createIndexStatements.forEach(t::translateCreateIndexStatement);
 
             final DDlogProgram dDlogProgram = t.getDDlogProgram();
-            File tmp = new File(fileName);
-            BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
+            final File tmp = new File(fileName);
+            final BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
             bw.write(dDlogProgram.toString());
             bw.close();
         }
-        DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
+        final DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
         final String ddlogHome = System.getenv("DDLOG_HOME");
         assertNotNull(ddlogHome);
         DDlogAPI.compileDDlogProgram(fileName, result, ddlogHome + "/lib", ddlogHome + "/sql/lib");
-        if (!result.isSuccess())
+        if (!result.isSuccess()) {
             throw new RuntimeException("Failed to compile ddlog program");
+        }
         DDlogAPI.loadDDlog();
     }
 
-    private void setupDDlog(boolean seal) {
+    @SuppressWarnings("IllegalCatch")
+    private void setupDDlog(final boolean seal) {
         try {
-            List<String> tables = DDlogDBViews.getSchema();
-            CalciteToH2Translator translator = new CalciteToH2Translator();
+            final List<String> tables = DDlogDBViews.getSchema();
+            final CalciteToH2Translator translator = new CalciteToH2Translator();
 
             // The `create index` statements are for H2 and not for the DDlog backend
-            List<String> createIndexStatements = new ArrayList<>();
-            List<CalciteSqlStatement> tablesInCalcite = new ArrayList<>();
+            final List<String> createIndexStatements = new ArrayList<>();
+            final List<CalciteSqlStatement> tablesInCalcite = new ArrayList<>();
 
             tables.forEach(x -> {
                 if (x.startsWith("create index")) {
                     createIndexStatements.add(x);
                 } else {
-                    tablesInCalcite.add(new CalciteSqlStatement((x)));
+                    tablesInCalcite.add(new CalciteSqlStatement(x));
                 }
             });
 
@@ -124,21 +128,19 @@ public class DDlogDBConnectionPool implements IConnectionPool {
             DDlogAPI ddlogAPI = null;
             if (seal) {
                 compileAndLoad(tablesInCalcite, createIndexStatements, ddlogFile);
-
                 ddlogAPI = new DDlogAPI(1, false);
             }
-
             // Initialise the data provider
-            final DDlogJooqProvider provider = new DDlogJooqProvider(ddlogAPI,
-                    Stream.concat(
-                            tablesInCalcite.stream().map(translator::toH2),
-                            createIndexStatements.stream().map(H2SqlStatement::new)).collect(Collectors.toList()));
-            this.provider = provider;
-        } catch (Exception e) {
+            this.provider = new DDlogJooqProvider(ddlogAPI,
+                                    Stream.concat(tablesInCalcite.stream().map(translator::toH2),
+                                                  createIndexStatements.stream().map(H2SqlStatement::new))
+                                          .collect(Collectors.toList()));
+        } catch (final Exception e) {
             throw new RuntimeException("Could not set up DDlog backend: " + e.getMessage());
         }
     }
-    public void buildDDlog(boolean seal) {
+
+    public void buildDDlog(final boolean seal) {
         setupDDlog(seal);
     }
 }
