@@ -1,8 +1,8 @@
 package com.vmware.dcm;
 
 
-import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.compiler.IRColumn.FieldType;
+import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.generated.parser.DcmSqlParserImpl;
 import com.vmware.dcm.parser.SqlCreateConstraint;
 import org.apache.calcite.sql.parser.SqlParseException;
@@ -11,7 +11,11 @@ import org.apache.calcite.sql.validate.SqlConformanceEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 
@@ -129,7 +133,8 @@ public class AutoScope {
                     if (irContext.getColumn(tableName, fieldName).getType() == FieldType.ARRAY) {
                         queries.add(String.format("(SELECT DISTINCT name,resource,capacity FROM" +
                                         " %s JOIN %s ON ARRAY_CONTAINS(%s.%s, %s.%s))",
-                                BASE_TABLE, tableName.toLowerCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT), fieldName.toLowerCase(Locale.ROOT), BASE_TABLE, BASE_COL));
+                                    BASE_TABLE, tableName.toLowerCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT),
+                                    fieldName.toLowerCase(Locale.ROOT), BASE_TABLE, BASE_COL));
                     } else {
                         queries.add(String.format(
                                 "(SELECT DISTINCT %s.name as name, %s.resource as resource ,%s.capacity as capacity " +

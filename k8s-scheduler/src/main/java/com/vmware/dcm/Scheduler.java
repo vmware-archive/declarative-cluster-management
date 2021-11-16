@@ -14,7 +14,6 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.ddlog.DDlogJooqProvider;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.commons.cli.CommandLine;
@@ -36,7 +35,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -231,7 +235,7 @@ public final class Scheduler {
             // Create custom sort views
             List<String> statements = AutoScope.getSuffixViewStatements(views, DBViews.SORT_VIEW_NAME_SUFFIX);
             if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-                DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
+                final DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
                 ddlogPool.addScopedViews(statements);
             } else {
                 statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
@@ -239,7 +243,7 @@ public final class Scheduler {
             // Create filtering views
             statements = AutoScope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX);
             if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-                DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
+                final DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
                 ddlogPool.addScopedViews(statements);
             } else {
                 statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
@@ -251,7 +255,8 @@ public final class Scheduler {
                     (s) -> initialPlacement.solve(s,
                             (t) -> {
                                 if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-                                    return ((DDlogDBConnectionPool) dbConnectionPool).getProvider().fetchTable(t.getName());
+                                    return ((DDlogDBConnectionPool) dbConnectionPool).getProvider()
+                                                .fetchTable(t.getName());
                                 } else {
                                     return dbConnectionPool.getConnectionToDb().selectFrom(t).fetch();
                                 }
@@ -301,18 +306,13 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        /*ystem.out.println(dbConnectionPool.getConnectionToDb().fetch(table("PODS_TO_ASSIGN_NO_LIMIT_COUNT")));
-        System.out.println(dbConnectionPool.getConnectionToDb().fetch(table("PODS_TO_ASSIGN_NO_LIMIT")));
-        System.out.println(dbConnectionPool.getConnectionToDb().fetch(table("POD_INFO")));*/
-
         final IntSupplier numPending =
                 () -> {
-                    List<Integer> res = dbConnectionPool.getConnectionToDb().fetch(table("PODS_TO_ASSIGN_NO_LIMIT_COUNT"))
-                            .getValues(0, Integer.class);
+                    final List<Integer> res = dbConnectionPool.getConnectionToDb()
+                                                              .fetch(table("PODS_TO_ASSIGN_NO_LIMIT_COUNT"))
+                                                              .getValues(0, Integer.class);
                     return res.size() == 0 ? 0 : res.get(0);
                 };
-                        //fetchCount(table("PODS_TO_ASSIGN_NO_LIMIT"));
-
         int fetchCount = numPending.getAsInt();
         while (fetchCount > 0) {
             LOG.info("Fetchcount is {}", fetchCount);
@@ -467,7 +467,8 @@ public final class Scheduler {
                     final DSLContext conn = dbConnectionPool.getConnectionToDb();
                     // Make sure we use the preemption suffix only for views, not base tables
                     if (DBViews.initialPlacementViewNames().contains(table.getName())) {
-                        return conn.fetch(table((table.getName() + PREEMPTION_VIEW_NAME_SUFFIX).toLowerCase(Locale.ROOT)));
+                        return conn.fetch(table((table.getName() + PREEMPTION_VIEW_NAME_SUFFIX)
+                                               .toLowerCase(Locale.ROOT)));
                     }
                     return conn.fetch(table);
                 });
@@ -500,7 +501,7 @@ public final class Scheduler {
         final boolean useDDlog = cmd.hasOption("use-ddlog");
         final boolean ddlogCompileOnly = cmd.hasOption("ddlog-compile-only");
         final String ddlogFile = cmd.getOptionValue("ddlogFile");
-        IConnectionPool conn;
+        final IConnectionPool conn;
         if (useDDlog) {
             conn = new DDlogDBConnectionPool(ddlogFile);
             ((DDlogDBConnectionPool) conn).buildDDlog(false);
