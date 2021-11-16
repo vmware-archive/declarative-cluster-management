@@ -473,8 +473,8 @@ public class SchedulerTest {
     /*
      * Tests inter-pod affinity behavior
      */
-    @CartesianProductTest(name = "{0}")
-    public void testPodToPodAffinity(final TestArguments args, final boolean scope) {
+    @CartesianProductTest(name = "Scope={0}, Scenario={1}")
+    public void testPodToPodAffinity(final boolean scope, final TestArguments args) {
         final IConnectionPool dbConnectionPool = setupDDlog();
         // Unpack arguments
         final List<PodAffinityTerm> terms = (List<PodAffinityTerm>) args.get(1);
@@ -526,6 +526,7 @@ public class SchedulerTest {
         final List<PodAffinityTerm> notExistsTerm = List.of(term(topologyKey,
                                                                    podExpr("k1", "DoesNotExist", "l1", "l2")));
         return new CartesianProductTest.Sets()
+            .add(false, true)
             .add(
                 // --------- Pod Affinity -----------
                 // In
@@ -563,8 +564,7 @@ public class SchedulerTest {
                 argGen("Affinity", notExistsTerm, map("k1", "l3"), false, true, false),
                 argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l1"), false, true, false),
                 argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l2"), false, true, false),
-                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false))
-            .add(false, true);
+                argGen("Affinity", notExistsTerm, map("k", "l", "k1", "l3"), false, true, false));
     }
 
 
