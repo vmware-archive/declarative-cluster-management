@@ -1172,7 +1172,7 @@ public class SchedulerTest {
     public void testSchedulerDebugDump() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        DebugUtils.dbLoad(conn, "<enter some valid value here>");
+        DebugUtils.dbLoad(conn, "debug_27403d79-ef28-4ce2-93f2-9a96f22d1cad");
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
         System.out.println(conn.selectFrom("PODS_TO_ASSIGN").fetch());
         System.out.println(conn.selectFrom("POD_RESOURCE_DEMANDS").fetch());
