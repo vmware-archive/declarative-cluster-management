@@ -509,7 +509,7 @@ public final class Scheduler {
         }
 
         final Scheduler scheduler = new Scheduler.Builder(conn)
-                .setDebugMode(Boolean.parseBoolean(cmd.getOptionValue("debug-mode")))
+                .setDebugMode(cmd.hasOption("debug-mode"))
                 .setNumThreads(Integer.parseInt(cmd.getOptionValue("num-threads")))
                 .setRetryIntervalMs(Long.parseLong(cmd.getOptionValue("requeue-delay")))
                 .build();
