@@ -46,7 +46,7 @@ class DebugUtils {
         LOG.error("Creating DB dump with UUID: {}", uuid);
         for (final TableImpl<?> table: TABLES) {
             try {
-                FileUtils.writeStringToFile(new File("/tmp/" + uuid, table.getName() + ".json"),
+                FileUtils.writeStringToFile(new File("/tmp/debug_" + uuid, table.getName() + ".json"),
                         conn.selectFrom(table).fetch().formatJSON(),
                         StandardCharsets.UTF_8);
             } catch (final IOException e) {
@@ -59,7 +59,7 @@ class DebugUtils {
         for (final TableImpl<?> table: TABLES) {
             try {
                 final String csv = FileUtils.readFileToString(
-                                        new File("/tmp/" + uuid, table.getName() + ".json"),
+                                        new File("/tmp/debug_" + uuid, table.getName() + ".json"),
                                         StandardCharsets.UTF_8);
                 conn.loadInto(table).onDuplicateKeyError()
                         .onErrorAbort()
