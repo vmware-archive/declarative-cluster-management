@@ -333,6 +333,9 @@ public final class Scheduler {
 
             // If there are unsuccessful placements, trigger preemption
             if (initialPlacementResult.containsKey(UNASSIGNED)) {
+                if (debugMode) {
+                    DebugUtils.dbDump(dbConnectionPool.getConnectionToDb(), UUID.randomUUID());
+                }
                 initialPlacementResult.get(UNASSIGNED).forEach(
                         e -> LOG.info("pod:{} could not be assigned a node in this iteration. Attempting Preemption",
                                 e.get("POD_NAME"))
