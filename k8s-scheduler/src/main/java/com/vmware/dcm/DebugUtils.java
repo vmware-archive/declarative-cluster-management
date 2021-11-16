@@ -55,11 +55,11 @@ class DebugUtils {
         }
     }
 
-    static void dbLoad(final DSLContext conn, final UUID uuid) {
+    static void dbLoad(final DSLContext conn, final String path) {
         for (final TableImpl<?> table: TABLES) {
             try {
                 final String csv = FileUtils.readFileToString(
-                                        new File("/tmp/debug_" + uuid, table.getName() + ".json"),
+                                        new File(path, table.getName() + ".json"),
                                         StandardCharsets.UTF_8);
                 conn.loadInto(table).onDuplicateKeyError()
                         .onErrorAbort()

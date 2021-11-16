@@ -11,7 +11,9 @@ import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import com.vmware.ddlog.DDlogJooqProvider;
 import com.vmware.ddlog.ir.DDlogProgram;
 import com.vmware.ddlog.translator.Translator;
-import com.vmware.ddlog.util.sql.*;
+import com.vmware.ddlog.util.sql.CalciteSqlStatement;
+import com.vmware.ddlog.util.sql.CalciteToH2Translator;
+import com.vmware.ddlog.util.sql.CalciteToPrestoTranslator;
 import ddlogapi.DDlogAPI;
 import ddlogapi.DDlogException;
 import io.fabric8.kubernetes.api.model.Affinity;
@@ -60,9 +62,6 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -89,13 +88,11 @@ import static com.vmware.dcm.TestScenario.nodesForPodGroup;
 import static com.vmware.dcm.TestScenario.podGroup;
 import static java.util.stream.Collectors.counting;
 import static java.util.stream.Collectors.groupingBy;
-import static org.jooq.impl.DSL.*;
+import static org.jooq.impl.DSL.field;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -124,12 +121,12 @@ public class SchedulerTest {
      */
     @Test
     public void testDdlog() throws DDlogException, IOException {
-        List<String> tables = DDlogDBViews.getSchema();
-        CalciteToH2Translator translator = new CalciteToH2Translator();
+        final List<String> tables = DDlogDBViews.getSchema();
+        final var translator = new CalciteToH2Translator();
 
         // The `create index` statements are for H2 and not for the DDlog backend
-        List<String> createIndexStatements = new ArrayList<>();
-        List<CalciteSqlStatement> tablesInCalcite = new ArrayList<>();
+        final List<String> createIndexStatements = new ArrayList<>();
+        final List<CalciteSqlStatement> tablesInCalcite = new ArrayList<>();
 
         tables.forEach(x -> {
             if (x.startsWith("create index")) {
@@ -152,27 +149,28 @@ public class SchedulerTest {
     public static void compileAndLoad(final List<CalciteSqlStatement> ddl, final List<String> createIndexStatements)
             throws IOException, DDlogException {
         final Translator t = new Translator();
-        CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
+        final CalciteToPrestoTranslator ctopTranslator = new CalciteToPrestoTranslator();
         ddl.forEach(x -> t.translateSqlStatement(ctopTranslator.toPresto(x)));
         createIndexStatements.forEach(t::translateCreateIndexStatement);
 
         final DDlogProgram dDlogProgram = t.getDDlogProgram();
         final String fileName = "/tmp/program.dl";
-        File tmp = new File(fileName);
-        BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
+        final File tmp = new File(fileName);
+        final BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
         bw.write(dDlogProgram.toString());
         bw.close();
-        DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
+        final DDlogAPI.CompilationResult result = new DDlogAPI.CompilationResult(true);
         final String ddlogHome = System.getenv("DDLOG_HOME");
         assertNotNull(ddlogHome);
         DDlogAPI.compileDDlogProgram(fileName, result, ddlogHome + "/lib", ddlogHome + "/sql/lib");
-        if (!result.isSuccess())
+        if (!result.isSuccess()) {
             throw new RuntimeException("Failed to compile ddlog program");
+        }
         DDlogAPI.loadDDlog();
     }
 
     public static DDlogDBConnectionPool setupDDlog() {
-        DDlogDBConnectionPool dbConnectionPool = new DDlogDBConnectionPool();
+        final DDlogDBConnectionPool dbConnectionPool = new DDlogDBConnectionPool();
         dbConnectionPool.buildDDlog(true);
         return dbConnectionPool;
     }
@@ -237,7 +235,7 @@ public class SchedulerTest {
         DebugUtils.dbDump(result.conn().getConnectionToDb(), UUID.fromString("daed6555-0ea2-419c-8530-403d2825ea8c"));
 
         final var conn = new DBConnectionPool().getConnectionToDb();
-        DebugUtils.dbLoad(conn, UUID.fromString("daed6555-0ea2-419c-8530-403d2825ea8c"));
+        DebugUtils.dbLoad(conn, "/tmp/debug_daed6555-0ea2-419c-8530-403d2825ea8c");
         final Result<Record> resultAfter = conn.selectFrom("pod_affinity_match_expressions").fetch();
         assertEquals(resultBefore, resultAfter);
     }
@@ -1174,9 +1172,11 @@ public class SchedulerTest {
     public void testSchedulerDebugDump() {
         final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
-        DebugUtils.dbLoad(conn, UUID.fromString("<enter some valid value here>"));
+        DebugUtils.dbLoad(conn, "<enter some valid value here>");
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool).setDebugMode(true).build();
         System.out.println(conn.selectFrom("PODS_TO_ASSIGN").fetch());
+        System.out.println(conn.selectFrom("POD_RESOURCE_DEMANDS").fetch());
+        System.out.println(conn.selectFrom("NODE_RESOURCES").fetch().formatCSV());
         System.out.println(conn.selectFrom("NODE_LABELS").fetch());
         System.out.println(conn.selectFrom("NODES_THAT_HAVE_TOLERATIONS").fetch());
         System.out.println(conn.selectFrom("POD_NODE_SELECTOR_MATCHES").fetch());
@@ -1188,7 +1188,6 @@ public class SchedulerTest {
         final Result<? extends Record> results = scheduler.initialPlacement();
         System.out.println(results);
     }
-
 
     /*
      * Make sure that the scheduler places all pending pods even though it may attempt to place only a subset
