@@ -6,6 +6,7 @@
 
 package com.vmware.dcm;
 
+import edu.umd.cs.findbugs.annotations.Nullable;
 import io.fabric8.kubernetes.api.model.Quantity;
 
 class Utils {
@@ -24,5 +25,13 @@ class Utils {
             // Values are guaranteed to be under 2^63 - 1, so this is safe
             return Quantity.getAmountInBytes(quantity).longValue();
         }
+    }
+
+    static void compileDDlog(@Nullable String ddlogFile) {
+        final DDlogDBConnectionPool dbConnectionPool = new DDlogDBConnectionPool(ddlogFile);
+        dbConnectionPool.buildDDlog(false, false);
+        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
+                .setScopedInitialPlacement(true).build();
+        dbConnectionPool.buildDDlog(true, true);
     }
 }
