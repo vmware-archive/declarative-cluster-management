@@ -227,27 +227,34 @@ public final class Scheduler {
         this.dbConnectionPool = dbConnectionPool;
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         this.initialPlacement = initialPlacement;
+
         // Automatic scoping
+        final IRContext irContext = initialPlacement.getIrContext();
+        final Map<String, String> views = AutoScope.augmentedViews(
+                Policies.getInitialPlacementPolicies(), irContext, limit);
+        // Create custom sort views
+        List<String> statements = AutoScope.getSuffixViewStatements(views, DBViews.SORT_VIEW_NAME_SUFFIX);
+        if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+            final DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
+            ddlogPool.addScopedViews(statements);
+        } else {
+
+            if (scopedInitialPlacement) {
+                statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
+            }
+        }
+        // Create filtering views
+        statements = AutoScope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX);
+        if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+            final DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
+            ddlogPool.addScopedViews(statements);
+        } else {
+            if (scopedInitialPlacement) {
+                statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
+            }
+        }
+
         if (scopedInitialPlacement) {
-            final IRContext irContext = initialPlacement.getIrContext();
-            final Map<String, String> views = AutoScope.augmentedViews(
-                    Policies.getInitialPlacementPolicies(), irContext, limit);
-            // Create custom sort views
-            List<String> statements = AutoScope.getSuffixViewStatements(views, DBViews.SORT_VIEW_NAME_SUFFIX);
-            if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-                final DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
-                ddlogPool.addScopedViews(statements);
-            } else {
-                statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
-            }
-            // Create filtering views
-            statements = AutoScope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX);
-            if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-                final DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
-                ddlogPool.addScopedViews(statements);
-            } else {
-                statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
-            }
             // New scoping
             this.initialPlacementFunction = (s) -> scopedFunction(views.keySet());
         } else {
@@ -264,7 +271,7 @@ public final class Scheduler {
         }
 
         if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog(true);
+            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog(true, false);
         }
 
         this.preemption = preemption;
@@ -504,7 +511,7 @@ public final class Scheduler {
         final IConnectionPool conn;
         if (useDDlog) {
             conn = new DDlogDBConnectionPool(ddlogFile);
-            ((DDlogDBConnectionPool) conn).buildDDlog(false);
+            ((DDlogDBConnectionPool) conn).buildDDlog(false, false);
         } else {
             conn = new DBConnectionPool();
         }
