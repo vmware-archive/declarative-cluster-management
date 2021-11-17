@@ -85,8 +85,8 @@ create table pod_ports_request
   pod_uid varchar(36) not null,
   host_ip varchar(100) not null,
   host_port integer not null,
-  host_protocol varchar(10) not null,
-  primary key (pod_uid)
+  host_protocol varchar(10) not null
+  --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 create index pod_ports_request_by_uid on pod_ports_request (pod_uid);
@@ -107,7 +107,7 @@ create table pod_affinity_match_expressions
 (
   pod_uid varchar(36) not null,
   label_selector integer not null,
-  match_expressions bigint array not null,
+  affinity_match_expressions bigint array not null,
   topology_key varchar(100) not null
   --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
@@ -119,9 +119,9 @@ create table pod_anti_affinity_match_expressions
 (
   pod_uid varchar(36) not null,
   label_selector integer not null,
-  match_expressions bigint array not null,
-  topology_key varchar(100) not null,
-  primary key(pod_uid)
+  anti_affinity_match_expressions bigint array not null,
+  topology_key varchar(100) not null
+  --primary key(pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
 create index pod_anti_affinity_match_expressions_labels_by_uid on pod_anti_affinity_match_expressions (pod_uid);
@@ -204,10 +204,12 @@ create table pod_tolerations
   tolerations_key varchar(317),
   tolerations_value varchar(63),
   tolerations_effect varchar(100),
-  tolerations_operator varchar(100),
-  primary key(pod_uid)
+  tolerations_operator varchar(100)
+  --primary key(pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
+
+create index pod_tolerations_by_uid on pod_tolerations (pod_uid);
 
 -- Tracks the set of node images that are already
 -- available at a node
@@ -223,10 +225,12 @@ create table node_images
 create table pod_images
 (
   pod_uid varchar(36) not null,
-  image_name varchar(200) not null,
-  primary key (pod_uid)
+  image_name varchar(200) not null
+  --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
+
+create index pod_images_by_uid on pod_images (pod_uid);
 
 -- Tracks pod disruption budget match expressions
 create table pdb_match_expressions

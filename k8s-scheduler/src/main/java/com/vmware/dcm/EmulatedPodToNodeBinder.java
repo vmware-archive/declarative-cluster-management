@@ -14,6 +14,7 @@ import org.jooq.DSLContext;
 import org.jooq.Delete;
 import org.jooq.Record;
 import org.jooq.Update;
+import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,8 +44,8 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
         // Mimic a binding notification
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             return conn.update(Tables.POD_INFO)
-                    .set(Tables.POD_INFO.STATUS, "Running")
-                    .where(Tables.POD_INFO.UID.eq(podUid));
+                    .set(DSL.field(Tables.POD_INFO.STATUS.getUnqualifiedName()), "Running")
+                    .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(podUid));
         }
     }
 
