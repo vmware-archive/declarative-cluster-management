@@ -102,11 +102,10 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         if (!result.isSuccess()) {
             throw new RuntimeException("Failed to compile ddlog program");
         }
-        DDlogAPI.loadDDlog();
     }
 
     @SuppressWarnings("IllegalCatch")
-    private void setupDDlog(final boolean seal) {
+    private void setupDDlog(final boolean seal, final boolean compile) {
         try {
             final List<String> tables = DDlogDBViews.getSchema();
             final CalciteToH2Translator translator = new CalciteToH2Translator();
@@ -127,9 +126,12 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
             DDlogAPI ddlogAPI = null;
             if (seal) {
-                compileAndLoad(tablesInCalcite, createIndexStatements, ddlogFile);
-                ddlogAPI = new DDlogAPI(1, false);
+                if (compile) {
+                    compileAndLoad(tablesInCalcite, createIndexStatements, ddlogFile);
+                }
+                ddlogAPI = DDlogAPI.loadDDlog();
             }
+
             // Initialise the data provider
             this.provider = new DDlogJooqProvider(ddlogAPI,
                                     Stream.concat(tablesInCalcite.stream().map(translator::toH2),
@@ -140,7 +142,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         }
     }
 
-    public void buildDDlog(final boolean seal) {
-        setupDDlog(seal);
+    public void buildDDlog(final boolean seal, final boolean compile) {
+        setupDDlog(seal, compile);
     }
 }

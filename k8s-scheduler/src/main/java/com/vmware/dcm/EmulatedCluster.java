@@ -49,9 +49,11 @@ class EmulatedCluster {
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
                                 final int affinityRequirementsProportion, final boolean scopeOn, final String ddlogFile)
             throws Exception {
+        Utils.compileDDlog(ddlogFile);
+
         final IConnectionPool dbConnectionPool = new DDlogDBConnectionPool(ddlogFile); // new DBConnectionPool();
         if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog(false);
+            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog(false, false);
         }
 
         final ThreadFactory namedThreadFactory =
