@@ -555,7 +555,7 @@ class PodEventsToDatabase {
         final List<Insert<?>> inserts = new ArrayList<>();
         int termNumber = 0;
         for (final PodAffinityTerm term: terms) {
-            final Object[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
+            final Long[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
                     .map(e -> toMatchExpressionId(conn, e.getKey(), e.getOperator(), e.getValues()))
                     .toList().toArray(new Long[0]);
             inserts.add(conn.insertInto(table)
