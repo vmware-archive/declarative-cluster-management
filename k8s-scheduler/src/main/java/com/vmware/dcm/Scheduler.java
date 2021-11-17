@@ -26,6 +26,7 @@ import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.Table;
 import org.jooq.Update;
+import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -397,11 +398,12 @@ public final class Scheduler {
             final List<Update<?>> updates = new ArrayList<>();
             assignedPods.forEach(r -> {
                 final String podName = r.get("POD_NAME", String.class);
+                final String podUid = r.get("UID", String.class);
                 final String newNodeName = r.get("CONTROLLABLE__NODE_NAME", String.class);
                 updates.add(
                         conn.update(Tables.POD_INFO)
-                                .set(Tables.POD_INFO.NODE_NAME, newNodeName)
-                                .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                                .set(DSL.field(Tables.POD_INFO.NODE_NAME.getUnqualifiedName()), newNodeName)
+                                .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(podUid))
                 );
                 LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
                         podName, batch, totalTime);
@@ -422,8 +424,8 @@ public final class Scheduler {
                 final long requeueTime = System.currentTimeMillis();
                 updates.add(
                         conn.update(Tables.POD_INFO)
-                                .set(Tables.POD_INFO.LAST_REQUEUE, requeueTime)
-                                .where(Tables.POD_INFO.POD_NAME.eq(podName))
+                                .set(DSL.field(Tables.POD_INFO.LAST_REQUEUE.getUnqualifiedName()), requeueTime)
+                                .where(DSL.field(Tables.POD_INFO.POD_NAME.getUnqualifiedName()).eq(podName))
                 );
                 LOG.info("Re-queuing pod {} at time: {}", podName, requeueTime);
             });
