@@ -154,7 +154,7 @@ public class DDlogDBViews {
      */
     private static void initialPlacementInputPods(final ViewStatements viewStatements) {
         final String name = "PODS_TO_ASSIGN";
-        final String query = "SELECT DISTINCT * FROM PODS_TO_ASSIGN_NO_LIMIT"; // LIMIT 50";
+        final String query = "SELECT DISTINCT * FROM PODS_TO_ASSIGN_NO_LIMIT LIMIT 50";
         viewStatements.addQuery(name, query);
     }
 
