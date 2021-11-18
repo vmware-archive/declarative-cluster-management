@@ -367,13 +367,12 @@ public class DDlogDBViews {
                 FROM node_info
                 JOIN node_resources
                     ON node_info.uid = node_resources.uid
-                LEFT JOIN (SELECT pod_info.node_name,
+                LEFT JOIN (SELECT DISTINCT pod_info.node_name,
                              pod_resource_demands.resource,
-                             sum(pod_resource_demands.demand) AS total_demand
+                             pod_resource_demands.demand AS total_demand
                      FROM pod_info
                      JOIN pod_resource_demands
-                       ON pod_resource_demands.uid = pod_info.uid
-                     GROUP BY pod_info.node_name, pod_resource_demands.resource) A
+                       ON pod_resource_demands.uid = pod_info.uid) A
                     ON A.node_name = node_info.name AND A.resource = node_resources.resource
                 WHERE unschedulable = false AND
                       memory_pressure = false AND

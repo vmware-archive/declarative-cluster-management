@@ -185,7 +185,7 @@ class PodEventsToDatabase {
         }
     }
 
-    private List<Query> updatePodRecord(final Pod pod, final DSLContext conn) {
+    static List<Query> updatePodRecord(final Pod pod, final DSLContext conn) {
         final List<Query> inserts = new ArrayList<>();
         final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
@@ -365,7 +365,7 @@ class PodEventsToDatabase {
         return inserts;
     }
 
-    private List<Insert<?>> updateResourceRequests(final Pod pod, final DSLContext conn) {
+    static List<Insert<?>> updateResourceRequests(final Pod pod, final DSLContext conn) {
         conn.deleteFrom(Tables.POD_RESOURCE_DEMANDS)
                 .where(DSL.field(Tables.POD_RESOURCE_DEMANDS.UID.getUnqualifiedName())
                         .eq(pod.getMetadata().getUid())).execute();
@@ -392,7 +392,7 @@ class PodEventsToDatabase {
         return inserts;
     }
 
-    private boolean hasNodeSelector(final Pod pod) {
+    private static boolean hasNodeSelector(final Pod pod) {
         final PodSpec podSpec = pod.getSpec();
         return  (podSpec.getNodeSelector() != null && podSpec.getNodeSelector().size() > 0)
                 || (podSpec.getAffinity() != null
@@ -611,7 +611,7 @@ class PodEventsToDatabase {
         }
     }
 
-    private long equivalenceClassHash(final Pod pod) {
+    private static long equivalenceClassHash(final Pod pod) {
         return Objects.hash(pod.getMetadata().getNamespace(),
                             pod.getMetadata().getLabels(),
                             pod.getSpec().getAffinity(),
@@ -627,7 +627,7 @@ class PodEventsToDatabase {
      * BestEffort -> no requests nor limits for any containers
      * Burstable -> requests and limits do not match
      */
-    private QosClass getQosClass(final List<ResourceRequirements> resourceRequirements) {
+    private static QosClass getQosClass(final List<ResourceRequirements> resourceRequirements) {
         final List<String> supportedResources = List.of("cpu", "memory");
         boolean isGuaranteed = true;
         boolean bestEffort = true;
