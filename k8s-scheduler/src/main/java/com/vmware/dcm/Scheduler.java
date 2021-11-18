@@ -328,9 +328,7 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        System.out.println(dbConnectionPool.getConnectionToDb().fetch("select * from timer_t"));
         tick();
-        System.out.println(dbConnectionPool.getConnectionToDb().fetch("select * from timer_t"));
         final IntSupplier numPending =
                 () -> {
                     final List<Integer> res = dbConnectionPool.getConnectionToDb()
