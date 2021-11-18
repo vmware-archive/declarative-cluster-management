@@ -7,15 +7,6 @@
 package com.vmware.dcm;
 
 import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
-import com.vmware.ddlog.DDlogJooqProvider;
-import com.vmware.ddlog.ir.DDlogProgram;
-import com.vmware.ddlog.translator.Translator;
-import com.vmware.ddlog.util.sql.CalciteSqlStatement;
-import com.vmware.ddlog.util.sql.CalciteToH2Translator;
-import com.vmware.ddlog.util.sql.CalciteToPrestoTranslator;
-import ddlogapi.DDlogAPI;
-import ddlogapi.DDlogException;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
@@ -48,7 +39,6 @@ import io.fabric8.kubernetes.api.model.TopologySpreadConstraint;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
-import org.jooq.tools.jdbc.MockConnection;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -59,10 +49,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junitpioneer.jupiter.CartesianProductTest;
 import org.junitpioneer.jupiter.CartesianValueSource;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -93,7 +79,6 @@ import static org.jooq.impl.DSL.field;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 

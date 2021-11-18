@@ -282,11 +282,25 @@ public final class Scheduler {
     }
 
     void handlePodEvent(final PodEvent podEvent) {
+        tick();
         podEventsToDatabase.handle(podEvent);
         notificationQueue.add(true);
     }
 
+    void tick() {
+        try {
+            this.dbConnectionPool.getConnectionToDb()
+                    .execute(String.format("insert into timer_t values (1, %s)",
+                            System.currentTimeMillis() - 1000));
+        } catch (final Exception e) {
+            this.dbConnectionPool.getConnectionToDb()
+                    .execute(String.format("update timer_t set tick = %s where tick_id = 1",
+                            System.currentTimeMillis() - 1000));
+        }
+    }
+
     void handlePodEventNoNotify(final PodEvent podEvent) {
+        tick();
         podEventsToDatabase.handle(podEvent);
         // Skip adding pending pod in notification queue
     }
@@ -314,6 +328,9 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
+        System.out.println(dbConnectionPool.getConnectionToDb().fetch("select * from timer_t"));
+        tick();
+        System.out.println(dbConnectionPool.getConnectionToDb().fetch("select * from timer_t"));
         final IntSupplier numPending =
                 () -> {
                     final List<Integer> res = dbConnectionPool.getConnectionToDb()
