@@ -438,12 +438,13 @@ public final class Scheduler {
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Update<?>> updates = new ArrayList<>();
             unassignedPods.forEach(r -> {
+                final String podUid = r.get("UID", String.class);
                 final String podName = r.get("POD_NAME", String.class);
                 final long requeueTime = System.currentTimeMillis();
                 updates.add(
                         conn.update(Tables.POD_INFO)
                                 .set(DSL.field(Tables.POD_INFO.LAST_REQUEUE.getUnqualifiedName()), requeueTime)
-                                .where(DSL.field(Tables.POD_INFO.POD_NAME.getUnqualifiedName()).eq(podName))
+                                .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(podUid))
                 );
                 LOG.info("Re-queuing pod {} at time: {}", podName, requeueTime);
             });
