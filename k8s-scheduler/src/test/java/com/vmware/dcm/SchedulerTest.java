@@ -1256,6 +1256,7 @@ public class SchedulerTest {
             scenario.scheduler().scheduleAllPendingPods(binder);
             assertEquals(0, conn.fetch("SELECT * FROM PODS_TO_ASSIGN_NO_LIMIT").size());
             Thread.sleep(1000);
+            scenario.scheduler().tick();
             assertEquals(1, conn.fetch("SELECT * FROM PODS_TO_ASSIGN_NO_LIMIT").size());
         }
     }
