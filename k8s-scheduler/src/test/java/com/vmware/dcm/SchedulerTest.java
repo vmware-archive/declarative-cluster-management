@@ -638,7 +638,7 @@ public class SchedulerTest {
     /*
      * Capacity constraints
      */
-    @CartesianProductTest(name = "{0}")
+    @CartesianProductTest(name = "Scope={1}, Scenario={0}")
     public void testSpareCapacity(final TestArguments args, final boolean scope) {
         final IConnectionPool dbConnectionPool = setupDDlog();
         // Unpack arguments

@@ -18,6 +18,7 @@ import io.fabric8.kubernetes.api.model.ContainerImage;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeCondition;
 import io.fabric8.kubernetes.api.model.NodeStatus;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import org.jooq.DSLContext;
@@ -28,6 +29,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -217,13 +219,28 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         LOG.info("Node {} deleted", node.getMetadata().getName());
     }
 
-    private List<Insert<NodeResourcesRecord>> addNodeCapacities(final DSLContext conn, final Node node) {
+    private List<Query> addNodeCapacities(final DSLContext conn, final Node node) {
+        final List<Query> inserts = new ArrayList<>();
         final Map<String, Quantity> allocatable = node.getStatus().getAllocatable();
         LOG.info("Allocatable for node {} is {}", node.getMetadata().getName(), allocatable);
-        return allocatable.entrySet().stream().map(
+        /*
+         * XXX: We add dummy pods per node that have 0 demands for the resources available on the node.
+         *      This is a workaround to make sure the outer joins in spare_capacity_per_node
+         *      can be evaluated using regular joins. Remove this when ddlog supports outer joins.
+         */
+        final Pod pod = Utils.newPod(node.getMetadata().getName() + "-resource-dummy");
+        final Map<String, Quantity> resourceRequests = new HashMap<>();
+        allocatable.forEach((k, v) -> resourceRequests.put(k, new Quantity("0")));
+        pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
+        pod.getStatus().setPhase("Running");
+        pod.getSpec().setNodeName(node.getMetadata().getName());
+        inserts.addAll(PodEventsToDatabase.updatePodRecord(pod, conn));
+        inserts.addAll(PodEventsToDatabase.updateResourceRequests(pod, conn));
+        allocatable.entrySet().stream().map(
                 (es) -> conn.insertInto(Tables.NODE_RESOURCES)
                             .values(node.getMetadata().getUid(), es.getKey(), convertUnit(es.getValue(), es.getKey()))
-                ).collect(Collectors.toList());
+                ).forEach(inserts::add);
+        return inserts;
     }
 
     private List<Insert<NodeLabelsRecord>> addNodeLabels(final DSLContext conn, final Node node) {
