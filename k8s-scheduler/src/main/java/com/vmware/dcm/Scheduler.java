@@ -262,12 +262,15 @@ public final class Scheduler {
             this.initialPlacementFunction =
                     (s) -> initialPlacement.solve(s,
                             (t) -> {
+                                /*
+                                 * TODO: Workaround until fetchTable(String) works correctly with identity views.
                                 if (dbConnectionPool instanceof DDlogDBConnectionPool) {
                                     return ((DDlogDBConnectionPool) dbConnectionPool).getProvider()
                                                 .fetchTable(t.getName());
                                 } else {
                                     return dbConnectionPool.getConnectionToDb().selectFrom(t).fetch();
-                                }
+                                } */
+                                return dbConnectionPool.getConnectionToDb().selectFrom(t).fetch();
                             });
         }
 
