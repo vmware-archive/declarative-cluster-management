@@ -216,6 +216,7 @@ class TestScenario {
     TestScenario build() {
         Collections.shuffle(pods);
         Collections.shuffle(nodes);
+        scheduler.tick();
         nodes.forEach(nodeResourceEventHandler::onAddSync);
         pods.forEach(podResourceEventHandler::onAddSync);
         return this;

@@ -113,9 +113,33 @@ public class DDlogDBViews {
      */
     private static void allPendingPods(final ViewStatements viewStatements) {
         final String name = "PODS_TO_ASSIGN_NO_LIMIT";
-        final String query = "SELECT DISTINCT pod_info.*, node_name AS controllable__node_name " +
-                             "FROM pod_info " +
-                             "WHERE status = 'Pending' AND node_name IS NULL AND scheduler_name = 'dcm-scheduler'";
+        final String query = """
+                             SELECT DISTINCT
+                               pod_info.uid, pod_info.pod_name,
+                               pod_info.status,
+                               pod_info.node_name,
+                               pod_info.namespace,
+                               pod_info.owner_name,
+                               pod_info.creation_timestamp,
+                               pod_info.priority,
+                               pod_info.scheduler_name,
+                               pod_info.has_node_selector_labels,
+                               pod_info.has_pod_affinity_requirements,
+                               pod_info.has_pod_anti_affinity_requirements,
+                               pod_info.has_node_port_requirements,
+                               pod_info.has_topology_spread_constraints,
+                               pod_info.equivalence_class,
+                               pod_info.qos_class,
+                               pod_info.resourceversion,
+                               pod_info.last_requeue,
+                               pod_info.node_name as controllable__node_name 
+                             FROM pod_info
+                             JOIN timer_t
+                                ON last_requeue < tick 
+                                 AND status = 'Pending'
+                                 AND node_name IS NULL 
+                                 AND scheduler_name = 'dcm-scheduler'
+                             """;
         viewStatements.addQuery(name, query);
     }
 

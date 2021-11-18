@@ -37,6 +37,13 @@ create table pod_info
 );
 create index pod_info_idx on pod_info (status, node_name);
 
+create table timer_t
+(
+    tick_id integer not null,
+    tick bigint not null,
+    primary key (tick_id)
+);
+
 create table node_resources
 (
   uid varchar(36) not null,
