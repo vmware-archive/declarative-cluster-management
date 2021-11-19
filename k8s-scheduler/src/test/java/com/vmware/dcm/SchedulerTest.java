@@ -103,13 +103,11 @@ public class SchedulerTest {
 
     @BeforeAll
     public static void compileDDlog() {
-         Utils.compileDDlog(null);
+         Utils.ddlogConnection(null, true);
     }
 
     public static DDlogDBConnectionPool setupDDlog() {
-        final DDlogDBConnectionPool dbConnectionPool = new DDlogDBConnectionPool();
-        dbConnectionPool.buildDDlog(true, false);
-        return dbConnectionPool;
+        return Utils.ddlogConnection(null, false);
     }
 
     /*
