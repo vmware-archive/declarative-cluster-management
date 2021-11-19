@@ -1,5 +1,6 @@
 package com.vmware.dcm;
 
+import com.vmware.ddlog.DDlogHandle;
 import com.vmware.ddlog.DDlogJooqProvider;
 import com.vmware.ddlog.ir.DDlogProgram;
 import com.vmware.ddlog.translator.Translator;
@@ -43,11 +44,11 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
         final var autoScopeViews = Scheduler.autoScopeViews(20);
         ddlogConn.addScopedViews(autoScopeViews.extraViews());
-        ddlogConn.buildDDlog(true, compile);
+        ddlogConn.buildDDlog(compile);
         return ddlogConn;
     }
 
-    private DDlogDBConnectionPool(@Nullable final String ddlogFile) {
+    public DDlogDBConnectionPool(@Nullable final String ddlogFile) {
         this.ddlogFile = ddlogFile;
         this.scopedViews = new ArrayList<>();
     }
@@ -110,7 +111,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
     }
 
     @SuppressWarnings("IllegalCatch")
-    private void setupDDlog(final boolean seal, final boolean compile) {
+    private void setupDDlog(final boolean compile) {
         try {
             final List<String> tables = DDlogDBViews.getSchema();
             final CalciteToH2Translator translator = new CalciteToH2Translator();
@@ -129,16 +130,11 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
             scopedViews.forEach(x -> tablesInCalcite.add(new CalciteSqlStatement(x)));
 
-            DDlogAPI ddlogAPI = null;
-            if (seal) {
-                if (compile) {
-                    compileAndLoad(tablesInCalcite, createIndexStatements, ddlogFile);
-                }
-                ddlogAPI = DDlogAPI.loadDDlog();
-            }
+            DDlogHandle handle =
+                    new DDlogHandle(tablesInCalcite, new CalciteToPrestoTranslator(), createIndexStatements, compile);
 
             // Initialise the data provider
-            this.provider = new DDlogJooqProvider(ddlogAPI,
+            this.provider = new DDlogJooqProvider(handle,
                                     Stream.concat(tablesInCalcite.stream().map(translator::toH2),
                                                   createIndexStatements.stream().map(H2SqlStatement::new))
                                           .collect(Collectors.toList()));
@@ -147,7 +143,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         }
     }
 
-    public void buildDDlog(final boolean seal, final boolean compile) {
-        setupDDlog(seal, compile);
+    public void buildDDlog(final boolean compile) {
+        setupDDlog(compile);
     }
 }

@@ -16,6 +16,7 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 
+import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
@@ -36,6 +37,14 @@ class Utils {
             // Values are guaranteed to be under 2^63 - 1, so this is safe
             return Quantity.getAmountInBytes(quantity).longValue();
         }
+    }
+
+    static DDlogDBConnectionPool ddlogConnection(@Nullable final String ddlogFile, final boolean compile) {
+        final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
+        final var autoScopeViews = Scheduler.autoScopeViews(20);
+        ddlogConn.addScopedViews(autoScopeViews.extraViews());
+        ddlogConn.buildDDlog(compile);
+        return ddlogConn;
     }
 
     /*
