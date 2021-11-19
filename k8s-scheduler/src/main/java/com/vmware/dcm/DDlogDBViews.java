@@ -183,31 +183,31 @@ public class DDlogDBViews {
      */
     private static void preemptionInputPods(final ViewStatements viewStatements) {
         final String name = "PODS_TO_ASSIGN";
-        final String query = "(SELECT DISTINCT * FROM PODS_TO_ASSIGN) " +
-                             "UNION  " +
-                             "(" + "SELECT DISTINCT pod_info.uid, pod_info.pod_name," +
-                "pod_info.status," +
-                "pod_info.node_name," +
-                "pod_info.namespace," +
-                "pod_info.owner_name," +
-                "pod_info.creation_timestamp," +
-                "pod_info.priority," +
-                "pod_info.scheduler_name," +
-                "pod_info.has_node_selector_labels," +
-                "pod_info.has_pod_affinity_requirements," +
-                "pod_info.has_pod_anti_affinity_requirements," +
-                "pod_info.has_node_port_requirements," +
-                "pod_info.has_topology_spread_constraints," +
-                "pod_info.equivalence_class," +
-                "pod_info.qos_class," +
-                "pod_info.resourceversion," +
-                "pod_info.last_requeue," +
-                "pod_info.node_name as controllable__node_name " +
-                " FROM pod_info JOIN helper_view_preempt ON" +
-                " pod_info.node_name = helper_view_preempt.node_name " +
-                " WHERE pod_info.node_name IS NOT NULL AND pod_info.priority < helper_view_preempt.m" +
-                ")";
-                //" GROUP BY pod_info.node_name " + ")" ;
+        final String query = """
+                            (SELECT DISTINCT * FROM PODS_TO_ASSIGN)
+                            UNION
+                            (SELECT DISTINCT pod_info.uid, pod_info.pod_name,
+                            pod_info.status,
+                            pod_info.node_name,
+                            pod_info.namespace,
+                            pod_info.owner_name,
+                            pod_info.creation_timestamp,
+                            pod_info.priority,
+                            pod_info.scheduler_name,
+                            pod_info.has_node_selector_labels,
+                            pod_info.has_pod_affinity_requirements,
+                            pod_info.has_pod_anti_affinity_requirements,
+                            pod_info.has_node_port_requirements,
+                            pod_info.has_topology_spread_constraints,
+                            pod_info.equivalence_class,
+                            pod_info.qos_class,
+                            pod_info.resourceversion,
+                            pod_info.last_requeue,
+                            pod_info.node_name as controllable__node_name
+                             FROM pod_info JOIN helper_view_preempt ON
+                             pod_info.priority < helper_view_preempt.m
+                             WHERE pod_info.node_name IS NOT NULL
+                            )""";
         viewStatements.addQuery(name, query);
     }
 
@@ -216,28 +216,29 @@ public class DDlogDBViews {
      */
     private static void preemptionFixedPods(final ViewStatements viewStatements) {
         final String name = "ASSIGNED_PODS";
-        final String query = "SELECT DISTINCT pod_info.uid, pod_info.pod_name," +
-                "pod_info.status," +
-                "pod_info.node_name," +
-                "pod_info.namespace," +
-                "pod_info.owner_name," +
-                "pod_info.creation_timestamp," +
-                "pod_info.priority," +
-                "pod_info.scheduler_name," +
-                "pod_info.has_node_selector_labels," +
-                "pod_info.has_pod_affinity_requirements," +
-                "pod_info.has_pod_anti_affinity_requirements," +
-                "pod_info.has_node_port_requirements," +
-                "pod_info.has_topology_spread_constraints," +
-                "pod_info.equivalence_class," +
-                "pod_info.qos_class," +
-                "pod_info.resourceversion," +
-                "pod_info.last_requeue," +
-                "pod_info.node_name as controllable__node_name " +
-                " FROM pod_info JOIN helper_view_preempt ON" +
-                " pod_info.node_name = helper_view_preempt.node_name " +
-                " WHERE pod_info.node_name IS NOT NULL AND pod_info.priority >= helper_view_preempt.m";
-
+        final String query ="""
+                        SELECT DISTINCT pod_info.uid, pod_info.pod_name,
+                        pod_info.status,
+                        pod_info.node_name,
+                        pod_info.namespace,
+                        pod_info.owner_name,
+                        pod_info.creation_timestamp,
+                        pod_info.priority,
+                        pod_info.scheduler_name,
+                        pod_info.has_node_selector_labels,
+                        pod_info.has_pod_affinity_requirements,
+                        pod_info.has_pod_anti_affinity_requirements,
+                        pod_info.has_node_port_requirements,
+                        pod_info.has_topology_spread_constraints,
+                        pod_info.equivalence_class,
+                        pod_info.qos_class,
+                        pod_info.resourceversion,
+                        pod_info.last_requeue,
+                        pod_info.node_name as controllable__node_name
+                         FROM pod_info JOIN helper_view_preempt ON
+                         pod_info.priority >= helper_view_preempt.m
+                         WHERE pod_info.node_name IS NOT NULL
+                        """;
         viewStatements.addQuery(name, query);
     }
 

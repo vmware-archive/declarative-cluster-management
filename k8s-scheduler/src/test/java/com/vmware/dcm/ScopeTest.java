@@ -262,7 +262,7 @@ public class ScopeTest {
 
     @Test
     public void testEmptyPodBatch() {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final IConnectionPool dbConnectionPool = DDlogDBConnectionPool.create(null, true);
         final List<String> policies = Policies.getInitialPlacementPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
@@ -297,7 +297,7 @@ public class ScopeTest {
      */
     @Test
     public void testSchedulerCapacity() {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final IConnectionPool dbConnectionPool = DDlogDBConnectionPool.create(null, true);
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getInitialPlacementPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
@@ -380,7 +380,7 @@ public class ScopeTest {
      */
     @Test
     public void testSchedulerNodeLabels() {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final IConnectionPool dbConnectionPool = DDlogDBConnectionPool.create(null, true);
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         final List<String> policies = Policies.getInitialPlacementPolicies();
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool);
@@ -433,15 +433,19 @@ public class ScopeTest {
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
 
         // Check that all pods have been scheduled to a node eligible by the scope filtering
-        final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
+        final Result<Record> fetch = conn.fetch("select * from pod_info");
         assertEquals(numPods, fetch.size());
-        fetch.forEach(e -> assertTrue(e.getNodeName() != null
-                // gpuPod => gpuNode
-                && (!gpuPodsIdx.contains(Integer.parseInt(e.getPodName().substring(1)))
-                || gpuNodesIdx.contains(Integer.parseInt(e.getNodeName().substring(1))))
-                // ssdPod => ssdNode
-                && (!ssdPodsIdx.contains(Integer.parseInt(e.getPodName().substring(1)))
-                || ssdNodesIdx.contains(Integer.parseInt(e.getNodeName().substring(1))))));
+        fetch.forEach(r -> {
+            final String podName = r.get("POD_NAME", String.class);
+            final String nodeName = r.get("NODE_NAME", String.class);
+            assertTrue(nodeName != null
+                    // gpuPod => gpuNode
+                    && (!gpuPodsIdx.contains(Integer.parseInt(podName.substring(1)))
+                    || gpuNodesIdx.contains(Integer.parseInt(nodeName.substring(1))))
+                    // ssdPod => ssdNode
+                    && (!ssdPodsIdx.contains(Integer.parseInt(podName.substring(1)))
+                    || ssdNodesIdx.contains(Integer.parseInt(nodeName.substring(1)))));
+        });
     }
 
     /*
@@ -454,7 +458,7 @@ public class ScopeTest {
      */
     @Test
     public void testSchedulerPodAffinitiesMixed() {
-        final DBConnectionPool dbConnectionPool = new DBConnectionPool();
+        final IConnectionPool dbConnectionPool = DDlogDBConnectionPool.create(null, true);
         final PodEventsToDatabase eventHandler = new PodEventsToDatabase(dbConnectionPool);
         final PodResourceEventHandler handler = new PodResourceEventHandler(eventHandler::handle);
         final List<String> policies = Policies.getInitialPlacementPolicies();
