@@ -534,7 +534,7 @@ public final class Scheduler {
         final boolean useDDlog = cmd.hasOption("use-ddlog");
         final boolean ddlogCompileOnly = cmd.hasOption("ddlog-compile-only");
         final String ddlogFile = cmd.getOptionValue("ddlogFile");
-        final IConnectionPool conn = useDDlog ? Utils.ddlogConnection(ddlogFile, true) : new DBConnectionPool();
+        final IConnectionPool conn = useDDlog ? DDlogDBConnectionPool.create(ddlogFile, true) : new DBConnectionPool();
         if (useDDlog && ddlogCompileOnly) {
             // End the test
             System.exit(0);

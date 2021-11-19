@@ -1098,6 +1098,8 @@ public class OrToolsSolver implements ISolverBackend {
                 }
                 throw new RuntimeException();
             }
+            fileWriter.close();
+            fileManager.close();
         } catch (final IOException e) {
             throw new RuntimeException(e);
         }
