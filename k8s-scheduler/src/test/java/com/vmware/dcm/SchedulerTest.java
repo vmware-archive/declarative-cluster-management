@@ -7,6 +7,7 @@
 package com.vmware.dcm;
 
 import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.ddlog.DDlogJooqHelper;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
@@ -1222,8 +1223,9 @@ public class SchedulerTest {
     @Test
     @Disabled
     public void testSchedulerDebugDump() {
+        //final DBConnectionPool dbConnectionPool = new DBConnectionPool();
         final DDlogDBConnectionPool dbConnectionPool = DDlogDBConnectionPool.create(null, false);
-        dbConnectionPool.buildDDlog(true, false);
+        dbConnectionPool.buildDDlog(false);
 
         final DSLContext conn = dbConnectionPool.getConnectionToDb();
         DebugUtils.dbLoad(conn, "<enter some valid value here>");
