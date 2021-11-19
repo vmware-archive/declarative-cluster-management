@@ -216,7 +216,7 @@ public class DDlogDBViews {
      */
     private static void preemptionFixedPods(final ViewStatements viewStatements) {
         final String name = "ASSIGNED_PODS";
-        final String query ="""
+        final String query = """
                         SELECT DISTINCT pod_info.uid, pod_info.pod_name,
                         pod_info.status,
                         pod_info.node_name,

@@ -7,8 +7,6 @@
 package com.vmware.dcm;
 
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
-import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodAffinity;
@@ -361,16 +359,22 @@ public class ScopeTest {
 
 
         // Check that all pods have been scheduled to a node eligible by the scope filtering
-        final Result<PodInfoRecord> fetch = conn.selectFrom(Tables.POD_INFO).fetch();
+        final List<Record> fetch = conn.fetch("select * from pod_info")
+                                       .stream().filter(r -> !r.get("POD_NAME", String.class)
+                                       .contains("dummy")).toList();
         assertEquals(numNodes + numPods, fetch.size());
-        fetch.forEach(e -> assertTrue(e.getNodeName() != null
-                && e.getNodeName().startsWith("n")
-                // check that new pods have been scheduled to a scoped node
-                && (randNodesCpu.contains(Integer.parseInt(e.getNodeName().substring(1)))
-                || randNodesMem.contains(Integer.parseInt(e.getNodeName().substring(1)))
-                || randNodesEph.contains(Integer.parseInt(e.getNodeName().substring(1)))
-                || randNodesPod.contains(Integer.parseInt(e.getNodeName().substring(1)))
-                || !e.getPodName().startsWith("p"))));
+        fetch.forEach(e -> {
+            final String podName = e.get("POD_NAME", String.class);
+            final String nodeName = e.get("NODE_NAME", String.class);
+            assertTrue(nodeName != null
+                    && nodeName.startsWith("n")
+                    // check that new pods have been scheduled to a scoped node
+                    && (randNodesCpu.contains(Integer.parseInt(nodeName.substring(1)))
+                    || randNodesMem.contains(Integer.parseInt(nodeName.substring(1)))
+                    || randNodesEph.contains(Integer.parseInt(nodeName.substring(1)))
+                    || randNodesPod.contains(Integer.parseInt(nodeName.substring(1)))
+                    || !podName.startsWith("p")));
+        });
     }
 
     /*
@@ -433,7 +437,9 @@ public class ScopeTest {
         scheduler.scheduleAllPendingPods(new EmulatedPodToNodeBinder(dbConnectionPool));
 
         // Check that all pods have been scheduled to a node eligible by the scope filtering
-        final Result<Record> fetch = conn.fetch("select * from pod_info");
+        final List<Record> fetch = conn.fetch("select * from pod_info")
+                                         .stream().filter(r -> !r.get("POD_NAME", String.class).contains("dummy"))
+                                         .toList();
         assertEquals(numPods, fetch.size());
         fetch.forEach(r -> {
             final String podName = r.get("POD_NAME", String.class);
@@ -536,6 +542,7 @@ public class ScopeTest {
                                                 .setInitialPlacementPolicies(policies)
                                                 .setScopedInitialPlacement(true)
                                                 .setDebugMode(true).setLimit(numPods).build();
+        scheduler.tick();
         final Result<? extends Record> results = scheduler.initialPlacement();
 
         // All pods have been assigned to nodes
