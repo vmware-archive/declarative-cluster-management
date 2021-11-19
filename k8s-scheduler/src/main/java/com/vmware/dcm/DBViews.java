@@ -376,7 +376,7 @@ public class DBViews {
                         JOIN pod_$affinityType_match_expressions AS match_expressions ON
                              pods_to_assign.uid = match_expressions.pod_uid
                         JOIN matching_pods
-                            ON array_contains(match_expressions.match_expressions, matching_pods.expr_id)
+                            ON array_contains(match_expressions.$affinityType_match_expressions, matching_pods.expr_id)
                         JOIN $otherPods as other_pods
                             ON matching_pods.pod_uid = other_pods.uid AND pods_to_assign.uid != other_pods.uid
                         WHERE pods_to_assign.has_pod_$affinityType_requirements = true
@@ -385,9 +385,9 @@ public class DBViews {
                             matching_pods.pod_uid,
                             label_selector,
                             topology_key,
-                            match_expressions,
+                            $affinityType_match_expressions,
                             other_pods.node_name
-                        HAVING array_length(match_expressions) = COUNT(DISTINCT matching_pods.expr_id)
+                        HAVING array_length($affinityType_match_expressions) = COUNT(DISTINCT matching_pods.expr_id)
                     """;
         for (final String type: List.of("affinity", "anti_affinity")) {
             final String baseQuery = formatString.replace("$affinityType",  type)

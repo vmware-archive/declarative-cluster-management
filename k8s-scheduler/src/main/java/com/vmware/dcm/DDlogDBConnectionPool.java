@@ -38,12 +38,16 @@ public class DDlogDBConnectionPool implements IConnectionPool {
     @Nullable private DDlogJooqProvider provider;
     @Nullable private final String ddlogFile;
 
-    public DDlogDBConnectionPool() {
-        this.ddlogFile = null;
-        scopedViews = new ArrayList<>();
+
+    public static DDlogDBConnectionPool create(@Nullable final String ddlogFile, final boolean compile) {
+        final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
+        final var autoScopeViews = Scheduler.autoScopeViews(20);
+        ddlogConn.addScopedViews(autoScopeViews.extraViews());
+        ddlogConn.buildDDlog(true, compile);
+        return ddlogConn;
     }
 
-    public DDlogDBConnectionPool(@Nullable final String ddlogFile) {
+    private DDlogDBConnectionPool(@Nullable final String ddlogFile) {
         this.ddlogFile = ddlogFile;
         this.scopedViews = new ArrayList<>();
     }

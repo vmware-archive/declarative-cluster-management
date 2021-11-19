@@ -6,7 +6,6 @@
 
 package com.vmware.dcm;
 
-import edu.umd.cs.findbugs.annotations.Nullable;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.NodeAffinity;
@@ -37,14 +36,6 @@ class Utils {
             // Values are guaranteed to be under 2^63 - 1, so this is safe
             return Quantity.getAmountInBytes(quantity).longValue();
         }
-    }
-
-    static DDlogDBConnectionPool ddlogConnection(@Nullable final String ddlogFile, final boolean compile) {
-        final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
-        final var autoScopeViews = Scheduler.autoScopeViews(20);
-        ddlogConn.addScopedViews(autoScopeViews.extraViews());
-        ddlogConn.buildDDlog(true, compile);
-        return ddlogConn;
     }
 
     /*
