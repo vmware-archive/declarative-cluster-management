@@ -55,7 +55,7 @@ class TestScenario {
     }
 
     // Constructor to enable passing custom ConnectionPools, e.g. DDlogDBConnectionPool
-    TestScenario (IConnectionPool dbConnectionPool) {
+    TestScenario(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
         this.schedulerBuilder = new Scheduler.Builder(dbConnectionPool);
         this.eventHandler = new PodEventsToDatabase(dbConnectionPool);
@@ -63,7 +63,7 @@ class TestScenario {
         this.podResourceEventHandler = new PodResourceEventHandler(eventHandler::handle);
     }
 
-    static TestScenario withPolicies(final List<String> initialPlacement, IConnectionPool connectionPool) {
+    static TestScenario withPolicies(final List<String> initialPlacement, final IConnectionPool connectionPool) {
         final var scenario = new TestScenario(connectionPool);
         scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
         scenario.scheduler = scenario.schedulerBuilder.build();
@@ -120,7 +120,8 @@ class TestScenario {
         return scenario;
     }
 
-    static TestScenario withPolicies(final List<String> initialPlacement, final boolean scoped, IConnectionPool dbConnectionPool) {
+    static TestScenario withPolicies(final List<String> initialPlacement, final boolean scoped,
+                                     final IConnectionPool dbConnectionPool) {
         final var scenario = new TestScenario(dbConnectionPool);
         scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
         scenario.schedulerBuilder.setScopedInitialPlacement(scoped);

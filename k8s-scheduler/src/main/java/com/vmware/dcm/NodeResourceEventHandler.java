@@ -12,7 +12,6 @@ import com.vmware.dcm.k8s.generated.tables.NodeInfo;
 import com.vmware.dcm.k8s.generated.tables.records.NodeImagesRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeInfoRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeLabelsRecord;
-import com.vmware.dcm.k8s.generated.tables.records.NodeResourcesRecord;
 import com.vmware.dcm.k8s.generated.tables.records.NodeTaintsRecord;
 import io.fabric8.kubernetes.api.model.ContainerImage;
 import io.fabric8.kubernetes.api.model.Node;

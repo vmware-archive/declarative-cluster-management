@@ -108,7 +108,7 @@ public class SchedulerTest {
 
     public static DDlogDBConnectionPool setupDDlog() {
         final DDlogDBConnectionPool dbConnectionPool = new DDlogDBConnectionPool();
-        dbConnectionPool.buildDDlog(false, false);
+        dbConnectionPool.buildDDlog(true, false);
         return dbConnectionPool;
     }
 
@@ -264,7 +264,7 @@ public class SchedulerTest {
                                                                            Policies.disallowNullNodeSoft());
         final String type = condition.get(0);
         final String status = condition.get(1);
-        var temp = TestScenario.withPolicies(policies, scope, dbConnectionPool)
+        TestScenario.withPolicies(policies, scope, dbConnectionPool)
                 .withNodeGroup("badNodes", 5, (node) -> {
                     final NodeCondition badCondition = new NodeCondition();
                     badCondition.setStatus(status);
@@ -273,9 +273,9 @@ public class SchedulerTest {
                 })
                 .withNodeGroup("goodNodes", 1)
                 .withPodGroup("p", 10)
-                .build();
-        var res = temp.runInitialPlacement().expect(nodesForPodGroup("p"), IN, nodeGroup("goodNodes"))
-        .expect(nodesForPodGroup("p"), NOT_IN, nodeGroup("badNodes"));
+                .runInitialPlacement()
+                .expect(nodesForPodGroup("p"), IN, nodeGroup("goodNodes"))
+                .expect(nodesForPodGroup("p"), NOT_IN, nodeGroup("badNodes"));
     }
 
     @SuppressWarnings("UnusedMethod")
