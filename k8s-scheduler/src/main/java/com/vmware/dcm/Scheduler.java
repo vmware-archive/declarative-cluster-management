@@ -14,6 +14,9 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.ddlog.util.sql.CalciteSqlStatement;
+import com.vmware.ddlog.util.sql.CalciteToH2Translator;
+import com.vmware.ddlog.util.sql.H2SqlStatement;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.commons.cli.CommandLine;
@@ -26,6 +29,7 @@ import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.Table;
 import org.jooq.Update;
+import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,10 +101,10 @@ public final class Scheduler {
         private List<String> preemptionPolicies = Policies.getPreemptionPlacementPolicies();
         private boolean debugMode = false;
         private int numThreads = 1;
-        private boolean scopedInitialPlacement = false;
         private int solverMaxTimeInSeconds = DEFAULT_SOLVER_MAX_TIME_IN_SECONDS;
         private long retryIntervalMs = DEFAULT_POD_RETRY_INTERVAL_MS;
         private int limit = DEFAULT_NODE_LIMIT;
+        @Nullable private AutoScopeViews autoScopeViews = null;
         @Nullable private Model initialPlacement = null;
         @Nullable private Model preemption = null;
 
@@ -173,7 +177,9 @@ public final class Scheduler {
          * Configures the initial placement model to use AutoScope. Experimental. Defaults to false.
          */
         public Builder setScopedInitialPlacement(final boolean scopedInitialPlacement) {
-            this.scopedInitialPlacement = scopedInitialPlacement;
+            if (scopedInitialPlacement) {
+                this.autoScopeViews = autoScopeViews(limit);
+            }
             return this;
         }
 
@@ -191,6 +197,7 @@ public final class Scheduler {
         /**
          * Configures the number of candidates nodes to keep from sorted tables.
          * Defaults to 20.
+         * TODO: fold into setScopedInitialPlacement()
          */
         public Builder setLimit(final int limit) {
             this.limit = limit;
@@ -205,14 +212,44 @@ public final class Scheduler {
                 setPreemptionPolicies(preemptionPolicies);
             }
             return new Scheduler(connection, initialPlacement, preemption, debugMode, numThreads,
-                                 solverMaxTimeInSeconds, scopedInitialPlacement, retryIntervalMs, limit);
+                                 solverMaxTimeInSeconds, autoScopeViews, retryIntervalMs);
         }
+    }
+
+    record AutoScopeViews(Map<String, String> augmentedViews, List<String> extraViews) { }
+
+    static AutoScopeViews autoScopeViews(final int limit) {
+        // TODO: We create a metadata connection for the base ddlog schema using H2, similar to how
+        //       the DDlogJooqProvider does so. This allows us to instantiate a model with the appropriate
+        //       IRContext, needed by AutoScope to do its static analysis. This is overkill: all we need
+        //       is some info about base tables and column types.
+        // TODO: This code is also duplicated in DDlogDBConnectionPool
+        final List<String> tables = DDlogDBViews.getSchema();
+        final CalciteToH2Translator translator = new CalciteToH2Translator();
+        final List<H2SqlStatement> unscopedTableAndViewStatements = tables.stream()
+                                                                           .filter(s -> !s.startsWith("create index"))
+                                                                           .map(CalciteSqlStatement::new)
+                                                                           .map(translator::toH2).toList();
+        final DSLContext metadataConnection = DSL.using("jdbc:h2:mem:");
+        unscopedTableAndViewStatements.forEach(e -> metadataConnection.execute(e.getStatement()));
+        final OrToolsSolver orToolsSolver = new OrToolsSolver.Builder().build();
+        final Model initialPlacement = Model.build(metadataConnection, orToolsSolver,
+                                                   Policies.getInitialPlacementPolicies(), metadataConnection);
+        // Automatic scoping
+        final IRContext irContext = initialPlacement.getIrContext();
+        final Map<String, String> views = AutoScope.augmentedViews(
+                Policies.getInitialPlacementPolicies(), irContext, limit);
+        // Create custom sort views
+        final List<String> statements = AutoScope.getSuffixViewStatements(views, DBViews.SORT_VIEW_NAME_SUFFIX);
+        // Create filtering views
+        statements.addAll(AutoScope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX));
+        return new AutoScopeViews(views, statements);
     }
 
     private Scheduler(final IConnectionPool dbConnectionPool, final Model initialPlacement,
               final Model preemption, final boolean debugMode, final int numThreads,
-              final int solverMaxTimeInSeconds, final boolean scopedInitialPlacement,
-              final long retryIntervalMs, final int limit) {
+              final int solverMaxTimeInSeconds, @Nullable final AutoScopeViews autoScopeViews,
+              final long retryIntervalMs) {
         final InputStream resourceAsStream = Scheduler.class.getResourceAsStream("/git.properties");
         // This is a file generated by gradle. If building from an IDE without gradle, this file may not
         // be generated
@@ -228,36 +265,9 @@ public final class Scheduler {
         this.dbConnectionPool = dbConnectionPool;
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         this.initialPlacement = initialPlacement;
-
-        // Automatic scoping
-        final IRContext irContext = initialPlacement.getIrContext();
-        final Map<String, String> views = AutoScope.augmentedViews(
-                Policies.getInitialPlacementPolicies(), irContext, limit);
-        // Create custom sort views
-        List<String> statements = AutoScope.getSuffixViewStatements(views, DBViews.SORT_VIEW_NAME_SUFFIX);
-        if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-            final DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
-            ddlogPool.addScopedViews(statements);
-        } else {
-
-            if (scopedInitialPlacement) {
-                statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
-            }
-        }
-        // Create filtering views
-        statements = AutoScope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX);
-        if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-            final DDlogDBConnectionPool ddlogPool = (DDlogDBConnectionPool) dbConnectionPool;
-            ddlogPool.addScopedViews(statements);
-        } else {
-            if (scopedInitialPlacement) {
-                statements.forEach(dbConnectionPool.getConnectionToDb()::execute);
-            }
-        }
-
-        if (scopedInitialPlacement) {
+        if (autoScopeViews != null) {
             // New scoping
-            this.initialPlacementFunction = (s) -> scopedFunction(views.keySet());
+            this.initialPlacementFunction = (s) -> scopedFunction(autoScopeViews.augmentedViews().keySet());
         } else {
             this.initialPlacementFunction =
                     (s) -> initialPlacement.solve(s,
@@ -273,15 +283,10 @@ public final class Scheduler {
                                 return dbConnectionPool.getConnectionToDb().selectFrom(t).fetch();
                             });
         }
-
-        if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-            ((DDlogDBConnectionPool) dbConnectionPool).buildDDlog(true, false);
-        }
-
         this.preemption = preemption;
         this.debugMode = debugMode;
         LOG.info("Initialized scheduler: {} {} {} {}", debugMode, numThreads, solverMaxTimeInSeconds,
-                 scopedInitialPlacement);
+                 autoScopeViews != null);
     }
 
     void handlePodEvent(final PodEvent podEvent) {
@@ -293,11 +298,11 @@ public final class Scheduler {
     void tick() {
         try {
             this.dbConnectionPool.getConnectionToDb()
-                    .execute(String.format("insert into timer_t values (1, %s)",
-                            System.currentTimeMillis() - 1000));
-        } catch (final Exception e) {
-            this.dbConnectionPool.getConnectionToDb()
                     .execute(String.format("update timer_t set tick = %s where tick_id = 1",
+                            System.currentTimeMillis() - 1000));
+        } catch (final DataAccessException e) {
+            this.dbConnectionPool.getConnectionToDb()
+                    .execute(String.format("insert into timer_t values (1, %s)",
                             System.currentTimeMillis() - 1000));
         }
     }
@@ -531,10 +536,17 @@ public final class Scheduler {
         final String ddlogFile = cmd.getOptionValue("ddlogFile");
         final IConnectionPool conn;
         if (useDDlog) {
-            conn = new DDlogDBConnectionPool(ddlogFile);
-            ((DDlogDBConnectionPool) conn).buildDDlog(false, false);
+            final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
+            final var autoScopeViews = Scheduler.autoScopeViews(20);
+            ddlogConn.addScopedViews(autoScopeViews.extraViews());
+            ddlogConn.buildDDlog(true, true);
+            conn = ddlogConn;
         } else {
             conn = new DBConnectionPool();
+        }
+        if (useDDlog && ddlogCompileOnly) {
+            // End the test
+            System.exit(0);
         }
 
         final Scheduler scheduler = new Scheduler.Builder(conn)
@@ -543,10 +555,6 @@ public final class Scheduler {
                 .setRetryIntervalMs(Long.parseLong(cmd.getOptionValue("requeue-delay")))
                 .build();
 
-        if (useDDlog && ddlogCompileOnly) {
-            // End the test
-            System.exit(0);
-        }
 
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",

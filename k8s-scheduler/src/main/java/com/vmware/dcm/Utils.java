@@ -39,12 +39,11 @@ class Utils {
         }
     }
 
-    static void compileDDlog(@Nullable String ddlogFile) {
-        final DDlogDBConnectionPool dbConnectionPool = new DDlogDBConnectionPool(ddlogFile);
-        dbConnectionPool.buildDDlog(false, false);
-        final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
-                .setScopedInitialPlacement(true).build();
-        dbConnectionPool.buildDDlog(true, true);
+    static void compileDDlog(@Nullable final String ddlogFile) {
+        final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
+        final var autoScopeViews = Scheduler.autoScopeViews(20);
+        ddlogConn.addScopedViews(autoScopeViews.extraViews());
+        ddlogConn.buildDDlog(true, true);
     }
 
     /*
