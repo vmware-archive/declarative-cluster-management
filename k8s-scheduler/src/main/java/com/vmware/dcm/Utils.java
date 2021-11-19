@@ -39,11 +39,12 @@ class Utils {
         }
     }
 
-    static void compileDDlog(@Nullable final String ddlogFile) {
+    static DDlogDBConnectionPool ddlogConnection(@Nullable final String ddlogFile, final boolean compile) {
         final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
         final var autoScopeViews = Scheduler.autoScopeViews(20);
         ddlogConn.addScopedViews(autoScopeViews.extraViews());
-        ddlogConn.buildDDlog(true, true);
+        ddlogConn.buildDDlog(true, compile);
+        return ddlogConn;
     }
 
     /*

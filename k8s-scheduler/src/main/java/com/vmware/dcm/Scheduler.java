@@ -534,28 +534,16 @@ public final class Scheduler {
         final boolean useDDlog = cmd.hasOption("use-ddlog");
         final boolean ddlogCompileOnly = cmd.hasOption("ddlog-compile-only");
         final String ddlogFile = cmd.getOptionValue("ddlogFile");
-        final IConnectionPool conn;
-        if (useDDlog) {
-            final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
-            final var autoScopeViews = Scheduler.autoScopeViews(20);
-            ddlogConn.addScopedViews(autoScopeViews.extraViews());
-            ddlogConn.buildDDlog(true, true);
-            conn = ddlogConn;
-        } else {
-            conn = new DBConnectionPool();
-        }
+        final IConnectionPool conn = useDDlog ? Utils.ddlogConnection(ddlogFile, true) : new DBConnectionPool();
         if (useDDlog && ddlogCompileOnly) {
             // End the test
             System.exit(0);
         }
-
         final Scheduler scheduler = new Scheduler.Builder(conn)
                 .setDebugMode(cmd.hasOption("debug-mode"))
                 .setNumThreads(Integer.parseInt(cmd.getOptionValue("num-threads")))
                 .setRetryIntervalMs(Long.parseLong(cmd.getOptionValue("requeue-delay")))
                 .build();
-
-
         final KubernetesClient kubernetesClient = new DefaultKubernetesClient();
         LOG.info("Running a scheduler that connects to a Kubernetes cluster on {}",
                  kubernetesClient.getConfiguration().getMasterUrl());
