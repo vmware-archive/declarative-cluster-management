@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -42,7 +43,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
         scopedViews = new ArrayList<>();
     }
 
-    public DDlogDBConnectionPool(final String ddlogFile) {
+    public DDlogDBConnectionPool(@Nullable final String ddlogFile) {
         this.ddlogFile = ddlogFile;
         this.scopedViews = new ArrayList<>();
     }
@@ -91,7 +92,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
             final DDlogProgram dDlogProgram = t.getDDlogProgram();
             final File tmp = new File(fileName);
-            final BufferedWriter bw = new BufferedWriter(new FileWriter(tmp));
+            final BufferedWriter bw = new BufferedWriter(new FileWriter(tmp, Charset.defaultCharset()));
             bw.write(dDlogProgram.toString());
             bw.close();
         }

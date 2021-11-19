@@ -30,4 +30,8 @@
         <!-- False positive when using text blocks -->
         <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
     </Match>
+    <Match>
+        <!-- False positive in SchedulerTest -->
+        <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
+    </Match>
 </FindBugsFilter>
