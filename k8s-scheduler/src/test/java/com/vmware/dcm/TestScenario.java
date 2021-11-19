@@ -129,8 +129,9 @@ class TestScenario {
         return scenario;
     }
 
-    static TestScenario withPolicies(final List<String> initialPlacement, final List<String> preemption) {
-        final var scenario = new TestScenario(new DBConnectionPool());
+    static TestScenario withPolicies(final List<String> initialPlacement, final List<String> preemption,
+                                     final IConnectionPool pool) {
+        final var scenario = new TestScenario(pool);
         scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
         scenario.schedulerBuilder.setPreemptionPolicies(preemption);
         scenario.scheduler = scenario.schedulerBuilder.build();
