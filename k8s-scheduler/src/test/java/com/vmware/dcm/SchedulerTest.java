@@ -102,10 +102,12 @@ public class SchedulerTest {
     }
 
     @BeforeAll
+    @SuppressWarnings("all")
     public static void compileDDlog() {
          Utils.ddlogConnection(null, true);
     }
 
+    @SuppressWarnings("all")
     public static DDlogDBConnectionPool setupDDlog() {
         return Utils.ddlogConnection(null, false);
     }
