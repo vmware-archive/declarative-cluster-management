@@ -305,13 +305,15 @@ savePlot(solverVariablesPlot, "solverVariablesPlot",
 podEventsWithParams <- merge(podEvents, params, by=c("expId"))
 podEventsBarPlot <- applyTheme(
     ggplot(podEventsWithParams,
-           aes(x = event)) +
-    geom_bar(stat="count", fill="brown") +
+           aes(x = event, fill=scheduler)) +
+    geom_bar(stat="count", position=position_dodge()) +
     scale_x_discrete(guide = guide_axis(angle = 45)) +
-    geom_text(aes(label = ..count..), stat="count", vjust=0, colour="black") +
+    geom_text(aes(label = ..count..), stat="count", vjust=0, colour="black",
+              position=position_dodge(0.9)) +
     facet_grid(factor(paste(numNodes, "nodes"),
                       levels = sapply(unique(numNodes), function(n) paste(n, "nodes")))
-               ~ scenario)
+               ~ scenario) +
+    labs(fill = "", linetype = "")
 )
 savePlot(podEventsBarPlot, "podEventsBarPlot",
          0, params, plotHeight*2, plotWidth*2)
