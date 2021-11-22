@@ -283,6 +283,7 @@ public class Model {
             final long start = System.nanoTime();
             final Result<? extends Record> recentData = fetcher.apply(table);
             Objects.requireNonNull(recentData, "Table Result<?> was null");
+            System.out.println(recentData);
             final long select = System.nanoTime();
             records.put(table.getName(), recentData);
             final long updateValues = System.nanoTime();
