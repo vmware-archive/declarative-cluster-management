@@ -205,6 +205,42 @@ public class SchedulerTest {
     }
 
     /*
+     * Test pod whether DCM modifying records does not affect future fetches
+     */
+    @Test
+    public void testPodToDbModificationBug() {
+        final DDlogDBConnectionPool pool = setupDDlog();
+        final DSLContext conn = pool.getConnectionToDb();
+        final PodEventsToDatabase handler = new PodEventsToDatabase(pool);
+        final String podName = "p1";
+        final Pod pod = newPod(podName, UUID.randomUUID(), "Pending", Collections.emptyMap(),
+                Collections.singletonMap("k", "v"));
+        handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
+        conn.update(Tables.POD_INFO)
+                .set(DSL.field(Tables.POD_INFO.NODE_NAME.getUnqualifiedName()), "node-1")
+                .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
+        final var podInfoRecord = conn.selectFrom(Tables.POD_INFO)
+                .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()))
+                .fetchOne();
+        assertEquals("node-1", podInfoRecord.getNodeName());
+        final Result<Record> records = pool.getProvider().fetchTable("POD_INFO");
+        for (Record record : records) {
+            if (record.get(1, String.class).equals("p1")) {
+                final Object[] obj = new Object[1];
+                obj[0] = "n4";
+                record.from(obj, 3);
+            }
+        }
+        final var recordAgain = pool.getProvider().fetchTable("POD_INFO")
+                .stream().filter(r -> r.get(1, String.class).equals("p1")).toList();
+        assertEquals("node-1", recordAgain.get(0).get(3));
+
+        final var recordAgainViaSelect = conn.selectFrom(Tables.POD_INFO).fetch()
+                .stream().filter(r -> r.get(1, String.class).equals("p1")).toList();
+        assertEquals("node-1", recordAgainViaSelect.get(0).get(3));
+    }
+
+    /*
      * Verify that array types are correctly dumped/reloaded
      */
     @CartesianProductTest
