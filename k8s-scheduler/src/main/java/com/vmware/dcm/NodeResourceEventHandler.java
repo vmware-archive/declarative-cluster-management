@@ -234,7 +234,7 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         pod.getStatus().setPhase("Running");
         pod.getSpec().setPriority(10000);
         pod.getSpec().setNodeName(node.getMetadata().getName());
-        inserts.addAll(PodEventsToDatabase.updatePodRecord(pod, conn));
+        inserts.addAll(PodEventsToDatabase.insertPodRecord(pod, conn));
         inserts.addAll(PodEventsToDatabase.updateResourceRequests(pod, conn));
         allocatable.entrySet().stream().map(
                 (es) -> conn.insertInto(Tables.NODE_RESOURCES)
