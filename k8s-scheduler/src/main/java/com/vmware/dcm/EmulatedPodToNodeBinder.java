@@ -55,7 +55,7 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
         // Mimic a binding notification
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             return conn.delete(Tables.POD_INFO)
-                       .where(Tables.POD_INFO.UID.eq(podUid));
+                       .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(podUid));
         }
     }
 
