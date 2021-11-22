@@ -181,6 +181,7 @@ public class SchedulerTest {
         assertTrue(conn.fetch(Tables.POD_RESOURCE_DEMANDS).size() > 0);
         assertTrue(conn.fetch(Tables.POD_PORTS_REQUEST).size() > 0);
         assertTrue(conn.fetch(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS).size() > 0);
+        System.out.println(conn.fetch(Tables.POD_INFO));
         final Pod newPod = newPod(podName, UUID.fromString(pod.getMetadata().getUid()), "Running",
                                   Collections.emptyMap(), Collections.singletonMap("k", "v"));
         assertEquals(newPod.getMetadata().getUid(), pod.getMetadata().getUid());
@@ -189,6 +190,7 @@ public class SchedulerTest {
         final var podInfoRecord = conn.selectFrom(Tables.POD_INFO)
                 .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()))
                 .fetchOne();
+        System.out.println(conn.fetch(Tables.POD_INFO));
         assertEquals("Running", podInfoRecord.getStatus());
 
         handler.handle(new PodEvent(PodEvent.Action.DELETED, pod));
@@ -199,6 +201,7 @@ public class SchedulerTest {
         assertFalse(conn.fetch(Tables.POD_RESOURCE_DEMANDS).size() > 0);
         assertFalse(conn.fetch(Tables.POD_PORTS_REQUEST).size() > 0);
         assertFalse(conn.fetch(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS).size() > 0);
+        System.out.println(conn.fetch(Tables.POD_INFO));
     }
 
     /*

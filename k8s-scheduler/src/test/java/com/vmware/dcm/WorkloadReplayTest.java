@@ -12,14 +12,14 @@ public class WorkloadReplayTest {
     @Test
     public void runTest() throws Exception {
         final String[] args =
-                {"-n", "500", "-f", "test-data.txt", "-c", "100", "-m", "200", "-t", "100", "-s", "1000"};
+                {"-n", "10", "-f", "v2-cropped.txt", "-c", "100", "-m", "200", "-t", "100", "-s", "1000"};
         EmulatedCluster.runWorkload(args);
     }
 
     @Test
     public void runTestScope() throws Exception {
         final String[] args =
-                {"-n", "500", "-f", "test-data.txt", "-c", "100", "-m", "200", "-t", "100", "-s", "1000", "-S"};
+                {"-n", "500", "-f", "v2-cropped.txt", "-c", "100", "-m", "200", "-t", "100", "-s", "10", "-S"};
         EmulatedCluster.runWorkload(args);
     }
 }

@@ -79,6 +79,9 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
                         }
                 ).collect(Collectors.toList());
                 try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+                    if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+                        System.out.println(((DDlogDBConnectionPool) dbConnectionPool).getProvider().lock);
+                    }
                     conn.batch(updates).execute();
                 }
                 records.forEach(record -> {
