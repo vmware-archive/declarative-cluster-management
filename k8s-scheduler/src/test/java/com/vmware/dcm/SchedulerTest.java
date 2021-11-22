@@ -39,6 +39,7 @@ import io.fabric8.kubernetes.api.model.TopologySpreadConstraint;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -144,6 +145,60 @@ public class SchedulerTest {
         handler.handle(new PodEvent(PodEvent.Action.DELETED, pod));
         assertFalse(conn.fetchExists(Tables.POD_INFO));
         assertFalse(conn.fetchExists(Tables.POD_LABELS));
+    }
+
+    /*
+     * Test pod insert, update and delete paths
+     */
+    @Test
+    public void testPodToDbOperations() {
+        final IConnectionPool pool = setupDDlog();
+        final DSLContext conn = pool.getConnectionToDb();
+        final PodEventsToDatabase handler = new PodEventsToDatabase(pool);
+        final String podName = "p1";
+        final Pod pod = newPod(podName, UUID.randomUUID(), "Pending", Collections.emptyMap(),
+                                Collections.singletonMap("k", "v"));
+        final var t = new Toleration();
+        t.setKey("k1");
+        t.setOperator("Equal");
+        t.setValue("v1");
+        t.setEffect("NoSchedule");
+        pod.getSpec().setTolerations(List.of(t));
+        final var container = new Container();
+        container.setPorts(List.of(port("127.0.0.1/8080/UDP")));
+        final ResourceRequirements resourceRequirements = new ResourceRequirements();
+        resourceRequirements.setRequests(Collections.emptyMap());
+        container.setResources(resourceRequirements);
+        container.setName("ignore");
+        container.setImage("ignore");
+        pod.getSpec().setContainers(List.of(container));
+        pod.getSpec().setTopologySpreadConstraints(List.of(spread(1)));
+        handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
+        assertTrue(conn.fetch(Tables.POD_INFO).size() > 0);
+        assertTrue(conn.fetch(Tables.POD_LABELS).size() > 0);
+        assertTrue(conn.fetch(Tables.POD_IMAGES).size() > 0);
+        assertTrue(conn.fetch(Tables.POD_TOLERATIONS).size() > 0);
+        assertTrue(conn.fetch(Tables.POD_RESOURCE_DEMANDS).size() > 0);
+        assertTrue(conn.fetch(Tables.POD_PORTS_REQUEST).size() > 0);
+        assertTrue(conn.fetch(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS).size() > 0);
+        final Pod newPod = newPod(podName, UUID.fromString(pod.getMetadata().getUid()), "Running",
+                                  Collections.emptyMap(), Collections.singletonMap("k", "v"));
+        assertEquals(newPod.getMetadata().getUid(), pod.getMetadata().getUid());
+        newPod.getMetadata().setResourceVersion(pod.getMetadata().getResourceVersion() + "1");
+        handler.handle(new PodEvent(PodEvent.Action.UPDATED, newPod, pod));
+        final var podInfoRecord = conn.selectFrom(Tables.POD_INFO)
+                .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()))
+                .fetchOne();
+        assertEquals("Running", podInfoRecord.getStatus());
+
+        handler.handle(new PodEvent(PodEvent.Action.DELETED, pod));
+        assertFalse(conn.fetch(Tables.POD_INFO).size() > 0);
+        assertFalse(conn.fetch(Tables.POD_LABELS).size() > 0);
+        assertFalse(conn.fetch(Tables.POD_IMAGES).size() > 0);
+        assertFalse(conn.fetch(Tables.POD_TOLERATIONS).size() > 0);
+        assertFalse(conn.fetch(Tables.POD_RESOURCE_DEMANDS).size() > 0);
+        assertFalse(conn.fetch(Tables.POD_PORTS_REQUEST).size() > 0);
+        assertFalse(conn.fetch(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS).size() > 0);
     }
 
     /*

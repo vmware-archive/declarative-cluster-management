@@ -35,6 +35,7 @@ create table pod_info
   primary key(uid),
   constraint uc_namespaced_pod_name unique (pod_name, namespace)
 );
+create index pod_info_by_uid on pod_info (uid);
 create index pod_info_idx on pod_info (status, node_name);
 
 create table timer_t

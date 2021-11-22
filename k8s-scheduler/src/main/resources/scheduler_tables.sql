@@ -22,7 +22,7 @@ create table pod_info
   owner_name varchar(100) not null,
   creation_timestamp varchar(100) not null,
   priority integer not null,
-  schedulerName varchar(50),
+  scheduler_name varchar(50),
   has_node_selector_labels boolean not null,
   has_pod_affinity_requirements boolean not null,
   has_pod_anti_affinity_requirements boolean not null,

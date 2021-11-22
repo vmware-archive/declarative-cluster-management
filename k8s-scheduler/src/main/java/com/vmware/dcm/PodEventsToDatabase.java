@@ -13,9 +13,7 @@ import com.vmware.dcm.k8s.generated.tables.MatchExpressions;
 import com.vmware.dcm.k8s.generated.tables.PodInfo;
 import com.vmware.dcm.k8s.generated.tables.records.MatchExpressionsRecord;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
-import com.vmware.dcm.k8s.generated.tables.records.PodLabelsRecord;
 import com.vmware.dcm.k8s.generated.tables.records.PodNodeSelectorLabelsRecord;
-import com.vmware.dcm.k8s.generated.tables.records.PodTolerationsRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
@@ -102,7 +100,7 @@ class PodEventsToDatabase {
         final long start = System.nanoTime();
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> inserts = new ArrayList<>();
-            inserts.addAll(updatePodRecord(pod, conn));
+            inserts.addAll(insertPodRecord(pod, conn));
             inserts.addAll(updateContainerInfoForPod(pod, conn));
             inserts.addAll(updatePodLabels(pod, conn));
             // updateVolumeInfoForPod(pod, pvcToPv, conn);
@@ -126,15 +124,23 @@ class PodEventsToDatabase {
             deletedUids.put(pod.getMetadata().getUid(), true);
         }
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            conn.deleteFrom(Tables.POD_INFO)
-                .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())).execute();
+            final List<Query> deletes = new ArrayList<>();
+            deletes.add(conn.deleteFrom(Tables.POD_INFO)
+                .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())));
+            deletes.add(deletePodLabels(pod, conn));
+            deletes.add(deleteResourceRequests(pod, conn));
+            deletes.addAll(deleteContainerInfoForPod(pod, conn));
+            deletes.add(deletePodTopologySpread(pod, conn));
+            deletes.add(deletePodTolerations(pod, conn));
+            deletes.addAll(deletePodAffinity(pod, conn));
+            conn.batch(deletes).execute();
         }
     }
 
     private void updatePod(final Pod pod, final Pod oldPod) {
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final PodInfoRecord existingPodInfoRecord = conn.selectFrom(Tables.POD_INFO)
-                    .where(Tables.POD_INFO.UID.eq(pod.getMetadata().getUid()))
+                    .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()))
                     .fetchOne();
             if (existingPodInfoRecord == null) {
                 LOG.trace("Pod {} (uid: {}) does not exist. Skipping",
@@ -163,7 +169,11 @@ class PodEventsToDatabase {
             }
             LOG.trace("Updating pod {} (uid: {}, resourceVersion: {})", pod.getMetadata().getName(),
                       pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
-            final List<Query> insertOrUpdate = updatePodRecord(pod, conn);
+
+            final List<Query> insertOrUpdate = new ArrayList<>();
+            insertOrUpdate.add(conn.deleteFrom(Tables.POD_INFO)
+                    .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(oldPod.getMetadata().getUid())));
+            insertOrUpdate.addAll(insertPodRecord(pod, conn));
             if (!Objects.equals(pod.getSpec().getContainers(), oldPod.getSpec().getContainers())) {
                 insertOrUpdate.addAll(updateContainerInfoForPod(pod, conn));
                 insertOrUpdate.addAll(updateResourceRequests(pod, conn));
@@ -185,7 +195,7 @@ class PodEventsToDatabase {
         }
     }
 
-    static List<Query> updatePodRecord(final Pod pod, final DSLContext conn) {
+    static List<Query> insertPodRecord(final Pod pod, final DSLContext conn) {
         final List<Query> inserts = new ArrayList<>();
         final List<ResourceRequirements> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
@@ -250,7 +260,7 @@ class PodEventsToDatabase {
                 p.OWNER_NAME,
                 p.CREATION_TIMESTAMP,
                 p.PRIORITY,
-                p.SCHEDULERNAME,
+                p.SCHEDULER_NAME,
                 p.HAS_NODE_SELECTOR_LABELS,
                 p.HAS_POD_AFFINITY_REQUIREMENTS,
                 p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
@@ -363,11 +373,15 @@ class PodEventsToDatabase {
         return inserts;
     }
 
-    static List<Insert<?>> updateResourceRequests(final Pod pod, final DSLContext conn) {
-        conn.deleteFrom(Tables.POD_RESOURCE_DEMANDS)
+    static Query deleteResourceRequests(final Pod pod, final DSLContext conn) {
+        return conn.deleteFrom(Tables.POD_RESOURCE_DEMANDS)
                 .where(DSL.field(Tables.POD_RESOURCE_DEMANDS.UID.getUnqualifiedName())
-                        .eq(pod.getMetadata().getUid())).execute();
-        final List<Insert<?>> inserts = new ArrayList<>();
+                        .eq(pod.getMetadata().getUid()));
+    }
+
+    static List<Query> updateResourceRequests(final Pod pod, final DSLContext conn) {
+        final List<Query> inserts = new ArrayList<>();
+        inserts.add(deleteResourceRequests(pod, conn));
         final Map<String, Long> resourceRequirements = pod.getSpec().getContainers().stream()
                 .map(Container::getResources)
                 .filter(Objects::nonNull)
@@ -402,14 +416,17 @@ class PodEventsToDatabase {
                 .getNodeSelectorTerms().size() > 0);
     }
 
-    private List<Insert<?>> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
-        final List<Insert<?>> inserts = new ArrayList<>();
-        conn.deleteFrom(Tables.POD_IMAGES)
-                .where(DSL.field(Tables.POD_IMAGES.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()))
-                .execute();
-        conn.deleteFrom(Tables.POD_PORTS_REQUEST)
-                .where(DSL.field(Tables.POD_PORTS_REQUEST.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()))
-                .execute();
+    private List<Query> deleteContainerInfoForPod(final Pod pod, final DSLContext conn) {
+        final List<Query> queries = new ArrayList<>(2);
+        queries.add(conn.deleteFrom(Tables.POD_IMAGES)
+                .where(DSL.field(Tables.POD_IMAGES.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())));
+        queries.add(conn.deleteFrom(Tables.POD_PORTS_REQUEST)
+            .where(DSL.field(Tables.POD_PORTS_REQUEST.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid())));
+        return queries;
+    }
+
+    private List<Query> updateContainerInfoForPod(final Pod pod, final DSLContext conn) {
+        final List<Query> inserts = new ArrayList<>(deleteContainerInfoForPod(pod, conn));
 
         // Record all unique images in the container
         pod.getSpec().getContainers().stream()
@@ -437,26 +454,36 @@ class PodEventsToDatabase {
         return inserts;
     }
 
-    private List<Insert<PodLabelsRecord>> updatePodLabels(final Pod pod, final DSLContext conn) {
-        // Update pod_labels table. This will be used for managing affinities, I think?
-        final Map<String, String> labels = pod.getMetadata().getLabels();
-        if (labels != null) {
-            return labels.entrySet().stream().map(
-                    (label) -> conn.insertInto(Tables.POD_LABELS)
-                         .values(pod.getMetadata().getUid(), label.getKey(), label.getValue())
-            ).collect(Collectors.toList());
-        }
-        return Collections.emptyList();
+    private Query deletePodLabels(final Pod pod, final DSLContext conn) {
+        return conn.deleteFrom(Tables.POD_LABELS)
+                .where(DSL.field(Tables.POD_IMAGES.POD_UID.getUnqualifiedName()).eq(pod.getMetadata().getUid()));
     }
 
-    private List<Insert<PodTolerationsRecord>> updatePodTolerations(final Pod pod, final DSLContext conn) {
+    private List<Query> updatePodLabels(final Pod pod, final DSLContext conn) {
+        final List<Query> queries = new ArrayList<>();
+        queries.add(deletePodLabels(pod, conn));
+        final Map<String, String> labels = pod.getMetadata().getLabels();
+        if (labels != null) {
+             queries.addAll(labels.entrySet().stream().map(
+                    (label) -> conn.insertInto(Tables.POD_LABELS)
+                         .values(pod.getMetadata().getUid(), label.getKey(), label.getValue())
+            ).collect(Collectors.toList()));
+        }
+        return queries;
+    }
+
+    private Query deletePodTolerations(final Pod pod, final DSLContext conn) {
+        return conn.deleteFrom(Tables.POD_TOLERATIONS)
+                .where(DSL.field(Tables.POD_TOLERATIONS.POD_UID.getUnqualifiedName())
+                        .eq(pod.getMetadata().getUid()));
+    }
+
+    private List<Query> updatePodTolerations(final Pod pod, final DSLContext conn) {
         if (pod.getSpec().getTolerations() == null) {
             return Collections.emptyList();
         }
-        conn.deleteFrom(Tables.POD_TOLERATIONS)
-            .where(DSL.field(Tables.POD_TOLERATIONS.POD_UID.getUnqualifiedName())
-                    .eq(pod.getMetadata().getUid())).execute();
-        final List<Insert<PodTolerationsRecord>> inserts = new ArrayList<>();
+        final List<Query> inserts = new ArrayList<>();
+        inserts.add(deletePodTolerations(pod, conn));
         for (final Toleration toleration: pod.getSpec().getTolerations()) {
             inserts.add(conn.insertInto(Tables.POD_TOLERATIONS)
                     .values(pod.getMetadata().getUid(),
@@ -468,18 +495,24 @@ class PodEventsToDatabase {
         return Collections.unmodifiableList(inserts);
     }
 
-    private List<Insert<?>> updatePodAffinity(final Pod pod, final DSLContext conn) {
-        final List<Insert<?>> inserts = new ArrayList<>();
-        final Affinity affinity = pod.getSpec().getAffinity();
-        conn.deleteFrom(Tables.POD_NODE_SELECTOR_LABELS)
+    private List<Query> deletePodAffinity(final Pod pod, final DSLContext conn) {
+        final List<Query> deletes = new ArrayList<>();
+        deletes.add(conn.deleteFrom(Tables.POD_NODE_SELECTOR_LABELS)
                 .where(DSL.field(Tables.POD_NODE_SELECTOR_LABELS.POD_UID.getUnqualifiedName())
-                        .eq(pod.getMetadata().getUid())).execute();
-        conn.deleteFrom(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
+                        .eq(pod.getMetadata().getUid())));
+        deletes.add(conn.deleteFrom(Tables.POD_AFFINITY_MATCH_EXPRESSIONS)
                 .where(DSL.field(Tables.POD_AFFINITY_MATCH_EXPRESSIONS.POD_UID.getUnqualifiedName())
-                        .eq(pod.getMetadata().getUid())).execute();
-        conn.deleteFrom(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
+                        .eq(pod.getMetadata().getUid())));
+        deletes.add(conn.deleteFrom(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS)
                 .where(DSL.field(Tables.POD_ANTI_AFFINITY_MATCH_EXPRESSIONS.POD_UID.getUnqualifiedName())
-                        .eq(pod.getMetadata().getUid())).execute();
+                        .eq(pod.getMetadata().getUid())));
+        return deletes;
+    }
+
+    private List<Query> updatePodAffinity(final Pod pod, final DSLContext conn) {
+        final List<Query> inserts = new ArrayList<>();
+        final Affinity affinity = pod.getSpec().getAffinity();
+        inserts.addAll(deletePodAffinity(pod, conn));
 
         // also handled using the same POD_NODE_SELECTOR_LABELS table
         inserts.addAll(updatePodNodeSelectorLabels(pod, conn));
@@ -537,7 +570,7 @@ class PodEventsToDatabase {
         return podNodeSelectorLabels;
     }
 
-    private Object[] selectorToMatchExpressions(final DSLContext conn, final LabelSelector selector) {
+    private Long[] selectorToMatchExpressions(final DSLContext conn, final LabelSelector selector) {
         final Stream<Long> matchLabels = selector.getMatchLabels() == null ? Stream.empty() :
                 selector.getMatchLabels().entrySet().stream()
                 .map(e -> toMatchExpressionId(conn, e.getKey(), Operators.In.toString(), List.of(e.getValue())));
@@ -545,12 +578,12 @@ class PodEventsToDatabase {
                 selector.getMatchExpressions().stream()
                 .map(expr -> toMatchExpressionId(conn, expr.getKey(), expr.getOperator(),
                         expr.getValues()));
-        return Stream.concat(matchLabels, matchExpressions).toArray();
+        return Stream.concat(matchLabels, matchExpressions).toList().toArray(new Long[0]);
     }
 
-    private List<Insert<?>> insertPodAffinityTerms(final Table<?> table, final Pod pod,
+    private List<Query> insertPodAffinityTerms(final Table<?> table, final Pod pod,
                                                    final List<PodAffinityTerm> terms, final DSLContext conn) {
-        final List<Insert<?>> inserts = new ArrayList<>();
+        final List<Query> inserts = new ArrayList<>();
         int termNumber = 0;
         for (final PodAffinityTerm term: terms) {
             final Long[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
@@ -563,21 +596,24 @@ class PodEventsToDatabase {
         return inserts;
     }
 
-    private List<Insert<?>> updatePodTopologySpread(final Pod pod, final DSLContext conn) {
-        conn.deleteFrom(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS)
-            .where(DSL.field(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS.UID.getUnqualifiedName())
-                    .eq(pod.getMetadata().getUid())).execute();
-        if (pod.getSpec().getTopologySpreadConstraints() == null) {
-            return Collections.emptyList();
+    private Query deletePodTopologySpread(final Pod pod, final DSLContext conn) {
+        return conn.deleteFrom(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS)
+                .where(DSL.field(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS.UID.getUnqualifiedName())
+                        .eq(pod.getMetadata().getUid()));
+    }
+
+    private List<Query> updatePodTopologySpread(final Pod pod, final DSLContext conn) {
+        final List<Query> queries = new ArrayList<>();
+        queries.add(deletePodTopologySpread(pod, conn));
+        if (pod.getSpec().getTopologySpreadConstraints() != null) {
+            pod.getSpec().getTopologySpreadConstraints().forEach(c -> {
+                final Object[] matchedIds = selectorToMatchExpressions(conn, c.getLabelSelector());
+                queries.add(conn.insertInto(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS)
+                        .values(pod.getMetadata().getUid(), c.getMaxSkew(), c.getWhenUnsatisfiable(),
+                                c.getTopologyKey(), matchedIds));
+            });
         }
-        final List<Insert<?>> inserts = new ArrayList<>();
-        pod.getSpec().getTopologySpreadConstraints().forEach(c -> {
-            final Object[] matchedIds = selectorToMatchExpressions(conn, c.getLabelSelector());
-            inserts.add(conn.insertInto(Tables.POD_TOPOLOGY_SPREAD_CONSTRAINTS)
-                    .values(pod.getMetadata().getUid(), c.getMaxSkew(), c.getWhenUnsatisfiable(),
-                            c.getTopologyKey(), matchedIds));
-        });
-        return inserts;
+        return queries;
     }
 
     private long toMatchExpressionId(final DSLContext conn, final String key, final String operator,
