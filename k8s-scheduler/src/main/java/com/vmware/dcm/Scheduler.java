@@ -14,7 +14,6 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import com.vmware.ddlog.util.sql.CalciteSqlStatement;
 import com.vmware.ddlog.util.sql.CalciteToH2Translator;
 import com.vmware.ddlog.util.sql.H2SqlStatement;
@@ -337,8 +336,8 @@ public final class Scheduler {
         tick();
         final IntSupplier numPending =
                 () -> {
-                    final List<Integer> res = dbConnectionPool.getConnectionToDb()
-                                                              .fetch(table("PODS_TO_ASSIGN_NO_LIMIT_COUNT"))
+                    final List<Integer> res = ((DDlogDBConnectionPool) dbConnectionPool).getProvider()
+                                                              .fetchTable("PODS_TO_ASSIGN_NO_LIMIT_COUNT")
                                                               .getValues(0, Integer.class);
                     return res.size() == 0 ? 0 : res.get(0);
                 };
@@ -430,14 +429,6 @@ public final class Scheduler {
                         podName, batch, totalTime);
             });
             conn.batch(updates).execute();
-            // TODO: Only used for debugging
-            assignedPods.forEach(r -> {
-                final String podUid = r.get("UID", String.class);
-                final PodInfoRecord podInfoRecord = conn.selectFrom(Tables.POD_INFO)
-                        .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(podUid))
-                        .fetchOne();
-                System.out.println(podInfoRecord.getStatus());
-            });
         }
         LOG.info("Done with updates");
         // Next, issue bind requests for pod -> node_name
