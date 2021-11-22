@@ -14,6 +14,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import com.vmware.ddlog.util.sql.CalciteSqlStatement;
 import com.vmware.ddlog.util.sql.CalciteToH2Translator;
 import com.vmware.ddlog.util.sql.H2SqlStatement;
@@ -272,15 +273,12 @@ public final class Scheduler {
             this.initialPlacementFunction =
                     (s) -> initialPlacement.solve(s,
                             (t) -> {
-                                /*
-                                 * TODO: Workaround until fetchTable(String) works correctly with identity views.
                                 if (dbConnectionPool instanceof DDlogDBConnectionPool) {
                                     return ((DDlogDBConnectionPool) dbConnectionPool).getProvider()
                                                 .fetchTable(t.getName());
                                 } else {
                                     return dbConnectionPool.getConnectionToDb().selectFrom(t).fetch();
-                                } */
-                                return dbConnectionPool.getConnectionToDb().selectFrom(t).fetch();
+                                }
                             });
         }
         this.preemption = preemption;
@@ -432,6 +430,14 @@ public final class Scheduler {
                         podName, batch, totalTime);
             });
             conn.batch(updates).execute();
+            // TODO: Only used for debugging
+            assignedPods.forEach(r -> {
+                final String podUid = r.get("UID", String.class);
+                final PodInfoRecord podInfoRecord = conn.selectFrom(Tables.POD_INFO)
+                        .where(DSL.field(Tables.POD_INFO.UID.getUnqualifiedName()).eq(podUid))
+                        .fetchOne();
+                System.out.println(podInfoRecord.getStatus());
+            });
         }
         LOG.info("Done with updates");
         // Next, issue bind requests for pod -> node_name
@@ -478,11 +484,19 @@ public final class Scheduler {
                 "PODS_TO_ASSIGN", (t) -> {
                     final DSLContext conn = dbConnectionPool.getConnectionToDb();
                     final String augView = (t.getName() + SCOPE_VIEW_NAME_SUFFIX).toUpperCase();
+                    final Table<?> toFetch;
                     if (augViews.contains(augView)) {
                         LOG.info(String.format("Scoping Optimization: Replace %s with %s", t.getName(), augView));
-                        return conn.fetch(table(augView));
+                        toFetch = table(augView);
+                    } else {
+                        toFetch = t;
                     }
-                    return conn.fetch(t);
+                    if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+                        return ((DDlogDBConnectionPool) dbConnectionPool).getProvider()
+                                .fetchTable(toFetch.getName());
+                    } else {
+                        return dbConnectionPool.getConnectionToDb().selectFrom(toFetch).fetch();
+                    }
                 });
         solveTimer.stop();
         return podsToAssignUpdated;
