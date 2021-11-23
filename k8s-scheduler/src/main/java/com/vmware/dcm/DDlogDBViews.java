@@ -46,6 +46,8 @@ public class DDlogDBViews {
     private static final ViewStatements PREEMPTION = new ViewStatements(PREEMPTION_VIEW_NAME_SUFFIX);
 
     static {
+        allPendingPodsNoRequeue(INITIAL_PLACEMENT);
+        allPendingPodsWithRequeue(INITIAL_PLACEMENT);
         allPendingPods(INITIAL_PLACEMENT);
         initialPlacementInputPods(INITIAL_PLACEMENT);
         initialPlacementFixedPods(INITIAL_PLACEMENT);
@@ -108,11 +110,39 @@ public class DDlogDBViews {
         }
     }
 
-    /*
-     * Select all pods that are pending placement.
-     */
-    private static void allPendingPods(final ViewStatements viewStatements) {
-        final String name = "PODS_TO_ASSIGN_NO_LIMIT";
+    private static void allPendingPodsNoRequeue(final ViewStatements viewStatements) {
+        final String name = "PODS_TO_ASSIGN_NO_LIMIT_NO_REQUEUE";
+        final String query = """
+                             SELECT DISTINCT
+                               pod_info.uid, pod_info.pod_name,
+                               pod_info.status,
+                               pod_info.node_name,
+                               pod_info.namespace,
+                               pod_info.owner_name,
+                               pod_info.creation_timestamp,
+                               pod_info.priority,
+                               pod_info.scheduler_name,
+                               pod_info.has_node_selector_labels,
+                               pod_info.has_pod_affinity_requirements,
+                               pod_info.has_pod_anti_affinity_requirements,
+                               pod_info.has_node_port_requirements,
+                               pod_info.has_topology_spread_constraints,
+                               pod_info.equivalence_class,
+                               pod_info.qos_class,
+                               pod_info.resourceversion,
+                               pod_info.last_requeue,
+                               pod_info.node_name as controllable__node_name
+                             FROM pod_info
+                             WHERE last_requeue = CAST(0 as bigint)
+                                 AND status = 'Pending'
+                                 AND node_name IS NULL
+                                 AND scheduler_name = 'dcm-scheduler'
+                             """;
+        viewStatements.addQuery(name, query);
+    }
+
+    private static void allPendingPodsWithRequeue(final ViewStatements viewStatements) {
+        final String name = "PODS_TO_ASSIGN_NO_LIMIT_WITH_REQUEUE";
         final String query = """
                              SELECT DISTINCT
                                pod_info.uid, pod_info.pod_name,
@@ -134,11 +164,44 @@ public class DDlogDBViews {
                                pod_info.last_requeue,
                                pod_info.node_name as controllable__node_name 
                              FROM pod_info
-                             JOIN timer_t
-                                ON last_requeue < tick 
+                             WHERE last_requeue != CAST(0 as bigint)
                                  AND status = 'Pending'
                                  AND node_name IS NULL 
                                  AND scheduler_name = 'dcm-scheduler'
+                             """;
+        viewStatements.addQuery(name, query);
+    }
+
+    /*
+     * Select all pods that are pending placement.
+     */
+    private static void allPendingPods(final ViewStatements viewStatements) {
+        final String name = "PODS_TO_ASSIGN_NO_LIMIT";
+        final String query = """
+                             SELECT DISTINCT * FROM pods_to_assign_no_limit_no_requeue
+                             UNION
+                             SELECT DISTINCT
+                               pods_to_assign_no_limit_with_requeue.uid, pods_to_assign_no_limit_with_requeue.pod_name,
+                               pods_to_assign_no_limit_with_requeue.status,
+                               pods_to_assign_no_limit_with_requeue.node_name,
+                               pods_to_assign_no_limit_with_requeue.namespace,
+                               pods_to_assign_no_limit_with_requeue.owner_name,
+                               pods_to_assign_no_limit_with_requeue.creation_timestamp,
+                               pods_to_assign_no_limit_with_requeue.priority,
+                               pods_to_assign_no_limit_with_requeue.scheduler_name,
+                               pods_to_assign_no_limit_with_requeue.has_node_selector_labels,
+                               pods_to_assign_no_limit_with_requeue.has_pod_affinity_requirements,
+                               pods_to_assign_no_limit_with_requeue.has_pod_anti_affinity_requirements,
+                               pods_to_assign_no_limit_with_requeue.has_node_port_requirements,
+                               pods_to_assign_no_limit_with_requeue.has_topology_spread_constraints,
+                               pods_to_assign_no_limit_with_requeue.equivalence_class,
+                               pods_to_assign_no_limit_with_requeue.qos_class,
+                               pods_to_assign_no_limit_with_requeue.resourceversion,
+                               pods_to_assign_no_limit_with_requeue.last_requeue,
+                               pods_to_assign_no_limit_with_requeue.controllable__node_name                              
+                              FROM pods_to_assign_no_limit_with_requeue
+                             JOIN timer_t
+                             ON pods_to_assign_no_limit_with_requeue.last_requeue < timer_t.tick
                              """;
         viewStatements.addQuery(name, query);
     }
