@@ -23,6 +23,6 @@ for ver in v1 v2; do
 	rm *-temp-*
 done
 
-cat v1-data.txt | awk '{if(NR>22390) print $0}' > v1-cropped.txt
-cat v2-data.txt | awk '{if(NR>27326) print $0}' > v2-cropped.txt
+cat v1-data.txt | awk '{if(NR>22390) print $0}' | tr -d '' > v1-cropped.txt
+cat v2-data.txt | awk '{if(NR>27326) print $0}' | tr -d '' > v2-cropped.txt
 cp {v1-data.txt,v2-data.txt,v1-cropped.txt,v2-cropped.txt} ../k8s-scheduler/src/main/resources/
