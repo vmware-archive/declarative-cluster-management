@@ -201,8 +201,14 @@ class EmulatedCluster {
                 startTimeCutOff, affinityRequirementsProportion, scopeOn, ddlogFile);
     }
 
-    public static void main(final String[] args) throws Exception {
-        runWorkload(args);
-        System.exit(0); // without this, there are non-daemon threads that prevent JVM shutdown
+    @SuppressWarnings("all")
+    public static void main(final String[] args) {
+        try {
+            runWorkload(args);
+        } catch (final Exception e) {
+            System.out.println("oops exception: " + e);
+        } finally {
+            System.exit(0); // without this, there are non-daemon threads that prevent JVM shutdown
+        }
     }
 }
