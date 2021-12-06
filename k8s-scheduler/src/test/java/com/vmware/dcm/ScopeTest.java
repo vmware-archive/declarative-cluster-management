@@ -542,7 +542,6 @@ public class ScopeTest {
                                                 .setInitialPlacementPolicies(policies)
                                                 .setScopedInitialPlacement(true)
                                                 .setDebugMode(true).setLimit(numPods).build();
-        scheduler.tick();
         final Result<? extends Record> results = scheduler.initialPlacement();
 
         // All pods have been assigned to nodes

@@ -108,6 +108,7 @@ class PodEventsToDatabase {
             inserts.addAll(updatePodAffinity(pod, conn));
             inserts.addAll(updateResourceRequests(pod, conn));
             inserts.addAll(updatePodTopologySpread(pod, conn));
+            inserts.add(tick(conn));
             conn.batch(inserts).execute();
         }
         final long end = System.nanoTime();
@@ -133,6 +134,7 @@ class PodEventsToDatabase {
             deletes.add(deletePodTopologySpread(pod, conn));
             deletes.add(deletePodTolerations(pod, conn));
             deletes.addAll(deletePodAffinity(pod, conn));
+            deletes.add(tick(conn));
             conn.batch(deletes).execute();
         }
     }
@@ -191,8 +193,15 @@ class PodEventsToDatabase {
                                 oldPod.getSpec().getTopologySpreadConstraints())) {
                 insertOrUpdate.addAll(updatePodTopologySpread(pod, conn));
             }
+            insertOrUpdate.add(tick(conn));
             conn.batch(insertOrUpdate).execute();
         }
+    }
+
+    static Query tick(final DSLContext conn) {
+        return conn.update(Tables.TIMER_T)
+                .set(DSL.field(Tables.TIMER_T.TICK.getUnqualifiedName()), System.currentTimeMillis() - 1000)
+                .where(DSL.field(Tables.TIMER_T.TICK_ID.getUnqualifiedName()).eq(1));
     }
 
     static List<Query> insertPodRecord(final Pod pod, final DSLContext conn) {
