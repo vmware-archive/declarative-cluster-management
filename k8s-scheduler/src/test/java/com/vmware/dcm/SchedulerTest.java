@@ -7,7 +7,6 @@
 package com.vmware.dcm;
 
 import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.ddlog.DDlogJooqHelper;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
@@ -225,7 +224,7 @@ public class SchedulerTest {
                 .fetchOne();
         assertEquals("node-1", podInfoRecord.getNodeName());
         final Result<Record> records = pool.getProvider().fetchTable("POD_INFO");
-        for (Record record : records) {
+        for (final Record record : records) {
             if (record.get(1, String.class).equals("p1")) {
                 final Object[] obj = new Object[1];
                 obj[0] = "n4";
@@ -1372,7 +1371,7 @@ public class SchedulerTest {
             scenario.scheduler().scheduleAllPendingPods(binder);
             assertEquals(0, conn.fetch("SELECT * FROM PODS_TO_ASSIGN_NO_LIMIT").size());
             Thread.sleep(1000);
-            scenario.scheduler().tick();
+            PodEventsToDatabase.tick(conn).execute();
             assertEquals(1, conn.fetch("SELECT * FROM PODS_TO_ASSIGN_NO_LIMIT").size());
         }
     }

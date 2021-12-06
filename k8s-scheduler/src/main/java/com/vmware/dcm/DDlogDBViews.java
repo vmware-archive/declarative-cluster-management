@@ -198,7 +198,7 @@ public class DDlogDBViews {
                                pods_to_assign_no_limit_with_requeue.qos_class,
                                pods_to_assign_no_limit_with_requeue.resourceversion,
                                pods_to_assign_no_limit_with_requeue.last_requeue,
-                               pods_to_assign_no_limit_with_requeue.controllable__node_name                              
+                               pods_to_assign_no_limit_with_requeue.controllable__node_name
                               FROM pods_to_assign_no_limit_with_requeue
                              JOIN timer_t
                              ON pods_to_assign_no_limit_with_requeue.last_requeue < timer_t.tick
