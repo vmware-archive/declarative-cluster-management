@@ -29,7 +29,6 @@ import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.Table;
 import org.jooq.Update;
-import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -284,28 +283,17 @@ public final class Scheduler {
         this.debugMode = debugMode;
         LOG.info("Initialized scheduler: {} {} {} {}", debugMode, numThreads, solverMaxTimeInSeconds,
                  autoScopeViews != null);
+        this.dbConnectionPool.getConnectionToDb()
+                .execute(String.format("insert into timer_t values (1, %s)",
+                        System.currentTimeMillis() - 1000));
     }
 
     void handlePodEvent(final PodEvent podEvent) {
-        tick();
         podEventsToDatabase.handle(podEvent);
         notificationQueue.add(true);
     }
 
-    void tick() {
-        try {
-            this.dbConnectionPool.getConnectionToDb()
-                    .execute(String.format("update timer_t set tick = %s where tick_id = 1",
-                            System.currentTimeMillis() - 1000));
-        } catch (final DataAccessException e) {
-            this.dbConnectionPool.getConnectionToDb()
-                    .execute(String.format("insert into timer_t values (1, %s)",
-                            System.currentTimeMillis() - 1000));
-        }
-    }
-
     void handlePodEventNoNotify(final PodEvent podEvent) {
-        tick();
         podEventsToDatabase.handle(podEvent);
         // Skip adding pending pod in notification queue
     }
@@ -333,7 +321,6 @@ public final class Scheduler {
     }
 
     void scheduleAllPendingPods(final IPodToNodeBinder binder) {
-        tick();
         final IntSupplier numPending =
                 () -> {
                     final List<Integer> res = ((DDlogDBConnectionPool) dbConnectionPool).getProvider()

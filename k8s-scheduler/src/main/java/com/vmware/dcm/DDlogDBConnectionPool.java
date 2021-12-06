@@ -130,7 +130,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
             scopedViews.forEach(x -> tablesInCalcite.add(new CalciteSqlStatement(x)));
 
-            DDlogHandle handle =
+            final DDlogHandle handle =
                     new DDlogHandle(tablesInCalcite, new CalciteToPrestoTranslator(), createIndexStatements, compile);
 
             // Initialise the data provider
