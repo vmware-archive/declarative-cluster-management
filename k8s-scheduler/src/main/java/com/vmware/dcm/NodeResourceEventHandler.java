@@ -39,6 +39,8 @@ import java.util.stream.Collectors;
 
 import static com.vmware.dcm.Utils.convertUnit;
 
+import com.datadoghq.sketch.ddsketch.DDSketch;
+import com.datadoghq.sketch.ddsketch.DDSketches;
 
 /**
  * Subscribes to Kubernetes node events and reflects them in the database
@@ -47,15 +49,18 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
     private static final Logger LOG = LoggerFactory.getLogger(NodeResourceEventHandler.class);
     private final IConnectionPool dbConnectionPool;
     private final ExecutorService service;
+    private final DDSketch sketch;
 
     NodeResourceEventHandler(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
         this.service = Executors.newFixedThreadPool(10);
+        this.sketch = DDSketches.unboundedDense(0.01);
     }
 
     NodeResourceEventHandler(final IConnectionPool dbConnectionPool, final ExecutorService service) {
         this.dbConnectionPool = dbConnectionPool;
         this.service = service;
+        this.sketch = DDSketches.unboundedDense(0.01);
     }
 
     @Override
