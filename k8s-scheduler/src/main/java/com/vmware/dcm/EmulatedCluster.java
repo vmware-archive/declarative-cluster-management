@@ -29,6 +29,7 @@ import org.apache.commons.cli.Options;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -44,7 +45,7 @@ import java.util.concurrent.ThreadFactory;
  */
 class EmulatedCluster {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedCluster.class);
-    public IConnectionPool dbPool;
+    @Nullable public IConnectionPool dbPool;
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
@@ -159,7 +160,7 @@ class EmulatedCluster {
         return pod;
     }
 
-    public static void runWorkload(final String[] args, EmulatedCluster emulatedCluster) throws Exception {
+    public static void runWorkload(final String[] args, final EmulatedCluster emulatedCluster) throws Exception {
         final Options options = new Options();
 
         options.addRequiredOption("n", "numNodes", true,
