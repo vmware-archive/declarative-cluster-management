@@ -44,12 +44,14 @@ import java.util.concurrent.ThreadFactory;
  */
 class EmulatedCluster {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedCluster.class);
+    public IConnectionPool dbPool;
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
                                 final int affinityRequirementsProportion, final boolean scopeOn, final String ddlogFile)
             throws Exception {
         final IConnectionPool dbConnectionPool = DDlogDBConnectionPool.create(ddlogFile, true);
+        dbPool = dbConnectionPool;
                                              // new DBConnectionPool();
         final ThreadFactory namedThreadFactory =
                 new ThreadFactoryBuilder().setNameFormat("flowable-thread-%d").build();
@@ -157,8 +159,7 @@ class EmulatedCluster {
         return pod;
     }
 
-    public static void runWorkload(final String[] args) throws Exception {
-        final EmulatedCluster emulatedCluster = new EmulatedCluster();
+    public static void runWorkload(final String[] args, EmulatedCluster emulatedCluster) throws Exception {
         final Options options = new Options();
 
         options.addRequiredOption("n", "numNodes", true,
@@ -203,11 +204,15 @@ class EmulatedCluster {
 
     @SuppressWarnings("all")
     public static void main(final String[] args) {
+        final EmulatedCluster emulatedCluster = new EmulatedCluster();
         try {
-            runWorkload(args);
+            runWorkload(args, emulatedCluster);
         } catch (final Exception e) {
             System.out.println("oops exception: " + e);
         } finally {
+            if (emulatedCluster.dbPool instanceof DDlogDBConnectionPool) {
+                ((DDlogDBConnectionPool) emulatedCluster.dbPool).dumpDDlogProfile();
+            }
             System.exit(0); // without this, there are non-daemon threads that prevent JVM shutdown
         }
     }
