@@ -9,6 +9,7 @@ import com.vmware.ddlog.util.sql.CalciteToH2Translator;
 import com.vmware.ddlog.util.sql.CalciteToPrestoTranslator;
 import com.vmware.ddlog.util.sql.H2SqlStatement;
 import ddlogapi.DDlogAPI;
+import ddlogapi.DDlogConfig;
 import ddlogapi.DDlogException;
 import org.apache.commons.io.FileUtils;
 import org.jooq.DSLContext;
@@ -39,6 +40,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
     @Nullable private DDlogJooqProvider provider;
     @Nullable private final String ddlogFile;
 
+    private DDlogAPI ddlogAPI;
 
     public static DDlogDBConnectionPool create(@Nullable final String ddlogFile, final boolean compile) {
         final var ddlogConn = new DDlogDBConnectionPool(ddlogFile);
@@ -132,6 +134,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
             final DDlogHandle handle =
                     new DDlogHandle(tablesInCalcite, new CalciteToPrestoTranslator(), createIndexStatements, compile);
+            this.ddlogAPI = handle.api;
 
             // Initialise the data provider
             this.provider = new DDlogJooqProvider(handle,
@@ -145,5 +148,13 @@ public class DDlogDBConnectionPool implements IConnectionPool {
 
     public void buildDDlog(final boolean compile) {
         setupDDlog(compile);
+    }
+
+    public void dumpDDlogProfile() {
+        try {
+            System.out.println(this.ddlogAPI.dumpProfile());
+        } catch (Exception e) {
+            System.out.println("lol exception printing profile: " + e);
+        }
     }
 }
