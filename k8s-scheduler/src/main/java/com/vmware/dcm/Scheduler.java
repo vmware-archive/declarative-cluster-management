@@ -443,7 +443,6 @@ public final class Scheduler {
     }
 
     Result<? extends Record> initialPlacement() {
-        System.out.println(dbConnectionPool.getConnectionToDb().fetch("select * from pods_to_assign_no_limit_with_requeue"));
         final Timer.Context solveTimer = solveTimes.time();
         final Result<? extends Record> podsToAssignUpdated;
         podsToAssignUpdated = initialPlacementFunction.apply("PODS_TO_ASSIGN");
