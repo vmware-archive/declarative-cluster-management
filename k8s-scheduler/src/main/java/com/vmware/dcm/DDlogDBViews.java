@@ -51,10 +51,10 @@ public class DDlogDBViews {
         allPendingPods(INITIAL_PLACEMENT);
         initialPlacementInputPods(INITIAL_PLACEMENT);
         initialPlacementFixedPods(INITIAL_PLACEMENT);
-        helperView(PREEMPTION);
-        preemptionInputPods(PREEMPTION);
-        preemptionFixedPods(PREEMPTION);
-        Stream.of(INITIAL_PLACEMENT, PREEMPTION).forEach(viewStatements -> {
+        //helperView(PREEMPTION);
+        //preemptionInputPods(PREEMPTION);
+        //preemptionFixedPods(PREEMPTION);
+        Stream.of(INITIAL_PLACEMENT).forEach(viewStatements -> {
             matchingNodes(viewStatements);
             matchingPods(viewStatements);
             podsWithPortRequests(viewStatements);
