@@ -8,6 +8,7 @@ package com.vmware.dcm;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.MatchExpressions;
 import com.vmware.dcm.k8s.generated.tables.PodInfo;
@@ -38,16 +39,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -66,6 +62,15 @@ class PodEventsToDatabase {
                                                                       .build();
     private final AtomicLong expressionIds = new AtomicLong();
 
+    private final ThreadFactory namedThreadFactory =
+            new ThreadFactoryBuilder().setNameFormat("txn-executor-%d").build();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(namedThreadFactory);
+    private final LinkedBlockingDeque<Boolean> notificationQueue = new LinkedBlockingDeque<>();
+    private final LinkedBlockingDeque<Boolean> executorDoneQueue = new LinkedBlockingDeque<>();
+    private ReentrantLock pendingPodsLock = new ReentrantLock();
+    private final List<List<Query>> workQueue = new ArrayList<>();
+    private final Set<String> pendingPods = new HashSet<>();
+
     private enum Operators {
         In,
         Exists,
@@ -75,15 +80,86 @@ class PodEventsToDatabase {
 
     PodEventsToDatabase(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
+
+        executor.execute(
+                () -> {
+                    while (!Thread.currentThread().isInterrupted()) {
+                        try {
+                            notificationQueue.take();
+                            pendingPodsLock.lock();
+                            // Do some shit!
+                            if (!workQueue.isEmpty()) {
+                                int numWorks = workQueue.size();
+                                List<Query> work = workQueue.remove(workQueue.size() - 1);
+                                workQueue.forEach(l -> work.addAll(l));
+                                final long start = System.nanoTime();
+                                dbConnectionPool.getConnectionToDb().batch(work).execute();
+                                final long end = System.nanoTime();
+                                System.out.printf("%d pods added in %d ns", numWorks, end - start);
+                            }
+
+
+                            workQueue.clear();
+                            executorDoneQueue.add(true);
+                            pendingPodsLock.unlock();
+                        } catch (final InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                }
+        );
+    }
+
+    void flushWorkQueue() {
+        pendingPodsLock.lock();
+        notificationQueue.add(true);
+        pendingPodsLock.unlock();
+
+        // Block until executor finishes
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                executorDoneQueue.take();
+                break;
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
     }
 
     PodEvent handle(final PodEvent event) {
+        // Check if we need to flush NotificationQueue
+        pendingPodsLock.lock();
+
+        if (workQueue.size() >= 10 || pendingPods.contains(event.pod().getMetadata().getUid())) {
+            // flush the notification queue
+            notificationQueue.add(true);
+            pendingPodsLock.unlock();
+
+            // Block until executor finishes
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    executorDoneQueue.take();
+                    break;
+                } catch (final InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            pendingPodsLock.lock();
+        } else {
+            pendingPods.add(event.pod().getMetadata().getUid());
+        }
+
+
         switch (event.action()) {
             case ADDED -> addPod(event.pod());
             case UPDATED -> updatePod(event.pod(), Objects.requireNonNull(event.oldPod()));
             case DELETED -> deletePod(event.pod());
             default -> throw new IllegalArgumentException(event.toString());
         }
+        pendingPodsLock.unlock();
         return event;
     }
 
@@ -98,6 +174,8 @@ class PodEventsToDatabase {
             return;
         }
         final long start = System.nanoTime();
+        final long second_start;
+        final long second_end;
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
             final List<Query> inserts = new ArrayList<>();
             inserts.addAll(insertPodRecord(pod, conn));
@@ -109,10 +187,15 @@ class PodEventsToDatabase {
             inserts.addAll(updateResourceRequests(pod, conn));
             inserts.addAll(updatePodTopologySpread(pod, conn));
             inserts.add(tick(conn));
-            conn.batch(inserts).execute();
+
+            second_start = System.nanoTime();
+            workQueue.add(inserts);
+            //conn.batch(inserts).execute();
+            second_end = System.nanoTime();
         }
         final long end = System.nanoTime();
-        LOG.info("{} pod added in {}ns", pod.getMetadata().getName(), (end - start));
+        //System.out.printf("%s pod added in just the batch %d ns\n", pod.getMetadata().getName(), (second_end - second_start));
+        //System.out.printf("%s pod added in %d ns\n", pod.getMetadata().getName(), (end - start));
     }
 
     private void deletePod(final Pod pod) {
@@ -135,7 +218,9 @@ class PodEventsToDatabase {
             deletes.add(deletePodTolerations(pod, conn));
             deletes.addAll(deletePodAffinity(pod, conn));
             deletes.add(tick(conn));
-            conn.batch(deletes).execute();
+
+            workQueue.add(deletes);
+            //conn.batch(deletes).execute();
         }
     }
 
@@ -194,6 +279,8 @@ class PodEventsToDatabase {
                 insertOrUpdate.addAll(updatePodTopologySpread(pod, conn));
             }
             insertOrUpdate.add(tick(conn));
+
+            workQueue.add(insertOrUpdate);
             conn.batch(insertOrUpdate).execute();
         }
     }

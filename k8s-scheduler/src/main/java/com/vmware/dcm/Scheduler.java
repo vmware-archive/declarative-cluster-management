@@ -306,6 +306,7 @@ public final class Scheduler {
                         try {
                             notificationQueue.take();
                             LOG.info("Attempting schedule");
+                            podEventsToDatabase.flushWorkQueue();
                             scheduleAllPendingPods(binder);
                         } catch (final InterruptedException e) {
                             Thread.currentThread().interrupt();
