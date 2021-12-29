@@ -243,7 +243,7 @@ class PodEventsToDatabase {
             }
             if (pod.getSpec().getNodeName() == null &&
                 existingPodInfoRecord.getNodeName() != null) {
-                LOG.trace("Received a duplicate event for a node that we have already scheduled (old: {}, new:{}). " +
+                LOG.trace("Received a duplicate event for a node that we have already scheduled (old: {}, new: {}). " +
                          "Ignoring.", existingPodInfoRecord.getNodeName(), pod.getSpec().getNodeName());
                 return;
             }

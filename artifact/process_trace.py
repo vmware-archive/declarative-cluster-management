@@ -1,4 +1,4 @@
-#!/bin/python
+#!/usr/bin/python
 
 import sys
 import glob
@@ -12,17 +12,17 @@ if (len(sys.argv) != 3):
    sys.exit(1)
 
 folderToOpen = sys.argv[1]
+traceFolders = glob.glob(folderToOpen + "/*/")
 database = sys.argv[2]
 conn = sqlite3.connect(database)
-traceFolders = glob.glob(folderToOpen + "/*/*/")
 
 conn.execute("drop table if exists params")
-conn.execute("drop table if exists pods_over_time")
+conn.execute("drop table if exists pod_events")
 conn.execute("drop table if exists scheduler_trace")
 conn.execute("drop table if exists dcm_table_access_latency")
 conn.execute("drop table if exists dcm_metrics")
 conn.execute("drop table if exists scope_fraction")
-conn.execute("drop table if exists event_trace")
+conn.execute("drop table if exists problem_size")
 
 conn.execute('''
     create table params
@@ -32,25 +32,24 @@ conn.execute('''
         scheduler varchar(100) not null,
         solver varchar(100) not null,
         kubeconfig integer not null,
-        dcmGitBranch integer not null,
         dcmGitCommitId varchar(100) not null,
         numNodes integer not null,
         startTimeCutOff integer not null,
         percentageOfNodesToScoreValue integer not null,
         timeScaleDown integer not null,
+        scenario integer not null,
         affinityProportion integer not null
     )
 ''')
 
 conn.execute('''
-    create table pods_over_time
+    create table pod_events
     (
         expId integer not null,
+        batchId integer not null,
         podName varchar(100) not null,
-        status varchar(100) not null,
+        uid varchar(100) not null,
         event varchar(100) not null,
-        eventTime integer not null,
-        nodeName varchar(100) not null,
         foreign key(expId) references params(expId)
     )
 ''')
@@ -66,7 +65,6 @@ conn.execute('''
     )
 ''')
 
-
 conn.execute('''
     create table dcm_table_access_latency
     (
@@ -79,6 +77,7 @@ conn.execute('''
     )
 ''')
 
+# FIXME: missing scope latency
 conn.execute('''
     create table dcm_metrics
     (
@@ -102,6 +101,7 @@ conn.execute('''
     )
 ''')
 
+# FIXME: missing scope fraction
 conn.execute('''
     create table scope_fraction
     (
@@ -111,6 +111,7 @@ conn.execute('''
         foreign key(expId) references params(expId)
     )
 ''')
+
 
 def convertRunningSinceToSeconds(runningSince):
    minutes = 0
@@ -150,7 +151,7 @@ for trace in traceFolders:
     paramFiles = glob.glob(trace + "metadata")
     assert len(paramFiles) == 1
 
-    print("experiment ID: ", end='')
+    print("Tarce processor running for experiment ID: ", end='')
     print(expId)
 
     # Add params file in addition
@@ -167,36 +168,21 @@ for trace in traceFolders:
                   expParams["schedulerName"],
                   expParams["solver"],
                   expParams["kubeconfig"],
-                  expParams["dcmGitBranch"],
                   expParams["dcmGitCommitId"],
                   expParams["numNodes"],
                   expParams["startTimeCutOff"],
                   expParams["percentageOfNodesToScoreValue"],
                   expParams["timeScaleDown"],
+                  expParams["scenario"],
                   expParams["affinityProportion"]))
 
-
-    # Get the list of pods
-    pods = {}
-    with open(trace + "/workload_output") as workloadOutput:
-        for line in workloadOutput:
-            if ("org.dcm.WorkloadGeneratorIT" in line and "PodName" in line):
-                splitLine = line.split("org.dcm.WorkloadGeneratorIT")[-1].split(" ")
-                eventTime = splitLine[3][:-1]
-                podName = splitLine[7][:-1]
-                nodeName = splitLine[9][:-1]
-                status = splitLine[11][:-1]
-                event = splitLine[13].strip()
-                conn.execute("insert into pods_over_time values (?, ?, ?, ?, ?, ?)",
-                             (expParams["expId"], podName, status, event, eventTime, nodeName))
-
-    dcmSchedulerFile = glob.glob(trace + "/dcm_scheduler_trace")
-    if (len(dcmSchedulerFile) > 0):
-        with open(dcmSchedulerFile[0]) as traceFile:
+    trace = glob.glob(trace + "/trace")
+    if (len(trace) > 0):
+        with open(trace[0]) as traceFile:
             batchId = 1
             metrics = {}
             metrics["scopeLatency"] = 0 # when scope is not used
-            variablesBeforePresolve = False
+            variablesBeforePresolve = True
             for line in traceFile:
                 if ("Fetchcount is" in line):
                     metrics["fetchcount"] = line.split()[-1]
@@ -206,7 +192,6 @@ for trace in traceFolders:
                     tableName = split[8]
                     latencyToDb = split[10]
                     latencyToReflect = split[19]
-
                     conn.execute("insert into dcm_table_access_latency values (?, ?, ?, ?, ?)",
                                  (expParams["expId"], batchId, tableName, latencyToDb, latencyToReflect))
 
@@ -233,7 +218,7 @@ for trace in traceFolders:
                     variablesBeforePresolve = True
                     metrics["variablesBeforePresolve"] = numVariablesTotal
                     metrics["variablesBeforePresolveObjective"] = numVariablesObjective
-                    
+
                 elif ("#Variables" in line and variablesBeforePresolve == True):
                     split = line.split()
                     numVariablesTotal = split[1]
@@ -295,38 +280,146 @@ for trace in traceFolders:
                                   metrics["databaseLatencyTotal"]
                                  ))
 
-                if ("Scheduling decision for pod" in line):
-                    split = line.split("Scheduling decision for pod")[-1].split()
-                    pod, batch, bindTime = split[0], split[5], split[-1]
+                if ("Adding pod" in line):
+                    split = line.split("Adding pod")[-1].split()
+                    pod = split[0]
+                    uid = split[2].split(',')[0]
+                    event = "ADD"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
 
-                    conn.execute("insert into scheduler_trace values (?, ?, ?, ?)",
-                                 (expParams["expId"], pod, bindTime, batch))
-                    batchId = int(batch) + 1
+                if ("Received stale event for pod that we already deleted:" in line):
+                    split = line.split("Received stale event for pod that we already deleted")[-1].split()
+                    pod = split[0]
+                    uid = split[2].split(',')[0]
+                    event = "IGNORE_ON_ADD_ALREADY_DELETED"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
 
+                if ("Deleting pod" in line):
+                    split = line.split("Deleting pod")[-1].split()
+                    pod = split[0]
+                    uid = split[2].split(',')[0]
+                    event = "DELETE"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
 
-    defaultSchedulerFile = glob.glob(trace + "/default_scheduler_trace")
-    batchId = 0
-    if (len(defaultSchedulerFile) > 0):
-        with open(defaultSchedulerFile[0]) as traceFile:
-            for line in traceFile:
-                if ("About to try and schedule pod" in line):
-                    split = line.split()
-                    startTime, pod = split[0], split[-1]
-                    pod = pod.split("/")[-1]  # pods here are named <namespace>/<podname>
-                    if (pod not in pods):
-                        pods[pod] = {}
-                    pods[pod]["startTime"] = convertK8sTimestamp(startTime)
-                    pods[pod]["startLine"] = split
+                if ("does not exist. Skipping" in line):
+                    split = line.split("does not exist. Skipping")[0].split()
+                    pod = split[-3]
+                    uid = split[-1].split(')')[0]
+                    event = "IGNORE_ON_UPDATE_NO_EXIST"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Received a stale pod event" in line):
+                    split = line.split("Received a stale pod event")[-1].split()
+                    pod = split[0]
+                    uid = split[2].split(',')[0]
+                    event = "IGNORE_ON_UPDATE_STALE"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Received a duplicate event for a node that we have already scheduled" in line):
+                    split = line.split("have already scheduled")[-1].split()
+                    pod = split[3].split(')')[0]
+                    uid = ""
+                    event = "IGNORE_ON_UPDATE_DUPLICATE"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Received stale event for pod that we already deleted:" in line):
+                    split = line.split("we already deleted")[-1].split()
+                    pod = split[0]
+                    uid = split[2].split(',')[0]
+                    event = "IGNORE_ON_UPDATE_ALREADY_DELETED"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Updating pod" in line):
+                    split = line.split("Updating pod")[-1].split()
+                    pod = split[0]
+                    uid = split[2].split(',')[0]
+                    event = "UPDATE"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Insert/Update pod" in line):
+                    split = line.split("Insert/Update pod")[-1].split()
+                    pod = split[1]
+                    uid = split[0].split(',')[0]
+                    event = "INSERT/UPDATE"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
 
                 if ("Attempting to bind" in line):
-                    split = line.split()
-                    bindTime, pod = split[0], split[-3]
-                    assert pod in pods
-                    pods[pod]["bindTime"] = convertK8sTimestamp(bindTime)
-                    pods[pod]["endLine"] = split
-                    assert pods[pod]["bindTime"] > pods[pod]["startTime"], pods[pod]
+                    split = line.split(":")[-1].split()
+                    pod = split[0]
+                    uid = ""
+                    event = "BIND_ATTEMPT"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Binding" in line):
+                    split = line.split("pod:")[-2].split()
+                    pod = split[0]
+                    uid = split[2].split(')')[0]
+                    event = "BIND"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Attempting to delete" in line):
+                    split = line.split(":")[-1].split()
+                    pod = split[0]
+                    uid = ""
+                    event = "DELETE_ATTEMPT"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Delete" in line):
+                    split = line.split("pod:")[-2].split()
+                    pod = split[0]
+                    uid = split[2].split(')')[0]
+                    event = "DELETE"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("Attempting Preemption" in line):
+                    split = line.split("pod:")[-1].split()
+                    pod = split[0]
+                    uid = ""
+                    event = "PREEMPT_ATTEMPT"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("will be preempted" in line):
+                    split = line.split("pod:")[-1].split()
+                    pod = split[0]
+                    uid = ""
+                    event = "PREEMPT"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+                if ("could not be assigned a node even with preemption" in line):
+                    split = line.split("pod:")[-1].split()
+                    pod = split[0]
+                    uid = ""
+                    event = "PREEMPT_FAIL"
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+
+
+
+                if ("Scheduling decision for pod" in line):
+                    split = line.split("Scheduling decision for pod")[-1].split()
+                    pod = split[0]
+                    batch = split[5]
+                    bindTime = split[-1]
+                    event = "SCHEDULE"
                     conn.execute("insert into scheduler_trace values (?, ?, ?, ?)",
-                                 (expParams["expId"], pod, pods[pod]["bindTime"] - pods[pod]["startTime"],
-                                  batchId))
-                    batchId += 1
+                                 (expParams["expId"], pod, bindTime, batch))
+                    conn.execute("insert into pod_events values (?, ?, ?, ?, ?)",
+                                 (expParams["expId"], batchId, pod, uid, event))
+                    batchId = int(batch) + 1
+
     conn.commit()

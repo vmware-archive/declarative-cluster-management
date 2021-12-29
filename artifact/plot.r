@@ -49,50 +49,6 @@ scale_colour_Publication <- function(...){
                                          "#662506","#a6cee3","#fb9a99","#984ea3","#ffff33")), ...)
 }
 
-savePlot <- function(plot, fileName, suffix, params, plotHeight, plotWidth, scale=TRUE) {
-    if ("local" %in% params$kubeconfig) {
-        ggsave(plot, file=paste(fileName, suffix, "Local", ".pdf", sep=""), 
-               height = plotHeight,
-               width=plotWidth, units="in")
-    } else {
-        ggsave(plot, file=paste(fileName, suffix, ".pdf", sep=""), 
-               height=plotHeight, 
-               width=plotWidth, units="in")
-    }
-}
-
-#' 
-#' Configuration
-#'
-args <- commandArgs(TRUE)
-db <- args[1]
-mode <- args[2]
-
-dir.create("plots")
-
-conn <- dbConnect(RSQLite::SQLite(), db)
-params <- data.table(dbGetQuery(conn, "select * from params"))
-schedulerTrace <- data.table(dbGetQuery(conn, "select * from scheduler_trace"))
-podsOverTime <- data.table(dbGetQuery(conn, "select * from pods_over_time"))
-dcmMetrics <- data.table(dbGetQuery(conn, "select * from dcm_metrics"))
-dcmTableAccessLatency <- data.table(dbGetQuery(conn, "select * from dcm_table_access_latency"))
-scopeMetrics <- data.table(dbGetQuery(conn, "select * from scope_fraction"))
-
-if (mode == "full") {
-    appCountCutOff=0 ## FIXME: increase when exceptions are resolved
-    batchIdMin=3
-} else {
-    appCountCutOff=0
-    batchIdMin=3
-}
-fixedTimeScale=20
-plotHeight=5
-plotWidth=7
-
-params$gitInfo <- paste(params$dcmGitBranch, substr(params$dcmGitCommitId, 0, 10), sep=":")
-varyFExperiment <- NROW(unique(params$numNodes)) == 1
-varyNExperiment <- NROW(unique(params$numNodes)) > 1
-
 applyTheme <- function(ggplotObject) {
     ggplotObject +
     ## scale_color_brewer(palette="Set1") +
@@ -103,31 +59,63 @@ applyTheme <- function(ggplotObject) {
     theme(legend.position="top", text = element_text(size=14))
 }
 
+savePlot <- function(plot, fileName, rows, params, plotHeight, plotWidth, scale=TRUE) {
+    fileName = paste(outdir, "/", fileName, sep="")
+    if (length(rows) > 3) {
+        height = 2 * plotHeight
+    } else {
+        height = plotHeight
+    }
+    if ("local" %in% params$kubeconfig) {
+        ggsave(plot, file=paste(fileName, "Local", ".pdf", sep=""),
+               height=height, width=plotWidth, units="in")
+    } else {
+        ggsave(plot, file=paste(fileName, ".pdf", sep=""),
+               height=height, width=plotWidth, units="in")
+    }
+}
+
+
+#' 
+#' Configuration
+#'
+args <- commandArgs(TRUE)
+mode <- args[1]
+db <- args[2]
+outdir <- args[3]
+
+
+conn <- dbConnect(RSQLite::SQLite(), db)
+params <- data.table(dbGetQuery(conn, "select * from params"))
+podEvents <- data.table(dbGetQuery(conn, "select * from pod_events"))
+schedulerTrace <- data.table(dbGetQuery(conn, "select * from scheduler_trace"))
+dcmMetrics <- data.table(dbGetQuery(conn, "select * from dcm_metrics"))
+dcmTableAccessLatency <- data.table(dbGetQuery(conn, "select * from dcm_table_access_latency"))
+scopeMetrics <- data.table(dbGetQuery(conn, "select * from scope_fraction"))
+
+if (mode == "full") {
+    appCountCutOff=0 ## FIXME: increase when/if we have more apps with no exceptions
+    batchIdMin=3
+} else {
+    appCountCutOff=0
+    batchIdMin=3
+}
+plotHeight=5
+plotWidth=7
+
+params$gitInfo <- paste(params$dcmGitBranch, substr(params$dcmGitCommitId, 0, 10), sep=":")
+
 
 #'
 #' Change system names if required for anonymization or shortening
 #'
 dcmSchedulerName <- "DCM"
-dcmScopedSchedulerName <- "DCM-scoped"
+dcmScopedSchedulerName <- "AutoScope"
 defaultSchedulerName <- "default-scheduler"
 params[scheduler == "dcm-scheduler"]$scheduler <- dcmSchedulerName
 params[scheduler == "dcm-scheduler-scoped"]$scheduler <- dcmScopedSchedulerName
-
-params[scheduler == "default-scheduler" & percentageOfNodesToScoreValue == 100, 
-       Scheme := sprintf("%s (%s%%)", scheduler, percentageOfNodesToScoreValue)]
-params[scheduler == "default-scheduler" & percentageOfNodesToScoreValue == 0, 
-       Scheme := sprintf("%s (sampling)", scheduler)]
 params[scheduler == "DCM", Scheme := scheduler]
-params[scheduler == "DCM-scoped", Scheme := scheduler]
-#' Display experiment metadata
-print(params)
-
-#' Boxplot custom function
-bp.vals <- function(x, probs=c(0.01, 0.25, 0.5, 0.75, .99)) {
-    r <- quantile(x, probs=probs , na.rm=TRUE)
-    names(r) <- c("ymin", "lower", "middle", "upper", "ymax")
-    r
-}
+params[scheduler == "AutoScope", Scheme := scheduler]
 
 #'
 #' ## Scheduling latency and batch sizes
@@ -140,83 +128,95 @@ schedulerTrace$appCount <- tstrsplit(schedulerTrace$podName, "-")[2]
 perPodSchedulingLatency <- schedulerTrace[as.numeric(appCount) >= appCountCutOff,
                                           list(Latency = bindTime, BatchSize = .N), 
                                           by=list(expId, batchId)]
+perPodSchedulingLatency$normLatency <- perPodSchedulingLatency[, Latency / BatchSize]
 perPodSchedulingLatencyWithParams <- merge(perPodSchedulingLatency, params, by=c('expId'))
 
-if (varyFExperiment) {
-    perPodSchedulingLatencyWithParams$color <- perPodSchedulingLatencyWithParams$Scheme
-} else {
-    perPodSchedulingLatencyWithParams[,color:=factor(paste("numNodes=", numNodes, sep=""),
-      levels=sapply(params$numNodes[1:3], function(n) paste(c("numNodes=", n), collapse = "")))]
-}
 
 #'
-#' Distribution of scope fractions used.
+#' Latency vs cluster size.
 #'
-scopeMetrics$scopePercent = scopeMetrics$scopeFraction * 100
-scopeMetricsWithParams <- merge(scopeMetrics[, scopePercent, by=list(expId)], params, by=c('expId'))
+## (mean, std) in normLatency[,1], normLatency[,2]
+perExpAvgSchedulingLatency <- aggregate(normLatency ~ expId, perPodSchedulingLatency,
+                                        function(x) c(mean = mean(x), sd = sd(x)))
+perExpAvgSchedulingLatencyWithParams <- merge(perExpAvgSchedulingLatency, params, by=c('expId'))
 
-if (varyFExperiment) {
-    scopeMetricsPdfPlot <- applyTheme(
-        ggplot(scopeMetricsWithParams,
-               aes(x = scopePercent), size = 1) +
-        geom_density(alpha = 0.4, fill = "#fdb462") + # TODO: play with that later
-        facet_grid(factor(paste("F=", affinityProportion, "%", sep=""), 
-                          levels = c("F=0%", "F=50%", "F=100%")) ~ ., scales="free") +
-        xlab("Scoped nodes percent (%)") +
-        ylab("PDF") +
-        labs(col = "", linetype = "") 
-    ) + guides(col = guide_legend(nrow = 1), linetype=guide_legend(keywidth = 1.6, nrow=2, byrow=TRUE))
+scalabilityClusterSizePlot <- applyTheme(
+    ggplot(perExpAvgSchedulingLatencyWithParams,
+           aes(x = numNodes,
+               y = normLatency[,1] / 1e6, # To milliseconds
+               color = Scheme)) +
+    geom_line() +
+    geom_point() +
+    geom_errorbar(aes(ymin = (normLatency[,1]-normLatency[,2]) / 1e6,
+                      ymax = (normLatency[,1]+normLatency[,2]) / 1e6,
+                      width = .02)) +
+    scale_x_log10(breaks = perExpAvgSchedulingLatencyWithParams$numNodes) +
+    ## coord_cartesian(xlim = c(1.1, 100)) +
+    xlab("Cluster size") +
+    ylab("Average scheduling latency (ms)") +
+    labs(col = "", linetype = "")
+)
+savePlot(scalabilityClusterSizePlot, "scalabilityClusterSize",
+         0, params, plotHeight, plotWidth, scale=FALSE)
 
-    scopeMetricsPdfPlot
-    savePlot(scopeMetricsPdfPlot, "plots/scopeMetricsPdfPlotVaryFN=",
-             scopeMetricsWithParams$numNodes[1], params, plotHeight, plotWidth/2, scale=FALSE)
-} else {
-    scopeMetricsPdfPlot <- applyTheme(
-        ggplot(scopeMetricsWithParams,
-               aes(x = scopePercent), size = 1) +
-        geom_density(alpha = 0.4, fill = "#fdb462") + # TODO: play with that later
-        ## geom_histogram() +
-        ## geom_vline(aes(xintercept=mean(scopePercent)), linetype="dashed", size=1) +
-        facet_grid(factor(paste("N=", numNodes, sep=""), 
-                          levels = sapply(params$numNodes[1:3],
-                                          function(n) paste(c("N=", n), collapse = ""))) ~ .,
-                   scales="free") +
-        xlab("Scoped nodes percent (%)") +
-        ylab("PDF") +
-        labs(col = "", linetype = "") 
-    ) + guides(col = guide_legend(nrow = 1), linetype=guide_legend(keywidth = 1.6, nrow=2, byrow=TRUE))
 
-    scopeMetricsPdfPlot
-    savePlot(scopeMetricsPdfPlot, "plots/scopeMetricsPdfPlotVaryNF=",
-             scopeMetricsWithParams$numNodes[1], params, plotHeight, plotWidth/2, scale=FALSE)    
-}
-
-if (varyFExperiment) {
-    schedulingLatencyEcdf100xPlot <- applyTheme(
-        ggplot(perPodSchedulingLatencyWithParams,
-               aes(x = Latency / 1e6 / BatchSize,  # To milliseconds
-                   color = color), size = 1) +
-        stat_ecdf(size = 1) +
-        scale_linetype_manual(values = c("solid", "dotted")) +
+#'
+#' Latency ECDFs.
+#'
+for (facetOption in c("Nodes", "Scenarios", "NodesXScenarios")) {
+    switch(facetOption,
+           "Nodes" = {
+               facetCol <- unique(perPodSchedulingLatencyWithParams$numNodes)
+               nonFacetColName <- ""
+               nonFacetCol <- unique(perPodSchedulingLatencyWithParams$scenario)
+               nonFacetColPick <- nonFacetCol[length(nonFacetCol)]
+               data <- perPodSchedulingLatencyWithParams[scenario == nonFacetColPick]
+           },
+           "Scenarios" = {
+               facetCol <- unique(perPodSchedulingLatencyWithParams$scenario)
+               nonFacetColName <- "nodes"
+               nonFacetCol <- unique(perPodSchedulingLatencyWithParams$numNodes)
+               nonFacetColPick <- nonFacetCol[length(nonFacetCol)]
+               data <- perPodSchedulingLatencyWithParams[numNodes == nonFacetColPick]
+           },
+           "NodesXScenarios" = {
+               facetCol <- unique(perPodSchedulingLatencyWithParams$numNodes)
+               nonFacetColName <- ""
+               nonFacetColPick <- ""
+               data <- perPodSchedulingLatencyWithParams
+           })
+    schedulingLatencyEcdfPlot <- applyTheme(
+        ggplot(data,
+               aes(x = normLatency / 1e6, # To milliseconds
+                   color = Scheme)) +
+        stat_ecdf() +
+        switch(facetOption,
+               "Nodes" = {
+                   facet_grid(factor(paste(numNodes, "nodes"),
+                                     levels = sapply(unique(numNodes), function(n) paste(n, "nodes")))
+                              ~ .)
+               },
+               "Scenarios" = {
+                   facet_grid(scenario ~ .)
+               },
+               "NodesXScenarios" = {
+                   facet_grid(factor(paste(numNodes, "nodes"),
+                                     levels = sapply(unique(numNodes), function(n) paste(n, "nodes")))
+                              ~ scenario)
+               }) +
         scale_x_log10() +
-        ## scale_x_log10(breaks=c(1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100)) +
-        facet_grid(factor(paste("F=", affinityProportion, "%", sep=""), 
-                          levels = c("F=0%", "F=50%", "F=100%")) ~ . ) +
-        ## coord_cartesian(xlim = c(1.1, 100)) +
-        xlab("Scheduling Latency (ms)") +
+        xlab("Latency (ms)") +
         ylab("ECDF") +
-        labs(col = "", linetype = "") 
-    ) + guides(col = guide_legend(nrow = 1), linetype=guide_legend(keywidth = 1.6, nrow=2, byrow=TRUE))
-
-    schedulingLatencyEcdf100xPlot
-    savePlot(schedulingLatencyEcdf100xPlot, "plots/schedulingLatencyEcdfVaryFN=",
-             perPodSchedulingLatencyWithParams$numNodes[1], params, plotHeight, plotWidth, scale=FALSE)
+        labs(col = "", linetype = "", subtitle=paste(nonFacetColPick, nonFacetColName))
+    )
+    savePlot(schedulingLatencyEcdfPlot, paste("latencyEcdfAllPlotFacetOn", facetOption, sep=""),
+             facetCol, params, plotHeight, plotWidth)
 }
 
 #'
-#' Distribution of latency metrics collected by DCM, amortized over batch sizes.
-#' Note: uses the first 1K batchIds only.
+#' Latency breakdown
 #'
+#' TODO: comment on bathcIdMin
 countByBatchId <- perPodSchedulingLatencyWithParams[,.N,by=list(expId,batchId)]
 dcmMetrics$dcmSolveTime <- as.numeric(dcmMetrics$dcmSolveTime)
 dcmMetrics$modelCreationLatency <- as.numeric(dcmMetrics$modelCreationLatency)
@@ -226,72 +226,99 @@ dcmMetrics$presolveTime <- as.numeric(dcmMetrics$presolveTime * 1e9) # convert t
 dcmMetrics$orToolsWallTime <- as.numeric(dcmMetrics$orToolsWallTime * 1e9) # convert to ns
 dcmMetrics$orToolsUserTime <- as.numeric(dcmMetrics$orToolsUserTime * 1e9) # convert to ns
 dcmMetrics[scopeLatency == 0]$scopeLatency <- NA # ommit line of zeros when scope is off
-dcmMetricsWithBatchSizes <- merge(dcmMetrics, countByBatchId, by=c('expId', 'batchId'))
+dcmMetrics <- merge(dcmMetrics, countByBatchId, by=c('expId', 'batchId'))
 
 # Expand to repeat each row as many times as the batch size it represents
-dcmMetricsWithBatchSizesExpanded <- dcmMetricsWithBatchSizes[rep(seq(.N), N)]
-longDcmLatencyMetricsWithBatchSizes <- melt(dcmMetricsWithBatchSizesExpanded, c("expId", "batchId", "N"),
+dcmMetricsExpanded <- dcmMetrics[rep(seq(.N), N)]
+longDcmLatencyMetrics <- melt(dcmMetricsExpanded, c("expId", "batchId", "N"),
                                             measure=patterns("Time|Latency"))
-longDcmLatencyMetricsWithBatchSizes$variableClean <- gsub("Latency|Total|Time", "",
-                                                          longDcmLatencyMetricsWithBatchSizes$variable)
-longDcmLatencyMetricsWithBatchSizes <- merge(longDcmLatencyMetricsWithBatchSizes, params, by=c("expId"))
-longDcmLatencyMetricsWithBatchSizes <- longDcmLatencyMetricsWithBatchSizes[variableClean != "orToolsUser"]
-longDcmLatencyMetricsWithBatchSizes[variableClean == "orToolsWall"]$variableClean <- "orToolsTotal"
+longDcmLatencyMetrics$variableClean <- gsub("Latency|Total|Time", "",
+                                                          longDcmLatencyMetrics$variable)
+longDcmLatencyMetrics <- merge(longDcmLatencyMetrics, params, by=c("expId"))
+longDcmLatencyMetrics <- longDcmLatencyMetrics[variableClean != "orToolsUser"]
+longDcmLatencyMetrics[variableClean == "orToolsWall"]$variableClean <- "orToolsTotal"
 
-if (varyFExperiment) {
+for (facetOption in c("Nodes", "Scenarios")) {
+    switch(facetOption,
+           "Nodes" = {
+               facetCol <- unique(longDcmLatencyMetrics$numNodes)
+               nonFacetColName <- ""
+               nonFacetCol <- unique(longDcmLatencyMetrics$scenario)
+               nonFacetColPick <- nonFacetCol[length(nonFacetCol)]
+               data <- longDcmLatencyMetrics[scenario == nonFacetColPick]
+           },
+           "Scenarios" = {
+               facetCol <- unique(longDcmLatencyMetrics$scenario)
+               nonFacetColName <- "nodes"
+               nonFacetCol <- unique(longDcmLatencyMetrics$numNodes)
+               nonFacetColPick <- nonFacetCol[length(nonFacetCol)]
+               data <- longDcmLatencyMetrics[numNodes == nonFacetColPick]
+           })
+
     dcmLatencyBreakdown100xPlot <- applyTheme(
-        ggplot(longDcmLatencyMetricsWithBatchSizes[batchId >= batchIdMin]) +
+        ggplot(data[batchId >= batchIdMin]) +
         stat_ecdf(size=1, aes(x=value/1e6/N, col=variableClean, linetype=variableClean)) +
+        switch(facetOption,
+               "Nodes" = {
+                   facet_grid(factor(paste(numNodes, "nodes"),
+                                     levels = sapply(unique(numNodes), function(n) paste(n, "nodes")))
+                              ~ scheduler)
+               },
+               "Scenarios" = {
+                   facet_grid(scenario ~ scheduler)
+               }) +
         scale_x_log10() + 
         ## coord_cartesian(xlim = c(0.01, 50)) +
         xlab("Latency (ms)") +
         ylab("ECDF") +
-        facet_grid(factor(paste("F=", affinityProportion, "%", sep=""),
-                          levels=c("F=0%", "F=50%", "F=100%")) ~ scheduler ) +
+        labs(subtitle=paste(nonFacetColPick, nonFacetColName)) +
         guides(linetype=guide_legend(keywidth = 2, keyheight = 1),
                colour=guide_legend(nrow=2, keywidth = 2, keyheight = 1))
     ) + theme(legend.title=element_blank())
-
-    dcmLatencyBreakdown100xPlot
-    savePlot(dcmLatencyBreakdown100xPlot, "plots/dcmLatencyBreakdownVaryFN=",
-             longDcmLatencyMetricsWithBatchSizes$numNodes[1], params, plotHeight, plotWidth)
-} else {
-    dcmLatencyBreakdownPlot <- applyTheme(
-        ggplot(longDcmLatencyMetricsWithBatchSizes[batchId >= batchIdMin]) +
-        stat_ecdf(size=1, aes(x=value/1e6/N, col=variableClean, linetype=variableClean)) + 
-        scale_x_log10() +
-        xlab("Latency (ms)") +
-        ylab("ECDF") +
-        facet_grid(factor(paste("N=", numNodes, sep=""),
-                          levels=sapply(params$numNodes[1:3],
-                                        function(n) paste(c("N=", n), collapse = ""))) ~ scheduler ) +
-        guides(linetype=guide_legend(keywidth = 2, keyheight = 1),
-               colour=guide_legend(nrow=2, keywidth = 2, keyheight = 1))
-    ) + theme(legend.title=element_blank())
-
-    dcmLatencyBreakdownPlot
-    savePlot(dcmLatencyBreakdownPlot, "plots/dcmLatencyBreakdownVaryNF=",
-             longDcmLatencyMetricsWithBatchSizes$affinityProportion[1], params, plotHeight, plotWidth, scale=FALSE)
+    savePlot(dcmLatencyBreakdown100xPlot, paste("dcmLatencyBreakdownPlotFacetOn", facetOption, sep=""),
+             facetCol, params, plotHeight, plotWidth)
 }
 
-#
-#' Print model sizes to file
-#
-if (varyNExperiment) {
-    longDcmModelMetricsWithBatchSizes <- melt(dcmMetricsWithBatchSizesExpanded,
-                                              c("expId", "batchId", "N"), measure=patterns("variables"))
-    longDcmModelMetricsWithBatchSizes$variableClean <- gsub("variables", "",
-                                                            longDcmModelMetricsWithBatchSizes$variable)
-    longDcmModelMetricsWithBatchSizes <- merge(longDcmModelMetricsWithBatchSizes, params, by=c("expId"))
-    
-    result <- longDcmModelMetricsWithBatchSizes[batchId >= batchIdMin & grepl("Before", variableClean)
-                                                & !grepl("Objective", variableClean),
-                                                list(Mean=round(mean(value))), by=list(numNodes)]
+#'
+#' Evolution of #Variables
+#'
+dcmMetricsExpandedWithParams <- merge(dcmMetricsExpanded, params, by=c("expId"))
+solverVariablesPlot <- applyTheme(
+    ggplot(dcmMetricsExpandedWithParams,
+           aes(x = batchId,
+               y = variablesAfterPresolve,
+               color = Scheme)) +
+    geom_line() +
+    facet_grid(factor(paste(numNodes, "nodes"),
+                      levels = sapply(unique(numNodes), function(n) paste(n, "nodes")))
+               ~ scenario) +
+    xlab("batch progress") +
+    ylab("# Variables for incoming batches") +
+    labs(col = "", linetype = "")
+)
+savePlot(solverVariablesPlot, "solverVariablesPlot",
+         unique(dcmMetricsExpandedWithParams$numNodes), params, plotHeight, plotWidth)
 
-    colnames(result)[1] <- "#Nodes"
-    colnames(result)[2] <- "#Variables"
-    print(xtable(result, type = "latex", caption="Average number of model variables in the computed
-      optimization models as a function of cluster size"), 
-      file = "plots/modelSizeTable.tex",
-      include.rownames=FALSE)
-}
+#'
+#' Events barplots
+#'
+podEventsWithParams <- merge(podEvents, params, by=c("expId"))
+podEventsBarPlot <- applyTheme(
+    ggplot(podEventsWithParams,
+           aes(x = event, fill=scheduler)) +
+    geom_bar(stat="count", position=position_dodge()) +
+    scale_x_discrete(guide = guide_axis(angle = 45)) +
+    geom_text(aes(label = ..count..), stat="count", vjust=0, colour="black",
+              position=position_dodge(0.9)) +
+    facet_grid(factor(paste(numNodes, "nodes"),
+                      levels = sapply(unique(numNodes), function(n) paste(n, "nodes")))
+               ~ scenario) +
+    labs(fill = "", linetype = "")
+)
+savePlot(podEventsBarPlot, "podEventsBarPlot",
+         0, params, plotHeight*2, plotWidth*2)
+
+
+## TODO: export table with avg vars
+## TODO: need to generate scope metrics in new codebase
+
