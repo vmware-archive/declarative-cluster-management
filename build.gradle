@@ -29,9 +29,24 @@ subprojects {
     }
 
     dependencies {
-        implementation "org.apache.logging.log4j:log4j-api:${log4jVersion}"
-        implementation "org.apache.logging.log4j:log4j-core:${log4jVersion}"
-        implementation "org.apache.logging.log4j:log4j-slf4j-impl:${log4jVersion}"
+        implementation ("org.apache.logging.log4j:log4j-api") {
+            version {
+                strictly("[${log4jVersion}, 3[")
+                prefer("${log4jVersion}")
+            }
+        }
+        implementation ("org.apache.logging.log4j:log4j-core") {
+            version {
+                strictly("[${log4jVersion}, 3[")
+                prefer("${log4jVersion}")
+            }
+        }
+        implementation ("org.apache.logging.log4j:log4j-slf4j-impl") {
+            version {
+                strictly("[${log4jVersion}, 3[")
+                prefer("${log4jVersion}")
+            }
+        }
         implementation "org.jooq:jooq:${jooqVersion}"
         implementation "org.jooq:jooq-meta:${jooqVersion}"
         implementation "com.google.guava:guava:${guavaVersion}"
