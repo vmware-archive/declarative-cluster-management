@@ -103,7 +103,7 @@ public class DBViews {
                               FROM pod_info
                               WHERE status = 'Pending'
                                 AND node_name IS NULL
-                                AND schedulerName = 'dcm-scheduler'
+                                AND scheduler_name = 'dcm-scheduler'
                                 AND LAST_REQUEUE + 1000 <=
                                     (SELECT 1000 * extract(epoch FROM current_timestamp())) -- timestamp in ms
                              """;

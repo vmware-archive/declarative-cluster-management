@@ -249,7 +249,7 @@ class PodEventsToDatabase {
                 p.HAS_NODE_PORT_REQUIREMENTS,
                 p.HAS_TOPOLOGY_SPREAD_CONSTRAINTS,
                 p.PRIORITY,
-                p.SCHEDULERNAME,
+                p.SCHEDULER_NAME,
                 p.EQUIVALENCE_CLASS,
                 p.QOS_CLASS,
                 p.RESOURCEVERSION,
@@ -294,7 +294,7 @@ class PodEventsToDatabase {
 
                 // This field is important because while we injest info about all pods, we only make scheduling
                 // decisions for pods that have dcm-scheduler as their name
-                .set(p.SCHEDULERNAME, pod.getSpec().getSchedulerName())
+                .set(p.SCHEDULER_NAME, pod.getSpec().getSchedulerName())
 
                 // Compute equivalent class similar to what the default scheduler does
                 .set(p.EQUIVALENCE_CLASS, equivalenceClassHash(pod))
