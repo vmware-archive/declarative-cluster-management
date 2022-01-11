@@ -6,7 +6,6 @@ import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.generated.parser.DcmSqlParserImpl;
 import com.vmware.dcm.parser.SqlCreateConstraint;
 import com.vmware.ddlog.util.DeltaCallBack;
-import org.apache.calcite.avatica.remote.Service;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
 import org.apache.calcite.sql.validate.SqlConformanceEnum;
@@ -27,29 +26,29 @@ class SortHelper {
     private final String groupField;
     private final String sortField;
 
-    SortHelper(String tableName, String groupField, String sortField) {
+    SortHelper(final String tableName, final String groupField, final String sortField) {
         this.tableName = tableName.toUpperCase();
         this.groupField = groupField.toUpperCase();
         this.sortField = sortField.toUpperCase();
     }
 
-    public boolean isSortTable(Record r) {
+    public boolean isSortTable(final Record r) {
         final String field = r.field(0).toString().toUpperCase();
         return field.contains(this.tableName);
     }
 
-    private int getSortVal(Record r) {
+    private int getSortVal(final Record r) {
         return Integer.parseInt(r.get(this.sortField).toString());
     }
 
-    public String getGroup(Record r) {
+    public String getGroup(final Record r) {
         return r.get(this.groupField).toString();
     }
 
-    public int removeFromTopk(List<Record> records, Record toDel) {
+    public int removeFromTopk(final List<Record> records, final Record toDel) {
         int index = -1;
         for (int i = 0; i < records.size(); i ++) {
-            Record record = records.get(i);
+            final Record record = records.get(i);
             if (record.equals(toDel)) {
                 index = i;
                 break;
@@ -58,11 +57,11 @@ class SortHelper {
         return index;
     }
 
-    public int addToTopk(List<Record> records, Record toAdd) {
+    public int addToTopk(final List<Record> records, final Record toAdd) {
         int minVal = getSortVal(toAdd);
         int index = -1;
         for (int i = 1; i < records.size(); i += 1) {
-            int val = getSortVal(records.get(i));
+            final int val = getSortVal(records.get(i));
             if (val < minVal) {
                 index = i;
                 minVal = val;
@@ -79,38 +78,38 @@ class TopkPerGroup implements DeltaCallBack {
     private SortHelper helper;
     private Map<String, List<Record>> topk;
 
-    public TopkPerGroup(final String tableName, final String groupField, final String sortField, int limit) {
+    public TopkPerGroup(final String tableName, final String groupField, final String sortField, final int limit) {
         this.limit = limit;
         this.topk = new HashMap<>();
         this.helper = new SortHelper(tableName, groupField, sortField);
     }
 
     public List<Record> getAll() {
-        List<Record> results = new ArrayList<>();
-        for (final String key : topk.keySet()) {
-            results.addAll(topk.get(key));
+        final List<Record> results = new ArrayList<>();
+        for (final Map.Entry<String, List<Record>> entry: topk.entrySet()) {
+            results.addAll(entry.getValue());
         }
         return results;
     }
 
     @Override
-    public void processDelta(DeltaType type, Record r) {
+    public void processDelta(final DeltaType type, final Record r) {
         if (helper.isSortTable(r)) {
             final String group = helper.getGroup(r);
             if (type == DeltaCallBack.DeltaType.ADD) {
-                List<Record> records = topk.getOrDefault(group, new ArrayList<>());
+                final List<Record> records = topk.getOrDefault(group, new ArrayList<>());
                 if (records.size() < this.limit) {
                     records.add(r);
                 } else {
-                    int index = helper.addToTopk(records, r);
+                    final int index = helper.addToTopk(records, r);
                     if (index >= 0) {
                         records.set(index, r);
                     }
                 }
                 topk.put(group, records);
             } else {
-                List<Record> records = topk.getOrDefault(group, new ArrayList<>());
-                int index = helper.removeFromTopk(records, r);
+                final List<Record> records = topk.getOrDefault(group, new ArrayList<>());
+                final int index = helper.removeFromTopk(records, r);
                 if (index >= 0) {
                     records.remove(index);
                 }
@@ -135,7 +134,7 @@ public class AutoScope {
 
 
 
-    public AutoScope(int limit) {
+    public AutoScope(final int limit) {
         this.limit = limit;
         this.topk = new TopkPerGroup(BASE_TABLE, GROUP_COL, SORT_COL, limit);
     }

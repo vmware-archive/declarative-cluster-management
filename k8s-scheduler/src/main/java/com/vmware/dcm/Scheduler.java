@@ -57,7 +57,8 @@ import java.util.function.IntSupplier;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
-import static com.vmware.dcm.DBViews.*;
+import static com.vmware.dcm.DBViews.SCOPE_VIEW_NAME_SUFFIX;
+import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
 import static org.jooq.impl.DSL.table;
 
 /**
@@ -236,7 +237,7 @@ public final class Scheduler {
                                                    Policies.getInitialPlacementPolicies(), metadataConnection);
         // Automatic scoping
         final IRContext irContext = initialPlacement.getIrContext();
-        AutoScope scope = new AutoScope(limit);
+        final AutoScope scope = new AutoScope(limit);
         final Map<String, String> views = scope.augmentedViews(
                 Policies.getInitialPlacementPolicies(), irContext);
         // Create filtering views
@@ -474,17 +475,17 @@ public final class Scheduler {
                         toFetch = t;
                     }
                     if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-                        DDlogJooqProvider provider = ((DDlogDBConnectionPool) dbConnectionPool).getProvider();
-                        Result<Record> augResult = provider.fetchTable(toFetch.getName());
+                        final DDlogJooqProvider provider = ((DDlogDBConnectionPool) dbConnectionPool).getProvider();
+                        final Result<Record> augResult = provider.fetchTable(toFetch.getName());
                         if (augViews.contains(augView)) {
                             // Union with top K sort results
-                            List<Record> records = autoScopeViews.scope().getSortView();
-                            for (Record r : records) {
+                            final List<Record> records = autoScopeViews.scope().getSortView();
+                            for (final Record r : records) {
                                 if (!augResult.contains(r)) {
                                     augResult.add(r);
                                 }
                             }
-                            Result<Record> origResult = provider.fetchTable(t.getName());
+                            final Result<Record> origResult = provider.fetchTable(t.getName());
                             LOG.info(String.format("[Scoping Optimization]: Reducing size from %d to %d",
                                     origResult.size(), augResult.size()));
                         }

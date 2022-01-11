@@ -32,7 +32,6 @@ dependencies {
     implementation "commons-cli:commons-cli:${commonsCliVersion}"
     implementation "commons-io:commons-io:${commonsIoVersion}"
     implementation "com.h2database:h2:${h2Version}"
-    implementation 'com.datadoghq:sketches-java:0.8.2'
     implementation "ddlog:ddlogapi:0.1"
     implementation ("ddlog:sql:1.0-SNAPSHOT") {
         // The required dependencies: apache-calcite-core, the presto parser, and jooq, are available here,
