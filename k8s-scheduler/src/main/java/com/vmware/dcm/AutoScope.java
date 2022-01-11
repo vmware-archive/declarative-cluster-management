@@ -5,9 +5,12 @@ import com.vmware.dcm.compiler.IRColumn.FieldType;
 import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.generated.parser.DcmSqlParserImpl;
 import com.vmware.dcm.parser.SqlCreateConstraint;
+import com.vmware.ddlog.util.DeltaCallBack;
+import org.apache.calcite.avatica.remote.Service;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
 import org.apache.calcite.sql.validate.SqlConformanceEnum;
+import org.jooq.Record;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,18 +22,134 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 
+class SortHelper {
+    private final String tableName;
+    private final String groupField;
+    private final String sortField;
+
+    SortHelper(String tableName, String groupField, String sortField) {
+        this.tableName = tableName.toUpperCase();
+        this.groupField = groupField.toUpperCase();
+        this.sortField = sortField.toUpperCase();
+    }
+
+    public boolean isSortTable(Record r) {
+        final String field = r.field(0).toString().toUpperCase();
+        return field.contains(this.tableName);
+    }
+
+    private int getSortVal(Record r) {
+        return Integer.parseInt(r.get(this.sortField).toString());
+    }
+
+    public String getGroup(Record r) {
+        return r.get(this.groupField).toString();
+    }
+
+    public int removeFromTopk(List<Record> records, Record toDel) {
+        int index = -1;
+        for (int i = 0; i < records.size(); i ++) {
+            Record record = records.get(i);
+            if (record.equals(toDel)) {
+                index = i;
+                break;
+            }
+        }
+        return index;
+    }
+
+    public int addToTopk(List<Record> records, Record toAdd) {
+        int minVal = getSortVal(toAdd);
+        int index = -1;
+        for (int i = 1; i < records.size(); i += 1) {
+            int val = getSortVal(records.get(i));
+            if (val < minVal) {
+                index = i;
+                minVal = val;
+            }
+        }
+        return index;
+    }
+}
+
+class TopkPerGroup implements DeltaCallBack {
+    private static final Logger LOG = LoggerFactory.getLogger(TopkPerGroup.class);
+
+    private final int limit;
+    private SortHelper helper;
+    private Map<String, List<Record>> topk;
+
+    public TopkPerGroup(final String tableName, final String groupField, final String sortField, int limit) {
+        this.limit = limit;
+        this.topk = new HashMap<>();
+        this.helper = new SortHelper(tableName, groupField, sortField);
+    }
+
+    public List<Record> getAll() {
+        List<Record> results = new ArrayList<>();
+        for (final String key : topk.keySet()) {
+            results.addAll(topk.get(key));
+        }
+        return results;
+    }
+
+    @Override
+    public void processDelta(DeltaType type, Record r) {
+        if (helper.isSortTable(r)) {
+            final String group = helper.getGroup(r);
+            if (type == DeltaCallBack.DeltaType.ADD) {
+                List<Record> records = topk.getOrDefault(group, new ArrayList<>());
+                if (records.size() < this.limit) {
+                    records.add(r);
+                } else {
+                    int index = helper.addToTopk(records, r);
+                    if (index >= 0) {
+                        records.set(index, r);
+                    }
+                }
+                topk.put(group, records);
+            } else {
+                List<Record> records = topk.getOrDefault(group, new ArrayList<>());
+                int index = helper.removeFromTopk(records, r);
+                if (index >= 0) {
+                    records.remove(index);
+                }
+                topk.put(group, records);
+            }
+        }
+    }
+}
+
+
 public class AutoScope {
     private static final Logger LOG = LoggerFactory.getLogger(AutoScope.class);
+
+    private final int limit;
+    private TopkPerGroup topk;
+
     // Base table/view to apply scoping optimizations to
     private static final String BASE_TABLE = "spare_capacity_per_node";
-    private static final String[] RESOURCE_TYPE = new String[]{"cpu", "memory", "pods", "ephemeral-storage"};
     private static final String BASE_COL = "name";
-    private static final String VIEW_TEMPLATE = """
-            SELECT DISTINCT name, resource, capacity FROM %s
-            """;
+    private static final String GROUP_COL = "resource";
+    private static final String SORT_COL = "capacity";
 
-    public static Map<String, String> augmentedViews(final List<String> constraints,
-             final IRContext irContext, final int limit) {
+
+
+    public AutoScope(int limit) {
+        this.limit = limit;
+        this.topk = new TopkPerGroup(BASE_TABLE, GROUP_COL, SORT_COL, limit);
+    }
+
+    public TopkPerGroup getCallBack() {
+        return topk;
+    }
+
+    public List<Record> getSortView() {
+        return topk.getAll();
+    }
+
+    public Map<String, String> augmentedViews(final List<String> constraints,
+             final IRContext irContext) {
 
         final List<SqlCreateConstraint> constraintViews = constraints.stream().map(
                 constraint -> {
@@ -53,15 +172,15 @@ public class AutoScope {
             visitor.visit(view);
         }
 
-        final Map<String, String> views = domainRestrictingViews(selectClause, irContext, limit);
+        final Map<String, String> views = domainRestrictingViews(selectClause, irContext, this.limit);
         return views;
     }
 
     /**
-     * Create view statements for views with specificied suffix.
+     * Create view statements for views with specified suffix.
      * Needed since _sort views might need to be created before _augment views.
      */
-    public static List<String> getSuffixViewStatements(final Map<String, String> views, final String suffix) {
+    public List<String> getSuffixViewStatements(final Map<String, String> views, final String suffix) {
         final List<String> statements = new ArrayList<>();
         for (final var entry : views.entrySet()) {
             final String name = entry.getKey();
@@ -76,30 +195,11 @@ public class AutoScope {
     /**
      * Create view statements based on view name and queries.
      */
-    public static List<String> getViewStatements(final Map<String, String> views) {
+    public List<String> getViewStatements(final Map<String, String> views) {
         final List<String> augViews = views.entrySet().stream()
                 .map(e -> String.format("%nCREATE VIEW %s AS %s%n", e.getKey(), e.getValue()))
                 .collect(Collectors.toList());
         return augViews;
-    }
-
-    /**
-     * Heuristic: Sort spare_capacity_per_node by decreasing resources
-     * @param limit number of candidate nodes to fetch for each resource
-     * @return SQL query that selects top K nodes for each resource
-     */
-    private static String customSort(final int limit) {
-        final String template = "" +
-                "(SELECT distinct name FROM %s WHERE resource = '%s'" +
-                //" ORDER BY capacity DESC " +
-                ")" +
-                //LIMIT %d)
-                "";
-        final List<String> queries = new ArrayList<>();
-        for (final String resource : RESOURCE_TYPE) {
-            queries.add(String.format(template, BASE_TABLE, resource)); //, limit));
-        }
-        return String.join(" UNION ", queries);
     }
 
     /**
@@ -109,12 +209,9 @@ public class AutoScope {
      * @param limit number of candidate nodes to keep per resource type (top K)
      * @return
      */
-    private static Map<String, String> domainRestrictingViews(final Map<String, Map<String, String>> selectClause,
+    private Map<String, String> domainRestrictingViews(final Map<String, Map<String, String>> selectClause,
                            final IRContext irContext, final int limit) {
         final Map<String, String> views = new HashMap<>();
-        // Create a custom view that sorts and truncates the base table
-        final String sortView = customSort(limit);
-        views.put((BASE_TABLE + DBViews.SORT_VIEW_NAME_SUFFIX).toUpperCase(), sortView);
 
         // Union of domain restricted queries
         for (final var e : selectClause.entrySet()) {
@@ -143,14 +240,6 @@ public class AutoScope {
                                 BASE_TABLE, BASE_TABLE, BASE_TABLE,
                                 BASE_TABLE, tableName, BASE_TABLE, BASE_COL, tableName, fieldName));
                     }
-                } else { // sort and truncate base table
-                    final String view = BASE_TABLE + DBViews.SORT_VIEW_NAME_SUFFIX;
-                    queries.add(String.format(
-                            "(SELECT DISTINCT %s.name as name, %s.resource as resource ,%s.capacity as capacity " +
-                                    "FROM %s " +
-                            " JOIN %s ON %s.%s = %s.%s)",
-                            BASE_TABLE, BASE_TABLE, BASE_TABLE,
-                            BASE_TABLE, view, BASE_TABLE, BASE_COL, view, BASE_COL));
                 }
             }
             final String query = String.join(" UNION ", queries);
