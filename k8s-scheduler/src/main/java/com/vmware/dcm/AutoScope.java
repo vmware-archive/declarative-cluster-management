@@ -13,11 +13,14 @@ import org.jooq.Record;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Collections;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 
 
@@ -25,6 +28,14 @@ class SortHelper {
     private final String tableName;
     private final String groupField;
     private final String sortField;
+    private final RecordComparator rComparator = new RecordComparator();
+
+    class RecordComparator implements Comparator<Record> {
+        @Override
+        public int compare(final Record r1, final Record r2) {
+            return Long.compare(getSortVal(r2), getSortVal(r1));
+        }
+    }
 
     SortHelper(final String tableName, final String groupField, final String sortField) {
         this.tableName = tableName.toUpperCase();
@@ -37,37 +48,22 @@ class SortHelper {
         return field.contains(this.tableName);
     }
 
-    private int getSortVal(final Record r) {
-        return Integer.parseInt(r.get(this.sortField).toString());
+    private long getSortVal(final Record r) {
+        return r.get(this.sortField, Long.class);
     }
 
     public String getGroup(final Record r) {
         return r.get(this.groupField).toString();
     }
 
-    public int removeFromTopk(final List<Record> records, final Record toDel) {
-        int index = -1;
-        for (int i = 0; i < records.size(); i ++) {
-            final Record record = records.get(i);
-            if (record.equals(toDel)) {
-                index = i;
-                break;
-            }
+    public List<Record> getTopk(final Set<Record> records, final int k) {
+        final List<Record> sorted = new ArrayList<>(records);
+        if (records.size() <= k) {
+            return sorted;
         }
-        return index;
-    }
 
-    public int addToTopk(final List<Record> records, final Record toAdd) {
-        int minVal = getSortVal(toAdd);
-        int index = -1;
-        for (int i = 1; i < records.size(); i += 1) {
-            final int val = getSortVal(records.get(i));
-            if (val < minVal) {
-                index = i;
-                minVal = val;
-            }
-        }
-        return index;
+        Collections.sort(sorted, rComparator);
+        return sorted.subList(0, k);
     }
 }
 
@@ -76,7 +72,7 @@ class TopkPerGroup implements DeltaCallBack {
 
     private final int limit;
     private SortHelper helper;
-    private Map<String, List<Record>> topk;
+    private Map<String, Set<Record>> topk;
 
     public TopkPerGroup(final String tableName, final String groupField, final String sortField, final int limit) {
         this.limit = limit;
@@ -84,10 +80,11 @@ class TopkPerGroup implements DeltaCallBack {
         this.helper = new SortHelper(tableName, groupField, sortField);
     }
 
-    public List<Record> getAll() {
+    public List<Record> getTopk() {
         final List<Record> results = new ArrayList<>();
-        for (final Map.Entry<String, List<Record>> entry: topk.entrySet()) {
-            results.addAll(entry.getValue());
+        for (final Map.Entry<String, Set<Record>> entry: topk.entrySet()) {
+            final Set<Record> records = entry.getValue();
+            results.addAll(helper.getTopk(records, limit));
         }
         return results;
     }
@@ -97,23 +94,11 @@ class TopkPerGroup implements DeltaCallBack {
         if (helper.isSortTable(r)) {
             final String group = helper.getGroup(r);
             if (type == DeltaCallBack.DeltaType.ADD) {
-                final List<Record> records = topk.getOrDefault(group, new ArrayList<>());
-                if (records.size() < this.limit) {
-                    records.add(r);
-                } else {
-                    final int index = helper.addToTopk(records, r);
-                    if (index >= 0) {
-                        records.set(index, r);
-                    }
-                }
+                final Set<Record> records = topk.getOrDefault(group, new HashSet<>());
+                records.add(r);
                 topk.put(group, records);
             } else {
-                final List<Record> records = topk.getOrDefault(group, new ArrayList<>());
-                final int index = helper.removeFromTopk(records, r);
-                if (index >= 0) {
-                    records.remove(index);
-                }
-                topk.put(group, records);
+                topk.get(group).remove(r);
             }
         }
     }
@@ -144,7 +129,7 @@ public class AutoScope {
     }
 
     public List<Record> getSortView() {
-        return topk.getAll();
+        return topk.getTopk();
     }
 
     public Map<String, String> augmentedViews(final List<String> constraints,
@@ -171,7 +156,7 @@ public class AutoScope {
             visitor.visit(view);
         }
 
-        final Map<String, String> views = domainRestrictingViews(selectClause, irContext, this.limit);
+        final Map<String, String> views = domainRestrictingViews(selectClause, irContext);
         return views;
     }
 
@@ -205,11 +190,10 @@ public class AutoScope {
      * Generate domain restricting views for constraints in the form of [variable IN (SELECT clause)]
      * @param selectClause key: variable name, value: list of tableNames and fieldNames for filtering
      * @param irContext needed to check type of column (array versus values)
-     * @param limit number of candidate nodes to keep per resource type (top K)
      * @return
      */
     private Map<String, String> domainRestrictingViews(final Map<String, Map<String, String>> selectClause,
-                           final IRContext irContext, final int limit) {
+                           final IRContext irContext) {
         final Map<String, String> views = new HashMap<>();
 
         // Union of domain restricted queries
@@ -229,8 +213,8 @@ public class AutoScope {
                     if (irContext.getColumn(tableName, fieldName).getType() == FieldType.ARRAY) {
                         queries.add(String.format("(SELECT DISTINCT name,resource,capacity FROM" +
                                         " %s JOIN %s ON ARRAY_CONTAINS(%s.%s, %s.%s))",
-                                    BASE_TABLE, tableName.toLowerCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT),
-                                    fieldName.toLowerCase(Locale.ROOT), BASE_TABLE, BASE_COL));
+                                    BASE_TABLE, tableName.toLowerCase(), tableName.toLowerCase(),
+                                    fieldName.toLowerCase(), BASE_TABLE, BASE_COL));
                     } else {
                         queries.add(String.format(
                                 "(SELECT DISTINCT %s.name as name, %s.resource as resource ,%s.capacity as capacity " +

@@ -95,7 +95,7 @@ public final class Scheduler {
     public static class Builder {
         private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
         private static final long DEFAULT_POD_RETRY_INTERVAL_MS = 1000;
-        private static final int DEFAULT_NODE_LIMIT = 20;
+        private static final int DEFAULT_NODE_LIMIT = 100;
         @VisibleForTesting final IConnectionPool connection;
         private List<String> initialPlacementPolicies = Policies.getInitialPlacementPolicies();
         private List<String> preemptionPolicies = Policies.getPreemptionPlacementPolicies();
@@ -202,6 +202,10 @@ public final class Scheduler {
         public Builder setLimit(final int limit) {
             this.limit = limit;
             return this;
+        }
+
+        public AutoScope getScope() {
+            return autoScopeViews.scope();
         }
 
         public Scheduler build() {
