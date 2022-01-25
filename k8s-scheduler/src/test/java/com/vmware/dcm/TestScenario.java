@@ -129,6 +129,16 @@ class TestScenario {
         return scenario;
     }
 
+    static TestScenario withPolicies(final List<String> initialPlacement, final int limit,
+                                     final IConnectionPool dbConnectionPool) {
+        final var scenario = new TestScenario(dbConnectionPool);
+        scenario.schedulerBuilder.setInitialPlacementPolicies(initialPlacement);
+        scenario.schedulerBuilder.setLimit(limit);
+        scenario.schedulerBuilder.setScopedInitialPlacement(true);
+        scenario.scheduler = scenario.schedulerBuilder.build();
+        return scenario;
+    }
+
     static TestScenario withPolicies(final List<String> initialPlacement, final List<String> preemption,
                                      final IConnectionPool pool) {
         final var scenario = new TestScenario(pool);
@@ -204,6 +214,9 @@ class TestScenario {
     Scheduler scheduler() {
         return Objects.requireNonNull(scheduler);
     }
+
+    Scheduler.Builder builder() {
+        return schedulerBuilder; }
 
     /**
      * Returns a scheduler if it has been instantiated
