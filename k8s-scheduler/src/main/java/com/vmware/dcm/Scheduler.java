@@ -14,6 +14,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vmware.dcm.backend.ortools.OrToolsSolver;
 import com.vmware.dcm.compiler.IRContext;
 import com.vmware.dcm.k8s.generated.Tables;
+import com.vmware.ddlog.DDlogJooqProvider;
 import com.vmware.ddlog.util.sql.CalciteSqlStatement;
 import com.vmware.ddlog.util.sql.CalciteToH2Translator;
 import com.vmware.ddlog.util.sql.H2SqlStatement;
@@ -56,8 +57,8 @@ import java.util.function.IntSupplier;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
-import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
 import static com.vmware.dcm.DBViews.SCOPE_VIEW_NAME_SUFFIX;
+import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
 import static org.jooq.impl.DSL.table;
 
 /**
@@ -94,7 +95,7 @@ public final class Scheduler {
     public static class Builder {
         private static final int DEFAULT_SOLVER_MAX_TIME_IN_SECONDS = 1;
         private static final long DEFAULT_POD_RETRY_INTERVAL_MS = 1000;
-        private static final int DEFAULT_NODE_LIMIT = 20;
+        private static final int DEFAULT_NODE_LIMIT = 100;
         @VisibleForTesting final IConnectionPool connection;
         private List<String> initialPlacementPolicies = Policies.getInitialPlacementPolicies();
         private List<String> preemptionPolicies = Policies.getPreemptionPlacementPolicies();
@@ -203,6 +204,10 @@ public final class Scheduler {
             return this;
         }
 
+        public AutoScope getScope() {
+            return autoScopeViews.scope();
+        }
+
         public Scheduler build() {
             if (initialPlacement == null) {
                 setInitialPlacementPolicies(initialPlacementPolicies);
@@ -215,7 +220,7 @@ public final class Scheduler {
         }
     }
 
-    record AutoScopeViews(Map<String, String> augmentedViews, List<String> extraViews) { }
+    record AutoScopeViews(AutoScope scope, Map<String, String> augmentedViews, List<String> extraViews) { }
 
     static AutoScopeViews autoScopeViews(final int limit) {
         // TODO: We create a metadata connection for the base ddlog schema using H2, similar to how
@@ -236,13 +241,12 @@ public final class Scheduler {
                                                    Policies.getInitialPlacementPolicies(), metadataConnection);
         // Automatic scoping
         final IRContext irContext = initialPlacement.getIrContext();
-        final Map<String, String> views = AutoScope.augmentedViews(
-                Policies.getInitialPlacementPolicies(), irContext, limit);
-        // Create custom sort views
-        final List<String> statements = AutoScope.getSuffixViewStatements(views, DBViews.SORT_VIEW_NAME_SUFFIX);
+        final AutoScope scope = new AutoScope(limit);
+        final Map<String, String> views = scope.augmentedViews(
+                Policies.getInitialPlacementPolicies(), irContext);
         // Create filtering views
-        statements.addAll(AutoScope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX));
-        return new AutoScopeViews(views, statements);
+        final List<String> statements = scope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX);
+        return new AutoScopeViews(scope, views, statements);
     }
 
     private Scheduler(final IConnectionPool dbConnectionPool, final Model initialPlacement,
@@ -265,8 +269,13 @@ public final class Scheduler {
         this.podEventsToDatabase = new PodEventsToDatabase(dbConnectionPool);
         this.initialPlacement = initialPlacement;
         if (autoScopeViews != null) {
+            // Register callback
+            if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+                ((DDlogDBConnectionPool) dbConnectionPool).getProvider().registerDeltaCallBack(
+                        autoScopeViews.scope().getCallBack());
+            }
             // New scoping
-            this.initialPlacementFunction = (s) -> scopedFunction(autoScopeViews.augmentedViews().keySet());
+            this.initialPlacementFunction = (s) -> scopedFunction(autoScopeViews);
         } else {
             this.initialPlacementFunction =
                     (s) -> initialPlacement.solve(s,
@@ -458,22 +467,35 @@ public final class Scheduler {
         return podsToAssignUpdated;
     }
 
-    Result<? extends Record> scopedFunction(final Set<String> augViews) {
+    Result<? extends Record> scopedFunction(final AutoScopeViews autoScopeViews) {
         final Timer.Context solveTimer = solveTimes.time();
+        final Set<String> augViews = autoScopeViews.augmentedViews().keySet();
         final Result<? extends Record> podsToAssignUpdated = initialPlacement.solve(
                 "PODS_TO_ASSIGN", (t) -> {
-                    final DSLContext conn = dbConnectionPool.getConnectionToDb();
                     final String augView = (t.getName() + SCOPE_VIEW_NAME_SUFFIX).toUpperCase();
                     final Table<?> toFetch;
                     if (augViews.contains(augView)) {
-                        LOG.info(String.format("Scoping Optimization: Replace %s with %s", t.getName(), augView));
                         toFetch = table(augView);
                     } else {
                         toFetch = t;
                     }
                     if (dbConnectionPool instanceof DDlogDBConnectionPool) {
-                        return ((DDlogDBConnectionPool) dbConnectionPool).getProvider()
-                                .fetchTable(toFetch.getName());
+                        final DDlogJooqProvider provider = ((DDlogDBConnectionPool) dbConnectionPool).getProvider();
+                        final Result<Record> augResult = provider.fetchTable(toFetch.getName());
+                        if (augViews.contains(augView)) {
+                            // Union with top K sort results
+                            final List<Record> records = autoScopeViews.scope().getSortView();
+                            for (final Record r : records) {
+                                if (!augResult.contains(r)) {
+                                    augResult.add(r);
+                                }
+                            }
+                            final Result<Record> origResult = provider.fetchTable(t.getName());
+                            LOG.info(String.format("[Scoping Optimization]: Reducing size from %d to %d",
+                                    origResult.size(), augResult.size()));
+                        }
+                        return augResult;
+
                     } else {
                         return dbConnectionPool.getConnectionToDb().selectFrom(toFetch).fetch();
                     }

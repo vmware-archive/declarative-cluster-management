@@ -1247,6 +1247,87 @@ public class SchedulerTest {
     }
 
     /*
+     * Make sure that autoscope gets topK for each node resource
+     */
+    @CartesianProductTest(name = "{0}")
+    public void testAutoScopeTopK(final TestArguments args) {
+
+        final IConnectionPool dbConnectionPool = setupDDlog();
+
+        final List<Integer> nodeCpuCapacities = (List<Integer>) args.get(1);
+        final List<Integer> nodeMemoryCapacities = (List<Integer>) args.get(2);
+        final List<Integer> nodeStorageCapacities = (List<Integer>) args.get(3);
+        final List<Integer> nodepodsCapacities = (List<Integer>) args.get(4);
+        final Iterator<Integer> cpuCapIt = nodeCpuCapacities.iterator();
+        final Iterator<Integer> memCapIt = nodeMemoryCapacities.iterator();
+        final Iterator<Integer> storageCapIt = nodeStorageCapacities.iterator();
+        final Iterator<Integer> podsCapIt = nodepodsCapacities.iterator();
+        final HashMap<String, List<Integer>> expected = new HashMap<>();
+        expected.put("cpu", (List<Integer>) args.get(5));
+        expected.put("memory", (List<Integer>) args.get(6));
+        expected.put("ephemeral-storage", (List<Integer>) args.get(7));
+        expected.put("pods", (List<Integer>) args.get(8));
+
+        final int limit = 3;
+        final List<String> policies = Policies.getInitialPlacementPolicies();
+
+        final var scenario = TestScenario.withPolicies(policies, limit, dbConnectionPool)
+                .withNodeGroup("n", nodeCpuCapacities.size(), (node) -> {
+                    node.getStatus().getCapacity().put("cpu",
+                            new Quantity(String.valueOf(cpuCapIt.next())));
+                    node.getStatus().getCapacity().put("memory",
+                            new Quantity(String.valueOf(memCapIt.next())));
+                    node.getStatus().getCapacity().put("ephemeral-storage",
+                            new Quantity(String.valueOf(storageCapIt.next())));
+                    node.getStatus().getCapacity().put("pods",
+                            new Quantity(String.valueOf(podsCapIt.next())));
+                })
+                .build();
+        final List<Record> topk = scenario.builder().getScope().getSortView();
+        assertTrue(topk.size() == limit * 4);
+        for (final Record r : topk) {
+            final String resource = r.get("RESOURCE").toString();
+            final Integer id = Integer.parseInt(r.get("NAME").toString().substring(2));
+            assertTrue(expected.get(resource).contains(id));
+        }
+    }
+
+    private static CartesianProductTest.Sets testAutoScopeTopK() {
+        return new CartesianProductTest.Sets()
+                .add(
+                        new TestArguments(Arrays.asList("Top k with ties",
+                                List.of(10, 10, 9, 9, 8, 8, 7, 7, 6, 6),
+                                List.of(10, 10, 10, 10, 6, 5, 4, 3, 2, 1),
+                                List.of(10, 9, 9, 9, 9, 9, 4, 3, 2, 1),
+                                List.of(10, 9, 8, 7, 6, 5, 4, 3, 2, 1),
+                                List.of(0, 1, 2, 3),
+                                List.of(0, 1, 2, 3),
+                                List.of(0, 1, 2, 3, 4, 5),
+                                List.of(0, 1, 2))),
+
+                        new TestArguments(Arrays.asList("All equal",
+                                List.of(10, 10, 10, 10, 10, 10, 10, 10, 10, 10),
+                                List.of(10, 10, 10, 10, 10, 10, 10, 10, 10, 10),
+                                List.of(10, 10, 10, 10, 10, 10, 10, 10, 10, 10),
+                                List.of(10, 10, 10, 10, 10, 10, 10, 10, 10, 10),
+                                List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                                List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                                List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                                List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9))),
+
+                        new TestArguments(Arrays.asList("Random order",
+                                List.of(10, 9, 8, 7, 6, 5, 4, 3, 2, 1),
+                                List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+                                List.of(7, 6, 5, 10, 9, 8, 4, 3, 2, 1),
+                                List.of(1, 10, 3, 4, 8, 6, 7, 5, 9, 2),
+                                List.of(0, 1, 2),
+                                List.of(9, 8, 7),
+                                List.of(3, 4, 5),
+                                List.of(1, 8, 4)))
+                );
+    }
+
+    /*
      * Make sure that the scheduler places all pending pods even though it may attempt to place only a subset
      * of them at a time
      */
