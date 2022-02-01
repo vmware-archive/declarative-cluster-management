@@ -319,7 +319,6 @@ public class SchedulerTest {
             pod.getSpec().getContainers().add(container);
         }
         handler.handle(new PodEvent(PodEvent.Action.ADDED, pod));
-        handler.flushWorkQueue();
 
         final List<String> results = conn.selectFrom(Tables.POD_INFO).fetch(Tables.POD_INFO.QOS_CLASS);
         assertEquals(1, results.size());
