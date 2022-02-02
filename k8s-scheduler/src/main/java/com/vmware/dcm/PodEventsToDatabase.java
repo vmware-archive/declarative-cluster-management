@@ -29,6 +29,7 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
+import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.PublishSubject;
 import org.jooq.DSLContext;
 import org.jooq.Insert;
@@ -80,19 +81,23 @@ class PodEventsToDatabase {
 
     PodEventsToDatabase(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
-        eventStream.buffer(BATCH_INTERVAL_IN_MS, TimeUnit.MILLISECONDS, BATCH_COUNT).subscribe(podEvents -> {
-            if (podEvents.isEmpty()) {
-                return;
-            }
-            final List<Query> queries = new ArrayList<>();
-            for (final BatchedTask task: podEvents) {
-                queries.addAll(task.queries());
-            }
-            LOG.info("Inserting {} queries from a batch of {} events", queries.size(), podEvents.size());
-            dbConnectionPool.getConnectionToDb().batch(queries).execute();
-            for (final BatchedTask task: podEvents) {
-                task.future().set(true);
-            }
+        eventStream.subscribeOn(Schedulers.single())
+                .buffer(BATCH_INTERVAL_IN_MS, TimeUnit.MILLISECONDS, BATCH_COUNT)
+                .subscribe(podEvents -> {
+                    if (podEvents.isEmpty()) {
+                        return;
+                    }
+                    final List<Query> queries = new ArrayList<>();
+                    for (final BatchedTask task: podEvents) {
+                        queries.addAll(task.queries());
+                    }
+                    final long now = System.nanoTime();
+                    dbConnectionPool.getConnectionToDb().batch(queries).execute();
+                    LOG.info("Inserted {} queries from a batch of {} events in time {}", queries.size(), podEvents.size(),
+                            System.nanoTime() - now);
+                    for (final BatchedTask task: podEvents) {
+                        task.future().set(true);
+                    }
         });
     }
 
