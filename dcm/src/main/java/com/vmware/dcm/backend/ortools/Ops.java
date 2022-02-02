@@ -33,12 +33,14 @@ public class Ops {
     private final StringEncoding encoder;
     private final IntVar trueVar;
     private final IntVar falseVar;
+    private final List<IntVar> objectives;
 
     public Ops(final CpModel model, final StringEncoding encoding) {
         this.model = model;
         this.encoder = encoding;
         this.trueVar = model.newConstant(1);
         this.falseVar = model.newConstant(0);
+        this.objectives = new ArrayList<>();
     }
 
     public int countBoolean(final List<Boolean> data) {
@@ -82,6 +84,9 @@ public class Ops {
     }
 
     public IntVar sumIntVar(final List<IntVar> data) {
+        if (data.size() == 1) {
+            return data.get(0);
+        }
         long domainMin = 0;
         long domainMax = 0;
         final IntVar[] arr = new IntVar[data.size()];
@@ -920,19 +925,18 @@ public class Ops {
         for (int i = 0; i < numResources; i++) {
             final IntVar max = model.newIntVar(0, maxCapacities[i], "");
             model.addCumulative(tasksIntervals, updatedDemands[i], max);
-            model.minimize(max);
-
+            objectives.add(mult(max, -1L));
             // Balance out the need to minimize the load with a penalty for not assigning tasks at all
-            model.maximize(mult(penalty, presenceLiterals.size() * maxCapacities[i]));
+            objectives.add(mult(penalty, presenceLiterals.size() * maxCapacities[i]));
         }
     }
 
     public void maximize(final IntVar var) {
-        model.maximize(var);
+        objectives.add(var);
     }
 
     public void maximize(final List<IntVar> list) {
-        list.forEach(model::maximize);
+        objectives.addAll(list);
     }
 
     public IntVar newIntVar(final String name) {
@@ -987,8 +991,7 @@ public class Ops {
         // and there should be only a single search worker.
         // Please see: https://github.com/google/or-tools/issues/2563
         solver.getParameters().setNumSearchWorkers(1);
-        model.getBuilder().getObjective().toBuilder().clear();
-
+        model.getBuilder().clearObjective();
         // Resolve with updated model
         final CpSolverStatus solve = solver.solve(model);
         Preconditions.checkArgument(solve == CpSolverStatus.INFEASIBLE,
@@ -1029,5 +1032,25 @@ public class Ops {
             return Arrays.equals((Object[]) a, (Object[]) b);
         }
         return Objects.equals(a, b);
+    }
+
+    public CpSolver solve() {
+        if (!objectives.isEmpty()) {
+            model.maximize(sumIntVar(objectives));
+        }
+        final CpSolver solver = new CpSolver();
+        solver.getParameters().setLogSearchProgress(true);
+        solver.getParameters().setCpModelProbingLevel(0);
+        solver.getParameters().setNumSearchWorkers(4);
+        solver.getParameters().setMaxTimeInSeconds(1);
+        final CpSolverStatus status = solver.solve(model);
+        if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
+            return solver;
+        } else if (status == CpSolverStatus.INFEASIBLE) {
+            final List<String> failedConstraints = findSufficientAssumptions(solver);
+            throw new SolverException(status.toString(), failedConstraints);
+        } else {
+            throw new SolverException(status.toString());
+        }
     }
 }

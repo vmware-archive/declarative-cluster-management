@@ -15,7 +15,6 @@ import com.google.common.collect.Lists;
 import com.google.ortools.Loader;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
-import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.util.Domain;
 import com.squareup.javapoet.AnnotationSpec;
@@ -26,7 +25,6 @@ import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.WildcardTypeName;
-import com.vmware.dcm.SolverException;
 import com.vmware.dcm.backend.IGeneratedBackend;
 import com.vmware.dcm.backend.ISolverBackend;
 import com.vmware.dcm.backend.RewriteArity;
@@ -979,13 +977,7 @@ public class OrToolsSolver implements ISolverBackend {
         output.addCode("\n")
                .addComment("Start solving")
                .addStatement(printTime("Model creation"))
-               .addStatement("final $1T solver = new $1T()", CpSolver.class)
-               .addStatement("solver.getParameters().setLogSearchProgress($L)", configPrintDiagnostics)
-               .addStatement("solver.getParameters().setCpModelProbingLevel(0)")
-               .addStatement("solver.getParameters().setNumSearchWorkers($L)", configNumThreads)
-               .addStatement("solver.getParameters().setMaxTimeInSeconds($L)", configMaxTimeInSeconds)
-               .addStatement("final $T status = solver.solve(model)", CpSolverStatus.class)
-               .beginControlFlow("if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL)")
+               .addStatement("final $T solver = o.solve()", CpSolver.class)
                .addStatement("final Map<String, Result<? extends Record>> result = new $T<>()", HashMap.class)
                .addCode("final Object[] obj = new Object[1]; // Used to update controllable fields;\n");
 
@@ -1023,15 +1015,6 @@ public class OrToolsSolver implements ISolverBackend {
             }
         }
         output.addStatement("return result");
-        output.endControlFlow();
-
-        output.beginControlFlow("else if (status == CpSolverStatus.INFEASIBLE)");
-        output.addStatement("final List<String> failedConstraints = o.findSufficientAssumptions(solver)");
-        output.addStatement("throw new $T(status.toString(), failedConstraints)", SolverException.class);
-        output.endControlFlow();
-        output.beginControlFlow("else");
-        output.addStatement("throw new $T(status.toString())", SolverException.class);
-        output.endControlFlow();
     }
 
     static String camelCase(final String name) {
