@@ -29,6 +29,7 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
+import io.reactivex.disposables.Disposable;
 import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.PublishSubject;
 import org.jooq.DSLContext;
@@ -72,6 +73,7 @@ class PodEventsToDatabase {
                                                                       .build();
     private final AtomicLong expressionIds = new AtomicLong();
     private final PublishSubject<BatchedTask> eventStream = PublishSubject.create();
+
     private enum Operators {
         In,
         Exists,
@@ -81,27 +83,28 @@ class PodEventsToDatabase {
 
     PodEventsToDatabase(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
-        eventStream.subscribeOn(Schedulers.single())
-                .buffer(BATCH_INTERVAL_IN_MS, TimeUnit.MILLISECONDS, BATCH_COUNT)
-                .subscribe(podEvents -> {
-                    if (podEvents.isEmpty()) {
-                        return;
-                    }
-                    final List<Query> queries = new ArrayList<>();
-                    for (final BatchedTask task: podEvents) {
-                        queries.addAll(task.queries());
-                    }
-                    final long now = System.nanoTime();
-                    dbConnectionPool.getConnectionToDb().batch(queries).execute();
-                    LOG.info("Inserted {} queries from a batch of {} events in time {}", queries.size(), podEvents.size(),
-                            System.nanoTime() - now);
-                    for (final BatchedTask task: podEvents) {
-                        task.future().set(true);
-                    }
-        });
+        final Disposable subscribe = eventStream.subscribeOn(Schedulers.single())
+            .buffer(BATCH_INTERVAL_IN_MS, TimeUnit.MILLISECONDS, BATCH_COUNT)
+            .subscribe(podEvents -> {
+                if (podEvents.isEmpty()) {
+                    return;
+                }
+                final List<Query> queries = new ArrayList<>();
+                for (final BatchedTask task : podEvents) {
+                    queries.addAll(task.queries());
+                }
+                final long now = System.nanoTime();
+                dbConnectionPool.getConnectionToDb().batch(queries).execute();
+                LOG.info("Inserted {} queries from a batch of {} events in time {}", queries.size(), podEvents.size(),
+                        System.nanoTime() - now);
+                for (final BatchedTask task : podEvents) {
+                    task.future().set(true);
+                }
+            });
+        LOG.trace("Subscription: {}", subscribe);
     }
 
-    record BatchedTask (List<Query> queries, SettableFuture<Boolean> future) {}
+    record BatchedTask(List<Query> queries, SettableFuture<Boolean> future) { }
 
     PodEvent handle(final PodEvent event) {
         final List<Query> queries = switch (event.action()) {
@@ -308,8 +311,6 @@ class PodEventsToDatabase {
                 p.HAS_POD_ANTI_AFFINITY_REQUIREMENTS,
                 p.HAS_NODE_PORT_REQUIREMENTS,
                 p.HAS_TOPOLOGY_SPREAD_CONSTRAINTS,
-                p.PRIORITY,
-                p.SCHEDULER_NAME,
                 p.EQUIVALENCE_CLASS,
                 p.QOS_CLASS,
                 p.RESOURCEVERSION,
