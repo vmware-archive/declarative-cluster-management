@@ -24,7 +24,7 @@ class Policies {
         INITIAL_PLACEMENT_POLICIES.add(nodePredicates());
         INITIAL_PLACEMENT_POLICIES.add(nodeSelectorPredicate());
         // Uncomment these when we have added the affinity views back to DDlogDBViews
-        INITIAL_PLACEMENT_POLICIES.add(podAffinityPredicate());
+//        INITIAL_PLACEMENT_POLICIES.add(podAffinityPredicate());
         INITIAL_PLACEMENT_POLICIES.add(podAntiAffinityPredicate());
         INITIAL_PLACEMENT_POLICIES.add(capacityConstraint(true, true));
         INITIAL_PLACEMENT_POLICIES.add(taintsAndTolerations());
@@ -143,7 +143,7 @@ class Policies {
             "          from pods_to_assign as b" +
             "          join inter_pod_anti_affinity_matches_pending" +
             "           on inter_pod_anti_affinity_matches_pending.pod_uid = pods_to_assign.uid" +
-            "           and contains(inter_pod_anti_affinity_matches_pending.pod_matches, b.uid))) " +
+            "           and inter_pod_anti_affinity_matches_pending.pod_matches = b.uid)) " +
 
             // Or infeasible
             "   or controllable__node_name = 'NULL_NODE'";
@@ -152,12 +152,12 @@ class Policies {
                 "create constraint constraint_pod_anti_affinity_scheduled as " +
                 "select * " +
                 "from pods_to_assign " +
-                "join inter_pod_anti_affinity_matches_scheduled on  " +
-                "     pods_to_assign.uid = inter_pod_anti_affinity_matches_scheduled.pod_uid " +
                 "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
-                "      not(contains(inter_pod_anti_affinity_matches_scheduled.node_matches, " +
-                "                   pods_to_assign.controllable__node_name)) " +
-                // Or infeasible
+                "      (pods_to_assign.controllable__node_name not in " +
+                "         (select inter_pod_anti_affinity_matches_scheduled.node_matches" +
+                "          from inter_pod_anti_affinity_matches_scheduled" +
+                "           where inter_pod_anti_affinity_matches_scheduled.pod_uid = pods_to_assign.uid)) " +
+                        // Or infeasible
                 "   or controllable__node_name = 'NULL_NODE'";
         return new Policy("InterPodAntiAffinity", List.of(constraintPending, constraintScheduled));
     }

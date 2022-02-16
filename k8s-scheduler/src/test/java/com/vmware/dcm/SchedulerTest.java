@@ -626,7 +626,6 @@ public class SchedulerTest {
 
         final List<String> policies = Policies.getInitialPlacementPolicies(Policies.nodePredicates(),
                 Policies.disallowNullNodeSoft(),
-                Policies.podAffinityPredicate(),
                 Policies.podAntiAffinityPredicate());
         final var result = TestScenario.withPolicies(policies, scope, dbConnectionPool)
                 .withNodeGroup("nodes", 3)
