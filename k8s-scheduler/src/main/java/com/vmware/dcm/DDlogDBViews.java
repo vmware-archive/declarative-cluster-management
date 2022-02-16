@@ -521,8 +521,8 @@ public class DDlogDBViews {
         final String formatString =
                 "SELECT DISTINCT" +
                 "  pods_to_assign.uid as pod_uid, " +
-                "  ARRAY_AGG(matching_pods.pod_uid) OVER (PARTITION BY pods_to_assign.uid) AS pod_matches, " +
-                "  ARRAY_AGG(other_pods.node_name) OVER (PARTITION BY pods_to_assign.uid) AS node_matches " +
+                "  matching_pods.pod_uid AS pod_matches, " +
+                "  other_pods.node_name AS node_matches " +
                 "FROM " +
                 "  %2$s AS pods_to_assign " +
                 "  JOIN pod_%1$s_match_expressions ON " +
@@ -531,8 +531,8 @@ public class DDlogDBViews {
                 "  JOIN matching_pods " +
                 "     ON array_contains(pod_%1$s_match_expressions.%1$s_match_expressions, matching_pods.expr_id) " +
                 "  JOIN %3$s as other_pods ON " +
-                "           matching_pods.pod_uid = other_pods.uid AND pods_to_assign.uid != other_pods.uid " +
-                "  WHERE pods_to_assign.has_pod_%1$s_requirements = true " +
+                "           matching_pods.pod_uid = other_pods.uid" +
+                "  WHERE pods_to_assign.has_pod_%1$s_requirements = true AND pods_to_assign.uid != other_pods.uid " +
                 "GROUP BY " +
                 "  pods_to_assign.uid, " +
                 "  matching_pods.pod_uid, " +
