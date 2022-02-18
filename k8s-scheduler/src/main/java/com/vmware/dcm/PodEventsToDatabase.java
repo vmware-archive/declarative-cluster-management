@@ -635,8 +635,10 @@ class PodEventsToDatabase {
             final Long[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
                     .map(e -> toMatchExpressionId(conn, e.getKey(), e.getOperator(), e.getValues()))
                     .toList().toArray(new Long[0]);
-            inserts.add(conn.insertInto(table)
-                            .values(pod.getMetadata().getUid(), termNumber, matchExpressions, term.getTopologyKey()));
+            for (final long meId: matchExpressions) {
+                inserts.add(conn.insertInto(table)
+                        .values(pod.getMetadata().getUid(), termNumber, meId, matchExpressions, term.getTopologyKey()));
+            }
             termNumber += 1;
         }
         return inserts;
@@ -687,7 +689,7 @@ class PodEventsToDatabase {
                     newRecord.setLabelValues(valuesArray);
                     newRecord.store();
                 } else {
-                    for (final String labelValue: values){
+                    for (final String labelValue: values) {
                         final MatchExpressionsRecord newRecord = conn.newRecord(me);
                         newRecord.setExprId(value);
                         newRecord.setLabelKey(key);
