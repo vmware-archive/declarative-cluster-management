@@ -533,8 +533,8 @@ public class DDlogDBViews {
                       matching_pods.pod_uid,
                       label_selector,
                       topology_key,
-                      array_length(%1$s_match_expressions)
-                    HAVING array_length(%1$s_match_expressions) = COUNT(DISTINCT matching_pods.expr_id)) pm
+                      matches_required
+                    HAVING matches_required = COUNT(DISTINCT matching_pods.expr_id)) pm
                 JOIN
                     %3$s as other_pods
                          ON pm.pod_matches = other_pods.uid

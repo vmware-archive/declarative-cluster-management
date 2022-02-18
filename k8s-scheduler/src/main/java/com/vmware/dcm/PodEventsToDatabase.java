@@ -637,7 +637,8 @@ class PodEventsToDatabase {
                     .toList().toArray(new Long[0]);
             for (final long meId: matchExpressions) {
                 inserts.add(conn.insertInto(table)
-                        .values(pod.getMetadata().getUid(), termNumber, meId, matchExpressions, term.getTopologyKey()));
+                        .values(pod.getMetadata().getUid(), termNumber, meId, matchExpressions.length,
+                                term.getTopologyKey()));
             }
             termNumber += 1;
         }

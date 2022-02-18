@@ -117,7 +117,7 @@ create table pod_affinity_match_expressions
   pod_uid varchar(36) not null,
   label_selector integer not null,
   affinity_match_expression bigint not null,
-  affinity_match_expressions bigint array not null,
+  matches_required integer not null,
   topology_key varchar(100) not null
   --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
@@ -130,7 +130,7 @@ create table pod_anti_affinity_match_expressions
   pod_uid varchar(36) not null,
   label_selector integer not null,
   anti_affinity_match_expression bigint not null,
-  anti_affinity_match_expressions bigint array not null,
+  matches_required integer not null,
   topology_key varchar(100) not null
   --primary key(pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
