@@ -62,9 +62,11 @@ create table match_expressions
   -- up to 253 for prefix, up to 63 for name and one for /
   label_key varchar(317) not null,
   label_operator varchar(30) not null,
+  label_value varchar(63) null,
   label_values array not null,
   primary key (label_key, label_operator, label_values)
 );
+
 create index match_expressions_idx on match_expressions (label_key, label_operator, label_values);
 
 create table pod_topology_spread_constraints
