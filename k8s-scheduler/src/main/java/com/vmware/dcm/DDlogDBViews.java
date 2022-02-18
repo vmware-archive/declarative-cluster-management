@@ -514,28 +514,32 @@ public class DDlogDBViews {
         // result for <affinity/anti-affinity>
 
         final String formatString =
-                "SELECT DISTINCT" +
-                "  pods_to_assign.uid as pod_uid, " +
-                "  matching_pods.pod_uid AS pod_matches, " +
-                "  other_pods.node_name AS node_matches " +
-                "FROM " +
-                "  %2$s AS pods_to_assign " +
-                "  JOIN pod_%1$s_match_expressions ON " +
-                "        pods_to_assign.uid " +
-                        "= pod_%1$s_match_expressions.pod_uid " +
-                "  JOIN matching_pods " +
-                "     ON pod_%1$s_match_expressions.%1$s_match_expression = matching_pods.expr_id " +
-                "  JOIN %3$s as other_pods ON " +
-                "           matching_pods.pod_uid = other_pods.uid" +
-                "  WHERE pods_to_assign.has_pod_%1$s_requirements = true AND pods_to_assign.uid != other_pods.uid " +
-                "GROUP BY " +
-                "  pods_to_assign.uid, " +
-                "  matching_pods.pod_uid, " +
-                "  label_selector, " +
-                "  topology_key, " +
-                "  %1$s_match_expressions, " +
-                "  other_pods.node_name " +
-                "HAVING array_length(%1$s_match_expressions) = COUNT(DISTINCT matching_pods.expr_id)";
+            """
+                SELECT DISTINCT  pm.pod_uid as pod_uid,
+                                 pm.pod_matches as pod_matches,
+                                 other_pods.node_name as node_matches
+                FROM
+                    (SELECT DISTINCT
+                      pods_to_assign.uid as pod_uid,
+                      matching_pods.pod_uid AS pod_matches
+                    FROM
+                      (SELECT DISTINCT uid FROM %2$s WHERE has_pod_%1$s_requirements = true) AS pods_to_assign
+                      JOIN pod_%1$s_match_expressions
+                         ON pods_to_assign.uid = pod_%1$s_match_expressions.pod_uid
+                      JOIN matching_pods
+                         ON pod_%1$s_match_expressions.%1$s_match_expression = matching_pods.expr_id
+                    GROUP BY
+                      pods_to_assign.uid,
+                      matching_pods.pod_uid,
+                      label_selector,
+                      topology_key,
+                      array_length(%1$s_match_expressions)
+                    HAVING array_length(%1$s_match_expressions) = COUNT(DISTINCT matching_pods.expr_id)) pm
+                JOIN
+                    %3$s as other_pods
+                         ON pm.pod_matches = other_pods.uid
+                    WHERE pm.pod_uid != other_pods.uid
+                """;
         for (final String type: List.of("affinity", "anti_affinity")) {
             final String pendingQuery = String.format(formatString, type, viewStatements.unfixedPods,
                                                                           viewStatements.unfixedPods);
