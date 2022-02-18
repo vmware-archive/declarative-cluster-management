@@ -336,26 +336,23 @@ public class DDlogDBViews {
      */
     private static void matchingNodes(final ViewStatements viewStatements) {
         final String name = "MATCHING_NODES";
-        final String query = "SELECT DISTINCT expr_id, node_name " +
-                             "FROM match_expressions me " +
-                             "JOIN node_labels " +
-                             "     ON (me.label_operator = 'In' " +
-                             "        AND me.label_key = node_labels.label_key " +
-                             "        AND array_contains(me.label_values, node_labels.label_value)) " +
-                             "      OR (me.label_operator = 'Exists' " +
-                             "        AND me.label_key = node_labels.label_key) " +
-                             "      OR (me.label_operator = 'NotIn') " +
-                             "      OR (me.label_operator = 'DoesNotExist') " +
-                             "GROUP BY node_labels.label_key, expr_id, label_operator, node_name, me.label_key," +
-                                    "me.label_values, node_labels.label_value " +
-                             "HAVING (CASE me.label_operator " +
-                             "          WHEN 'NotIn' " +
-                             "              THEN ((me.label_key NOT IN (node_labels.label_key)) " +
-                             "                        AND array_contains(me.label_values, node_labels.label_value)) " +
-                             "          WHEN 'DoesNotExist' " +
-                             "              THEN (me.label_key NOT IN (node_labels.label_key)) " +
-                             "          ELSE 1 = 1 " +
-                             "       END)";
+        final String query = """
+                    (SELECT DISTINCT expr_id, node_name
+                     FROM (SELECT DISTINCT expr_id, label_key, label_value
+                           FROM match_expressions
+                           WHERE match_expressions.label_operator = 'In') me
+                     JOIN node_labels
+                        ON me.label_key = node_labels.label_key
+                           AND me.label_value = node_labels.label_value)
+                    UNION
+                    
+                    (SELECT DISTINCT expr_id, node_name
+                    FROM (SELECT DISTINCT expr_id, label_key
+                           FROM match_expressions
+                           WHERE match_expressions.label_operator = 'Exists') me
+                    JOIN node_labels
+                        ON me.label_key = node_labels.label_key)
+                    """;
         viewStatements.addQuery(name, query);
     }
 
@@ -364,26 +361,23 @@ public class DDlogDBViews {
      */
     private static void matchingPods(final ViewStatements viewStatements) {
         final String name = "MATCHING_PODS";
-        final String query = "SELECT DISTINCT expr_id, label_operator, pod_uid " +
-                            "FROM match_expressions me " +
-                            "JOIN pod_labels " +
-                            "     ON (me.label_operator = 'In' " +
-                            "        AND me.label_key = pod_labels.label_key " +
-                            "        AND array_contains(me.label_values, pod_labels.label_value)) " +
-                            "      OR (me.label_operator = 'Exists' " +
-                            "        AND me.label_key = pod_labels.label_key) " +
-                            "      OR (me.label_operator = 'NotIn') " +
-                            "      OR (me.label_operator = 'DoesNotExist') " +
-                            "GROUP BY expr_id, label_operator, pod_uid, me.label_key, pod_labels.label_key," +
-                                    " me.label_values, pod_labels.label_value " +
-                            "HAVING CASE me.label_operator " +
-                            "          WHEN 'NotIn' " +
-                            "              THEN ((pod_labels.label_key NOT IN (me.label_key)) " +
-                            "                        AND array_contains(me.label_values, pod_labels.label_value)) " +
-                            "          WHEN 'DoesNotExist' " +
-                            "              THEN (pod_labels.label_key NOT IN (me.label_key)) " +
-                            "          ELSE 1 = 1 " +
-                            "       END";
+        final String query = """
+                    (SELECT DISTINCT expr_id, pod_uid
+                     FROM (SELECT DISTINCT expr_id, label_key, label_value
+                           FROM match_expressions
+                           WHERE match_expressions.label_operator = 'In') me
+                     JOIN pod_labels
+                        ON me.label_key = pod_labels.label_key
+                           AND me.label_value = pod_labels.label_value)
+                    UNION
+                    
+                    (SELECT DISTINCT expr_id, pod_uid
+                    FROM (SELECT DISTINCT expr_id, label_key
+                           FROM match_expressions
+                           WHERE match_expressions.label_operator = 'Exists') me
+                    JOIN pod_labels
+                        ON me.label_key = pod_labels.label_key)
+                    """;
         viewStatements.addQuery(name, query);
     }
 

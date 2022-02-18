@@ -36,6 +36,7 @@ import org.jooq.DSLContext;
 import org.jooq.Insert;
 import org.jooq.InsertOnDuplicateStep;
 import org.jooq.Query;
+import org.jooq.Result;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.slf4j.Logger;
@@ -669,23 +670,36 @@ class PodEventsToDatabase {
             // Ideally, we'd use an auto-incrementing field on the expression_id column to handle this
             // in a single insert/returning statement. But we keep the ID incrementing outside the database
             // in anticipation of using ddlog, which does not yet support auto-incrementing IDs.
-            final MatchExpressionsRecord record =
+            final Result<MatchExpressionsRecord> records =
                     conn.selectFrom(me)
                     .where(DSL.field(me.LABEL_KEY.getUnqualifiedName()).eq(key)
                             .and(DSL.field(me.LABEL_OPERATOR.getUnqualifiedName()).eq(operator))
                             .and(DSL.field(me.LABEL_VALUES.getUnqualifiedName()).eq(valuesArray)))
-                    .fetchOne();
-            if (record == null) {
-                final MatchExpressionsRecord newRecord = conn.newRecord(me);
+                    .fetch();
+            if (records.isEmpty()) {
                 final long value = expressionIds.incrementAndGet();
-                newRecord.setExprId(value);
-                newRecord.setLabelKey(key);
-                newRecord.setLabelOperator(operator);
-                newRecord.setLabelValues(valuesArray);
-                newRecord.store();
+                if (valuesArray.length == 0) {
+                    final MatchExpressionsRecord newRecord = conn.newRecord(me);
+                    newRecord.setExprId(value);
+                    newRecord.setLabelKey(key);
+                    newRecord.setLabelOperator(operator);
+                    newRecord.setLabelValue(null);
+                    newRecord.setLabelValues(valuesArray);
+                    newRecord.store();
+                } else {
+                    for (final String labelValue: values){
+                        final MatchExpressionsRecord newRecord = conn.newRecord(me);
+                        newRecord.setExprId(value);
+                        newRecord.setLabelKey(key);
+                        newRecord.setLabelOperator(operator);
+                        newRecord.setLabelValue(labelValue);
+                        newRecord.setLabelValues(valuesArray);
+                        newRecord.store();
+                    }
+                }
                 return value;
             } else {
-                return record.getExprId();
+                return records.get(0).getExprId();
             }
         }
     }
