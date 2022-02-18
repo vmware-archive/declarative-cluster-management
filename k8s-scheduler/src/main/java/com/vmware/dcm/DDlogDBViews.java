@@ -512,6 +512,7 @@ public class DDlogDBViews {
         //
         // The format string parameterizes the <pending/fixed> pods and whether we are producing the
         // result for <affinity/anti-affinity>
+
         final String formatString =
                 "SELECT DISTINCT" +
                 "  pods_to_assign.uid as pod_uid, " +
@@ -523,7 +524,7 @@ public class DDlogDBViews {
                 "        pods_to_assign.uid " +
                         "= pod_%1$s_match_expressions.pod_uid " +
                 "  JOIN matching_pods " +
-                "     ON array_contains(pod_%1$s_match_expressions.%1$s_match_expressions, matching_pods.expr_id) " +
+                "     ON pod_%1$s_match_expressions.%1$s_match_expression = matching_pods.expr_id " +
                 "  JOIN %3$s as other_pods ON " +
                 "           matching_pods.pod_uid = other_pods.uid" +
                 "  WHERE pods_to_assign.has_pod_%1$s_requirements = true AND pods_to_assign.uid != other_pods.uid " +
