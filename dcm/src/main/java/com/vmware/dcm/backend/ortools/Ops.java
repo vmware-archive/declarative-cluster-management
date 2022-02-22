@@ -1002,11 +1002,11 @@ public class Ops {
                  .collect(Collectors.toList());
     }
 
-    public <K, V> Map<K, List<Integer>> toIndex(final List<V> resultSet, final Function<V, K> extractKey) {
-        final Map<K, List<Integer>> index = new HashMap<>();
+    public <K, V> Index<K> toIndex(final List<V> resultSet, final Function<V, K> extractKey) {
+        final Index<K> index = new Index<>();
         for (int i = 0; i < resultSet.size(); i++) {
             final K key = extractKey.apply(resultSet.get(i));
-            index.computeIfAbsent(key, (k) -> new ArrayList<>()).add(i);
+            index.set(key, i);
         }
         return index;
     }
@@ -1051,6 +1051,18 @@ public class Ops {
             throw new SolverException(status.toString(), failedConstraints);
         } else {
             throw new SolverException(status.toString());
+        }
+    }
+
+    public static class Index<K> {
+        final Map<K, List<Integer>> index = new HashMap<>();
+
+        void set(final K key, final int i) {
+            index.computeIfAbsent(key, (k) -> new ArrayList<>()).add(i);
+        }
+
+        public List<Integer> get(final K key) {
+            return index.getOrDefault(key, Collections.emptyList());
         }
     }
 }

@@ -1252,6 +1252,31 @@ public class ModelTest {
         model.solve("HOSTS");
     }
 
+    @Test
+    public void correlatedSubqueryEquiJoin() {
+        final DSLContext conn = setup();
+        conn.execute("CREATE TABLE t1 (controllable__c1 integer, c2 integer)");
+        conn.execute("CREATE TABLE t2 (c1 integer, c2 integer)");
+        final List<String> constraint = List.of(
+                "CREATE CONSTRAINT subq AS SELECT * FROM t1 " +
+                "CHECK t1.controllable__c1 IN (SELECT t2.c1 FROM t2 WHERE t2.c2 = t1.c2)");
+        conn.execute("insert into t1 values (1, 1)");
+        conn.execute("insert into t1 values (1, 2)");
+        conn.execute("insert into t1 values (1, 2)");
+        conn.execute("insert into t1 values (1, 3)");
+        conn.execute("insert into t2 values (1151, 1)");
+        conn.execute("insert into t2 values (138, 2)");
+        conn.execute("insert into t2 values (17, 3)");
+        conn.execute("insert into t2 values (5, 4)");
+        final Model model = Model.build(conn, constraint);
+        final Result<? extends Record> t1 = model.solve("T1");
+        final String matchString =
+                "final List<Integer> t2IterList = t2t2C2Index.get((Integer) t1.get(t1Iter).get(1 /* C2 */));";
+        assertTrue(model.compilationOutput().stream()
+            .map(String::trim)
+            .anyMatch(e ->  e.contains(matchString)));
+        assertEquals(List.of(1151, 138, 138, 17), t1.getValues(0, Integer.class));
+    }
 
     @ParameterizedTest
     @MethodSource("solvers")

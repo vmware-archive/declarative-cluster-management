@@ -87,7 +87,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -270,16 +269,21 @@ public class OrToolsSolver implements ISolverBackend {
 
     private void addIndexes(final DetermineIndexes determineIndexes, final MethodSpec.Builder output) {
         if (configUseIndicesForEqualityBasedJoins) {
+            final Set<String> createdIndices = new HashSet<>();
             determineIndexes.indexes().forEach(
                 id -> {
-                    final IRTable table = id.relation.getTable();
+                    final IRTable table = id.relation;
                     final IRColumn column = id.columnBeingAccessed.getField();
-                    final int fieldIndex = tupleMetadata.getFieldIndexInTable(table.getName(), column.getName());
-                    output.addStatement("final var $1L$2LIndex = " +
-                                        "o.toIndex($1L, (r) -> r.get($3L /* $4L */, $5L.class));",
-                            tableNameStr(table.getName()),
-                            fieldNameStr(table.getName(), column.getName()), fieldIndex, column.getName(),
-                            tupleMetadata.getTypeForField(table, column));
+                    final String indexName = indexName(id);
+                    // Indexed accesses can happen for the same column under different aliases.
+                    // We disambiguate here.
+                    if (!createdIndices.contains(indexName)) {
+                        final int fieldIndex = tupleMetadata.getFieldIndexInTable(table.getName(), column.getName());
+                        output.addStatement("final var $1L = o.toIndex($2L, (r) -> r.get($3L /* $4L */, $5L.class))",
+                                indexName, tableNameStr(table.getName()), fieldIndex, column.getName(),
+                                tupleMetadata.getTypeForField(table, column));
+                        createdIndices.add(indexName);
+                    }
                 }
             );
         }
@@ -434,7 +438,7 @@ public class OrToolsSolver implements ISolverBackend {
         final QualifiersByVarType qualifiersByVarType = extractQualifiersByVarType(comprehension);
 
         // Start control flows to iterate over tables/views
-        final OutputIR.ForBlock iterationBlock = tableIterationBlock(viewName, qualifiersByVarType.nonVar);
+        final OutputIR.ForBlock iterationBlock = tableIterationBlock(viewName, qualifiersByVarType.nonVar, context);
         viewBlock.addBody(iterationBlock);
         context.enterScope(iterationBlock);
 
@@ -558,39 +562,45 @@ public class OrToolsSolver implements ISolverBackend {
      * iteration indices pointing to the relevant lists of tuples. These iteration indices
      * may be obtained via nested for loops or using indexes if available.
      */
-    private OutputIR.ForBlock tableIterationBlock(final String viewName,
-                                               final QualifiersByType nonVarQualifiers) {
-        final List<CodeBlock> loopStatements = forLoopsOrIndicesFromTableRowGenerators(
+    private OutputIR.ForBlock tableIterationBlock(final String viewName, final QualifiersByType nonVarQualifiers,
+                                                  final TranslationContext context) {
+        final List<CodeBlock> loopStatements =
+                context.isSubQueryContext() ? forLoopsOrIndicesFromTableRowGenerators(
                                                         nonVarQualifiers.tableRowGenerators,
-                                                        nonVarQualifiers.joinPredicates);
+                                                        nonVarQualifiers.joinPredicates)
+                                            : subQueryAccess(nonVarQualifiers);
         return outputIR.newForBlock(viewName, loopStatements);
     }
 
+    private List<CodeBlock> subQueryAccess(final QualifiersByType nonVarQualifiers) {
+        // Check if this is a correlated sub-query that can be expressed as an equijoin
+        if (nonVarQualifiers.wherePredicates.size() == 1 && nonVarQualifiers.tableRowGenerators.size() == 1) {
+            final BinaryOperatorPredicate op = nonVarQualifiers.wherePredicates.get(0);
+            final TableRowGenerator tr = nonVarQualifiers.tableRowGenerators.get(0);
+            final Optional<DetermineIndexes.IndexDescription> idx =
+                    DetermineIndexes.maybeIndex(op, tr.getTable());
+            if (idx.isPresent()) {
+                return List.of(indexedAccess(idx.get(), op));
+            }
+        }
+        return forLoopsOrIndicesFromTableRowGenerators(nonVarQualifiers.tableRowGenerators,
+                                                       nonVarQualifiers.joinPredicates);
+    }
 
     private List<CodeBlock> forLoopsOrIndicesFromTableRowGenerators(final List<TableRowGenerator> tableRowGenerators,
                                                                     final List<JoinPredicate> joinPredicates) {
         final TableRowGenerator forLoopTable = tableRowGenerators.get(0);
         final List<CodeBlock> loopStatements = new ArrayList<>();
         loopStatements.add(forLoopFromTableRowGeneratorBlock(forLoopTable));
-        final Function<ColumnIdentifier, TableRowGenerator> trByName =
-                (s) -> tableRowGenerators.stream()
-                        .filter(e -> e.getTable().getAliasedName()
-                                .equalsIgnoreCase(s.getTableName()))
-                        .findAny().orElseThrow();
-
         // XXX: Use the IndexDescription from the DetermineIndexes pass instead
         tableRowGenerators.subList(1, tableRowGenerators.size()).stream()
             .map(tr -> {
                 if (configUseIndicesForEqualityBasedJoins) {
                     for (final BinaryOperatorPredicate binaryOp: joinPredicates) {
-                        if (binaryOp.getOperator().equals(BinaryOperatorPredicate.Operator.EQUAL)) {
-                            final ColumnIdentifier left = (ColumnIdentifier) binaryOp.getLeft();
-                            final ColumnIdentifier right = (ColumnIdentifier) binaryOp.getRight();
-                            if (right.getTableName().equals(tr.getTable().getName())) {
-                                return indexedAccess(tr, right, trByName.apply(left), left);
-                            } else if (left.getTableName().equals(tr.getTable().getName())) {
-                                return indexedAccess(tr, left,  trByName.apply(right), right);
-                            }
+                        final Optional<DetermineIndexes.IndexDescription> idx =
+                                DetermineIndexes.maybeIndex(binaryOp, tr.getTable());
+                        if (idx.isPresent()) {
+                            return indexedAccess(idx.get(), binaryOp);
                         }
                     }
                 }
@@ -601,20 +611,19 @@ public class OrToolsSolver implements ISolverBackend {
         return loopStatements;
     }
 
-    private CodeBlock indexedAccess(final TableRowGenerator indexedTable, final ColumnIdentifier indexedColumn,
-                                    final TableRowGenerator scanTable, final ColumnIdentifier scanColumn) {
-        final String idxIterStr = iterStr(indexedTable.getTable().getAliasedName());
-        final String idxTableNameStr = tableNameStr(indexedTable.getTable().getName());
-        final String fieldAccessFromScan = fieldNameStrWithIter(scanTable.getTable().getName(),
-                                                                scanColumn.getField().getName(),
-                                                                iterStr(scanTable.getTable().getAliasedName()));
-        final String idxFieldName = fieldNameStr(indexedColumn.getTableName(), indexedColumn.getField().getName());
+    private CodeBlock indexedAccess(final DetermineIndexes.IndexDescription idx,
+                                    final BinaryOperatorPredicate op) {
+        final DetermineIndexes.IndexedAccess access = idx.toIndexedAccess(op);
+        final IRTable indexedTable = access.indexedColumn.getField().getIRTable();
+        final IRTable scanTable = access.scanColumn.getField().getIRTable();
+        final String idxIterStr = iterStr(indexedTable.getAliasedName());
+        final String idxName = indexName(idx);
+        final String fieldAccessFromScan = fieldNameStrWithIter(scanTable.getName(),
+                                                                access.scanColumn.getField().getName(),
+                                                                iterStr(scanTable.getAliasedName()));
         return CodeBlock.builder()
-                .addStatement("final List<Integer> $1LList = $2L$3LIndex.get($4L)", idxIterStr, idxTableNameStr,
-                                                                                    idxFieldName, fieldAccessFromScan)
-                .beginControlFlow("if ($LList == null)", idxIterStr)
-                .addStatement("continue")
-                .endControlFlow()
+                .addStatement("final List<Integer> $1LList = $2L.get($3L)", idxIterStr, idxName,
+                                                                            fieldAccessFromScan)
                 .add("for (int $1L : $1LList)", idxIterStr)
                 .build();
     }
@@ -1044,6 +1053,12 @@ public class OrToolsSolver implements ISolverBackend {
                         type.typeString(), tableNameStr(tableName), iterStr, fieldIndex, fieldName);
             }
         }
+    }
+
+    private static String indexName(final DetermineIndexes.IndexDescription index) {
+        final IRTable table = index.relation;
+        final IRColumn column = index.columnBeingAccessed.getField();
+        return tableNameStr(table.getName()) + fieldNameStr(table.getName(), column.getName()) + "Index";
     }
 
     private static String tableNumRowsStr(final String tableName) {
