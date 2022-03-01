@@ -1367,6 +1367,9 @@ public class OrToolsSolver implements ISolverBackend {
                         return context.declare(String.format("o.mult(%s, %s)", left, right), JavaType.IntVar);
                     case DIVIDE:
                         return context.declare(String.format("o.div(%s, %s)", left, right), JavaType.IntVar);
+                    case NOT_IN:
+                        return context.declare(String.format("o.notIn%s(%s, %s)",
+                                rightArg.type().innerType().orElseThrow(), left, right), JavaType.IntVar);
                     case IN:
                         return context.declare(String.format("o.in%s(%s, %s)",
                                 rightArg.type().innerType().orElseThrow(), left, right), JavaType.IntVar);
@@ -1389,6 +1392,8 @@ public class OrToolsSolver implements ISolverBackend {
                         return context.declare(String.format("(%s || %s)", left, right), JavaType.Boolean);
                     case CONTAINS:
                         return context.declare(String.format("o.in(%s, %s)", right, left), JavaType.Boolean);
+                    case NOT_IN:
+                        return context.declare(String.format("!o.in(%s, %s)", left, right), JavaType.Boolean);
                     case IN:
                         return context.declare(String.format("(o.in(%s, %s))", left, right), JavaType.Boolean);
                     case LESS_THAN_OR_EQUAL:

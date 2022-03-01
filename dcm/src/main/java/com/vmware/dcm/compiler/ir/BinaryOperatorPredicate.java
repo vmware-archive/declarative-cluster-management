@@ -54,6 +54,7 @@ public class BinaryOperatorPredicate extends Qualifier {
         GREATER_THAN,
         GREATER_THAN_OR_EQUAL,
         IN,
+        NOT_IN,
         CONTAINS
     }
 }

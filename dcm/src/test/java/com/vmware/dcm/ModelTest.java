@@ -973,6 +973,35 @@ public class ModelTest {
     }
 
     @Test
+    public void testNotIn() {
+        final DSLContext conn = setup();
+
+        conn.execute("CREATE TABLE t1 (" +
+                "controllable__c1 integer NOT NULL " +
+                ")"
+        );
+        conn.execute("CREATE TABLE t2 (" +
+                "c1 integer NOT NULL" +
+                ")"
+        );
+        conn.execute("insert into t1 values (1)");
+        conn.execute("insert into t1 values (1)");
+        conn.execute("insert into t1 values (1)");
+        conn.execute("insert into t2 values (5)");
+        conn.execute("insert into t2 values (8)");
+        conn.execute("insert into t2 values (9)");
+        final String domainConstraint = "CREATE CONSTRAINT domain_constraint AS " +
+                "SELECT * FROM t1 " +
+                "CHECK controllable__c1 IN (select c1 from t2)";
+        final String notIn = "CREATE CONSTRAINT not_in AS " +
+                "SELECT * FROM t1 " +
+                "CHECK controllable__c1 NOT IN (select c1 from t2 where c1 = 5 or c1 = 9)";
+        final Model build = Model.build(conn, List.of(domainConstraint, notIn));
+        final Result<? extends Record> t1 = build.solve("T1");
+        assertEquals(Set.of(8), t1.intoSet(0));
+    }
+
+    @Test
     public void testIntermediateViewWithTypeInference() {
         final DSLContext conn = setup();
 

@@ -521,15 +521,7 @@ public class Ops {
         return false;
     }
 
-    public boolean in(final String left, final List<String> right) {
-        return right.contains(left);
-    }
-
-    public boolean in(final int left, final List<Integer> right) {
-        return right.contains(left);
-    }
-
-    public boolean in(final long left, final List<Long> right) {
+    public <T> boolean in(final T left, final List<T> right) {
         return right.contains(left);
     }
 
@@ -553,6 +545,14 @@ public class Ops {
         return bool;
     }
 
+    private IntVar in(final IntVar left, final long[] right) {
+        final IntVar bool = model.newBoolVar("");
+        final Domain domain = Domain.fromValues(right);
+        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
+        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
+        return bool;
+    }
+
     public IntVar inString(final IntVar left, final List<String> right) {
         if (right.size() == 0) {
             return falseVar;
@@ -560,11 +560,7 @@ public class Ops {
         if (right.size() == 1) {
             return eq(left, right.get(0));
         }
-        final IntVar bool = model.newBoolVar("");
-        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
-        return bool;
+        return in(left, right.stream().mapToLong(encoder::toLong).toArray());
     }
 
     public IntVar inLong(final IntVar left, final List<Long> right) {
@@ -574,11 +570,7 @@ public class Ops {
         if (right.size() == 1) {
             return eq(left, right.get(0));
         }
-        final IntVar bool = model.newBoolVar("");
-        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
-        return bool;
+        return in(left, right.stream().mapToLong(encoder::toLong).toArray());
     }
 
     public IntVar inInteger(final IntVar left, final List<Integer> right) {
@@ -588,11 +580,7 @@ public class Ops {
         if (right.size() == 1) {
             return eq(left, right.get(0));
         }
-        final IntVar bool = model.newBoolVar("");
-        final Domain domain = Domain.fromValues(right.stream().mapToLong(encoder::toLong).toArray());
-        model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
-        model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
-        return bool;
+        return in(left, right.stream().mapToLong(encoder::toLong).toArray());
     }
 
     public IntVar inIntVar(final IntVar left, final List<IntVar> right) {
@@ -635,6 +623,26 @@ public class Ops {
         }
         model.addBoolAnd(literals).onlyEnforceIf(bool.not());
         return bool;
+    }
+
+    public IntVar notInInteger(final IntVar left, final List<Integer> right) {
+        return not(inInteger(left, right));
+    }
+
+    public IntVar notInString(final IntVar left, final List<String> right) {
+        return not(inString(left, right));
+    }
+
+    public IntVar notInLong(final IntVar left, final List<Long> right) {
+        return not(inLong(left, right));
+    }
+
+    public IntVar notInIntVar(final IntVar left, final List<IntVar> right) {
+        return not(inIntVar(left, right));
+    }
+
+    public IntVar notInObjectArray(final IntVar left, final List<Object[]> right) {
+        return not(inObjectArray(left, right));
     }
 
     public IntVar or(final boolean left, final boolean right) {

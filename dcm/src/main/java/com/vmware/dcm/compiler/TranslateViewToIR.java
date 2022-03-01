@@ -65,6 +65,7 @@ public class TranslateViewToIR extends SqlBasicVisitor<Optional<Expr>> {
         OP_TABLE.put(SqlKind.NOT_EQUALS, BinaryOperatorPredicate.Operator.NOT_EQUAL);
 
         OP_TABLE.put(SqlKind.IN, BinaryOperatorPredicate.Operator.IN);
+        OP_TABLE.put(SqlKind.NOT_IN, BinaryOperatorPredicate.Operator.NOT_IN);
 
         OP_TABLE.put(SqlKind.AND, BinaryOperatorPredicate.Operator.AND);
         OP_TABLE.put(SqlKind.OR, BinaryOperatorPredicate.Operator.OR);
@@ -137,14 +138,6 @@ public class TranslateViewToIR extends SqlBasicVisitor<Optional<Expr>> {
         assert node.operandCount() == 2;
         final Expr left = translateExpression(node.operand(0));
         final Expr right = translateExpression(node.operand(1));
-
-        // Translated A NOT IN B to NOT(A IN B)
-        if (node.getOperator().getKind() == SqlKind.NOT_IN) {
-            final BinaryOperatorPredicate.Operator inOperator = operatorTranslator(SqlKind.IN);
-            final BinaryOperatorPredicate inOperation = createOperatorPredicate(inOperator, left, right, isAggregate);
-            final UnaryOperator notInOperation = new UnaryOperator(UnaryOperator.Operator.NOT, inOperation);
-            return Optional.of(notInOperation);
-        }
         final BinaryOperatorPredicate.Operator operator = operatorTranslator(node.getOperator().getKind());
         return Optional.of(createOperatorPredicate(operator, left, right, isAggregate));
     }
