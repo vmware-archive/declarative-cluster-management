@@ -73,6 +73,24 @@ class NodeResourceEventHandler implements ResourceEventHandler<Node> {
         service.execute(() -> onDeleteSync(node, deletedFinalStateUnknown));
     }
 
+    // Used for bulk adds in EmulatedCluster
+    public void onAddSync(final List<Node> nodes) {
+        final long start = System.nanoTime();
+        try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
+            final List<Query> queries = new ArrayList<>();
+            for (final Node node: nodes) {
+                queries.add(updateNodeRecord(node, conn));
+                queries.addAll(addNodeLabels(conn, node));
+                queries.addAll(addNodeTaints(conn, node));
+                queries.addAll(addNodeImages(conn, node));
+                queries.addAll(addNodeCapacities(conn, node));
+            }
+            conn.batch(queries).execute();
+        }
+        final long end = System.nanoTime();
+        LOG.info("Bulk add: {} nodes added in {}ns", nodes.size(), (end - start));
+    }
+
     public void onAddSync(final Node node) {
         final long start = System.nanoTime();
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {

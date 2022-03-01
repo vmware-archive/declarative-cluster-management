@@ -30,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -70,13 +71,15 @@ class EmulatedCluster {
                                                  .setSolverMaxTimeInSeconds(solverMaxTimeInSeconds).build();
         final PodResourceEventHandler handler = new PodResourceEventHandler(scheduler::handlePodEvent, service);
         scheduler.startScheduler(new EmulatedPodToNodeBinder(dbConnectionPool));
+        final List<Node> nodes = new ArrayList<>();
+        final List<Pod> pods = new ArrayList<>();
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, UUID.randomUUID(), Collections.emptyMap(), Collections.emptyList());
             node.getStatus().getCapacity().put("cpu", new Quantity("2"));
             node.getStatus().getCapacity().put("memory", new Quantity("2000"));
             node.getStatus().getCapacity().put("pods", new Quantity("110"));
-            nodeResourceEventHandler.onAddSync(node);
+            nodes.add(node);
 
             // Add one system pod per node
             final String podName = "system-pod-" + nodeName;
@@ -90,8 +93,10 @@ class EmulatedCluster {
             pod.getMetadata().setResourceVersion("1");
             pod.getSpec().getContainers().get(0).getResources().setRequests(resourceRequests);
             pod.getSpec().setNodeName(nodeName);
-            handler.onAddSync(pod);
+            pods.add(pod);
         }
+        nodeResourceEventHandler.onAddSync(nodes);
+        scheduler.addPodBulk(pods);
         final TraceReplayer traceReplayer = new TraceReplayer();
         final IPodDeployer deployer = new EmulatedPodDeployer(handler, "default");
         final DefaultKubernetesClient client = new DefaultKubernetesClient();

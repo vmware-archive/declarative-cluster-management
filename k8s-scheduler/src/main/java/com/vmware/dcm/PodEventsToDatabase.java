@@ -124,7 +124,11 @@ class PodEventsToDatabase {
         return event;
     }
 
-    private List<Query> addPod(final Pod pod) {
+    void bulkInsert(final List<Query> queries) {
+        dbConnectionPool.getConnectionToDb().batch(queries).execute();
+    }
+
+    List<Query> addPod(final Pod pod) {
         LOG.info("Adding pod {} (uid: {}, resourceVersion: {})",
                   pod.getMetadata().getName(), pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
         if (pod.getMetadata().getUid() != null &&

@@ -134,7 +134,8 @@ class Policies {
         final String constraintPending = "create constraint constraint_pod_anti_affinity_pending as " +
             "select * " +
             "from pods_to_assign " +
-            "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
+            "where pods_to_assign.has_pod_anti_affinity_requirements = true " +
+            "check " +
             // Anti-affinity to pending pods: for pods_to_assign.uid, find the pending pods that are
             // anti-affine to it from inter_pod_anti_affinity_matches_pending. We get this latter set of
             // pending pods by joining inter_pod_anti_affinity_matches_pending with pods_to_assign (inner).
@@ -146,7 +147,7 @@ class Policies {
             "           and inter_pod_anti_affinity_matches_pending.pod_matches = b.uid)) " +
 
             // Or infeasible
-            "   or controllable__node_name = 'NULL_NODE'";
+            "";
 
         final String constraintScheduled =
                 "create constraint constraint_pod_anti_affinity_scheduled as " +

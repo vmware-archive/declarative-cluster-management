@@ -18,6 +18,7 @@ import com.vmware.ddlog.DDlogJooqProvider;
 import com.vmware.ddlog.util.sql.CalciteSqlStatement;
 import com.vmware.ddlog.util.sql.CalciteToH2Translator;
 import com.vmware.ddlog.util.sql.H2SqlStatement;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import org.apache.commons.cli.CommandLine;
@@ -26,6 +27,7 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.jooq.DSLContext;
+import org.jooq.Query;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.Table;
@@ -57,8 +59,8 @@ import java.util.function.IntSupplier;
 import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
-import static com.vmware.dcm.DBViews.SCOPE_VIEW_NAME_SUFFIX;
 import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
+import static com.vmware.dcm.DBViews.SCOPE_VIEW_NAME_SUFFIX;
 import static org.jooq.impl.DSL.table;
 
 /**
@@ -296,6 +298,14 @@ public final class Scheduler {
         this.dbConnectionPool.getConnectionToDb()
                 .execute(String.format("insert into timer_t values (1, %s)",
                         System.currentTimeMillis() - 1000));
+    }
+
+    void addPodBulk(final List<Pod> pods) {
+        final List<Query> queries = new ArrayList<>();
+        pods.forEach(
+                p -> queries.addAll(podEventsToDatabase.addPod(p))
+        );
+        podEventsToDatabase.bulkInsert(queries);
     }
 
     void handlePodEvent(final PodEvent podEvent) {
