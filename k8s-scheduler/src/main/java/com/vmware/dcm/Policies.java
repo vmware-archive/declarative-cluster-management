@@ -20,7 +20,7 @@ class Policies {
     private static final List<Policy> PREEMPTION_POLICIES = new ArrayList<>();
 
     static {
-        INITIAL_PLACEMENT_POLICIES.add(disallowNullNodeSoft());
+//        INITIAL_PLACEMENT_POLICIES.add(disallowNullNodeSoft());
         INITIAL_PLACEMENT_POLICIES.add(nodePredicates());
         INITIAL_PLACEMENT_POLICIES.add(nodeSelectorPredicate());
         // Uncomment these when we have added the affinity views back to DDlogDBViews
@@ -57,7 +57,7 @@ class Policies {
     static Policy disallowNullNodeSoft() {
         final String constraint = "create constraint constraint_disallow_null_node as " +
                 "select * from pods_to_assign " +
-                "maximize controllable__node_name != 'NULL_NODE'";
+                "check controllable__node_name != 'NULL_NODE'";
         return new Policy("DisallowNullNode", constraint);
     }
 
@@ -147,14 +147,14 @@ class Policies {
             "           and inter_pod_anti_affinity_matches_pending.pod_matches = b.uid)) " +
 
             // Or infeasible
-            "";
+            " or controllable__node_name = 'NULL_NODE'";
 
         final String constraintScheduled =
                 "create constraint constraint_pod_anti_affinity_scheduled as " +
                 "select * " +
                 "from pods_to_assign " +
-                "check pods_to_assign.has_pod_anti_affinity_requirements = false or " +
-                "      (pods_to_assign.controllable__node_name not in " +
+                "where pods_to_assign.has_pod_anti_affinity_requirements = true " +
+                "check (pods_to_assign.controllable__node_name not in " +
                 "         (select inter_pod_anti_affinity_matches_scheduled.node_matches" +
                 "          from inter_pod_anti_affinity_matches_scheduled" +
                 "           where inter_pod_anti_affinity_matches_scheduled.pod_uid = pods_to_assign.uid)) " +
@@ -211,13 +211,13 @@ class Policies {
                 CREATE CONSTRAINT constraint_pods_slack_per_node AS
                 SELECT *
                 FROM pods_to_assign
-                JOIN pod_resource_demands
-                    ON pod_resource_demands.uid = pods_to_assign.uid
+                JOIN pod_resources_subset
+                    ON pod_resources_subset.uid = pods_to_assign.uid
                 JOIN spare_capacity_per_node
-                     ON pod_resource_demands.resource = spare_capacity_per_node.resource
-                GROUP BY spare_capacity_per_node.resource, pod_resource_demands.resource
+                     ON pod_resources_subset.resource = spare_capacity_per_node.resource
+                GROUP BY spare_capacity_per_node.resource, pod_resources_subset.resource
                 CHECK capacity_constraint(pods_to_assign.controllable__node_name, spare_capacity_per_node.name,
-                                          pod_resource_demands.demand, spare_capacity_per_node.capacity) = true
+                                          pod_resources_subset.demand, spare_capacity_per_node.capacity) = true
                 """;
         views.add(hardConstraint);
         // TODO: Add soft constraint only version as well

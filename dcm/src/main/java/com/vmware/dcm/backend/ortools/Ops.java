@@ -859,6 +859,9 @@ public class Ops {
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final long[] domainArr,
                                    final List<List<Long>> demands, final List<List<Long>> capacities) {
+        System.out.println("VarsToAssign " + varsToAssign);
+        System.out.println("Demands " + demands);
+        System.out.println("Capacities " + capacities);
         Preconditions.checkArgument(demands.size() == capacities.size());
 
         final int numTasks = varsToAssign.size();
@@ -868,16 +871,17 @@ public class Ops {
         final Domain domainT = Domain.fromValues(domainArr);
         final Domain intervalRange = Domain.fromFlatIntervals(new long[] {domainT.min() + 1, domainT.max() + 1});
         final IntVar unitIntervalSize = model.newConstant(1);
-        final List<IntVar> presenceLiterals = new ArrayList<>(numTasks);
+        final List<Literal> presenceLiterals = new ArrayList<>(numTasks);
         for (int i = 0; i < numTasks; i++) {
             final IntVar intervalEnd = model.newIntVarFromDomain(intervalRange, "");
             final IntVar presence = model.newBoolVar("");
             presenceLiterals.add(presence);
-            model.addLinearExpressionInDomain(varsToAssign.get(i), domainT).onlyEnforceIf(presence);
-            model.addLinearExpressionInDomain(varsToAssign.get(i), domainT.complement()).onlyEnforceIf(presence.not());
+//            assume(presence, "task:" + i);
+//            model.addLinearExpressionInDomain(varsToAssign.get(i), domainT).onlyEnforceIf(presence);
+//            model.addLinearExpressionInDomain(varsToAssign.get(i), domainT.complement()).onlyEnforceIf(presence.not());
             // interval with start as taskToNodeAssignment and size of 1
             tasksIntervals[i] = model.newOptionalIntervalVar(varsToAssign.get(i), unitIntervalSize, intervalEnd,
-                                                             presence, "");
+                                                             model.trueLiteral(), "");
         }
 
         // Create dummy intervals
@@ -929,13 +933,15 @@ public class Ops {
         }
 
         // Cumulative score
-        final IntVar penalty = sumIntVar(presenceLiterals);
+//        final LinearExpr penalty = LinearExpr.booleanSum(presenceLiterals.toArray(new Literal[0]));
         for (int i = 0; i < numResources; i++) {
             final IntVar max = model.newIntVar(0, maxCapacities[i], "");
             model.addCumulative(tasksIntervals, updatedDemands[i], max);
             objectives.add(mult(max, -1L));
             // Balance out the need to minimize the load with a penalty for not assigning tasks at all
-            objectives.add(mult(penalty, presenceLiterals.size() * maxCapacities[i]));
+//            final IntVar var = newIntVar("obj");
+//            model.addEquality(var, penalty);
+//            objectives.add(var);
         }
     }
 
@@ -1044,7 +1050,7 @@ public class Ops {
 
     public CpSolver solve() {
         if (!objectives.isEmpty()) {
-            model.maximize(sumIntVar(objectives));
+            model.maximize(LinearExpr.sum(objectives.toArray(new IntVar[0])));
         }
         final CpSolver solver = new CpSolver();
         solver.getParameters().setLogSearchProgress(true);

@@ -51,14 +51,15 @@ public class DDlogDBViews {
         allPendingPods(INITIAL_PLACEMENT);
         initialPlacementInputPods(INITIAL_PLACEMENT);
         initialPlacementFixedPods(INITIAL_PLACEMENT);
-        //helperView(PREEMPTION);
-        //preemptionInputPods(PREEMPTION);
-        //preemptionFixedPods(PREEMPTION);
+        helperView(PREEMPTION);
+        preemptionInputPods(PREEMPTION);
+        preemptionFixedPods(PREEMPTION);
         Stream.of(INITIAL_PLACEMENT).forEach(viewStatements -> {
             matchingNodes(viewStatements);
             matchingPods(viewStatements);
             podsWithPortRequests(viewStatements);
             podNodeSelectorMatches(viewStatements);
+            podResourcesSubset(viewStatements);
             spareCapacityPerNode(viewStatements);
             podsThatTolerateNodeTaints(viewStatements);
             nodesThatHaveTolerations(viewStatements);
@@ -409,6 +410,22 @@ public class DDlogDBViews {
                    "GROUP BY pods_to_assign.uid, pnsl.match_expressions, pnsl.term, matching_nodes.node_name " +
                     "HAVING array_length(pnsl.match_expressions) = COUNT(DISTINCT matching_nodes.expr_id)",
                     viewStatements.unfixedPods);
+        viewStatements.addQuery(name, query);
+    }
+
+    /*
+     * Pod resources but only for pods in pods_to_assign
+     */
+    private static void podResourcesSubset(final ViewStatements viewStatements) {
+        final String name = "POD_RESOURCES_SUBSET";
+        final String query = """
+                    SELECT DISTINCT pod_resource_demands.uid uid,
+                                    pod_resource_demands.resource resource,
+                                    pod_resource_demands.demand demand
+                    FROM pod_resource_demands
+                    JOIN $pendingPods pods_to_assign
+                        ON pod_resource_demands.uid = pods_to_assign.uid
+                """.replace("$pendingPods", viewStatements.unfixedPods);
         viewStatements.addQuery(name, query);
     }
 
