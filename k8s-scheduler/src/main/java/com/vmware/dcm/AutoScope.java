@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 
 class SortHelper {
     private final String tableName;
+    private final String idField;
     private final String groupField;
     private final String sortField;
     private final RecordComparator rComparator = new RecordComparator();
@@ -37,8 +38,9 @@ class SortHelper {
         }
     }
 
-    SortHelper(final String tableName, final String groupField, final String sortField) {
+    SortHelper(final String tableName, final String idField, final String groupField, final String sortField) {
         this.tableName = tableName.toUpperCase();
+        this.idField = idField.toUpperCase();
         this.groupField = groupField.toUpperCase();
         this.sortField = sortField.toUpperCase();
     }
@@ -56,14 +58,22 @@ class SortHelper {
         return r.get(this.groupField).toString();
     }
 
-    public List<Record> getTopk(final Set<Record> records, final int k) {
+    public String getID(final Record r) {
+        return r.get(this.idField).toString();
+    }
+
+    public List<String> getIDs(final List<Record> records) {
+        return records.stream().map(record -> getID(record)).collect(Collectors.toList());
+    }
+
+    public List<String> getTopkID(final Set<Record> records, final int k) {
         final List<Record> sorted = new ArrayList<>(records);
         if (records.size() <= k) {
-            return sorted;
+            return getIDs(sorted);
         }
 
         Collections.sort(sorted, rComparator);
-        return sorted.subList(0, k);
+        return getIDs(sorted.subList(0, k));
     }
 }
 
@@ -74,17 +84,27 @@ class TopkPerGroup implements DeltaCallBack {
     private SortHelper helper;
     private Map<String, Set<Record>> topk;
 
-    public TopkPerGroup(final String tableName, final String groupField, final String sortField, final int limit) {
+    public TopkPerGroup(final String tableName, final String idField, final String groupField,
+                        final String sortField, final int limit) {
         this.limit = limit;
         this.topk = new HashMap<>();
-        this.helper = new SortHelper(tableName, groupField, sortField);
+        this.helper = new SortHelper(tableName, idField, groupField, sortField);
     }
 
     public List<Record> getTopk() {
+        final Set<String> ids = new HashSet<>();
+        for (final Map.Entry<String, Set<Record>> entry: topk.entrySet()) {
+            final Set<Record> records = entry.getValue();
+            ids.addAll(helper.getTopkID(records, limit));
+        }
         final List<Record> results = new ArrayList<>();
         for (final Map.Entry<String, Set<Record>> entry: topk.entrySet()) {
             final Set<Record> records = entry.getValue();
-            results.addAll(helper.getTopk(records, limit));
+            records.forEach(record -> {
+               if (ids.contains(helper.getID(record))) {
+                   results.add(record);
+               }
+            });
         }
         return results;
     }
@@ -121,7 +141,7 @@ public class AutoScope {
 
     public AutoScope(final int limit) {
         this.limit = limit;
-        this.topk = new TopkPerGroup(BASE_TABLE, GROUP_COL, SORT_COL, limit);
+        this.topk = new TopkPerGroup(BASE_TABLE, BASE_COL, GROUP_COL, SORT_COL, limit);
     }
 
     public TopkPerGroup getCallBack() {
