@@ -489,17 +489,22 @@ public final class Scheduler {
                         toFetch = t;
                     }
                     if (dbConnectionPool instanceof DDlogDBConnectionPool) {
+                        final long now = System.nanoTime();
                         final DDlogJooqProvider provider = ((DDlogDBConnectionPool) dbConnectionPool).getProvider();
                         final Result<Record> augResult = provider.fetchTable(toFetch.getName());
                         if (augViews.contains(augView)) {
+                            System.out.println("First fetch: " + (System.nanoTime() - now));
                             // Union with top K sort results
                             final List<Record> records = autoScopeViews.scope().getSortView();
+                            System.out.println("getSortView(): " + (System.nanoTime() - now));
                             for (final Record r : records) {
                                 if (!augResult.contains(r)) {
                                     augResult.add(r);
                                 }
                             }
+                            System.out.println("scan: " + (System.nanoTime() - now));
                             final Result<Record> origResult = provider.fetchTable(t.getName());
+                            System.out.println("second fetch: " + (System.nanoTime() - now));
                             LOG.info(String.format("[Scoping Optimization]: Reducing size from %d to %d",
                                     origResult.size(), augResult.size()));
                         }

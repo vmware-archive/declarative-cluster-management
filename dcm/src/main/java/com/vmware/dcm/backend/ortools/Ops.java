@@ -876,12 +876,11 @@ public class Ops {
             final IntVar intervalEnd = model.newIntVarFromDomain(intervalRange, "");
             final IntVar presence = model.newBoolVar("");
             presenceLiterals.add(presence);
-            assume(presence, "task:" + i); // Force unsat due to top K bug.
             model.addLinearExpressionInDomain(varsToAssign.get(i), domainT).onlyEnforceIf(presence);
             model.addLinearExpressionInDomain(varsToAssign.get(i), domainT.complement()).onlyEnforceIf(presence.not());
             // interval with start as taskToNodeAssignment and size of 1
             tasksIntervals[i] = model.newOptionalIntervalVar(varsToAssign.get(i), unitIntervalSize,
-                                                             intervalEnd, model.trueLiteral(), "");
+                                                             intervalEnd, presence, "");
         }
 
         // Create dummy intervals
