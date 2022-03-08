@@ -497,11 +497,13 @@ public final class Scheduler {
                             // Union with top K sort results
                             final List<Record> records = autoScopeViews.scope().getSortView();
                             System.out.println("getSortView(): " + (System.nanoTime() - now));
+                            final List<Record> toAdd = new ArrayList<>();
                             for (final Record r : records) {
                                 if (!augResult.contains(r)) {
-                                    augResult.add(r);
+                                    toAdd.add(r);
                                 }
                             }
+                            augResult.addAll(toAdd);
                             System.out.println("scan: " + (System.nanoTime() - now));
                             final Result<Record> origResult = provider.fetchTable(t.getName());
                             System.out.println("second fetch: " + (System.nanoTime() - now));
