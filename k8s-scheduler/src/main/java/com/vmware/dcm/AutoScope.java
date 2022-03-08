@@ -18,7 +18,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Set;
 import java.util.HashSet;
-import java.util.Collections;
+import java.util.Iterator;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.stream.Collectors;
@@ -34,7 +35,14 @@ class SortHelper {
     class RecordComparator implements Comparator<Record> {
         @Override
         public int compare(final Record r1, final Record r2) {
-            return Long.compare(getSortVal(r2), getSortVal(r1));
+            final String s1 = r1.toString();
+            final String s2 = r2.toString();
+            final int c = Long.compare(getSortVal(r2), getSortVal(r1));
+            if (c == 0) {
+                return s1.compareTo(s2);
+            } else {
+                return c;
+            }
         }
     }
 
@@ -54,6 +62,10 @@ class SortHelper {
         return r.get(this.sortField, Long.class);
     }
 
+    public RecordComparator getComparator() {
+        return rComparator;
+    }
+
     public String getGroup(final Record r) {
         return r.get(this.groupField).toString();
     }
@@ -66,14 +78,14 @@ class SortHelper {
         return records.stream().map(record -> getID(record)).collect(Collectors.toList());
     }
 
-    public List<String> getTopkID(final Set<Record> records, final int k) {
-        final List<Record> sorted = new ArrayList<>(records);
-        if (records.size() <= k) {
-            return getIDs(sorted);
+    public List<String> getTopkID(final ConcurrentSkipListSet<Record> records, final int k) {
+        final Iterator<Record> iter = records.iterator();
+        final int limit = Math.min(k, records.size());
+        final ArrayList<Record> results = new ArrayList<>(limit);
+        for (int i = 0; i < limit; i++) {
+            results.add(iter.next());
         }
-
-        Collections.sort(sorted, rComparator);
-        return getIDs(sorted.subList(0, k));
+        return getIDs(results);
     }
 }
 
@@ -82,29 +94,27 @@ class TopkPerGroup implements DeltaCallBack {
 
     private final int limit;
     private SortHelper helper;
-    private Map<String, Set<Record>> topk;
+    private Map<String, ConcurrentSkipListSet<Record>> topk;
+    private HashMap<String, Set<Record>> idLookup;
+
 
     public TopkPerGroup(final String tableName, final String idField, final String groupField,
                         final String sortField, final int limit) {
         this.limit = limit;
         this.topk = new HashMap<>();
         this.helper = new SortHelper(tableName, idField, groupField, sortField);
+        this.idLookup = new HashMap<>();
     }
 
     public List<Record> getTopk() {
         final Set<String> ids = new HashSet<>();
-        for (final Map.Entry<String, Set<Record>> entry: topk.entrySet()) {
-            final Set<Record> records = entry.getValue();
+        for (final Map.Entry<String, ConcurrentSkipListSet<Record>> entry: topk.entrySet()) {
+            final ConcurrentSkipListSet<Record> records = entry.getValue();
             ids.addAll(helper.getTopkID(records, limit));
         }
         final List<Record> results = new ArrayList<>();
-        for (final Map.Entry<String, Set<Record>> entry: topk.entrySet()) {
-            final Set<Record> records = entry.getValue();
-            records.forEach(record -> {
-               if (ids.contains(helper.getID(record))) {
-                   results.add(record);
-               }
-            });
+        for (final String id : ids) {
+            results.addAll(idLookup.get(id));
         }
         return results;
     }
@@ -113,12 +123,19 @@ class TopkPerGroup implements DeltaCallBack {
     public void processDelta(final DeltaType type, final Record r) {
         if (helper.isSortTable(r)) {
             final String group = helper.getGroup(r);
+            final String id = helper.getID(r);
             if (type == DeltaCallBack.DeltaType.ADD) {
-                final Set<Record> records = topk.getOrDefault(group, new HashSet<>());
-                records.add(r);
-                topk.put(group, records);
+                final ConcurrentSkipListSet<Record> r1 = topk.getOrDefault(
+                        group, new ConcurrentSkipListSet<>(helper.getComparator()));
+                r1.add(r);
+                topk.put(group, r1);
+
+                final Set<Record> r2 = idLookup.getOrDefault(id, new HashSet<>());
+                r2.add(r);
+                idLookup.put(id, r2);
             } else {
                 topk.get(group).remove(r);
+                idLookup.get(id).remove(r);
             }
         }
     }
