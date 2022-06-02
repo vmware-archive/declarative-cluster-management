@@ -1042,15 +1042,15 @@ public class Ops {
         return Objects.equals(a, b);
     }
 
-    public CpSolver solve() {
+    public CpSolver solve(final int numSearchWorkers, final int maxTimeInSeconds) {
         if (!objectives.isEmpty()) {
             model.maximize(sumIntVar(objectives));
         }
         final CpSolver solver = new CpSolver();
         solver.getParameters().setLogSearchProgress(true);
         solver.getParameters().setCpModelProbingLevel(0);
-        solver.getParameters().setNumSearchWorkers(4);
-        solver.getParameters().setMaxTimeInSeconds(1);
+        solver.getParameters().setNumSearchWorkers(numSearchWorkers);
+        solver.getParameters().setMaxTimeInSeconds(maxTimeInSeconds);
         final CpSolverStatus status = solver.solve(model);
         if (status == CpSolverStatus.FEASIBLE || status == CpSolverStatus.OPTIMAL) {
             return solver;

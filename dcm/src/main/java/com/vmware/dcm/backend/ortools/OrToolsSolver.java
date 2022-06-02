@@ -986,7 +986,8 @@ public class OrToolsSolver implements ISolverBackend {
         output.addCode("\n")
                .addComment("Start solving")
                .addStatement(printTime("Model creation"))
-               .addStatement("final $T solver = o.solve()", CpSolver.class)
+               .addStatement("final $T solver = o.solve($L /* numThreads */, $L /* maxTimeInSeconds*/)",
+                             CpSolver.class, configNumThreads, configMaxTimeInSeconds)
                .addStatement("final Map<String, Result<? extends Record>> result = new $T<>()", HashMap.class)
                .addCode("final Object[] obj = new Object[1]; // Used to update controllable fields;\n");
 
