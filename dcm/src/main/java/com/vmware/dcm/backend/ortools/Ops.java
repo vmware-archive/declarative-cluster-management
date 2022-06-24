@@ -817,7 +817,8 @@ public class Ops {
     }
 
     public IntVar capacityConstraint(final List<IntVar> varsToAssign, final List<?> domain,
-                                   final List<List<Long>> demands, final List<List<Long>> capacities) {
+                                   final List<List<Long>> demands, final List<List<Long>> capacities,
+                                     final boolean usePresenceLiterals) {
         // Create the variables.
         capacities.forEach(
                 vec -> {
@@ -842,13 +843,13 @@ public class Ops {
 
         if (domain.get(0) instanceof String) {
             final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((String) o)).toArray();
-            capacityConstraint(varsToAssign, domainArr, demands, capacities);
+            capacityConstraint(varsToAssign, domainArr, demands, capacities, usePresenceLiterals);
         } else if (domain.get(0) instanceof Integer) {
             final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((int) o)).toArray();
-            capacityConstraint(varsToAssign, domainArr, demands, capacities);
+            capacityConstraint(varsToAssign, domainArr, demands, capacities, usePresenceLiterals);
         } else if (domain.get(0) instanceof Long) {
             final long[] domainArr = domain.stream().mapToLong(o -> encoder.toLong((long) o)).toArray();
-            capacityConstraint(varsToAssign, domainArr, demands, capacities);
+            capacityConstraint(varsToAssign, domainArr, demands, capacities, usePresenceLiterals);
         } else {
             // Keep this a runtime exception because this can only happen if the compiler
             // did not correctly type check
@@ -858,7 +859,8 @@ public class Ops {
     }
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final long[] domainArr,
-                                   final List<List<Long>> demands, final List<List<Long>> capacities) {
+                                   final List<List<Long>> demands, final List<List<Long>> capacities,
+                                   final boolean usePresenceLiterals) {
         Preconditions.checkArgument(demands.size() == capacities.size());
 
         final int numTasks = varsToAssign.size();
@@ -871,13 +873,21 @@ public class Ops {
         final List<IntVar> presenceLiterals = new ArrayList<>(numTasks);
         for (int i = 0; i < numTasks; i++) {
             final IntVar intervalEnd = model.newIntVarFromDomain(intervalRange, "");
-            final IntVar presence = model.newBoolVar("");
-            presenceLiterals.add(presence);
-            model.addLinearExpressionInDomain(varsToAssign.get(i), domainT).onlyEnforceIf(presence);
-            model.addLinearExpressionInDomain(varsToAssign.get(i), domainT.complement()).onlyEnforceIf(presence.not());
-            // interval with start as taskToNodeAssignment and size of 1
-            tasksIntervals[i] = model.newOptionalIntervalVar(varsToAssign.get(i), unitIntervalSize, intervalEnd,
-                                                             presence, "");
+            if (usePresenceLiterals) {
+                final IntVar presence = model.newBoolVar("");
+                presenceLiterals.add(presence);
+                model.addLinearExpressionInDomain(varsToAssign.get(i), domainT).onlyEnforceIf(presence);
+                model.addLinearExpressionInDomain(varsToAssign.get(i), domainT.complement())
+                        .onlyEnforceIf(presence.not());
+                // interval with start as taskToNodeAssignment and size of 1
+                tasksIntervals[i] = model.newOptionalIntervalVar(varsToAssign.get(i), unitIntervalSize, intervalEnd,
+                        presence, "");
+            } else {
+                model.addLinearExpressionInDomain(varsToAssign.get(i), domainT);
+                // interval with start as taskToNodeAssignment and size of 1
+                tasksIntervals[i] = model.newOptionalIntervalVar(varsToAssign.get(i), unitIntervalSize, intervalEnd,
+                        model.newConstant(1), "");
+            }
         }
 
         // Create dummy intervals
@@ -934,8 +944,11 @@ public class Ops {
             final IntVar max = model.newIntVar(0, maxCapacities[i], "");
             model.addCumulative(tasksIntervals, updatedDemands[i], max);
             objectives.add(mult(max, -1L));
-            // Balance out the need to minimize the load with a penalty for not assigning tasks at all
-            objectives.add(mult(penalty, presenceLiterals.size() * maxCapacities[i]));
+
+            if (usePresenceLiterals) {
+                // Balance out the need to minimize the load with a penalty for not assigning tasks at all
+                objectives.add(mult(penalty, presenceLiterals.size() * maxCapacities[i]));
+            }
         }
     }
 
