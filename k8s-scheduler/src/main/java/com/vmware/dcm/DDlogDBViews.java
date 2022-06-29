@@ -104,7 +104,7 @@ public class DDlogDBViews {
             schema.addAll(baseTableList);
             schema.addAll(identityViews);
             schema.addAll(INITIAL_PLACEMENT.getViewStatements());
-            schema.addAll(PREEMPTION.getViewStatements());
+            // schema.addAll(PREEMPTION.getViewStatements());
             return schema;
         } catch (final IOException e) {
             throw new RuntimeException(e);
