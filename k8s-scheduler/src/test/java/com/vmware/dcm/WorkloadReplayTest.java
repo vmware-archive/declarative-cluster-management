@@ -12,7 +12,7 @@ public class WorkloadReplayTest {
     @Test
     public void runTest() throws Exception {
         final String[] args =
-                {"-n", "1", "-f", "v2-cropped.txt", "-c", "100", "-m", "200", "-t", "100", "-s", "4"};
+                {"-n", "50000", "-f", "v2-cropped.txt", "-c", "100", "-m", "200", "-t", "100", "-s", "100"};
         EmulatedCluster.main(args);
     }
 
