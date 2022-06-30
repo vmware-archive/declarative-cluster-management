@@ -51,6 +51,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -74,6 +76,7 @@ class PodEventsToDatabase {
                                                                       .build();
     private final AtomicLong expressionIds = new AtomicLong();
     private final PublishSubject<BatchedTask> eventStream = PublishSubject.create();
+    private final Executor executor = Executors.newFixedThreadPool(10);
 
     private enum Operators {
         In,
@@ -84,8 +87,8 @@ class PodEventsToDatabase {
 
     PodEventsToDatabase(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
-        final Disposable subscribe = eventStream.subscribeOn(Schedulers.single())
-            .buffer(BATCH_INTERVAL_IN_MS, TimeUnit.MILLISECONDS, BATCH_COUNT)
+        final Disposable subscribe = eventStream
+            .buffer(BATCH_INTERVAL_IN_MS, TimeUnit.MILLISECONDS, Schedulers.from(executor), BATCH_COUNT)
             .subscribe(podEvents -> {
                 if (podEvents.isEmpty()) {
                     return;
