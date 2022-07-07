@@ -198,7 +198,9 @@ public class OrToolsSolver implements ISolverBackend {
         }
 
         /**
-         * Configures whether or not to use presence literals in the capacity constraint function
+         * Configures whether or not to use presence literals in the capacity constraint function. If true,
+         * a capacity constraint is allowed to fail (that is, it is possible that some elements cannot be
+         * assigned to their domains in a way that satisfy capacity constraints).
          *
          * @param useCapacityPresenceLiterals use presence literals in build-in capacity constraint function. Defaults
          *                                    to true.
