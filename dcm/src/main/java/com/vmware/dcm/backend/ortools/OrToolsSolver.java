@@ -112,6 +112,7 @@ public class OrToolsSolver implements ISolverBackend {
     private final boolean configTryScalarProductEncoding;
     private final boolean configUseIndicesForEqualityBasedJoins;
     private final boolean configPrintDiagnostics;
+    private final boolean configUseCapacityPresenceLiterals;
 
     static {
         Loader.loadNativeLibraries();
@@ -122,12 +123,14 @@ public class OrToolsSolver implements ISolverBackend {
     private OrToolsSolver(final int configNumThreads, final int configMaxTimeInSeconds,
                           final boolean configTryScalarProductEncoding,
                           final boolean configUseIndicesForEqualityBasedJoins,
-                          final boolean configPrintDiagnostics) {
+                          final boolean configPrintDiagnostics,
+                          final boolean configUseCapacityPresenceLiterals) {
         this.configNumThreads = configNumThreads;
         this.configMaxTimeInSeconds = configMaxTimeInSeconds;
         this.configTryScalarProductEncoding = configTryScalarProductEncoding;
         this.configUseIndicesForEqualityBasedJoins = configUseIndicesForEqualityBasedJoins;
         this.configPrintDiagnostics = configPrintDiagnostics;
+        this.configUseCapacityPresenceLiterals = configUseCapacityPresenceLiterals;
     }
 
     public static class Builder {
@@ -136,6 +139,7 @@ public class OrToolsSolver implements ISolverBackend {
         private boolean tryScalarProductEncoding = true;
         private boolean useIndicesForEqualityBasedJoins = true;
         private boolean printDiagnostics = false;
+        private boolean useCapacityPresenceLiterals = true;
 
         /**
          * Number of solver threads. Corresponds to CP-SAT's setNumSearchWorkers parameter.
@@ -193,9 +197,23 @@ public class OrToolsSolver implements ISolverBackend {
             return this;
         }
 
+        /**
+         * Configures whether or not to use presence literals in the capacity constraint function. If true,
+         * a capacity constraint is allowed to fail (that is, it is possible that some elements cannot be
+         * assigned to their domains in a way that satisfy capacity constraints).
+         *
+         * @param useCapacityPresenceLiterals use presence literals in build-in capacity constraint function. Defaults
+         *                                    to true.
+         * @return the current Builder object with `useCapacityPresenceLiterals` set
+         */
+        public Builder setUseCapacityPresenceLiterals(final boolean useCapacityPresenceLiterals) {
+            this.useCapacityPresenceLiterals = useCapacityPresenceLiterals;
+            return this;
+        }
+
         public OrToolsSolver build() {
             return new OrToolsSolver(numThreads, maxTimeInSeconds, tryScalarProductEncoding,
-                                     useIndicesForEqualityBasedJoins, printDiagnostics);
+                                     useIndicesForEqualityBasedJoins, printDiagnostics, useCapacityPresenceLiterals);
         }
     }
 
@@ -1269,9 +1287,11 @@ public class OrToolsSolver implements ISolverBackend {
                     final String domainParameterStr = domain.iterator().next();
                     final String demandsParameterStr = String.join(", ", demands);
                     final String capacitiesParameterStr = String.join(", ", capacities);
-                    final CodeBlock constraintExpr = CodeBlock.of("o.capacityConstraint($L, $L, $T.of($L), $T.of($L))",
+                    final CodeBlock constraintExpr = CodeBlock.of(
+                            "o.capacityConstraint($L, $L, $T.of($L), $T.of($L), $L)",
                             varsParameterStr, domainParameterStr,
-                            List.class, demandsParameterStr, List.class, capacitiesParameterStr);
+                            List.class, demandsParameterStr, List.class, capacitiesParameterStr,
+                            configUseCapacityPresenceLiterals);
                     return new JavaExpression(constraintExpr.toString(), JavaType.IntVar);
                 default:
                     throw new UnsupportedOperationException("Unsupported aggregate function " + node.getFunction());
