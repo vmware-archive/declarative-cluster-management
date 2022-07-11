@@ -1265,8 +1265,8 @@ public class SchedulerTest {
         expected.put("memory", (List<Integer>) args.get(6));
         expected.put("ephemeral-storage", (List<Integer>) args.get(7));
         expected.put("pods", (List<Integer>) args.get(8));
-        Set<Integer> uniq = new HashSet<>();
-        for (Map.Entry<String, List<Integer>> entry : expected.entrySet()) {
+        final Set<Integer> uniq = new HashSet<>();
+        for (final Map.Entry<String, List<Integer>> entry : expected.entrySet()) {
             uniq.addAll(entry.getValue());
         }
 
