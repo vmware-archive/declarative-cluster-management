@@ -1,7 +1,15 @@
 # Changelog
 
-## Ongoing: Release 0.14.0
+## Ongoing: Release 0.15.0
 
+
+## July 18, 2022: Release 0.14.0
+* Public API changes:
+  * ortools-backend: added `setUseCapacityPresenceLiterals(bool)` to configure whether `capacity_constraint` uses optionals (#161)
+
+* Issues fixed:
+  * ortools-backend: use indexes for correlated subqueries (#154)
+  * k8s-schedulers: several performance and schema changes to prepare for IVM integration
 
 ## October 5, 2021: Release 0.13.0
 
