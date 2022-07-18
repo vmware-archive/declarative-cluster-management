@@ -1,7 +1,11 @@
 # Changelog
 
-## Ongoing: Release 0.15.0
+## Ongoing: release 0.16.0
 
+## July 18, 2022: Release 0.15.0
+
+* Issues fixed:
+  * Bump calcite to version 1.30.0.
 
 ## July 18, 2022: Release 0.14.0
 * Public API changes:
