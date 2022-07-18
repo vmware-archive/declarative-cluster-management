@@ -55,10 +55,10 @@ class FromExtractor extends SqlBasicVisitor<Void> {
                 tables.add(toIrTable(node));
                 break;
             case AS:
-                final SqlNode[] operands = ((SqlBasicCall) node).getOperands();
+                final List<SqlNode> operands = ((SqlBasicCall) node).getOperandList();
                 assert operands != null;
-                final SqlIdentifier relation = (SqlIdentifier) operands[0];
-                final SqlIdentifier alias = (SqlIdentifier) operands[1];
+                final SqlIdentifier relation = (SqlIdentifier) operands.get(0);
+                final SqlIdentifier alias = (SqlIdentifier) operands.get(1);
                 assert relation != null;
                 assert alias != null;
                 final IRTable irTable = toIrTable(relation);

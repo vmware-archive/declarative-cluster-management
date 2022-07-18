@@ -14,6 +14,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.util.SqlBasicVisitor;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -43,9 +44,9 @@ public class ExtractAccessedTables extends SqlBasicVisitor<Void> {
                 tableNames.add(((SqlIdentifier) node).getSimple());
                 break;
             case AS:
-                final SqlNode[] operands = ((SqlBasicCall) node).getOperands();
+                final List<SqlNode> operands = ((SqlBasicCall) node).getOperandList();
                 assert operands != null;
-                final SqlIdentifier relation = (SqlIdentifier) operands[0];
+                final SqlIdentifier relation = (SqlIdentifier) operands.get(0);
                 assert relation != null;
                 tableNames.add(relation.getSimple());
                 break;
