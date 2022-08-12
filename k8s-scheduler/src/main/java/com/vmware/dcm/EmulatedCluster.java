@@ -50,7 +50,8 @@ class EmulatedCluster {
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
                                 final int memScaleDown, final int timeScaleDown, final int startTimeCutOff,
-                                final int affinityRequirementsProportion, final boolean scopeOn, final String ddlogFile)
+                                final int affinityRequirementsProportion, final boolean scopeOn, final String ddlogFile,
+                                final int limit)
             throws Exception {
         final IConnectionPool dbConnectionPool = DDlogDBConnectionPool.create(ddlogFile, true);
         dbPool = dbConnectionPool;
@@ -67,8 +68,10 @@ class EmulatedCluster {
         final Scheduler scheduler = new Scheduler.Builder(dbConnectionPool)
                                                  .setDebugMode(true)
                                                  .setNumThreads(4)
+                                                 .setLimit(limit)
                                                  .setScopedInitialPlacement(scopeOn)
-                                                 .setSolverMaxTimeInSeconds(solverMaxTimeInSeconds).build();
+                                                 .setSolverMaxTimeInSeconds(solverMaxTimeInSeconds)
+                                                 .build();
         final PodResourceEventHandler handler = new PodResourceEventHandler(scheduler::handlePodEvent, service);
         scheduler.startScheduler(new EmulatedPodToNodeBinder(dbConnectionPool));
         final List<Node> nodes = new ArrayList<>();
@@ -186,6 +189,8 @@ class EmulatedCluster {
                 "enable auto-scope in scheduler");
         options.addOption("df", "ddlogFile", true,
                 "specify which ddlog program.dl to use");
+        options.addOption("k", "limit", true,
+                "parameter for setting top k in scope");
         final CommandLineParser parser = new DefaultParser();
         final CommandLine cmd = parser.parse(options, args);
         final int numNodes = Integer.parseInt(cmd.getOptionValue("numNodes"));
@@ -198,6 +203,8 @@ class EmulatedCluster {
                 cmd.getOptionValue("proportion") : "0");
         final boolean scopeOn = cmd.hasOption("scopeOn");
         final String ddlogFile = cmd.getOptionValue("ddlogFile");
+        final int limit = Integer.parseInt(cmd.hasOption("limit") ?
+                cmd.getOptionValue("limit") : "100");
 
         assert affinityRequirementsProportion >= 0 && affinityRequirementsProportion <= 100;
         LOG.info("Running experiment with parameters: numNodes: {}, traceFile: {}, cpuScaleDown: {}, " +
@@ -205,7 +212,7 @@ class EmulatedCluster {
                 numNodes, traceFile, cpuScaleDown, memScaleDown,
                 timeScaleDown, startTimeCutOff, affinityRequirementsProportion, scopeOn);
         emulatedCluster.runTraceLocally(numNodes, traceFile, cpuScaleDown, memScaleDown, timeScaleDown,
-                startTimeCutOff, affinityRequirementsProportion, scopeOn, ddlogFile);
+                startTimeCutOff, affinityRequirementsProportion, scopeOn, ddlogFile, limit);
     }
 
     @SuppressWarnings("all")
