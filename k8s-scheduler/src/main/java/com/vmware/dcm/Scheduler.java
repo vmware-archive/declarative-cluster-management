@@ -422,7 +422,7 @@ public final class Scheduler {
                                   final int batch, final long totalTime) {
         // First, locally update the node_name entries for pods
         try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-            final List<Update<?>> updates = new ArrayList<>();
+            final List<Query> updates = new ArrayList<>();
             assignedPods.forEach(r -> {
                 final String podName = r.get("POD_NAME", String.class);
                 final String podUid = r.get("UID", String.class);
@@ -435,7 +435,7 @@ public final class Scheduler {
                 LOG.info("Scheduling decision for pod {} as part of batch {} made in time: {}",
                         podName, batch, totalTime);
             });
-            conn.batch(updates).execute();
+            enqueue(updates);
         }
         LOG.info("Done with updates");
         // Next, issue bind requests for pod -> node_name
@@ -534,6 +534,10 @@ public final class Scheduler {
                 });
         solveTimer.stop();
         return podsToAssignUpdated;
+    }
+
+    void enqueue(final List<Query> queries) {
+        podEventsToDatabase.enqueue(queries);
     }
 
     void shutdown() throws InterruptedException {

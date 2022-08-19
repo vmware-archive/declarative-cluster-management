@@ -12,6 +12,7 @@ import com.vmware.dcm.k8s.generated.Tables;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import org.jooq.DSLContext;
 import org.jooq.Delete;
+import org.jooq.Query;
 import org.jooq.Record;
 import org.jooq.Update;
 import org.jooq.impl.DSL;
@@ -22,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ForkJoinPool;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
@@ -31,10 +33,18 @@ import java.util.stream.Collectors;
 public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedPodToNodeBinder.class);
     private final IConnectionPool dbConnectionPool;
+
+    private final Consumer<List<Query>> enqueuer;
     private final Map<String, SettableFuture<Boolean>> waitForPodBinding = new HashMap<>();
+
+    EmulatedPodToNodeBinder(final IConnectionPool dbConnectionPool, final Consumer<List<Query>> enqueue) {
+        this.dbConnectionPool = dbConnectionPool;
+        this.enqueuer = enqueue;
+    }
 
     EmulatedPodToNodeBinder(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
+        this.enqueuer = (q) -> dbConnectionPool.getConnectionToDb().batch(q).execute();
     }
 
     public Update<PodInfoRecord> bindOne(final String namespace, final String podName, final String podUid,
@@ -69,7 +79,7 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
     public void bindManyAsnc(final List<? extends Record> records) {
         ForkJoinPool.commonPool().execute(
             () -> {
-                final List<Update<PodInfoRecord>> updates = records.stream().map(record -> {
+                final List<Query> updates = records.stream().map(record -> {
                             final String podUid = record.get("UID", String.class);
                             final String podName = record.get("POD_NAME", String.class);
                             final String namespace = record.get("NAMESPACE", String.class);
@@ -78,9 +88,7 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
                             return bindOne(namespace, podName, podUid, nodeName);
                         }
                 ).collect(Collectors.toList());
-                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                    conn.batch(updates).execute();
-                }
+                enqueuer.accept(updates);
                 records.forEach(record -> {
                     final String podUid = record.get("UID", String.class);
                     if (waitForPodBinding.containsKey(podUid)) {
@@ -95,7 +103,7 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
     public void unbindManyAsnc(final List<? extends Record> records) {
         ForkJoinPool.commonPool().execute(
             () -> {
-                final List<Delete<PodInfoRecord>> updates = records.stream().map(record -> {
+                final List<Query> updates = records.stream().map(record -> {
                             final String podUid = record.get("UID", String.class);
                             final String podName = record.get("POD_NAME", String.class);
                             final String namespace = record.get("NAMESPACE", String.class);
@@ -103,9 +111,7 @@ public class EmulatedPodToNodeBinder implements IPodToNodeBinder {
                             return unbindOne(namespace, podName, podUid);
                         }
                 ).collect(Collectors.toList());
-                try (final DSLContext conn = dbConnectionPool.getConnectionToDb()) {
-                    conn.batch(updates).execute();
-                }
+                enqueuer.accept(updates);
             }
         );
     }

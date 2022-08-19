@@ -116,6 +116,15 @@ class PodEventsToDatabase {
             case UPDATED -> updatePod(event.pod(), Objects.requireNonNull(event.oldPod()));
             case DELETED -> deletePod(event.pod());
         };
+        enqueue(queries);
+        return event;
+    }
+
+    void bulkInsert(final List<Query> queries) {
+        dbConnectionPool.getConnectionToDb().batch(queries).execute();
+    }
+
+    void enqueue(final List<Query> queries) {
         final SettableFuture<Boolean> future = SettableFuture.create();
         eventStream.onNext(new BatchedTask(queries, future));
         try {
@@ -124,11 +133,6 @@ class PodEventsToDatabase {
             LOG.error("future.get() failed with exception: ", e);
             throw new RuntimeException(e);
         }
-        return event;
-    }
-
-    void bulkInsert(final List<Query> queries) {
-        dbConnectionPool.getConnectionToDb().batch(queries).execute();
     }
 
     List<Query> addPod(final Pod pod) {
