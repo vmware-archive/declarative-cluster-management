@@ -64,17 +64,17 @@ create table pod_resource_demands
 );
 create index pod_resource_demands_by_uid on pod_resource_demands (uid);
 
-create table match_expressions
-(
-  expr_id varchar(500) not null,
-  -- up to 253 for prefix, up to 63 for name and one for /
-  label_key varchar(317) not null,
-  label_operator varchar(30) not null,
-  label_value varchar(63) null,
-  label_values varchar(63) array not null
-  --primary key (label_key, label_operator, label_values) presto doesn't like composite keys
-);
-create index match_expressions_idx on match_expressions (label_key, label_operator, label_values);
+--create table match_expressions
+--(
+--  expr_id varchar(500) not null,
+--  -- up to 253 for prefix, up to 63 for name and one for /
+--  label_key varchar(317) not null,
+--  label_operator varchar(30) not null,
+--  label_value varchar(63) null,
+--  label_values varchar(63) array not null
+--  --primary key (label_key, label_operator, label_values) presto doesn't like composite keys
+--);
+--create index match_expressions_idx on match_expressions (label_key, label_operator, label_values);
 --
 --create table pod_topology_spread_constraints
 --(
@@ -106,6 +106,9 @@ create table pod_node_selector_labels
   pod_uid varchar(36) not null,
   term integer not null,
   match_expression varchar(500) not null,
+  label_key varchar(317) not null,
+    label_operator varchar(30) not null,
+    label_value varchar(63) null,
   match_expression_count integer not null
   --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
@@ -118,6 +121,9 @@ create table pod_affinity_match_expressions
   pod_uid varchar(36) not null,
   label_selector integer not null,
   affinity_match_expression varchar(500) not null,
+  label_key varchar(317) not null,
+    label_operator varchar(30) not null,
+    label_value varchar(63) null,
   matches_required integer not null,
   topology_key varchar(100) not null
   --primary key (pod_uid)
@@ -131,6 +137,9 @@ create table pod_anti_affinity_match_expressions
   pod_uid varchar(36) not null,
   label_selector integer not null,
   anti_affinity_match_expression varchar(500) not null,
+  label_key varchar(317) not null,
+    label_operator varchar(30) not null,
+    label_value varchar(63) null,
   matches_required integer not null,
   topology_key varchar(100) not null
   --primary key(pod_uid)

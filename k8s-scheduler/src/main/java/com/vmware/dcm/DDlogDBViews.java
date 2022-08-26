@@ -339,10 +339,31 @@ public class DDlogDBViews {
     private static void matchExpressions(final ViewStatements viewStatements) {
         final String name = "MATCH_EXPRESSIONS";
         final String query = """
-                    (SELECT DISTINCT expr_id, node_name
-                     )
-                    UNION
-                    """;
+                 (SELECT DISTINCT
+                        anti_affinity_match_expression as expr_id,
+                        label_key,
+                        label_operator,
+                        label_value
+                        FROM pod_anti_affinity_match_expressions
+                  )
+                 UNION
+                 (SELECT DISTINCT
+                        affinity_match_expression as expr_id,
+                        label_key,
+                        label_operator,
+                        label_value
+                        FROM pod_affinity_match_expressions
+                  )
+                 UNION
+                 (SELECT DISTINCT
+                        match_expression as expr_id,
+                        label_key,
+                        label_operator,
+                        label_value
+                        FROM pod_node_selector_labels
+                  )
+                 """;
+        viewStatements.addQuery(name, query);
     }
 
     /*

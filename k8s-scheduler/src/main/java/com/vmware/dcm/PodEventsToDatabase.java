@@ -17,7 +17,9 @@ import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerPort;
 import io.fabric8.kubernetes.api.model.LabelSelector;
+import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
 import io.fabric8.kubernetes.api.model.NodeAffinity;
+import io.fabric8.kubernetes.api.model.NodeSelectorRequirement;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodAffinity;
@@ -579,12 +581,15 @@ class PodEventsToDatabase {
                 .ifPresent(selector -> {
                     final AtomicInteger termNumber = new AtomicInteger(0);
                     selector.getNodeSelectorTerms().forEach(term -> {
-                            final String[] exprIds = term.getMatchExpressions().stream()
-                                    .map(expr -> toMatchExpressionId(conn, expr.getKey(), expr.getOperator(),
-                                                                     expr.getValues())).toList().toArray(new String[0]);
-                            for (final String exprId: exprIds) {
-                                inserts.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                        .values(pod.getMetadata().getUid(), termNumber, exprId, exprIds.length));
+                            for (final NodeSelectorRequirement expr: term.getMatchExpressions()) {
+                                final String exprId = toMatchExpressionId(conn, expr.getKey(), expr.getOperator(),
+                                                                          expr.getValues());
+                                for (final String label: expr.getValues()) {
+                                    inserts.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                            .values(pod.getMetadata().getUid(), termNumber,
+                                                    exprId, expr.getKey(), expr.getOperator(),
+                                                    label, term.getMatchExpressions().size()));
+                                }
                             }
                             termNumber.incrementAndGet();
                         }
@@ -644,13 +649,14 @@ class PodEventsToDatabase {
         final List<Query> inserts = new ArrayList<>();
         int termNumber = 0;
         for (final PodAffinityTerm term: terms) {
-            final String[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
-                    .map(e -> toMatchExpressionId(conn, e.getKey(), e.getOperator(), e.getValues()))
-                    .toList().toArray(new String[0]);
-            for (final String meId: matchExpressions) {
-                inserts.add(conn.insertInto(table)
-                        .values(pod.getMetadata().getUid(), termNumber, meId, matchExpressions.length,
-                                term.getTopologyKey()));
+            for (final LabelSelectorRequirement e: term.getLabelSelector().getMatchExpressions()) {
+                final String meId = toMatchExpressionId(conn, e.getKey(), e.getOperator(), e.getValues());
+                for (final String label: e.getValues()) {
+                    inserts.add(conn.insertInto(table)
+                            .values(pod.getMetadata().getUid(), termNumber, meId,
+                                    e.getKey(), e.getOperator(), label,
+                                    term.getLabelSelector().getMatchExpressions().size(), term.getTopologyKey()));
+                }
             }
             termNumber += 1;
         }
