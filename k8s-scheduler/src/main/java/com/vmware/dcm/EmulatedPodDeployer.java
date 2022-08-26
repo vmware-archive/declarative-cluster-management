@@ -7,6 +7,8 @@
 package com.vmware.dcm;
 
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodSpec;
@@ -19,6 +21,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 
 /**
@@ -61,6 +66,7 @@ public class EmulatedPodDeployer implements IPodDeployer {
                     deploymentName, firstPodInDeployment.getSpec().getSchedulerName(),
                     deployment.size(), System.currentTimeMillis());
 
+            final List<ListenableFuture<?>> futures = new ArrayList<>(deployment.size());
             for (final Pod pod: deployment) {
                 pod.getMetadata().setCreationTimestamp("" + System.currentTimeMillis());
                 pod.getMetadata().setNamespace(namespace);
@@ -75,7 +81,14 @@ public class EmulatedPodDeployer implements IPodDeployer {
                 pod.setSpec(spec);
                 pod.setStatus(status);
                 pods.computeIfAbsent(deploymentName, (k) -> new ArrayList<>()).add(pod);
-                resourceEventHandler.onAdd(pod);
+                futures.add(resourceEventHandler.onAddAsync(pod));
+            }
+            try {
+                final List<Object> objects = Futures.successfulAsList(futures).get(30, TimeUnit.SECONDS);
+                assert objects.size() != 0;
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                LOG.error("Could not create deployment: {}", deploymentName, e);
+                throw new RuntimeException(e);
             }
         }
     }
@@ -95,8 +108,16 @@ public class EmulatedPodDeployer implements IPodDeployer {
                     deployment.size(), System.currentTimeMillis());
             final List<Pod> podsList = pods.get(firstPodOfDeployment.getMetadata().getName());
             Preconditions.checkNotNull(podsList);
+            final List<ListenableFuture<?>> futures = new ArrayList<>(deployment.size());
             for (final Pod pod: podsList) {
-                resourceEventHandler.onDeleteSync(pod, false);
+                futures.add(resourceEventHandler.onDeleteAsync(pod, false));
+            }
+            try {
+                final List<Object> objects = Futures.successfulAsList(futures).get(30, TimeUnit.SECONDS);
+                assert objects.size() != 0;
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                LOG.error("Could not delete deployment: {}", firstPodOfDeployment.getMetadata().getName(), e);
+                throw new RuntimeException(e);
             }
         }
     }

@@ -6,6 +6,9 @@
 
 package com.vmware.dcm;
 
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import org.slf4j.Logger;
@@ -40,16 +43,16 @@ record PodEvent(Action action, Pod pod, @Nullable Pod oldPod) {
 class PodResourceEventHandler implements ResourceEventHandler<Pod> {
     private static final Logger LOG = LoggerFactory.getLogger(PodResourceEventHandler.class);
     private final Consumer<PodEvent> podEventNotification;
-    private final ExecutorService service;
+    private final ListeningExecutorService service;
 
     PodResourceEventHandler(final Consumer<PodEvent> podEventNotification) {
         this.podEventNotification = podEventNotification;
-        this.service = Executors.newFixedThreadPool(1);
+        this.service = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(100));
     }
 
     PodResourceEventHandler(final Consumer<PodEvent> podEventNotification, final ExecutorService service) {
         this.podEventNotification = podEventNotification;
-        this.service = service;
+        this.service = MoreExecutors.listeningDecorator(service);
     }
 
     void shutdown() throws InterruptedException {
@@ -77,6 +80,19 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
         LOG.trace("{} (uid: {}) pod deleted ({}) in {}ns!", pod.getMetadata().getName(), pod.getMetadata().getUid(),
                   deletedFinalStateUnknown, (System.nanoTime() - now));
         podEventNotification.accept(new PodEvent(PodEvent.Action.DELETED, pod));
+    }
+
+
+    public ListenableFuture<?> onAddAsync(final Pod pod) {
+        return service.submit(() -> onAddSync(pod));
+    }
+
+    public ListenableFuture<?> onUpdateAsync(final Pod oldPod, final Pod newPod) {
+        return service.submit(() -> onUpdateSync(oldPod, newPod));
+    }
+
+    public ListenableFuture<?> onDeleteAsync(final Pod pod, final boolean deletedFinalStateUnknown) {
+        return service.submit(() -> onDeleteSync(pod, deletedFinalStateUnknown));
     }
 
     @Override

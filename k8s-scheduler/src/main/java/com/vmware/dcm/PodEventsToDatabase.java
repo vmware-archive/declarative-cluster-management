@@ -97,8 +97,8 @@ class PodEventsToDatabase {
                             }
                             final long now = System.nanoTime();
                             dbConnectionPool.getConnectionToDb().batch(queries).execute();
-                            LOG.info("Inserted {} queries from a batch of {} events in time {}", queries.size(), podEvents.size(),
-                                    System.nanoTime() - now);
+                            LOG.info("Inserted {} queries from a batch of {} events in time {}", queries.size(),
+                                    podEvents.size(), System.nanoTime() - now);
                             for (final BatchedTask task : podEvents) {
                                 task.future().set(true);
                             }
@@ -167,7 +167,7 @@ class PodEventsToDatabase {
     }
 
     private List<Query> deletePod(final Pod pod) {
-        LOG.trace("Deleting pod {} (uid: {}, resourceVersion: {})",
+        LOG.info("Deleting pod {} (uid: {}, resourceVersion: {})",
                   pod.getMetadata().getName(), pod.getMetadata().getUid(), pod.getMetadata().getResourceVersion());
         // The assumption here is that all foreign key references to pod_info.pod_name will be deleted using
         // a delete cascade
