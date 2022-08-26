@@ -86,18 +86,21 @@ class PodEventsToDatabase {
                 () -> {
                     while (!Thread.currentThread().isInterrupted()) {
                         try {
+                            final long now = System.nanoTime();
                             final List<BatchedTask> podEvents = new ArrayList<>();
                             final List<Query> queries = new ArrayList<>();
                             final BatchedTask take = taskQueue.take();
+                            final long afterDequeue = System.nanoTime();
                             podEvents.add(take);
                             taskQueue.drainTo(podEvents);
                             for (final BatchedTask task: podEvents) {
                                 queries.addAll(task.queries());
                             }
-                            final long now = System.nanoTime();
                             dbConnectionPool.getConnectionToDb().batch(queries).execute();
-                            LOG.info("Inserted {} queries from a batch of {} events in time {}", queries.size(),
-                                    podEvents.size(), System.nanoTime() - now);
+                            final long done = System.nanoTime();
+                            LOG.info("Inserted {} queries from a batch of {} events in time {} (total) " +
+                                     "{} (after notification)",
+                                    queries.size(), podEvents.size(), done - now, done - afterDequeue);
                             for (final BatchedTask task : podEvents) {
                                 task.future().set(true);
                             }
@@ -113,12 +116,17 @@ class PodEventsToDatabase {
     record BatchedTask(List<Query> queries, SettableFuture<Boolean> future) { }
 
     PodEvent handle(final PodEvent event) {
+        final long start = System.nanoTime();
         final List<Query> queries = switch (event.action()) {
             case ADDED -> addPod(event.pod());
             case UPDATED -> updatePod(event.pod(), Objects.requireNonNull(event.oldPod()));
             case DELETED -> deletePod(event.pod());
         };
+        final long afterQueryCreation = System.nanoTime();
         enqueue(queries);
+        LOG.info("handle for pod {} took {} (Query Creation) {} (enqueue) {} (total)",
+                event.pod().getMetadata().getName(),
+                afterQueryCreation - start, System.nanoTime() - afterQueryCreation, System.nanoTime() - start);
         return event;
     }
 

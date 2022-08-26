@@ -58,7 +58,7 @@ class EmulatedCluster {
                                              // new DBConnectionPool();
         final ThreadFactory namedThreadFactory =
                 new ThreadFactoryBuilder().setNameFormat("flowable-thread-%d").build();
-        final ExecutorService service = Executors.newFixedThreadPool(10, namedThreadFactory);
+        final ExecutorService service = Executors.newCachedThreadPool(namedThreadFactory);
 
         // Add all nodes
         final NodeResourceEventHandler nodeResourceEventHandler = new NodeResourceEventHandler(dbConnectionPool,

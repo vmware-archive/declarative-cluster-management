@@ -47,7 +47,7 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
 
     PodResourceEventHandler(final Consumer<PodEvent> podEventNotification) {
         this.podEventNotification = podEventNotification;
-        this.service = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(100));
+        this.service = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
     }
 
     PodResourceEventHandler(final Consumer<PodEvent> podEventNotification, final ExecutorService service) {
@@ -61,9 +61,10 @@ class PodResourceEventHandler implements ResourceEventHandler<Pod> {
     }
 
     public void onAddSync(final Pod pod) {
+        final long now = System.nanoTime();
         LOG.trace("{} (uid: {}) pod add received", pod.getMetadata().getName(), pod.getMetadata().getUid());
         podEventNotification.accept(new PodEvent(PodEvent.Action.ADDED, pod)); // might be better to add pods in a batch
-
+        LOG.info("On add sync for pod {} took {}ns", pod.getMetadata().getName(), System.nanoTime() - now);
     }
 
     public void onUpdateSync(final Pod oldPod, final Pod newPod) {
