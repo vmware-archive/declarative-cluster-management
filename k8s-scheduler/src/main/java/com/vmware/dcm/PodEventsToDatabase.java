@@ -10,9 +10,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.util.concurrent.SettableFuture;
 import com.vmware.dcm.k8s.generated.Tables;
-import com.vmware.dcm.k8s.generated.tables.MatchExpressions;
 import com.vmware.dcm.k8s.generated.tables.PodInfo;
-import com.vmware.dcm.k8s.generated.tables.records.MatchExpressionsRecord;
 import com.vmware.dcm.k8s.generated.tables.records.PodInfoRecord;
 import com.vmware.dcm.k8s.generated.tables.records.PodNodeSelectorLabelsRecord;
 import io.fabric8.kubernetes.api.model.Affinity;
@@ -33,7 +31,6 @@ import org.jooq.DSLContext;
 import org.jooq.Insert;
 import org.jooq.InsertOnDuplicateStep;
 import org.jooq.Query;
-import org.jooq.Result;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.slf4j.Logger;
@@ -582,11 +579,13 @@ class PodEventsToDatabase {
                 .ifPresent(selector -> {
                     final AtomicInteger termNumber = new AtomicInteger(0);
                     selector.getNodeSelectorTerms().forEach(term -> {
-                            final Object[] exprIds = term.getMatchExpressions().stream()
+                            final String[] exprIds = term.getMatchExpressions().stream()
                                     .map(expr -> toMatchExpressionId(conn, expr.getKey(), expr.getOperator(),
-                                                                     expr.getValues())).toList().toArray(new Long[0]);
-                            inserts.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
-                                            .values(pod.getMetadata().getUid(), termNumber, exprIds));
+                                                                     expr.getValues())).toList().toArray(new String[0]);
+                            for (final String exprId: exprIds) {
+                                inserts.add(conn.insertInto(Tables.POD_NODE_SELECTOR_LABELS)
+                                        .values(pod.getMetadata().getUid(), termNumber, exprId, exprIds.length));
+                            }
                             termNumber.incrementAndGet();
                         }
                     );
@@ -617,10 +616,9 @@ class PodEventsToDatabase {
         if (nodeSelector != null) {
             // Using a node selector is equivalent to having a single node-selector term and a list of match expressions
             final int term = 0;
-            final Long[] matchExpressions = nodeSelector.entrySet().stream()
+            final String[] matchExpressions = nodeSelector.entrySet().stream()
                     .map(e -> toMatchExpressionId(conn, e.getKey(), Operators.In.toString(),
-                            List.of(e.getValue())))
-                    .collect(Collectors.toList()).toArray(new Long[0]);
+                            List.of(e.getValue()))).toArray(String[]::new);
             if (matchExpressions.length == 0) {
                 return podNodeSelectorLabels;
             }
@@ -630,15 +628,15 @@ class PodEventsToDatabase {
         return podNodeSelectorLabels;
     }
 
-    private Long[] selectorToMatchExpressions(final DSLContext conn, final LabelSelector selector) {
-        final Stream<Long> matchLabels = selector.getMatchLabels() == null ? Stream.empty() :
+    private String[] selectorToMatchExpressions(final DSLContext conn, final LabelSelector selector) {
+        final Stream<String> matchLabels = selector.getMatchLabels() == null ? Stream.empty() :
                 selector.getMatchLabels().entrySet().stream()
                 .map(e -> toMatchExpressionId(conn, e.getKey(), Operators.In.toString(), List.of(e.getValue())));
-        final Stream<Long> matchExpressions = selector.getMatchExpressions() == null ? Stream.empty() :
+        final Stream<String> matchExpressions = selector.getMatchExpressions() == null ? Stream.empty() :
                 selector.getMatchExpressions().stream()
                 .map(expr -> toMatchExpressionId(conn, expr.getKey(), expr.getOperator(),
                         expr.getValues()));
-        return Stream.concat(matchLabels, matchExpressions).toList().toArray(new Long[0]);
+        return Stream.concat(matchLabels, matchExpressions).toList().toArray(new String[0]);
     }
 
     private List<Query> insertPodAffinityTerms(final Table<?> table, final Pod pod,
@@ -646,10 +644,10 @@ class PodEventsToDatabase {
         final List<Query> inserts = new ArrayList<>();
         int termNumber = 0;
         for (final PodAffinityTerm term: terms) {
-            final Long[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
+            final String[] matchExpressions = term.getLabelSelector().getMatchExpressions().stream()
                     .map(e -> toMatchExpressionId(conn, e.getKey(), e.getOperator(), e.getValues()))
-                    .toList().toArray(new Long[0]);
-            for (final long meId: matchExpressions) {
+                    .toList().toArray(new String[0]);
+            for (final String meId: matchExpressions) {
                 inserts.add(conn.insertInto(table)
                         .values(pod.getMetadata().getUid(), termNumber, meId, matchExpressions.length,
                                 term.getTopologyKey()));
@@ -679,46 +677,9 @@ class PodEventsToDatabase {
         return queries;
     }
 
-    private long toMatchExpressionId(final DSLContext conn, final String key, final String operator,
+    private String toMatchExpressionId(final DSLContext conn, final String key, final String operator,
                                      @Nullable final List<String> values) {
-        final MatchExpressions me = Tables.MATCH_EXPRESSIONS;
-        final Object[] valuesArray = values == null ? new Object[0] : values.toArray();
-        synchronized (this) {
-            // Ideally, we'd use an auto-incrementing field on the expression_id column to handle this
-            // in a single insert/returning statement. But we keep the ID incrementing outside the database
-            // in anticipation of using ddlog, which does not yet support auto-incrementing IDs.
-            final Result<MatchExpressionsRecord> records =
-                    conn.selectFrom(me)
-                    .where(DSL.field(me.LABEL_KEY.getUnqualifiedName()).eq(key)
-                            .and(DSL.field(me.LABEL_OPERATOR.getUnqualifiedName()).eq(operator))
-                            .and(DSL.field(me.LABEL_VALUES.getUnqualifiedName()).eq(valuesArray)))
-                    .fetch();
-            if (records.isEmpty()) {
-                final long value = expressionIds.incrementAndGet();
-                if (valuesArray.length == 0) {
-                    final MatchExpressionsRecord newRecord = conn.newRecord(me);
-                    newRecord.setExprId(value);
-                    newRecord.setLabelKey(key);
-                    newRecord.setLabelOperator(operator);
-                    newRecord.setLabelValue(null);
-                    newRecord.setLabelValues(valuesArray);
-                    newRecord.store();
-                } else {
-                    for (final String labelValue: values) {
-                        final MatchExpressionsRecord newRecord = conn.newRecord(me);
-                        newRecord.setExprId(value);
-                        newRecord.setLabelKey(key);
-                        newRecord.setLabelOperator(operator);
-                        newRecord.setLabelValue(labelValue);
-                        newRecord.setLabelValues(valuesArray);
-                        newRecord.store();
-                    }
-                }
-                return value;
-            } else {
-                return records.get(0).getExprId();
-            }
-        }
+        return key + ":" + operator + ":" + values;
     }
 
     private static long equivalenceClassHash(final Pod pod) {

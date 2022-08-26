@@ -58,7 +58,7 @@ create index pod_resource_demands_by_uid on pod_resource_demands(uid);
 
 create table match_expressions
 (
-  expr_id bigint not null,
+  expr_id varchar(500) not null,
   -- up to 253 for prefix, up to 63 for name and one for /
   label_key varchar(317) not null,
   label_operator varchar(30) not null,
@@ -109,7 +109,7 @@ create table pod_affinity_match_expressions
 (
   pod_uid char(36) not null,
   label_selector integer not null,
-  affinity_match_expression bigint not null,
+  affinity_match_expression varchar(500) not null,
   matches_required integer not null,
   topology_key varchar(100) not null,
   primary key(pod_uid, label_selector),
@@ -123,7 +123,7 @@ create table pod_anti_affinity_match_expressions
 (
   pod_uid char(36) not null,
   label_selector integer not null,
-  anti_affinity_match_expression bigint not null,
+  anti_affinity_match_expression varchar(500) not null,
   matches_required integer not null,
   topology_key varchar(100) not null,
   primary key(pod_uid, label_selector),

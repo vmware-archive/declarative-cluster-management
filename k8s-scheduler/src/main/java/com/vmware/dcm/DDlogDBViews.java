@@ -55,6 +55,7 @@ public class DDlogDBViews {
         preemptionInputPods(PREEMPTION);
         preemptionFixedPods(PREEMPTION);
         Stream.of(INITIAL_PLACEMENT).forEach(viewStatements -> {
+            matchExpressions(viewStatements);
             matchingNodes(viewStatements);
             matchingPods(viewStatements);
             podsWithPortRequests(viewStatements);
@@ -333,6 +334,18 @@ public class DDlogDBViews {
     }
 
     /*
+     * Extract all distinct match expressions
+     */
+    private static void matchExpressions(final ViewStatements viewStatements) {
+        final String name = "MATCH_EXPRESSIONS";
+        final String query = """
+                    (SELECT DISTINCT expr_id, node_name
+                     )
+                    UNION
+                    """;
+    }
+
+    /*
      * For each match expression, find the set of nodes that match it
      */
     private static void matchingNodes(final ViewStatements viewStatements) {
@@ -405,10 +418,10 @@ public class DDlogDBViews {
                     "JOIN pod_node_selector_labels pnsl" +
                     "     ON pods_to_assign.uid = pnsl.pod_uid " +
                     "JOIN matching_nodes " +
-                    "     ON array_contains(pnsl.match_expressions, matching_nodes.expr_id) " +
+                    "     ON pnsl.match_expression = matching_nodes.expr_id " +
                     "WHERE pods_to_assign.has_node_selector_labels = true " +
-                   "GROUP BY pods_to_assign.uid, pnsl.match_expressions, pnsl.term, matching_nodes.node_name " +
-                    "HAVING array_length(pnsl.match_expressions) = COUNT(DISTINCT matching_nodes.expr_id)",
+                   "GROUP BY pods_to_assign.uid, pnsl.match_expression_count, pnsl.term, matching_nodes.node_name " +
+                    "HAVING pnsl.match_expression_count = COUNT(DISTINCT matching_nodes.expr_id)",
                     viewStatements.unfixedPods);
         viewStatements.addQuery(name, query);
     }

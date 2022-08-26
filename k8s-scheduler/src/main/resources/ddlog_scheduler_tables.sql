@@ -66,7 +66,7 @@ create index pod_resource_demands_by_uid on pod_resource_demands (uid);
 
 create table match_expressions
 (
-  expr_id bigint not null,
+  expr_id varchar(500) not null,
   -- up to 253 for prefix, up to 63 for name and one for /
   label_key varchar(317) not null,
   label_operator varchar(30) not null,
@@ -75,17 +75,17 @@ create table match_expressions
   --primary key (label_key, label_operator, label_values) presto doesn't like composite keys
 );
 create index match_expressions_idx on match_expressions (label_key, label_operator, label_values);
-
-create table pod_topology_spread_constraints
-(
-  uid varchar(36) not null,
-  max_skew integer not null,
-  when_unsatisfiable varchar(14) not null,
-  topology_key varchar(317) not null,
-  match_expressions bigint array not null
-  --foreign key(uid) references pod_info(uid) on delete cascade
-);
-create index pod_topology_spread_constraints_idx on pod_topology_spread_constraints (uid);
+--
+--create table pod_topology_spread_constraints
+--(
+--  uid varchar(36) not null,
+--  max_skew integer not null,
+--  when_unsatisfiable varchar(14) not null,
+--  topology_key varchar(317) not null,
+--  match_expressions bigint array not null
+--  --foreign key(uid) references pod_info(uid) on delete cascade
+--);
+--create index pod_topology_spread_constraints_idx on pod_topology_spread_constraints (uid);
 
 -- This table tracks the "ContainerPorts" fields of each pod.
 -- It is used to enforce the PodFitsHostPorts constraint.
@@ -105,7 +105,8 @@ create table pod_node_selector_labels
 (
   pod_uid varchar(36) not null,
   term integer not null,
-  match_expressions bigint array not null
+  match_expression varchar(500) not null,
+  match_expression_count integer not null
   --primary key (pod_uid)
   --foreign key(pod_uid) references pod_info(uid) on delete cascade
 );
@@ -116,7 +117,7 @@ create table pod_affinity_match_expressions
 (
   pod_uid varchar(36) not null,
   label_selector integer not null,
-  affinity_match_expression bigint not null,
+  affinity_match_expression varchar(500) not null,
   matches_required integer not null,
   topology_key varchar(100) not null
   --primary key (pod_uid)
@@ -129,7 +130,7 @@ create table pod_anti_affinity_match_expressions
 (
   pod_uid varchar(36) not null,
   label_selector integer not null,
-  anti_affinity_match_expression bigint not null,
+  anti_affinity_match_expression varchar(500) not null,
   matches_required integer not null,
   topology_key varchar(100) not null
   --primary key(pod_uid)

@@ -140,6 +140,7 @@ public class DDlogDBConnectionPool implements IConnectionPool {
                                                   createIndexStatements.stream().map(H2SqlStatement::new))
                                           .collect(Collectors.toList()));
         } catch (final Exception e) {
+            e.printStackTrace();
             throw new RuntimeException("Could not set up DDlog backend: " + e);
         }
     }
