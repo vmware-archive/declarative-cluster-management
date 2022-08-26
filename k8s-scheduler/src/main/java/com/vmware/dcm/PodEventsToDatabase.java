@@ -29,9 +29,6 @@ import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
-import io.reactivex.disposables.Disposable;
-import io.reactivex.schedulers.Schedulers;
-import io.reactivex.subjects.PublishSubject;
 import org.jooq.DSLContext;
 import org.jooq.Insert;
 import org.jooq.InsertOnDuplicateStep;
@@ -51,8 +48,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -66,8 +64,6 @@ import static com.vmware.dcm.Utils.convertUnit;
  * Reflects pod events from the Kubernetes API into the database.
  */
 class PodEventsToDatabase {
-    private static final int BATCH_COUNT = 10;
-    private static final int BATCH_INTERVAL_IN_MS = 100;
     private static final Logger LOG = LoggerFactory.getLogger(PodEventsToDatabase.class);
     private static final long NEVER_REQUEUED = 0;
     private final IConnectionPool dbConnectionPool;
@@ -75,8 +71,8 @@ class PodEventsToDatabase {
                                                                       .expireAfterWrite(5, TimeUnit.MINUTES)
                                                                       .build();
     private final AtomicLong expressionIds = new AtomicLong();
-    private final PublishSubject<BatchedTask> eventStream = PublishSubject.create();
-    private final Executor executor = Executors.newFixedThreadPool(10);
+    private final LinkedBlockingDeque<BatchedTask> taskQueue = new LinkedBlockingDeque<>();
+    private final ExecutorService batchExecutor = Executors.newSingleThreadExecutor();
 
     private enum Operators {
         In,
@@ -87,25 +83,32 @@ class PodEventsToDatabase {
 
     PodEventsToDatabase(final IConnectionPool dbConnectionPool) {
         this.dbConnectionPool = dbConnectionPool;
-        final Disposable subscribe = eventStream
-            .buffer(BATCH_INTERVAL_IN_MS, TimeUnit.MILLISECONDS, Schedulers.from(executor), BATCH_COUNT)
-            .subscribe(podEvents -> {
-                if (podEvents.isEmpty()) {
-                    return;
+        this.batchExecutor.execute(
+                () -> {
+                    while (!Thread.currentThread().isInterrupted()) {
+                        try {
+                            final List<BatchedTask> podEvents = new ArrayList<>();
+                            final List<Query> queries = new ArrayList<>();
+                            final BatchedTask take = taskQueue.take();
+                            podEvents.add(take);
+                            taskQueue.drainTo(podEvents);
+                            for (final BatchedTask task: podEvents) {
+                                queries.addAll(task.queries());
+                            }
+                            final long now = System.nanoTime();
+                            dbConnectionPool.getConnectionToDb().batch(queries).execute();
+                            LOG.info("Inserted {} queries from a batch of {} events in time {}", queries.size(), podEvents.size(),
+                                    System.nanoTime() - now);
+                            for (final BatchedTask task : podEvents) {
+                                task.future().set(true);
+                            }
+                        } catch (final InterruptedException e) {
+                            LOG.info("Thread interrupted");
+                            Thread.currentThread().interrupt();
+                        }
+                    }
                 }
-                final List<Query> queries = new ArrayList<>();
-                for (final BatchedTask task : podEvents) {
-                    queries.addAll(task.queries());
-                }
-                final long now = System.nanoTime();
-                dbConnectionPool.getConnectionToDb().batch(queries).execute();
-                LOG.info("Inserted {} queries from a batch of {} events in time {}", queries.size(), podEvents.size(),
-                        System.nanoTime() - now);
-                for (final BatchedTask task : podEvents) {
-                    task.future().set(true);
-                }
-            });
-        LOG.trace("Subscription: {}", subscribe);
+        );
     }
 
     record BatchedTask(List<Query> queries, SettableFuture<Boolean> future) { }
@@ -126,7 +129,7 @@ class PodEventsToDatabase {
 
     void enqueue(final List<Query> queries) {
         final SettableFuture<Boolean> future = SettableFuture.create();
-        eventStream.onNext(new BatchedTask(queries, future));
+        taskQueue.add(new BatchedTask(queries, future));
         try {
             future.get();
         } catch (final InterruptedException | ExecutionException e) {

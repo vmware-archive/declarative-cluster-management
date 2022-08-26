@@ -859,9 +859,6 @@ public class Ops {
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final long[] domainArr,
                                    final List<List<Long>> demands, final List<List<Long>> capacities) {
-        System.out.println("Domain " + Arrays.toString(domainArr));
-        System.out.println("Demands " + demands);
-        System.out.println("Capacities " + capacities);
         Preconditions.checkArgument(demands.size() == capacities.size());
 
         final int numTasks = varsToAssign.size();
