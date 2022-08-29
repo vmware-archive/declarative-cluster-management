@@ -310,7 +310,9 @@ public final class Scheduler {
 
     void handlePodEvent(final PodEvent podEvent) {
         podEventsToDatabase.handle(podEvent);
+        LOG.info("Adding notification to queue {}", podEvent.pod().getMetadata().getName());
         notificationQueue.add(true);
+        LOG.info("Finished adding notification to queue {}", podEvent.pod().getMetadata().getName());
     }
 
     void handlePodEventNoNotify(final PodEvent podEvent) {

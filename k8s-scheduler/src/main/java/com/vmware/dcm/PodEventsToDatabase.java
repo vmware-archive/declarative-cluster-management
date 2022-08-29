@@ -92,7 +92,7 @@ class PodEventsToDatabase {
                             final BatchedTask take = taskQueue.take();
                             final long afterDequeue = System.nanoTime();
                             podEvents.add(take);
-                            taskQueue.drainTo(podEvents);
+                            taskQueue.drainTo(podEvents, 10);
                             for (final BatchedTask task: podEvents) {
                                 queries.addAll(task.queries());
                             }
