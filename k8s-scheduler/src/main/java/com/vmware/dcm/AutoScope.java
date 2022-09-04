@@ -110,12 +110,16 @@ class TopkPerGroup implements DeltaCallBack {
         final Set<String> ids = new HashSet<>();
         for (final Map.Entry<String, ConcurrentSkipListSet<Record>> entry: topk.entrySet()) {
             final ConcurrentSkipListSet<Record> records = entry.getValue();
+            final List<String> tmp = helper.getTopkID(records, limit);
+            System.out.println(String.format("ID length: %d, limit %d", tmp.size(), limit));
             ids.addAll(helper.getTopkID(records, limit));
         }
+        System.out.println(String.format("ids size: %d", ids.size()));
         final List<Record> results = new ArrayList<>();
         for (final String id : ids) {
             results.addAll(idLookup.get(id));
         }
+        System.out.println(String.format("results size: %d", results.size()));
         return results;
     }
 
@@ -187,13 +191,17 @@ public class AutoScope {
                 }
         ).collect(Collectors.toList());
 
-        final Map<String, Map<String, String>> selectClause = new HashMap<>();
-        final ExtractConstraintInQuery visitor = new ExtractConstraintInQuery(selectClause);
+        final Map<String, Map<String, String>> inClause = new HashMap<>();
+        final Map<String, Map<String, String>> notInClause = new HashMap<>();
+        final Map<String, List<String>> consts = new HashMap<>();
+        final ExtractConstraintInQuery visitor = new ExtractConstraintInQuery(
+                inClause, notInClause, consts);
         for (final SqlCreateConstraint view : constraintViews) {
             visitor.visit(view);
         }
 
-        final Map<String, String> views = domainRestrictingViews(selectClause, irContext);
+        final Map<String, String> views = domainRestrictingViews(
+                    inClause, notInClause, consts, irContext);
         return views;
     }
 
@@ -223,46 +231,59 @@ public class AutoScope {
         return augViews;
     }
 
+    private List<String> genDRQ(final Map<String, String> clause,
+                                final IRContext irContext) {
+        final List<String> queries = new ArrayList<>();
+        for (final Map.Entry<String, String> entry : clause.entrySet()) {
+            final String tableName = entry.getKey();
+            final String fieldName = entry.getValue();
+            // Check if table name is in IRContext
+            if (!irContext.containTable(tableName)) {
+                continue;
+            }
+            if (!tableName.toLowerCase().equals(BASE_TABLE)) {
+                // IN field is an array: flatten array
+                if (irContext.getColumn(tableName, fieldName).getType() == FieldType.ARRAY) {
+                    queries.add(String.format("(SELECT DISTINCT name,resource,capacity FROM" +
+                                    " %s JOIN %s ON ARRAY_CONTAINS(%s.%s, %s.%s))",
+                            BASE_TABLE, tableName  .toLowerCase(), tableName.toLowerCase(),
+                            fieldName.toLowerCase(), BASE_TABLE, BASE_COL));
+                } else {
+                    queries.add(String.format(
+                            "(SELECT DISTINCT %s.name as name, %s.resource as resource ,%s.capacity as capacity " +
+                                    "FROM %s " +
+                                    " JOIN %s ON %s.%s = %s.%s)",
+                            BASE_TABLE, BASE_TABLE, BASE_TABLE,
+                            BASE_TABLE, tableName.toLowerCase(), BASE_TABLE, BASE_COL,
+                            tableName.toLowerCase(), fieldName.toLowerCase()));
+                }
+            }
+        }
+        return queries;
+    }
+
     /**
      * Generate domain restricting views for constraints in the form of [variable IN (SELECT clause)]
-     * @param selectClause key: variable name, value: list of tableNames and fieldNames for filtering
+     * @param inClause key: variable name, value: list of tableNames and fieldNames for filtering
      * @param irContext needed to check type of column (array versus values)
      * @return
      */
-    private Map<String, String> domainRestrictingViews(final Map<String, Map<String, String>> selectClause,
-                           final IRContext irContext) {
+    private Map<String, String> domainRestrictingViews(final Map<String, Map<String, String>> inClause,
+           final Map<String, Map<String, String>> notInClause,
+           final Map<String, List<String>> consts, final IRContext irContext) {
         final Map<String, String> views = new HashMap<>();
 
         // Union of domain restricted queries
-        for (final var e : selectClause.entrySet()) {
-            final String var = e.getKey();
-            final Map<String, String> clause = e.getValue();
-            final List<String> queries = new ArrayList<>();
-            for (final Map.Entry<String, String> entry : clause.entrySet()) {
-                final String tableName = entry.getKey();
-                final String fieldName = entry.getValue();
-                // Check if table name is in IRContext
-                if (!irContext.containTable(tableName)) {
-                    continue;
-                }
-                if (!tableName.toLowerCase().equals(BASE_TABLE)) {
-                    // IN field is an array: flatten array
-                    if (irContext.getColumn(tableName, fieldName).getType() == FieldType.ARRAY) {
-                        queries.add(String.format("(SELECT DISTINCT name,resource,capacity FROM" +
-                                        " %s JOIN %s ON ARRAY_CONTAINS(%s.%s, %s.%s))",
-                                    BASE_TABLE, tableName.toLowerCase(), tableName.toLowerCase(),
-                                    fieldName.toLowerCase(), BASE_TABLE, BASE_COL));
-                    } else {
-                        queries.add(String.format(
-                                "(SELECT DISTINCT %s.name as name, %s.resource as resource ,%s.capacity as capacity " +
-                                        "FROM %s " +
-                                        " JOIN %s ON %s.%s = %s.%s)",
-                                BASE_TABLE, BASE_TABLE, BASE_TABLE,
-                                BASE_TABLE, tableName, BASE_TABLE, BASE_COL, tableName, fieldName));
-                    }
-                }
-            }
-            final String query = String.join(" UNION ", queries);
+        final Set<String> vars = new HashSet<>();
+        vars.addAll(inClause.keySet());
+        vars.addAll(notInClause.keySet());
+        vars.addAll(consts.keySet());
+        for (final String var : vars) {
+            List<String> queries = genDRQ(inClause.get(var), irContext);
+            final String include = String.join(" UNION ", queries);
+            queries = genDRQ(notInClause.get(var), irContext);
+            final String exclude = String.join(" UNION ", queries);
+            final String query = String.format("(%s) EXCEPT (%s)", include, exclude);
             views.put((BASE_TABLE + DBViews.SCOPE_VIEW_NAME_SUFFIX).toUpperCase(), query);
         }
         return views;
