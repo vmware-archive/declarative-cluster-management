@@ -207,7 +207,6 @@ public class AutoScope {
 
     /**
      * Create view statements for views with specified suffix.
-     * Needed since _sort views might need to be created before _augment views.
      */
     public List<String> getSuffixViewStatements(final Map<String, String> views, final String suffix) {
         final List<String> statements = new ArrayList<>();
@@ -283,8 +282,9 @@ public class AutoScope {
             final String include = String.join(" UNION ", queries);
             queries = genDRQ(notInClause.get(var), irContext);
             final String exclude = String.join(" UNION ", queries);
-            final String query = String.format("(%s) EXCEPT (%s)", include, exclude);
-            views.put((BASE_TABLE + DBViews.SCOPE_VIEW_NAME_SUFFIX).toUpperCase(), query);
+            views.put((BASE_TABLE + DBViews.INCLUDE_VIEW_NAME_SUFFIX).toUpperCase(), include);
+            views.put((BASE_TABLE + DBViews.EXCLUDE_VIEW_NAME_SUFFIX).toUpperCase(), exclude);
+
         }
         return views;
     }

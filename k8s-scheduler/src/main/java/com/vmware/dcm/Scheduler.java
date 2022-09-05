@@ -60,7 +60,8 @@ import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
 import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
-import static com.vmware.dcm.DBViews.SCOPE_VIEW_NAME_SUFFIX;
+import static com.vmware.dcm.DBViews.INCLUDE_VIEW_NAME_SUFFIX;
+import static com.vmware.dcm.DBViews.EXCLUDE_VIEW_NAME_SUFFIX;
 import static org.jooq.impl.DSL.table;
 
 /**
@@ -247,7 +248,8 @@ public final class Scheduler {
         final Map<String, String> views = scope.augmentedViews(
                 Policies.getInitialPlacementPolicies(), irContext);
         // Create filtering views
-        final List<String> statements = scope.getSuffixViewStatements(views, SCOPE_VIEW_NAME_SUFFIX);
+        final List<String> statements = scope.getSuffixViewStatements(views, INCLUDE_VIEW_NAME_SUFFIX);
+        statements.addAll(scope.getSuffixViewStatements(views, EXCLUDE_VIEW_NAME_SUFFIX));
         return new AutoScopeViews(scope, views, statements);
     }
 
@@ -483,7 +485,7 @@ public final class Scheduler {
         final Set<String> augViews = autoScopeViews.augmentedViews().keySet();
         final Result<? extends Record> podsToAssignUpdated = initialPlacement.solve(
                 "PODS_TO_ASSIGN", (t) -> {
-                    final String augView = (t.getName() + SCOPE_VIEW_NAME_SUFFIX).toUpperCase();
+                    final String augView = (t.getName() + INCLUDE_VIEW_NAME_SUFFIX).toUpperCase();
                     final Table<?> toFetch;
                     if (augViews.contains(augView)) {
                         toFetch = table(augView);
@@ -495,17 +497,20 @@ public final class Scheduler {
                         final Result<Record> augResult = provider.fetchTable(toFetch.getName());
                         if (augViews.contains(augView)) {
                             // Union with top K sort results
-                            final List<Record> records = autoScopeViews.scope().getSortView();
+                            final List<Record> topk = autoScopeViews.scope().getSortView();
+                            final String excludeView = (t.getName() + EXCLUDE_VIEW_NAME_SUFFIX).toUpperCase();
+                            final Result<Record> delResult = provider.fetchTable(excludeView);
                             final List<Record> toAdd = new ArrayList<>();
-                            for (final Record r : records) {
-                                if (!augResult.contains(r)) {
+                            for (final Record r : topk) {
+                                if (!augResult.contains(r) && !delResult.contains(r)) {
                                     toAdd.add(r);
                                 }
                             }
                             augResult.addAll(toAdd);
-                            // final Result<Record> origResult = provider.fetchTable(t.getName());
-                            // LOG.info(String.format("[Scoping Optimization]: Reducing size from %d to %d",
-                            //        origResult.size(), augResult.size()));
+
+//                            final Result<Record> origResult = provider.fetchTable(t.getName());
+//                            LOG.info(String.format("[Scoping Optimization]: Reducing size from %d to %d",
+//                                    origResult.size(), augResult.size()));
                         }
                         return augResult;
 

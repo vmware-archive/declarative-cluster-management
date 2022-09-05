@@ -1,8 +1,8 @@
 import argparse
 
-scope_args = '"-n %d -f v2-cropped.txt -c 100 -m 200 -t 100 -s 100 -p %d -S"'
-orig_args = '"-n %d -f v2-cropped.txt -c 100 -m 200 -t 100 -s 100 -p %d"'
-template = './gradlew runBenchmark --args=%s | sed $"s,\x1b\\[[0-9;]*[a-zA-Z],,g" &> %s'
+scope_args = '"-n %d -f v2-cropped.txt -c 100 -m 200 -t 10 -s 10000 -p %d -S"'
+orig_args = '"-n %d -f v2-cropped.txt -c 100 -m 200 -t 10 -s 10000 -p %d"'
+template = './gradlew runBenchmark --args=%s | ansi2txt &> %s'
 
 def gen_cmd(root, method, n, p, i):
     outfile = "%s/%s-n%d-p%d-%d.txt" % (root, method, n, p, i)
@@ -16,13 +16,13 @@ def gen_cmd(root, method, n, p, i):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate benchmark bash.')
-    parser.add_argument("-r", "--root", default="traces/")
+    parser.add_argument("-r", "--root", default="/home/ubuntu/traces")
     args = parser.parse_args()
 
     # Generate all run commands 
     root = args.root
     f = open("scope_bench.sh", "w")
-    for method in ["scope"]:
+    for method in ["orig", "scope"]:
         for n in [500, 5000, 50000]:
             for p in [0, 50, 100]:
                 for i in range(5):
