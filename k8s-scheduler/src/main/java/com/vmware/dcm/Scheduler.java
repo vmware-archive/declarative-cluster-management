@@ -61,7 +61,6 @@ import java.util.stream.Collectors;
 import static com.codahale.metrics.MetricRegistry.name;
 import static com.vmware.dcm.DBViews.PREEMPTION_VIEW_NAME_SUFFIX;
 import static com.vmware.dcm.DBViews.INCLUDE_VIEW_NAME_SUFFIX;
-import static com.vmware.dcm.DBViews.EXCLUDE_VIEW_NAME_SUFFIX;
 import static org.jooq.impl.DSL.table;
 
 /**
@@ -249,7 +248,6 @@ public final class Scheduler {
                 Policies.getInitialPlacementPolicies(), irContext);
         // Create filtering views
         final List<String> statements = scope.getSuffixViewStatements(views, INCLUDE_VIEW_NAME_SUFFIX);
-        statements.addAll(scope.getSuffixViewStatements(views, EXCLUDE_VIEW_NAME_SUFFIX));
         return new AutoScopeViews(scope, views, statements);
     }
 
@@ -498,11 +496,9 @@ public final class Scheduler {
                         if (augViews.contains(augView)) {
                             // Union with top K sort results
                             final List<Record> topk = autoScopeViews.scope().getSortView();
-                            final String excludeView = (t.getName() + EXCLUDE_VIEW_NAME_SUFFIX).toUpperCase();
-                            final Result<Record> delResult = provider.fetchTable(excludeView);
                             final List<Record> toAdd = new ArrayList<>();
                             for (final Record r : topk) {
-                                if (!augResult.contains(r) && !delResult.contains(r)) {
+                                if (!augResult.contains(r)) {
                                     toAdd.add(r);
                                 }
                             }

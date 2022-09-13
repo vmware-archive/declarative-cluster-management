@@ -19,7 +19,7 @@ public class WorkloadReplayTest {
     @Test
     public void runTestScope() throws Exception {
         final String[] args =
-                {"-n", "500", "-f", "v2-cropped.txt", "-c", "100", "-m", "200", "-t", "10", "-s", "100", "-p",
+                {"-n", "500", "-f", "v2-cropped.txt", "-c", "100", "-m", "200", "-t", "10", "-s", "10000", "-p",
                         "100", "-S"};
         EmulatedCluster.main(args);
     }

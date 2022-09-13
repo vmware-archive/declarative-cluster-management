@@ -19,13 +19,13 @@ import java.util.Comparator;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.stream.Collectors;
 
 
-class SortHelper {
+class ScopeUtils {
     private final String tableName;
     private final String idField;
     private final String groupField;
@@ -46,14 +46,29 @@ class SortHelper {
         }
     }
 
-    SortHelper(final String tableName, final String idField, final String groupField, final String sortField) {
+    ScopeUtils(final String tableName, final String idField, final String groupField, final String sortField) {
         this.tableName = tableName.toUpperCase();
         this.idField = idField.toUpperCase();
         this.groupField = groupField.toUpperCase();
         this.sortField = sortField.toUpperCase();
     }
 
-    public boolean isSortTable(final Record r) {
+    ScopeUtils(final String tableName, final String idField, final String groupField) {
+        this.tableName = tableName.toUpperCase();
+        this.idField = idField.toUpperCase();
+        this.groupField = groupField.toUpperCase();
+        this.sortField = "";
+    }
+
+    public boolean isSort() {
+        return this.sortField.length() > 0;
+    }
+
+    public String getTableName() {
+        return tableName;
+    }
+
+    public boolean isTargetTable(final Record r) {
         final String field = r.field(0).toString().toUpperCase();
         return field.contains(this.tableName);
     }
@@ -89,59 +104,110 @@ class SortHelper {
     }
 }
 
-class TopkPerGroup implements DeltaCallBack {
-    private static final Logger LOG = LoggerFactory.getLogger(TopkPerGroup.class);
+
+class DeltaProcessor implements DeltaCallBack {
+    private static final Logger LOG = LoggerFactory.getLogger(DeltaProcessor.class);
+    private static final String GROUP_ID = "POD_UID";
 
     private final int limit;
-    private SortHelper helper;
+    private List<ScopeUtils> utils;
     private Map<String, ConcurrentSkipListSet<Record>> topk;
     private HashMap<String, Set<Record>> idLookup;
+    private Map<String, Map<String, ConcurrentSkipListSet<String>>> exclude;
 
 
-    public TopkPerGroup(final String tableName, final String idField, final String groupField,
+    public DeltaProcessor(final String tableName, final String idField, final String groupField,
                         final String sortField, final int limit) {
         this.limit = limit;
         this.topk = new HashMap<>();
-        this.helper = new SortHelper(tableName, idField, groupField, sortField);
+        this.exclude = new HashMap<>();
+        this.utils = new ArrayList<>();
+        this.utils.add(new ScopeUtils(tableName, idField, groupField, sortField));
         this.idLookup = new HashMap<>();
     }
 
+    public void registerExclude(final String table, final String id) {
+        this.exclude.put(table.toUpperCase(), new HashMap<>());
+        this.utils.add(new ScopeUtils(table, id, GROUP_ID));
+    }
+
     public List<Record> getTopk() {
+        final ScopeUtils sortHelper = utils.get(0);
         final Set<String> ids = new HashSet<>();
+        // Top k per resource
         for (final Map.Entry<String, ConcurrentSkipListSet<Record>> entry: topk.entrySet()) {
             final ConcurrentSkipListSet<Record> records = entry.getValue();
-            final List<String> tmp = helper.getTopkID(records, limit);
-            System.out.println(String.format("ID length: %d, limit %d", tmp.size(), limit));
-            ids.addAll(helper.getTopkID(records, limit));
+            ids.addAll(sortHelper.getTopkID(records, limit));
         }
-        System.out.println(String.format("ids size: %d", ids.size()));
+        // Apply exclusion
+        for (final Map.Entry<String, Map<String, ConcurrentSkipListSet<String>>> tbl : exclude.entrySet()) {
+            final Set<String> toRemove = new HashSet<>();
+            final Map<String, ConcurrentSkipListSet<String>> map = tbl.getValue();
+            boolean init = true;
+            for (final Map.Entry<String, ConcurrentSkipListSet<String>> e : map.entrySet()) {
+                if (init) {
+                    toRemove.addAll(e.getValue());
+                    init = false;
+                } else {
+                    toRemove.retainAll(e.getValue());
+                }
+            }
+            ids.removeAll(toRemove);
+            //LOG.info("EXCLUDE!!!!!!! " + toRemove.size());
+        }
+
+
         final List<Record> results = new ArrayList<>();
         for (final String id : ids) {
             results.addAll(idLookup.get(id));
         }
-        System.out.println(String.format("results size: %d", results.size()));
         return results;
+    }
+
+    private void updateTopk(final DeltaType type, final Record r, final ScopeUtils u) {
+        final String group = u.getGroup(r);
+        final String id = u.getID(r);
+        if (type == DeltaCallBack.DeltaType.ADD) {
+            final ConcurrentSkipListSet<Record> r1 = topk.getOrDefault(
+                    group, new ConcurrentSkipListSet<>(u.getComparator()));
+            r1.add(r);
+            topk.put(group, r1);
+
+            final Set<Record> r2 = idLookup.getOrDefault(id, new HashSet<>());
+            r2.add(r);
+            idLookup.put(id, r2);
+        } else {
+            topk.get(group).remove(r);
+            idLookup.get(id).remove(r);
+        }
+    }
+
+    private void updateExclude(final DeltaType type, final Record r, final ScopeUtils u) {
+        final String group = u.getGroup(r);
+        final String id = u.getID(r);
+        final String table = u.getTableName();
+        final Map<String, ConcurrentSkipListSet<String>> map = exclude.get(table);
+        if (type == DeltaCallBack.DeltaType.ADD) {
+            final ConcurrentSkipListSet<String> ids = map.getOrDefault(group, new ConcurrentSkipListSet<String>());
+            ids.add(id);
+            map.put(group, ids);
+        } else {
+            map.get(group).remove(id);
+        }
     }
 
     @Override
     public void processDelta(final DeltaType type, final Record r) {
-        if (helper.isSortTable(r)) {
-            final String group = helper.getGroup(r);
-            final String id = helper.getID(r);
-            if (type == DeltaCallBack.DeltaType.ADD) {
-                final ConcurrentSkipListSet<Record> r1 = topk.getOrDefault(
-                        group, new ConcurrentSkipListSet<>(helper.getComparator()));
-                r1.add(r);
-                topk.put(group, r1);
-
-                final Set<Record> r2 = idLookup.getOrDefault(id, new HashSet<>());
-                r2.add(r);
-                idLookup.put(id, r2);
-            } else {
-                topk.get(group).remove(r);
-                idLookup.get(id).remove(r);
+        for (final ScopeUtils u : utils) {
+            if (u.isTargetTable(r)) {
+                if (u.isSort()) {
+                    updateTopk(type, r, u);
+                } else {
+                    updateExclude(type, r, u);
+                }
             }
         }
+
     }
 }
 
@@ -150,7 +216,7 @@ public class AutoScope {
     private static final Logger LOG = LoggerFactory.getLogger(AutoScope.class);
 
     private final int limit;
-    private TopkPerGroup topk;
+    private DeltaProcessor delta;
 
     // Base table/view to apply scoping optimizations to
     private static final String BASE_TABLE = "spare_capacity_per_node";
@@ -158,19 +224,17 @@ public class AutoScope {
     private static final String GROUP_COL = "resource";
     private static final String SORT_COL = "capacity";
 
-
-
     public AutoScope(final int limit) {
         this.limit = limit;
-        this.topk = new TopkPerGroup(BASE_TABLE, BASE_COL, GROUP_COL, SORT_COL, limit);
+        this.delta = new DeltaProcessor(BASE_TABLE, BASE_COL, GROUP_COL, SORT_COL, limit);
     }
 
-    public TopkPerGroup getCallBack() {
-        return topk;
+    public DeltaProcessor getCallBack() {
+        return delta;
     }
 
     public List<Record> getSortView() {
-        return topk.getTopk();
+        return delta.getTopk();
     }
 
     public Map<String, String> augmentedViews(final List<String> constraints,
@@ -200,8 +264,14 @@ public class AutoScope {
             visitor.visit(view);
         }
 
-        final Map<String, String> views = domainRestrictingViews(
-                    inClause, notInClause, consts, irContext);
+        // Register exclusion tables to the callback processing
+        for (final Map.Entry<String, Map<String, String>> var: notInClause.entrySet()) {
+            final Map<String, String> v = var.getValue();
+            for (final Map.Entry<String, String> e : v.entrySet()) {
+                this.delta.registerExclude(e.getKey(), e.getValue());
+            }
+        }
+        final Map<String, String> views = domainRestrictingViews(inClause, consts, irContext);
         return views;
     }
 
@@ -268,23 +338,17 @@ public class AutoScope {
      * @return
      */
     private Map<String, String> domainRestrictingViews(final Map<String, Map<String, String>> inClause,
-           final Map<String, Map<String, String>> notInClause,
            final Map<String, List<String>> consts, final IRContext irContext) {
         final Map<String, String> views = new HashMap<>();
 
         // Union of domain restricted queries
         final Set<String> vars = new HashSet<>();
         vars.addAll(inClause.keySet());
-        vars.addAll(notInClause.keySet());
         vars.addAll(consts.keySet());
         for (final String var : vars) {
-            List<String> queries = genDRQ(inClause.get(var), irContext);
+            final List<String> queries = genDRQ(inClause.get(var), irContext);
             final String include = String.join(" UNION ", queries);
-            queries = genDRQ(notInClause.get(var), irContext);
-            final String exclude = String.join(" UNION ", queries);
             views.put((BASE_TABLE + DBViews.INCLUDE_VIEW_NAME_SUFFIX).toUpperCase(), include);
-            views.put((BASE_TABLE + DBViews.EXCLUDE_VIEW_NAME_SUFFIX).toUpperCase(), exclude);
-
         }
         return views;
     }
