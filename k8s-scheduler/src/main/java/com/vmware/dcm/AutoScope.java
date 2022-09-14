@@ -21,11 +21,13 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.stream.Stream;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.stream.Collectors;
 
 
 class ScopeUtils {
+    private final double DISCOUNT = 0.9;
     private final String tableName;
     private final String idField;
     private final String groupField;
@@ -93,14 +95,46 @@ class ScopeUtils {
         return records.stream().map(record -> getID(record)).collect(Collectors.toList());
     }
 
-    public List<String> getTopkID(final ConcurrentSkipListSet<Record> records, final int k) {
+    public List<String> getTopkID(final ConcurrentSkipListSet<Record> records, final int k,
+                                  final Map<String, Integer> softConstraints) {
         final Iterator<Record> iter = records.iterator();
         final int limit = Math.min(k, records.size());
-        final ArrayList<Record> results = new ArrayList<>(limit);
-        for (int i = 0; i < limit; i++) {
-            results.add(iter.next());
+        final Map<String, Double> discounted = new HashMap<>();
+        final ArrayList<String> ids = new ArrayList<>(limit);
+        for (int i = 0; i < limit; i ++) {
+            final Record r = iter.next();
+            final String id = getID(r);
+            // Resource needs to be discounted due to soft constraints
+            if (softConstraints.containsKey(id)) {
+                Double val = new Double(getSortVal(r));
+                val *= Math.pow(DISCOUNT, softConstraints.get(id));
+                discounted.put(id, val);
+            } else {
+                ids.add(id);
+            }
         }
-        return getIDs(results);
+
+        // Sort discounted nodes by resources
+        final List<Map.Entry<String, Double>> sorted =
+                discounted.entrySet().stream()
+                    .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
+                    .collect(Collectors.toList());
+
+        int i = 0;
+        while (iter.hasNext() && ids.size() < limit) {
+            final Record r = iter.next();
+            final double v1 = getSortVal(r);
+            int j = i;
+            while (j < sorted.size() && ids.size() < limit && sorted.get(j).getValue() >= v1) {
+                ids.add(sorted.get(j).getKey());
+                j += 1;
+            }
+            i = j;
+            if (ids.size() < limit) {
+                ids.add(getID(r));
+            }
+        }
+        return ids;
     }
 }
 
@@ -114,6 +148,7 @@ class DeltaProcessor implements DeltaCallBack {
     private Map<String, ConcurrentSkipListSet<Record>> topk;
     private HashMap<String, Set<Record>> idLookup;
     private Map<String, Map<String, ConcurrentSkipListSet<String>>> exclude;
+    private Map<String, Integer> softConstraints;
 
 
     public DeltaProcessor(final String tableName, final String idField, final String groupField,
@@ -124,6 +159,7 @@ class DeltaProcessor implements DeltaCallBack {
         this.utils = new ArrayList<>();
         this.utils.add(new ScopeUtils(tableName, idField, groupField, sortField));
         this.idLookup = new HashMap<>();
+        this.softConstraints = new HashMap<>();
     }
 
     public void registerExclude(final String table, final String id) {
@@ -131,27 +167,48 @@ class DeltaProcessor implements DeltaCallBack {
         this.utils.add(new ScopeUtils(table, id, GROUP_ID));
     }
 
+    public Set<String> getExcludeIDs(final Map<String, ConcurrentSkipListSet<String>> map,
+                                     final boolean intersect) {
+        final Set<String> ids = new HashSet<>();
+        boolean init = true;
+        for (final Map.Entry<String, ConcurrentSkipListSet<String>> e : map.entrySet()) {
+            if (init || !intersect) {
+                ids.addAll(e.getValue());
+                init = false;
+            } else {
+                ids.retainAll(e.getValue());
+            }
+        }
+        return ids;
+    }
+
+    public void updateSoftConstraints() {
+        softConstraints.clear();
+        for (final Map.Entry<String, Map<String, ConcurrentSkipListSet<String>>> tbl : exclude.entrySet()) {
+            final Map<String, ConcurrentSkipListSet<String>> map = tbl.getValue();
+            for (final Map.Entry<String, ConcurrentSkipListSet<String>> e : map.entrySet()) {
+                for (final String id : e.getValue()) {
+                    softConstraints.put(id, softConstraints.getOrDefault(id, 0) + 1);
+                }
+            }
+        }
+    }
+
+
     public List<Record> getTopk() {
         final ScopeUtils sortHelper = utils.get(0);
         final Set<String> ids = new HashSet<>();
+        // Discount values with soft constraints
+        updateSoftConstraints();
+
         // Top k per resource
         for (final Map.Entry<String, ConcurrentSkipListSet<Record>> entry: topk.entrySet()) {
             final ConcurrentSkipListSet<Record> records = entry.getValue();
-            ids.addAll(sortHelper.getTopkID(records, limit));
+            ids.addAll(sortHelper.getTopkID(records, limit, softConstraints));
         }
         // Apply exclusion
         for (final Map.Entry<String, Map<String, ConcurrentSkipListSet<String>>> tbl : exclude.entrySet()) {
-            final Set<String> toRemove = new HashSet<>();
-            final Map<String, ConcurrentSkipListSet<String>> map = tbl.getValue();
-            boolean init = true;
-            for (final Map.Entry<String, ConcurrentSkipListSet<String>> e : map.entrySet()) {
-                if (init) {
-                    toRemove.addAll(e.getValue());
-                    init = false;
-                } else {
-                    toRemove.retainAll(e.getValue());
-                }
-            }
+            final Set<String> toRemove = getExcludeIDs(tbl.getValue(), true);
             ids.removeAll(toRemove);
             //LOG.info("EXCLUDE!!!!!!! " + toRemove.size());
         }
