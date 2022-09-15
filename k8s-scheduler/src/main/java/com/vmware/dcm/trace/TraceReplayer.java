@@ -15,6 +15,13 @@ import com.google.common.util.concurrent.SettableFuture;
 import com.vmware.dcm.IPodDeployer;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
+import io.fabric8.kubernetes.api.model.NodeAffinity;
+import io.fabric8.kubernetes.api.model.NodeAffinityBuilder;
+import io.fabric8.kubernetes.api.model.NodeSelector;
+import io.fabric8.kubernetes.api.model.NodeSelectorBuilder;
+import io.fabric8.kubernetes.api.model.NodeSelectorRequirement;
+import io.fabric8.kubernetes.api.model.NodeSelectorTerm;
+import io.fabric8.kubernetes.api.model.NodeSelectorTermBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodAffinityTerm;
 import io.fabric8.kubernetes.api.model.Quantity;
@@ -96,7 +103,8 @@ public class TraceReplayer {
                 final int vmCount = Integer.parseInt(parts[6].replace(">", ""));
 
                 // If the deployment is not too large, then add affinity requirements according to probability
-                final boolean createAffinityRequirements = vmCount < nodesLimit &&
+                // nodesLimit/10 is done because that's how we're divy-ing up nodes into clusters for node affinity.
+                final boolean createAffinityRequirements = vmCount < (nodesLimit / 10) &&
                         (r.nextInt(100) < affinityProportion);
 
                 // generate a deployment's details based on cpu, mem requirements
@@ -199,6 +207,22 @@ public class TraceReplayer {
                                     requirement.setValues(newValues);
                                 }
                             }
+
+                            // create node affinity requirements
+                            final NodeSelectorRequirement requirement = new NodeSelectorRequirement();
+                            requirement.setKey("cluster");
+                            requirement.setOperator("In");
+                            requirement.setValues(List.of("g" + (taskCount % 10)));
+                            final NodeSelectorTerm term = new NodeSelectorTermBuilder()
+                                    .withMatchExpressions(requirement)
+                                    .build();
+                            final List<NodeSelectorTerm> inTerm = List.of(term);
+                            final NodeSelector selector = new NodeSelectorBuilder()
+                                    .withNodeSelectorTerms(inTerm).build();
+                            final NodeAffinity nodeAffinity = new NodeAffinityBuilder()
+                                    .withRequiredDuringSchedulingIgnoredDuringExecution(selector)
+                                            .build();
+                            pod.getSpec().getAffinity().setNodeAffinity(nodeAffinity);
                         }
 
                         final List<Container> containerList = pod.getSpec().getContainers();
