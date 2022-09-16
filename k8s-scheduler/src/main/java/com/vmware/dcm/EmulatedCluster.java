@@ -46,7 +46,7 @@ import java.util.concurrent.ThreadFactory;
  */
 class EmulatedCluster {
     private static final Logger LOG = LoggerFactory.getLogger(EmulatedCluster.class);
-    static final int NUM_CLUSTERS = 10;
+    static final int CLUSTER_SIZE = 50;
     @Nullable public IConnectionPool dbPool;
 
     public void runTraceLocally(final int numNodes, final String traceFileName, final int cpuScaleDown,
@@ -80,7 +80,8 @@ class EmulatedCluster {
         for (int i = 0; i < numNodes; i++) {
             final String nodeName = "n" + i;
             final Node node = addNode(nodeName, UUID.randomUUID(),
-                    Collections.singletonMap("cluster", "g" + (i % NUM_CLUSTERS)), Collections.emptyList());
+                    Collections.singletonMap("cluster", "g" + (i % (numNodes / CLUSTER_SIZE))),
+                                             Collections.emptyList());
             node.getStatus().getCapacity().put("cpu", new Quantity("2"));
             node.getStatus().getCapacity().put("memory", new Quantity("2000"));
             node.getStatus().getCapacity().put("pods", new Quantity("110"));

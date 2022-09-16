@@ -104,12 +104,13 @@ public class TraceReplayer {
 
                 // If the deployment is not too large, then add affinity requirements according to probability
                 // nodesLimit/10 is done because that's how we're divy-ing up nodes into clusters for node affinity.
-                final boolean createAffinityRequirements = vmCount < (nodesLimit / 10) &&
+                final boolean createAffinityRequirements = vmCount < (50) &&
                         (r.nextInt(100) < affinityProportion);
 
                 // generate a deployment's details based on cpu, mem requirements
+                final int numGroups = nodesLimit / 50;
                 final List<Pod> deployment = getDeployment(client, schedulerName, cpu, mem, vmCount,
-                        taskCount, createAffinityRequirements);
+                        taskCount, createAffinityRequirements, numGroups);
                 totalPods += deployment.size();
 
                 if (Integer.parseInt(parts[2]) > startTimeCutOff) { // window in seconds
@@ -173,7 +174,7 @@ public class TraceReplayer {
 
     private List<Pod> getDeployment(final KubernetesClient client, final String schedulerName,
                                     final float cpu, final float mem, final int count, final int taskCount,
-                                    final boolean createAffinityRequirements) {
+                                    final boolean createAffinityRequirements, int numGroups) {
         // Load the template file and update its contents to generate a new deployment template
         final String podFile = createAffinityRequirements ? "pod-with-affinity.yml" : "pod-only.yml";
         return IntStream.range(0, count)
@@ -212,7 +213,7 @@ public class TraceReplayer {
                             final NodeSelectorRequirement requirement = new NodeSelectorRequirement();
                             requirement.setKey("cluster");
                             requirement.setOperator("In");
-                            requirement.setValues(List.of("g" + (taskCount % 10)));
+                            requirement.setValues(List.of("g" + (taskCount % numGroups)));
                             final NodeSelectorTerm term = new NodeSelectorTermBuilder()
                                     .withMatchExpressions(requirement)
                                     .build();
