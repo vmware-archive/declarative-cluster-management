@@ -7,6 +7,7 @@
 package com.vmware.dcm.backend.ortools;
 
 import com.google.common.base.Preconditions;
+import com.google.ortools.sat.BoolVar;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
@@ -31,16 +32,26 @@ import java.util.stream.Collectors;
 public class Ops {
     private final CpModel model;
     private final StringEncoding encoder;
-    private final IntVar trueVar;
-    private final IntVar falseVar;
+    private final BoolVar trueVar;
+    private final BoolVar falseVar;
     private final List<IntVar> objectives;
 
     public Ops(final CpModel model, final StringEncoding encoding) {
         this.model = model;
         this.encoder = encoding;
-        this.trueVar = model.newConstant(1);
-        this.falseVar = model.newConstant(0);
+        this.trueVar = model.newBoolVar("true");
+        this.falseVar = model.newBoolVar("false");
+        model.addEquality(trueVar, model.trueLiteral());
+        model.addEquality(falseVar, model.falseLiteral());
         this.objectives = new ArrayList<>();
+    }
+
+    public BoolVar trueVar() {
+        return trueVar;
+    }
+
+    public BoolVar falseVar() {
+        return falseVar;
     }
 
     public int countBoolean(final List<Boolean> data) {
@@ -100,6 +111,11 @@ public class Ops {
         return ret;
     }
 
+    @SuppressWarnings("unchecked")
+    public IntVar sumBoolVar(final List<BoolVar> data) {
+        return sumIntVar((List<IntVar>) (List<?>) data);
+    }
+
     public IntVar scalProdLong(final List<IntVar> variables, final List<Long> coefficients) {
         final int n = variables.size();
         Preconditions.checkArgument(n == coefficients.size());
@@ -117,7 +133,7 @@ public class Ops {
             coeffs[i] = coeff;
         }
         final IntVar ret = model.newIntVar(Math.min(minSum, maxSum), Math.max(minSum, maxSum), "");
-        model.addEquality(ret, LinearExpr.scalProd(vars, coeffs));
+        model.addEquality(ret, LinearExpr.weightedSum(vars, coeffs));
         return ret;
     }
 
@@ -138,32 +154,32 @@ public class Ops {
             coeffs[i] = coeff;
         }
         final IntVar ret = model.newIntVar(Math.min(minSum, maxSum), Math.max(minSum, maxSum), "");
-        model.addEquality(ret, LinearExpr.scalProd(vars, coeffs));
+        model.addEquality(ret, LinearExpr.weightedSum(vars, coeffs));
         return ret;
     }
 
-    public IntVar increasingIntVar(final List<IntVar> data) {
+    public BoolVar increasingIntVar(final List<IntVar> data) {
         for (int i = 0; i < data.size() - 1; i++) {
             model.addLessOrEqual(data.get(i), data.get(i + 1));
 
-            final IntVar bool = model.newBoolVar("");
+            final BoolVar bool = model.newBoolVar("");
             model.addLessThan(data.get(i), data.get(i + 1)).onlyEnforceIf(bool); // soft constraint to maximize
             model.maximize(LinearExpr.term(bool, 100));
         }
-        return model.newConstant(1);
+        return trueVar;
     }
 
-    public IntVar exists(final List<IntVar> data) {
+    public BoolVar exists(final List<BoolVar> data) {
         if (data.size() == 0) {
             return falseVar;
         }
         if (data.size() == 1) {
             return eq(data.get(0), true);
         }
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
         final Literal[] literals = data.toArray(new Literal[0]);
         model.addBoolOr(literals).onlyEnforceIf(bool);
-        model.addBoolAnd(data.stream().map(IntVar::not).toArray(Literal[]::new)).onlyEnforceIf(bool.not());
+        model.addBoolAnd(data.stream().map(BoolVar::not).toArray(Literal[]::new)).onlyEnforceIf(bool.not());
         return bool;
     }
 
@@ -276,7 +292,7 @@ public class Ops {
         final long lb = Math.min(lDomainMin - rDomainMin, lDomainMin - rDomainMax);
         final long ub = Math.max(lDomainMax - rDomainMin, lDomainMax - rDomainMax);
         final IntVar ret = model.newIntVar(lb, ub, "");
-        model.addEquality(ret, LinearExpr.scalProd(new IntVar[]{left, right}, new int[]{1, -1}));
+        model.addEquality(ret, LinearExpr.weightedSum(new IntVar[]{left, right}, new long[]{1, -1}));
         return ret;
     }
 
@@ -331,7 +347,7 @@ public class Ops {
         final long lb = Math.min(Math.min(b1, b2), Math.min(b3, b4));
         final long ub = Math.max(Math.max(b1, b2), Math.max(b3, b4));
         final IntVar ret = model.newIntVar(lb, ub, "");
-        model.addProductEquality(ret, new IntVar[]{left, right});
+        model.addMultiplicationEquality(ret, new IntVar[]{left, right});
         return ret;
     }
 
@@ -355,32 +371,32 @@ public class Ops {
         return Arrays.equals(left, right);
     }
 
-    public IntVar eq(final String left, final IntVar right) {
+    public BoolVar eq(final String left, final IntVar right) {
         return eq(right, left);
     }
 
-    public IntVar eq(final IntVar left, final String right) {
+    public BoolVar eq(final IntVar left, final String right) {
         return eq(left, encoder.toLong(right));
     }
 
-    public IntVar eq(final long left, final IntVar right) {
+    public BoolVar eq(final long left, final IntVar right) {
         return eq(right, left);
     }
 
-    public IntVar eq(final IntVar left, final long right) {
+    public BoolVar eq(final IntVar left, final long right) {
         final Domain leftDomain = left.getDomain();
         final long leftDomainSize = leftDomain.size();
         final long leftDomainMin = leftDomain.min();
         if (leftDomainSize == 1) {
             return leftDomainMin == right ? trueVar : falseVar;
         }
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
         model.addEquality(left, right).onlyEnforceIf(bool);
         model.addDifferent(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar eq(final IntVar left, final IntVar right) {
+    public BoolVar eq(final IntVar left, final IntVar right) {
         final Domain leftDomain = left.getDomain();
         final Domain rightDomain = right.getDomain();
         final long leftDomainSize = leftDomain.size();
@@ -390,17 +406,17 @@ public class Ops {
         if (rightDomainSize == 1 && leftDomainSize == 1) {
             return leftDomainMin == rightDomainMin ? trueVar : falseVar;
         }
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
         model.addEquality(left, right).onlyEnforceIf(bool);
         model.addDifferent(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar eq(final IntVar left, final boolean right) {
+    public BoolVar eq(final IntVar left, final boolean right) {
         return eq(left, right ? 1 : 0);
     }
 
-    public IntVar eq(final boolean left, final IntVar right) {
+    public BoolVar eq(final boolean left, final IntVar right) {
         return eq(right, left);
     }
 
@@ -420,92 +436,92 @@ public class Ops {
         return left != right;
     }
 
-    public IntVar ne(final String left, final IntVar right) {
+    public BoolVar ne(final String left, final IntVar right) {
         return ne(right, left);
     }
 
-    public IntVar ne(final IntVar left, final String right) {
+    public BoolVar ne(final IntVar left, final String right) {
         return ne(left, encoder.toLong(right));
     }
 
-    public IntVar ne(final long left, final IntVar right) {
+    public BoolVar ne(final long left, final IntVar right) {
         return ne(right, left);
     }
 
-    public IntVar ne(final IntVar left, final long right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar ne(final IntVar left, final long right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addDifferent(left, right).onlyEnforceIf(bool);
         model.addEquality(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar ne(final IntVar left, final IntVar right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar ne(final IntVar left, final IntVar right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addDifferent(left, right).onlyEnforceIf(bool);
         model.addEquality(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar ne(final boolean left, final IntVar right) {
+    public BoolVar ne(final boolean left, final IntVar right) {
         return ne(right, left);
     }
 
-    public IntVar ne(final IntVar left, final boolean right) {
+    public BoolVar ne(final IntVar left, final boolean right) {
         return ne(left, right ? 1 : 0);
     }
 
-    public IntVar lt(final IntVar left, final long right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar lt(final IntVar left, final long right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addLessThan(left, right).onlyEnforceIf(bool);
         model.addGreaterOrEqual(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar lt(final IntVar left, final IntVar right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar lt(final IntVar left, final IntVar right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addLessThan(left, right).onlyEnforceIf(bool);
         model.addGreaterOrEqual(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar leq(final IntVar left, final long right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar leq(final IntVar left, final long right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addLessOrEqual(left, right).onlyEnforceIf(bool);
         model.addGreaterThan(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar leq(final IntVar left, final IntVar right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar leq(final IntVar left, final IntVar right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addLessOrEqual(left, right).onlyEnforceIf(bool);
         model.addGreaterThan(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
 
-    public IntVar gt(final IntVar left, final long right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar gt(final IntVar left, final long right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addGreaterThan(left, right).onlyEnforceIf(bool);
         model.addLessOrEqual(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar gt(final IntVar left, final IntVar right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar gt(final IntVar left, final IntVar right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addGreaterThan(left, right).onlyEnforceIf(bool);
         model.addLessOrEqual(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar geq(final IntVar left, final long right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar geq(final IntVar left, final long right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addGreaterOrEqual(left, right).onlyEnforceIf(bool);
         model.addLessThan(left, right).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar geq(final IntVar left, final IntVar right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar geq(final IntVar left, final IntVar right) {
+        final BoolVar bool = model.newBoolVar("");
         model.addGreaterOrEqual(left, right).onlyEnforceIf(bool);
         model.addLessThan(left, right).onlyEnforceIf(bool.not());
         return bool;
@@ -525,8 +541,8 @@ public class Ops {
         return right.contains(left);
     }
 
-    public IntVar inObjectArr(final IntVar left, final Object[] right) {
-        final IntVar bool = model.newBoolVar("");
+    public BoolVar inObjectArr(final IntVar left, final Object[] right) {
+        final BoolVar bool = model.newBoolVar("");
         assert right.length > 0;
         final Domain domain;
         if (right[0] instanceof String) {
@@ -545,15 +561,15 @@ public class Ops {
         return bool;
     }
 
-    private IntVar in(final IntVar left, final long[] right) {
-        final IntVar bool = model.newBoolVar("");
+    private BoolVar in(final IntVar left, final long[] right) {
+        final BoolVar bool = model.newBoolVar("");
         final Domain domain = Domain.fromValues(right);
         model.addLinearExpressionInDomain(left, domain).onlyEnforceIf(bool);
         model.addLinearExpressionInDomain(left, domain.complement()).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar inString(final IntVar left, final List<String> right) {
+    public BoolVar inString(final IntVar left, final List<String> right) {
         if (right.size() == 0) {
             return falseVar;
         }
@@ -563,7 +579,7 @@ public class Ops {
         return in(left, right.stream().mapToLong(encoder::toLong).toArray());
     }
 
-    public IntVar inLong(final IntVar left, final List<Long> right) {
+    public BoolVar inLong(final IntVar left, final List<Long> right) {
         if (right.size() == 0) {
             return falseVar;
         }
@@ -573,7 +589,7 @@ public class Ops {
         return in(left, right.stream().mapToLong(encoder::toLong).toArray());
     }
 
-    public IntVar inInteger(final IntVar left, final List<Integer> right) {
+    public BoolVar inInteger(final IntVar left, final List<Integer> right) {
         if (right.size() == 0) {
             return falseVar;
         }
@@ -583,14 +599,14 @@ public class Ops {
         return in(left, right.stream().mapToLong(encoder::toLong).toArray());
     }
 
-    public IntVar inIntVar(final IntVar left, final List<IntVar> right) {
+    public BoolVar inIntVar(final IntVar left, final List<IntVar> right) {
         if (right.size() == 0) {
             return falseVar;
         }
         if (right.size() == 1) {
             return eq(left, right.get(0));
         }
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
         final Literal[] literals = new Literal[right.size()];
         for (int i = 0; i < right.size(); i++) {
             literals[i] = eq(left, right.get(i));
@@ -604,14 +620,14 @@ public class Ops {
         return bool;
     }
 
-    public IntVar inObjectArray(final IntVar left, final List<Object[]> right) {
+    public BoolVar inObjectArray(final IntVar left, final List<Object[]> right) {
         if (right.size() == 0) {
             return falseVar;
         }
         if (right.size() == 1) {
             return inObjectArr(left, right.get(0));
         }
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
         final Literal[] literals = new Literal[right.size()];
         for (int i = 0; i < right.size(); i++) {
             literals[i] = inObjectArr(left, right.get(i));
@@ -625,39 +641,39 @@ public class Ops {
         return bool;
     }
 
-    public IntVar notInInteger(final IntVar left, final List<Integer> right) {
+    public BoolVar notInInteger(final IntVar left, final List<Integer> right) {
         return not(inInteger(left, right));
     }
 
-    public IntVar notInString(final IntVar left, final List<String> right) {
+    public BoolVar notInString(final IntVar left, final List<String> right) {
         return not(inString(left, right));
     }
 
-    public IntVar notInLong(final IntVar left, final List<Long> right) {
+    public BoolVar notInLong(final IntVar left, final List<Long> right) {
         return not(inLong(left, right));
     }
 
-    public IntVar notInIntVar(final IntVar left, final List<IntVar> right) {
+    public BoolVar notInIntVar(final IntVar left, final List<IntVar> right) {
         return not(inIntVar(left, right));
     }
 
-    public IntVar notInObjectArray(final IntVar left, final List<Object[]> right) {
+    public BoolVar notInObjectArray(final IntVar left, final List<Object[]> right) {
         return not(inObjectArray(left, right));
     }
 
-    public IntVar or(final boolean left, final boolean right) {
+    public BoolVar or(final boolean left, final boolean right) {
         return left || right ? trueVar : falseVar;
     }
 
-    public IntVar or(final boolean left, final IntVar right) {
+    public BoolVar or(final boolean left, final BoolVar right) {
         return left ? trueVar : right;
     }
 
-    public IntVar or(final IntVar left, final boolean right) {
+    public BoolVar or(final BoolVar left, final boolean right) {
         return or(right, left);
     }
 
-    public IntVar or(final IntVar left, final IntVar right) {
+    public BoolVar or(final BoolVar left, final BoolVar right) {
         final Domain leftDomain = left.getDomain();
         final Domain rightDomain = right.getDomain();
         final long leftDomainSize = leftDomain.size();
@@ -673,25 +689,25 @@ public class Ops {
         if (rightDomainSize == 1) {
             return or(left, rightDomainMin != 0);
         }
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
         model.addBoolOr(new Literal[]{left, right}).onlyEnforceIf(bool);
         model.addBoolAnd(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar and(final boolean left, final boolean right) {
+    public BoolVar and(final boolean left, final boolean right) {
         return left && right ? trueVar : falseVar;
     }
 
-    public IntVar and(final boolean left, final IntVar right) {
+    public BoolVar and(final boolean left, final BoolVar right) {
         return left ? right : falseVar;
     }
 
-    public IntVar and(final IntVar left, final boolean right) {
+    public BoolVar and(final BoolVar left, final boolean right) {
         return and(right, left);
     }
 
-    public IntVar and(final IntVar left, final IntVar right) {
+    public BoolVar and(final BoolVar left, final BoolVar right) {
         final Domain leftDomain = left.getDomain();
         final Domain rightDomain = right.getDomain();
         final long leftDomainSize = leftDomain.size();
@@ -707,13 +723,13 @@ public class Ops {
         if (rightDomainSize == 1) {
             return and(left, rightDomainMin != 0);
         }
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
         model.addBoolAnd(new Literal[]{left, right}).onlyEnforceIf(bool);
         model.addBoolOr(new Literal[]{left.not(), right.not()}).onlyEnforceIf(bool.not());
         return bool;
     }
 
-    public IntVar not(final IntVar var) {
+    public BoolVar not(final IntVar var) {
         return eq(var, 0L);
     }
 
@@ -728,15 +744,15 @@ public class Ops {
         return array.stream().reduce((a, b) -> a || b).get();
     }
 
-    public IntVar anyIntVar(final List<IntVar> array) {
+    public BoolVar anyBoolVar(final List<BoolVar> array) {
         if (array.size() == 0) {
             throw new SolverException("Empty list for aggregate function any()");
         }
-        final IntVar res = model.newBoolVar("");
+        final BoolVar res = model.newBoolVar("");
         final Literal[] literals = new Literal[array.size()];
         final Literal[] negatedLiterals = new Literal[array.size()];
         for (int i = 0; i < array.size(); i++) {
-            final IntVar var = array.get(i);
+            final BoolVar var = array.get(i);
             literals[i] = var;
             negatedLiterals[i] = var.not();
         }
@@ -752,15 +768,15 @@ public class Ops {
         return array.stream().reduce((a, b) -> a && b).get();
     }
 
-    public IntVar allIntVar(final List<IntVar> array) {
+    public BoolVar allBoolVar(final List<BoolVar> array) {
         if (array.size() == 0) {
             throw new SolverException("Empty list for aggregate function all()");
         }
-        final IntVar res = model.newBoolVar("");
+        final BoolVar res = model.newBoolVar("");
         final Literal[] literals = new Literal[array.size()];
         final Literal[] negatedLiterals = new Literal[array.size()];
         for (int i = 0; i < array.size(); i++) {
-            final IntVar var = array.get(i);
+            final BoolVar var = array.get(i);
             literals[i] = var;
             negatedLiterals[i] = var.not();
         }
@@ -794,21 +810,21 @@ public class Ops {
         return true;
     }
 
-    public IntVar allEqualIntVar(final List<IntVar> array) {
+    public BoolVar allEqualIntVar(final List<IntVar> array) {
         for (int i = 0; i < array.size() - 1; i++) {
             model.addEquality(array.get(i), array.get(i + 1));
         }
-        return model.newConstant(1);
+        return trueVar;
     }
 
-    public <T> IntVar allDifferentIntVar(final List<IntVar> array, final String assumptionContext) {
+    public <T> BoolVar allDifferentIntVar(final List<IntVar> array, final String assumptionContext) {
         final IntVar[] intVars = array.toArray(new IntVar[0]);
         final IntVar[] assumptionVars = assumptionLinkedVars(intVars, assumptionContext);
         model.addAllDifferent(assumptionVars);
-        return model.newConstant(1);
+        return trueVar;
     }
 
-    public IntVar toConst(final boolean expr) {
+    public BoolVar toConst(final boolean expr) {
         return expr ? trueVar : falseVar;
     }
 
@@ -816,7 +832,7 @@ public class Ops {
         return model.newConstant(expr);
     }
 
-    public IntVar capacityConstraint(final List<IntVar> varsToAssign, final List<?> domain,
+    public BoolVar capacityConstraint(final List<IntVar> varsToAssign, final List<?> domain,
                                    final List<List<Long>> demands, final List<List<Long>> capacities,
                                      final boolean usePresenceLiterals) {
         // Create the variables.
@@ -855,7 +871,7 @@ public class Ops {
             // did not correctly type check
             throw new RuntimeException("Unexpected type of list: " + domain);
         }
-        return model.newConstant(1);
+        return trueVar;
     }
 
     public void capacityConstraint(final List<IntVar> varsToAssign, final long[] domainArr,
@@ -874,7 +890,7 @@ public class Ops {
         for (int i = 0; i < numTasks; i++) {
             final IntVar intervalEnd = model.newIntVarFromDomain(intervalRange, "");
             if (usePresenceLiterals) {
-                final IntVar presence = model.newBoolVar("");
+                final BoolVar presence = model.newBoolVar("");
                 presenceLiterals.add(presence);
                 model.addLinearExpressionInDomain(varsToAssign.get(i), domainT).onlyEnforceIf(presence);
                 model.addLinearExpressionInDomain(varsToAssign.get(i), domainT.complement())
@@ -886,7 +902,7 @@ public class Ops {
                 model.addLinearExpressionInDomain(varsToAssign.get(i), domainT);
                 // interval with start as taskToNodeAssignment and size of 1
                 tasksIntervals[i] = model.newOptionalIntervalVar(varsToAssign.get(i), unitIntervalSize, intervalEnd,
-                        model.newConstant(1), "");
+                        model.trueLiteral(), "");
             }
         }
 
@@ -935,14 +951,15 @@ public class Ops {
 
         // 2. Capacity constraints
         for (int i = 0; i < numResources; i++) {
-            model.addCumulative(tasksIntervals, updatedDemands[i], maxCapacities[i]);
+            model.addCumulative(maxCapacities[i])
+                 .addDemands(tasksIntervals, updatedDemands[i]);
         }
 
         // Cumulative score
         final IntVar penalty = sumIntVar(presenceLiterals);
         for (int i = 0; i < numResources; i++) {
             final IntVar max = model.newIntVar(0, maxCapacities[i], "");
-            model.addCumulative(tasksIntervals, updatedDemands[i], max);
+            model.addCumulative(max).addDemands(tasksIntervals, updatedDemands[i]);
             objectives.add(mult(max, -1L));
 
             if (usePresenceLiterals) {
@@ -971,7 +988,7 @@ public class Ops {
     /*
      * Assumes var is true
      */
-    public void assume(final IntVar var, final String assumptionContext) {
+    public void assume(final BoolVar var, final String assumptionContext) {
         var.getBuilder().setName(assumptionContext);
         model.addAssumption(var);
     }
@@ -979,7 +996,7 @@ public class Ops {
     /*
      * Assume "left implies right" is true
      */
-    public void assumeImplication(final IntVar left, final IntVar right, final String assumptionContext) {
+    public void assumeImplication(final BoolVar left, final BoolVar right, final String assumptionContext) {
         final Literal assumptionLiteral = model.newBoolVar(assumptionContext);
         model.addImplication(left, right).onlyEnforceIf(assumptionLiteral);
         model.addAssumption(assumptionLiteral);
@@ -992,7 +1009,7 @@ public class Ops {
      */
     private IntVar[] assumptionLinkedVars(final IntVar[] input, final String assumptionContext) {
         final IntVar[] output = new IntVar[input.length];
-        final IntVar[] assumptionLiterals = new IntVar[input.length];
+        final BoolVar[] assumptionLiterals = new BoolVar[input.length];
         for (int i = 0; i < input.length; i++) {
             output[i] = model.newIntVarFromDomain(input[i].getDomain(), "");
             assumptionLiterals[i] = model.newBoolVar(assumptionContext);

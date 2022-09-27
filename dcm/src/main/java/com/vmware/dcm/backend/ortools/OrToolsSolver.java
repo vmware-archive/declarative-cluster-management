@@ -13,6 +13,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.ortools.Loader;
+import com.google.ortools.sat.BoolVar;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.IntVar;
@@ -853,7 +854,7 @@ public class OrToolsSolver implements ISolverBackend {
         if (expr instanceof Literal && javaExpr.type() == JavaType.Boolean) {
             exprStr = (Boolean) ((Literal<?>) expr).getValue() ? "1" : "0";
         }
-        return javaExpr.type() == JavaType.IntVar ? exprStr : String.format("o.toConst(%s)", exprStr);
+        return JavaType.isVar(javaExpr.type()) ? exprStr : String.format("o.toConst(%s)", exprStr);
     }
 
     /**
@@ -994,6 +995,7 @@ public class OrToolsSolver implements ISolverBackend {
                .addStatement("final $T model = new $T()", CpModel.class, CpModel.class)
                .addStatement("final $1T encoder = new $1T()", StringEncoding.class)
                .addStatement("final $1T o = new $1T(model, encoder)", Ops.class)
+               .addStatement("final $T v = model.newBoolVar(\"\")", BoolVar.class) // force BoolVar import
                .addCode("\n");
     }
 
@@ -1230,8 +1232,9 @@ public class OrToolsSolver implements ISolverBackend {
                     final JavaExpression listOfArg1 = extractListFromLoop(arg1, context.currentScope(), forLoop);
                     final JavaExpression listOfArg2 = extractListFromLoop(arg2, context.currentScope(), forLoop);
                     final JavaType arg2Type = arg2.type();
-                    return new JavaExpression(CodeBlock.of("o.scalProd$L($L, $L)", arg2Type.toString(),
-                                              listOfArg1.asString(), listOfArg2.asString()).toString(),
+                    final String maybeCoerceToIntVar = JavaType.isVar(arg1.type()) ? "(List<IntVar>) (List<?>)" : "";
+                    return new JavaExpression(CodeBlock.of("o.scalProd$L($L $L, $L)", arg2Type.toString(),
+                            maybeCoerceToIntVar, listOfArg1.asString(), listOfArg2.asString()).toString(),
                                               JavaType.IntVar);
                 case CAPACITY_CONSTRAINT:
                     final Map<String, OutputIR.ForBlock> tableToForBlock = new HashMap<>();
@@ -1334,16 +1337,16 @@ public class OrToolsSolver implements ISolverBackend {
             final JavaExpression id = visit(node.getArgument(), context);
             switch (node.getOperator()) {
                 case NOT:
-                    Preconditions.checkArgument(id.type() == JavaType.IntVar ||
+                    Preconditions.checkArgument(id.type() == JavaType.BoolVar ||
                                                 id.type() == JavaType.Boolean);
                     return context.declare(String.format("o.not(%s)", id.asString()), id.type());
                 case MINUS:
-                    Preconditions.checkArgument(id.type() == JavaType.IntVar
+                    Preconditions.checkArgument(JavaType.isVar(id.type())
                                                 || id.type() == JavaType.Integer
                                                 || id.type() == JavaType.Long);
                     return context.declare(String.format("o.mult(-1, %s)", id.asString()), id.type());
                 case PLUS:
-                    Preconditions.checkArgument(id.type() == JavaType.IntVar
+                    Preconditions.checkArgument(JavaType.isVar(id.type())
                                                 || id.type() == JavaType.Integer
                                                 || id.type() == JavaType.Long);
                     return context.declare(id);
@@ -1361,25 +1364,25 @@ public class OrToolsSolver implements ISolverBackend {
             final String right = rightArg.asString();
             final BinaryOperatorPredicate.Operator op = node.getOperator();
 
-            if (leftArg.type() == JavaType.IntVar || rightArg.type() == JavaType.IntVar) {
+            if (JavaType.isVar(leftArg.type()) || JavaType.isVar(rightArg.type())) {
                 // We need to generate an IntVar.
                 switch (op) {
                     case EQUAL:
-                        return context.declare(String.format("o.eq(%s, %s)", left, right), JavaType.IntVar);
+                        return context.declare(String.format("o.eq(%s, %s)", left, right), JavaType.BoolVar);
                     case NOT_EQUAL:
-                        return context.declare(String.format("o.ne(%s, %s)", left, right), JavaType.IntVar);
+                        return context.declare(String.format("o.ne(%s, %s)", left, right), JavaType.BoolVar);
                     case AND:
-                        return context.declare(String.format("o.and(%s, %s)", left, right), JavaType.IntVar);
+                        return context.declare(String.format("o.and(%s, %s)", left, right), JavaType.BoolVar);
                     case OR:
-                        return context.declare(String.format("o.or(%s, %s)", left, right), JavaType.IntVar);
+                        return context.declare(String.format("o.or(%s, %s)", left, right), JavaType.BoolVar);
                     case LESS_THAN_OR_EQUAL:
-                        return context.declare(String.format("o.leq(%s, %s)", left, right), JavaType.IntVar);
+                        return context.declare(String.format("o.leq(%s, %s)", left, right), JavaType.BoolVar);
                     case LESS_THAN:
-                        return context.declare(String.format("o.lt(%s, %s)", left, right), JavaType.IntVar);
+                        return context.declare(String.format("o.lt(%s, %s)", left, right), JavaType.BoolVar);
                     case GREATER_THAN_OR_EQUAL:
-                        return context.declare(String.format("o.geq(%s, %s)", left, right), JavaType.IntVar);
+                        return context.declare(String.format("o.geq(%s, %s)", left, right), JavaType.BoolVar);
                     case GREATER_THAN:
-                        return context.declare(String.format("o.gt(%s, %s)", left, right), JavaType.IntVar);
+                        return context.declare(String.format("o.gt(%s, %s)", left, right), JavaType.BoolVar);
                     case ADD:
                         return context.declare(String.format("o.plus(%s, %s)", left, right), JavaType.IntVar);
                     case SUBTRACT:
@@ -1390,12 +1393,12 @@ public class OrToolsSolver implements ISolverBackend {
                         return context.declare(String.format("o.div(%s, %s)", left, right), JavaType.IntVar);
                     case NOT_IN:
                         return context.declare(String.format("o.notIn%s(%s, %s)",
-                                rightArg.type().innerType().orElseThrow(), left, right), JavaType.IntVar);
+                                rightArg.type().innerType().orElseThrow(), left, right), JavaType.BoolVar);
                     case IN:
                         return context.declare(String.format("o.in%s(%s, %s)",
-                                rightArg.type().innerType().orElseThrow(), left, right), JavaType.IntVar);
+                                rightArg.type().innerType().orElseThrow(), left, right), JavaType.BoolVar);
                     case CONTAINS:
-                        return context.declare(String.format("o.inObjectArr(%s, %s)", right, left), JavaType.IntVar);
+                        return context.declare(String.format("o.inObjectArr(%s, %s)", right, left), JavaType.BoolVar);
                     default:
                         throw new UnsupportedOperationException("Operator " + op);
                 }

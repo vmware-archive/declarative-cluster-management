@@ -6,6 +6,7 @@
 
 package com.vmware.dcm.backend.ortools;
 
+import com.google.ortools.sat.BoolVar;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
@@ -130,10 +131,10 @@ public class OpsTests {
     @ParameterizedTest
     @MethodSource("existsMethodSource")
     public void testExists(final boolean exists) {
-        final List<IntVar> entries = List.of(model.newIntVar(0, 1, ""),
-                                             model.newIntVar(0, 1, ""),
-                                             model.newIntVar(0, 1, ""),
-                                             model.newIntVar(0, 1, ""));
+        final List<BoolVar> entries = List.of(model.newBoolVar(""),
+                                             model.newBoolVar(""),
+                                             model.newBoolVar(""),
+                                             model.newBoolVar(""));
         final IntVar existsVar = ops.exists(entries);
         model.addEquality(existsVar, model.newConstant(exists ? 1L : 0L));
         final CpSolver solver = new CpSolver();
@@ -852,8 +853,8 @@ public class OpsTests {
     @Test
     public void emptyArgsToAggregateFunctions() {
         assertThrows(SolverException.class, () -> ops.anyBoolean(List.of()));
-        assertThrows(SolverException.class, () -> ops.anyIntVar(List.of()));
+        assertThrows(SolverException.class, () -> ops.anyBoolVar(List.of()));
         assertThrows(SolverException.class, () -> ops.allBoolean(List.of()));
-        assertThrows(SolverException.class, () -> ops.allIntVar(List.of()));
+        assertThrows(SolverException.class, () -> ops.allBoolVar(List.of()));
     }
 }

@@ -5,6 +5,7 @@
 
 package com.vmware.dcm.backend.ortools;
 
+import com.google.ortools.sat.BoolVar;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
@@ -36,9 +37,9 @@ public class CoreTest {
         final CpModel model = new CpModel();
         final IntVar i1 = model.newIntVar(0, 5, "i1");
         final IntVar i2 = model.newIntVar(0, 5, "i2");
-        final IntVar v1 = model.newBoolVar("v1");
-        final IntVar v2 = model.newBoolVar("v2");
-        final IntVar v3 = model.newBoolVar("v3");
+        final BoolVar v1 = model.newBoolVar("v1");
+        final BoolVar v2 = model.newBoolVar("v2");
+        final BoolVar v3 = model.newBoolVar("v3");
 
         model.addGreaterOrEqual(LinearExpr.sum(new IntVar[]{i1, i2}), 11).onlyEnforceIf(v1); // can't be satisfied
         model.addLessOrEqual(LinearExpr.sum(new IntVar[]{i1, i2}), 5).onlyEnforceIf(v2);
@@ -63,7 +64,7 @@ public class CoreTest {
         final CpModel model = new CpModel();
         final IntVar origin = model.newIntVar(0, 5, "i1");
         final IntVar i1 = model.newIntVar(0, 5, "i1o");
-        final IntVar assumptionVar1 = model.newBoolVar("Assumption 1");
+        final BoolVar assumptionVar1 = model.newBoolVar("Assumption 1");
         model.addEquality(origin, i1).onlyEnforceIf(assumptionVar1);
         model.addDifferent(origin, i1).onlyEnforceIf(assumptionVar1.not());
         final IntervalVar[] tasksIntervals = new IntervalVar[1];
@@ -71,13 +72,13 @@ public class CoreTest {
                 assumptionVar1, "");
 
         // Can't be satisfied
-        model.addCumulative(tasksIntervals, new IntVar[]{model.newConstant(11)}, model.newConstant(10));
+        model.addCumulative(10).addDemands(tasksIntervals, new IntVar[]{model.newConstant(11)});
         model.addAssumption(assumptionVar1);
 
         final IntVar i2 = model.newIntVar(0, 5, "i2");
         final IntVar i3 = model.newIntVar(0, 5, "i3");
-        final IntVar assumptionVar2 = model.newBoolVar("Assumption 2");
-        final IntVar assumptionVar3 = model.newBoolVar("Assumption 3");
+        final BoolVar assumptionVar2 = model.newBoolVar("Assumption 2");
+        final BoolVar assumptionVar3 = model.newBoolVar("Assumption 3");
 
         // Can't be satisfied
         model.addGreaterOrEqual(LinearExpr.sum(new IntVar[]{i2, i3}), 11).onlyEnforceIf(assumptionVar2);
@@ -107,8 +108,8 @@ public class CoreTest {
         final IntVar i3 = model.newIntVar(0, 5, "i2");
 
         o.assume(o.eq(i1, 3), "i1 constraint_all_different");
-        o.assume(model.newConstant(1), "i2 constraint_all_different");
-        o.assume(model.newConstant(1), "i3 constraint_all_different");
+        o.assume(o.trueVar(), "i2 constraint_all_different");
+        o.assume(o.trueVar(), "i3 constraint_all_different");
 
         o.assume(o.and(o.leq(i1, 2), o.geq(i1, 1)), "i1 constraint_domain");
         o.assume(o.and(o.leq(i2, 2), o.geq(i2, 1)), "i2 constraint_domain");

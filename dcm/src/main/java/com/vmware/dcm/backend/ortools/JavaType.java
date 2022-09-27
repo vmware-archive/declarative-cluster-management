@@ -11,6 +11,7 @@ import java.util.Optional;
 
 enum JavaType {
     IntVar("IntVar"),
+    BoolVar("BoolVar"),
     String("String"),
     Boolean("Boolean"),
     Long("Long"),
@@ -18,6 +19,7 @@ enum JavaType {
     Float("Float"),
     ObjectArray("Object[]"),
     ListOfIntVar("List", IntVar),
+    ListOfBoolVar("List", BoolVar),
     ListOfInteger("List", Integer),
     ListOfLong("List", Long),
     ListOfBool("List", Boolean),
@@ -25,6 +27,7 @@ enum JavaType {
     ListOfObjectArray("List", ObjectArray);
 
     private final String typeString;
+
     @Nullable private final JavaType innerType;
 
     JavaType(final String typeString) {
@@ -48,6 +51,8 @@ enum JavaType {
         switch (innerType) {
             case IntVar:
                 return ListOfIntVar;
+            case BoolVar:
+                return ListOfBoolVar;
             case Integer:
                 return ListOfInteger;
             case Long:
@@ -61,6 +66,10 @@ enum JavaType {
             default:
                 throw new IllegalArgumentException(innerType.toString());
         }
+    }
+
+    public static boolean isVar(final JavaType type) {
+        return type == JavaType.IntVar || type == JavaType.BoolVar;
     }
 
     public Optional<JavaType> innerType() {

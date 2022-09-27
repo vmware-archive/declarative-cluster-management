@@ -142,9 +142,7 @@ public class TupleMetadata {
         protected JavaType visitBinaryOperatorPredicate(final BinaryOperatorPredicate node, final VoidType context) {
             final JavaType leftType = visit(node.getLeft());
             final JavaType rightType = visit(node.getRight());
-            if (leftType == JavaType.IntVar || rightType == JavaType.IntVar) {
-                return JavaType.IntVar;
-            }
+            final boolean isVar = JavaType.isVar(leftType) || JavaType.isVar(rightType);
             switch (node.getOperator()) {
                 case EQUAL:
                 case NOT_EQUAL:
@@ -156,13 +154,13 @@ public class TupleMetadata {
                 case OR:
                 case AND:
                 case CONTAINS:
-                    return JavaType.Boolean;
+                    return isVar ? JavaType.BoolVar : JavaType.Boolean;
                 case ADD:
                 case SUBTRACT:
                 case MULTIPLY:
                 case DIVIDE:
                 case MODULUS:
-                    return JavaType.Integer;
+                    return isVar ? JavaType.IntVar : JavaType.Integer;
                 default:
                     throw new UnsupportedOperationException();
             }
@@ -203,17 +201,17 @@ public class TupleMetadata {
         @Override
         protected JavaType visitExistsPredicate(final ExistsPredicate node, final VoidType context) {
             // TODO: This is incomplete. It can be boolean if node.getArgument() is const.
-            return visit(node.getArgument(), context) == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
+            return JavaType.isVar(visit(node.getArgument(), context)) ? JavaType.BoolVar : JavaType.Boolean;
         }
 
         @Override
         protected JavaType visitIsNullPredicate(final IsNullPredicate node, final VoidType context) {
-            return visit(node.getArgument(), context) == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
+            return JavaType.isVar(visit(node.getArgument(), context)) ? JavaType.BoolVar : JavaType.Boolean;
         }
 
         @Override
         protected JavaType visitIsNotNullPredicate(final IsNotNullPredicate node, final VoidType context) {
-            return visit(node.getArgument(), context) == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
+            return JavaType.isVar(visit(node.getArgument(), context)) ? JavaType.BoolVar : JavaType.Boolean;
         }
 
         @Override
@@ -221,7 +219,7 @@ public class TupleMetadata {
             final JavaType type = visit(node.getArgument(), context);
             switch (node.getOperator()) {
                 case NOT:
-                    return type == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
+                    return type == JavaType.BoolVar ? JavaType.BoolVar : JavaType.Boolean;
                 case MINUS:
                 case PLUS:
                     return type;
@@ -280,7 +278,7 @@ public class TupleMetadata {
                 switch (node.getFunction()) {
                     case SUM:
                     case COUNT:
-                        return argumentType == JavaType.IntVar ? JavaType.IntVar : JavaType.Long;
+                        return JavaType.isVar(argumentType) ? JavaType.IntVar : JavaType.Long;
                     case MAX:
                     case MIN:
                         return argumentType;
@@ -289,7 +287,7 @@ public class TupleMetadata {
                     case ALL_EQUAL:
                     case ALL_DIFFERENT:
                     case INCREASING:
-                        return argumentType == JavaType.IntVar ? JavaType.IntVar : JavaType.Boolean;
+                        return JavaType.isVar(argumentType) ? JavaType.BoolVar : JavaType.Boolean;
                     default:
                         throw new IllegalArgumentException(node + " " + argumentType);
                 }
@@ -303,7 +301,7 @@ public class TupleMetadata {
             } else if (node.getArgument().size() == 4) {
                 switch (node.getFunction()) {
                     case CAPACITY_CONSTRAINT:
-                        return JavaType.IntVar;
+                        return JavaType.BoolVar;
                     default:
                         throw new IllegalArgumentException(node.toString());
                 }

@@ -61,11 +61,11 @@ class ScalarProductOptimization extends ComprehensionRewriter {
                 final JavaType rightType = metadata.inferType(right);
                 // TODO: The multiply may not necessarily be the top level operation.
                 if (op.equals(BinaryOperatorPredicate.Operator.MULTIPLY)) {
-                    if (leftType == JavaType.IntVar && rightType != JavaType.IntVar) {
+                    if (JavaType.isVar(leftType) && !JavaType.isVar(rightType)) {
                         return new FunctionCall(FunctionCall.Function.SCALAR_PRODUCT, List.of(left, right),
                                                 node.getAlias());
                     }
-                    if (rightType == JavaType.IntVar && leftType != JavaType.IntVar) {
+                    if (JavaType.isVar(rightType) && !JavaType.isVar(leftType)) {
                         return new FunctionCall(FunctionCall.Function.SCALAR_PRODUCT, List.of(right, left),
                                                 node.getAlias());
                     }

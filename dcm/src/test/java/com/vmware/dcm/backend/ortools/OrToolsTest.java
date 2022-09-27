@@ -6,6 +6,7 @@
 
 package com.vmware.dcm.backend.ortools;
 
+import com.google.ortools.sat.BoolVar;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
@@ -75,7 +76,7 @@ public class OrToolsTest {
         final int numPods = 100;
         final int numNodes = 50;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
-        final int[] podsDemands = new int[numPods];
+        final long[] podsDemands = new long[numPods];
 
         for (int i = 0; i < numPods; i++) {
             podsControllableNodes[i] = model.newIntVar(0, numNodes - 1, "");
@@ -94,13 +95,13 @@ public class OrToolsTest {
         for (int node = 0; node < numNodes; node++) {
             final IntVar[] bools = new IntVar[numPods];
             for (int i = 0; i < numPods; i++) {
-                final IntVar bVar = model.newBoolVar("");
+                final BoolVar bVar = model.newBoolVar("");
                 model.addEquality(podsControllableNodes[i], node).onlyEnforceIf(bVar);
                 model.addDifferent(podsControllableNodes[i], node).onlyEnforceIf(bVar.not());
                 bools[i] = bVar;
             }
             final IntVar load = model.newIntVar(0, 10000000, "");
-            model.addEquality(load, LinearExpr.scalProd(bools, podsDemands));
+            model.addEquality(load, LinearExpr.weightedSum(bools, podsDemands));
             loads[node] = load;
             model.addLessOrEqual(load, 100000);
         }
@@ -132,9 +133,9 @@ public class OrToolsTest {
         final int numPods = 100;
         final int numNodes = 50;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
-        final int[] podsDemands1 = new int[numPods];
-        final int[] podsDemands2 = new int[numPods];
-        final int[] podsDemands3 = new int[numPods];
+        final long[] podsDemands1 = new long[numPods];
+        final long[] podsDemands2 = new long[numPods];
+        final long[] podsDemands3 = new long[numPods];
 
         final int[] nodeCapacities1 = new int[numNodes];
         final int[] nodeCapacities2 = new int[numNodes];
@@ -165,7 +166,7 @@ public class OrToolsTest {
         for (int node = 0; node < numNodes; node++) {
             final IntVar[] bools = new IntVar[numPods];
             for (int i = 0; i < numPods; i++) {
-                final IntVar bVar = model.newBoolVar("");
+                final BoolVar bVar = model.newBoolVar("");
                 model.addEquality(podsControllableNodes[i], node).onlyEnforceIf(bVar);
                 model.addDifferent(podsControllableNodes[i], node).onlyEnforceIf(bVar.not());
                 bools[i] = bVar;
@@ -173,20 +174,23 @@ public class OrToolsTest {
             final IntVar load1 = model.newIntVar(0, 10000000, "");
             final IntVar load2 = model.newIntVar(0, 10000000, "");
             final IntVar load3 = model.newIntVar(0, 10000000, "");
-            model.addEquality(load1, LinearExpr.scalProd(bools, podsDemands1));
-            model.addEquality(load2, LinearExpr.scalProd(bools, podsDemands2));
-            model.addEquality(load3, LinearExpr.scalProd(bools, podsDemands3));
+            model.addEquality(load1, LinearExpr.weightedSum(bools, podsDemands1));
+            model.addEquality(load2, LinearExpr.weightedSum(bools, podsDemands2));
+            model.addEquality(load3, LinearExpr.weightedSum(bools, podsDemands3));
 
             final IntVar slack1 = model.newIntVar(0, 10000000, "");
             final IntVar slack2 = model.newIntVar(0, 10000000, "");
             final IntVar slack3 = model.newIntVar(0, 10000000, "");
 
-            model.addEquality(slack1, LinearExpr.scalProd(new IntVar[]{model.newConstant(nodeCapacities1[node]), load1},
-                                                                      new int[]{1, -1}));
-            model.addEquality(slack2, LinearExpr.scalProd(new IntVar[]{model.newConstant(nodeCapacities2[node]), load2},
-                    new int[]{1, -1}));
-            model.addEquality(slack3, LinearExpr.scalProd(new IntVar[]{model.newConstant(nodeCapacities3[node]), load3},
-                    new int[]{1, -1}));
+            model.addEquality(slack1,
+                    LinearExpr.weightedSum(new IntVar[]{model.newConstant(nodeCapacities1[node]), load1},
+                                           new long[]{1, -1}));
+            model.addEquality(slack2,
+                    LinearExpr.weightedSum(new IntVar[]{model.newConstant(nodeCapacities2[node]), load2},
+                                           new long[]{1, -1}));
+            model.addEquality(slack3,
+                    LinearExpr.weightedSum(new IntVar[]{model.newConstant(nodeCapacities3[node]), load3},
+                                           new long[]{1, -1}));
 
             slacks1[node] = slack1;
 
@@ -223,7 +227,7 @@ public class OrToolsTest {
         final int numPods = 10;
         final int numNodes = 100;
         final IntVar[] podsControllableNodes = new IntVar[numPods];
-        final int[] podsDemands = new int[numPods];
+        final long[] podsDemands = new long[numPods];
 
         for (int i = 0; i < numPods; i++) {
             podsControllableNodes[i] = model.newIntVar(0, numNodes - 1, "");
@@ -242,13 +246,13 @@ public class OrToolsTest {
         for (int node = 0; node < numNodes; node++) {
             final IntVar[] bools = new IntVar[numPods];
             for (int i = 0; i < numPods; i++) {
-                final IntVar bVar = model.newBoolVar("");
+                final BoolVar bVar = model.newBoolVar("");
                 model.addEquality(podsControllableNodes[i], node).onlyEnforceIf(bVar);
                 model.addDifferent(podsControllableNodes[i], node).onlyEnforceIf(bVar.not());
                 bools[i] = bVar;
             }
             final IntVar load = model.newIntVar(0, 10000000, "");
-            model.addEquality(load, LinearExpr.scalProd(bools, podsDemands));
+            model.addEquality(load, LinearExpr.weightedSum(bools, podsDemands));
             loads[node] = load;
             model.addLessOrEqual(load, 100000);
         }
@@ -282,7 +286,7 @@ public class OrToolsTest {
         // Create the variables.
         final IntVar var = model.newIntVar(0, 100, "");
         final IntVar result = model.newIntVar(0, 1000, "");
-        model.addEquality(result, LinearExpr.scalProd(new IntVar[]{var}, new int[]{8}));
+        model.addEquality(result, LinearExpr.weightedSum(new IntVar[]{var}, new long[]{8}));
 
         model.maximize(var);
         // Create a solver and solve the model.
@@ -307,7 +311,7 @@ public class OrToolsTest {
         final IntVar var1 = model.newIntVar(0, 100, "");
         final IntVar var2 = model.newIntVar(0, 100, "");
         final IntVar result = model.newIntVar(0, 1000, "");
-        model.addProductEquality(result, new IntVar[]{var1, var2});
+        model.addMultiplicationEquality(result, new IntVar[]{var1, var2});
 
         model.maximize(result);
         // Create a solver and solve the model.
@@ -332,7 +336,7 @@ public class OrToolsTest {
 
         // Create the variables.
         final IntVar var = model.newIntVar(0, 50, "");
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
         model.addEquality(var, 50).onlyEnforceIf(bool);
         model.addDifferent(var, 50).onlyEnforceIf(bool.not());
 
@@ -401,7 +405,7 @@ public class OrToolsTest {
 
         // Create the variables.
         final IntVar var = model.newIntVar(0, 4, "");
-        final IntVar bool = model.newBoolVar("");
+        final BoolVar bool = model.newBoolVar("");
 
         model.addLinearExpressionInDomain(var, Domain.fromValues(new long[]{1, 2, 3, 4})).onlyEnforceIf(bool);
         model.addDifferent(var, 1).onlyEnforceIf(bool.not());
