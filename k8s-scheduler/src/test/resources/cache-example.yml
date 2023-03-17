@@ -25,5 +25,5 @@ spec:
               topologyKey: "kubernetes.io/hostname"
       containers:
         - name: cache
-          image: k8s.gcr.io/pause
+          image: registry.k8s.io/pause
           imagePullPolicy: IfNotPresent
